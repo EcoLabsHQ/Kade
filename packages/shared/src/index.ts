@@ -16,3 +16,4 @@ export * from './fees.js';
 export * from './eas.js';
 export * from './safe.js';
 export * from './auth.js';
+export * from './onboarding.js';
