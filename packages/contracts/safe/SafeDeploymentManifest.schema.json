@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kade.local/schemas/SafeDeploymentManifest.schema.json",
+  "title": "SafeDeploymentManifest",
+  "description": "Exactly the fields D4 requires to be persisted for the resident Safe (week-1-frozen-delivery-contract.md section 4, D4). Shape only: every concrete value is [arbitrary] and awaits the Account gate (section 7, checkpoint 2). The input fields mirror @kade/shared SafeDeploymentInputs; the persisted fields mirror its SafeDeploymentRecord. No deployment, registration or broadcast is implied by this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "deploymentTxHash",
+    "deploymentChainId",
+    "safeAddress",
+    "predictedL2Addresses",
+    "safeVersion",
+    "factory",
+    "singleton",
+    "initializer",
+    "handler",
+    "owner",
+    "threshold",
+    "salt",
+    "creationCodeAssumptions",
+    "provenance"
+  ],
+  "properties": {
+    "$comment": {
+      "type": "string",
+      "description": "Free-form note. Must state that the manifest is unapproved while provenance is unapproved."
+    },
+    "deploymentTxHash": {
+      "type": ["string", "null"],
+      "pattern": "^0x[0-9a-fA-F]{64}$",
+      "description": "Ethereum Sepolia deployment transaction. D4: stored. null until the Safe is actually deployed; the L2-only case stays null. [arbitrary] until the Account gate."
+    },
+    "deploymentChainId": {
+      "const": 11155111,
+      "description": "Ethereum Sepolia (frozen: contract section 3, EXE-002). [documented]."
+    },
+    "safeAddress": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "The single resident Safe address. D4 requires it to be identical on Ethereum Sepolia, Arbitrum Sepolia and Base Sepolia. [arbitrary] until derived from Account-gate inputs."
+    },
+    "predictedL2Addresses": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Counterfactual L2 addresses. D4: stored. Each must equal safeAddress (see tests/SafeAddress.t.sol). [arbitrary].",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["chainId", "name", "address"],
+        "properties": {
+          "chainId": {
+            "enum": [421614, 84532],
+            "description": "Arbitrum Sepolia (421614) or Base Sepolia (84532). [documented]."
+          },
+          "name": { "type": "string" },
+          "address": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{40}$",
+            "description": "Predicted address; must equal safeAddress. [arbitrary]."
+          }
+        }
+      }
+    },
+    "safeVersion": {
+      "type": "string",
+      "description": "Safe contract version, e.g. \"1.4.1\". [arbitrary] — supplied by the project, Account gate."
+    },
+    "factory": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "SafeProxyFactory used for CREATE2. [arbitrary] — Account gate."
+    },
+    "singleton": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "Safe singleton (master copy) the proxy delegates to. [arbitrary] — Account gate."
+    },
+    "initializer": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]*$",
+      "description": "Safe setup initializer calldata (WebAuthn signer, threshold 1). Its keccak256 is the on-chain salt input. [arbitrary] — Account gate."
+    },
+    "handler": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "CompatibilityFallbackHandler stored in the Safe. [arbitrary] — Account gate."
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$",
+      "description": "The direct Safe WebAuthn signer: the only operational owner, no user EOA (frozen: section 2, items 5-6). Address [arbitrary] — Account gate."
+    },
+    "threshold": {
+      "const": 1,
+      "description": "Threshold 1 (frozen: section 2, item 6). [documented]."
+    },
+    "salt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["saltNonce", "initializerHash", "salt"],
+      "description": "CREATE2 salt inputs and output. [arbitrary] until Account-gate inputs.",
+      "properties": {
+        "saltNonce": {
+          "type": "string",
+          "description": "uint256 salt nonce passed to createProxyWithNonce. [arbitrary]."
+        },
+        "initializerHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256(initializer). [arbitrary]."
+        },
+        "salt": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256(initializerHash ++ uint256(saltNonce)). [arbitrary]."
+        }
+      }
+    },
+    "creationCodeAssumptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proxyCreationCodeHash", "initCodeHash", "initCodeFormula", "saltFormula", "create2Formula", "chainSpecific"],
+      "description": "The exact byte-level assumptions the predicted address depends on. A change to any of these changes the address (proved in tests/SafeAddress.t.sol).",
+      "properties": {
+        "proxyCreationCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256(type(SafeProxy).creationCode) for the pinned Safe version/compiler. [arbitrary] — derived from the Account-gate Safe version and the pinned solc."
+        },
+        "initCodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256(proxyCreationCode ++ uint256(uint160(singleton))). [arbitrary] — Account gate."
+        },
+        "initCodeFormula": {
+          "const": "proxyCreationCode ++ uint256(uint160(singleton))",
+          "description": "Matches SafeProxyFactory.deployProxy."
+        },
+        "saltFormula": {
+          "const": "keccak256(keccak256(initializer) ++ uint256(saltNonce))",
+          "description": "Matches SafeProxyFactory.createProxyWithNonce."
+        },
+        "create2Formula": {
+          "const": "keccak256(0xff ++ factory ++ salt ++ initCodeHash)[12:]",
+          "description": "Standard CREATE2."
+        },
+        "chainSpecific": {
+          "const": false,
+          "description": "D4 uses createProxyWithNonce, which does not fold chain id into the salt, so the address is chain-independent. [documented]."
+        }
+      }
+    },
+    "provenance": {
+      "type": "string",
+      "enum": ["unapproved", "approved"],
+      "description": "unapproved in Week 1. Flipped only when the Account gate approves the concrete inputs and the Sepolia deployment is recorded. Deployment is out of scope for this deliverable."
+    }
+  }
+}
