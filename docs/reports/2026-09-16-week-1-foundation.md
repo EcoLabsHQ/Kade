@@ -147,17 +147,9 @@ later result.
 
 Test files: 9 web, 5 shared, 2 Foundry, 2 acceptance, 1 regression.
 
-### 4.1 RLS, verified once but not reproducible
-
-The pgTAP suites were run once against a plain PostgreSQL using a throwaway
-`auth` shim: 9 migrations applied in order, seed applied, and **29 assertions
-across 3 suites passed** — resident isolation, column-privilege protection and
-the RLS completeness invariant.
-
-The shim and its runner were deliberately **not committed**, so this result is
-not reproducible from a clean checkout and is recorded as a development-time
-check rather than D2 evidence. The authoritative path remains `supabase test db`
-against a real project, which has not been run.
+RLS is deliberately **not** covered by the mechanical gate. Enforcement is
+Postgres's, configured through Supabase; the policy set is reviewed as SQL in a
+single auditable migration. See section 6.
 
 ## 5. The review loop
 
@@ -202,7 +194,9 @@ human change-control gate rather than starting a fourth corrective round.
   failed assertion; it prints a diagnostic and `psql` still exits 0. The gate
   derived its verdict solely from `psql`'s exit status, so a failing RLS suite
   looked green. Fixed by calling `finish(true)` in all three suites and by
-  having the gate inspect the TAP output for `not ok` as well.
+  having the gate inspect the TAP output for `not ok` as well. The suites were
+  later removed entirely (section 6), so this fix no longer exists in the tree;
+  it is recorded because it explains the round.
 
 - **`rls-check.sh` reported success on a suite error.** The tool captured output
   with `|| true`, discarded the exit status, and decided pass/fail only by
@@ -222,18 +216,33 @@ human change-control gate rather than starting a fourth corrective round.
 ## 6. The de-scope decision
 
 At the circuit breaker the human change-control gate chose to **remove the
-surface rather than patch it again**. Deleted:
+surface rather than patch it again**, and then removed the RLS test suite
+outright on the grounds that enforcement is Supabase's concern.
 
-- `scripts/db/rls-check.sh`
-- `supabase/tests/support/supabase-shim.sql`
+Removed, in two steps:
 
-Kept, because review independently confirmed them correct and they carry the
-value:
+| Step | Removed |
+|---|---|
+| At the circuit breaker | `scripts/db/rls-check.sh`, `supabase/tests/support/supabase-shim.sql` |
+| Follow-up | `supabase/tests/` (all three pgTAP suites), the RLS block in `scripts/verify-full.sh` |
 
-- `finish(true)` in all three pgTAP suites;
-- the TAP `not ok` check and non-zero exit handling in `verify-full.sh`;
-- the pgTAP `search_path` preamble fix in `0003`, without which it errored on
-  any real database.
+The policy set itself is untouched. Row level security is still enabled on every
+table, the security-critical columns are still removed from the `authenticated`
+role's privileges, and the apply-time guard that fails the migration on an
+unprotected table still runs. What is gone is the committed harness that
+exercised those policies.
+
+Consequences, stated plainly:
+
+- The Week 1 contract lists "automated RLS tests" as part of the D2 evidence
+  (section 4, D2; Appendix A and C). That evidence is therefore **not
+  delivered**. The frozen contract was not edited to accommodate this; the gap is
+  recorded here instead.
+- Nothing in `verify.sh` or `verify-full.sh` exercises row visibility, so no
+  green run should be read as an RLS claim.
+- Before this change the RLS suites had produced four review findings across
+  three corrective rounds, all of the same class: a failing or erroring suite
+  reported as success. Removing the harness removes that class of defect.
 
 ## 7. Decisions recorded
 
@@ -262,7 +271,7 @@ Two supporting decisions are recorded in those ADRs and in the README:
 | ID | Deliverable | Status |
 |---|---|---|
 | D1 | Public development foundation | Mostly — README, licence, disclosure and clean build; no shared preview URL |
-| D2 | Supabase schema, RLS and seeds | Partial — SQL complete; live `supabase test db` outstanding |
+| D2 | Supabase schema, RLS and seeds | Partial — schema, policies and seeds complete; RLS test evidence **not delivered** |
 | D3 | Login and transaction signer | Partial — separation tested; live sign-in unverified |
 | D4 | Resident Safe and deterministic L2 address | Blocked — invariant guards only; no signer address |
 | D5 | Steps 1–2 live | Not started — shell and fee display only |
@@ -283,8 +292,9 @@ is not silent.
 
 ## 10. Known limitations
 
-- **RLS evidence is not reproducible.** The run used a throwaway shim that is
-  not in the repository.
+- **No RLS harness.** Row level security is enabled and its policies are
+  reviewed as SQL, but nothing exercises row visibility, so no green run is an
+  RLS claim. The D2 evidence item "automated RLS tests" is not delivered.
 - **Nothing is on-chain.** KadeLock is not deployed; the EAS schemas are not
   registered. Both are gated on human approval, and registration is
   irreversible.
@@ -302,12 +312,13 @@ is not silent.
 
 ## 11. Open items for the next iteration
 
-- [ ] Run `supabase test db` against a real project to produce D2 evidence.
 - [ ] Supply Google OAuth and Supabase credentials and validate live sign-in.
 - [ ] Clear the Account gate: approve the signer implementation and the Safe
       deployment inputs, then produce the deterministic L2 address test (D4).
 - [ ] Clear the Onchain gate: approve the EAS encodings and the KadeLock
       interface and threat model.
+- [ ] Decide how D2's "automated RLS tests" evidence is satisfied, given the
+      harness was removed.
 - [ ] Confirm the KadeLock model A freeze (§6.2) and the contracts licence.
 - [ ] Decide the shared HTTPS preview requirement.
 - [ ] Record human orchestration hours against EXE-001–EXE-006.
@@ -321,7 +332,7 @@ is not silent.
 | Hours | Not measured by the agent; human to record |
 | Tests | `./scripts/verify.sh` → PASS · 97 unit · 12 acceptance · 4 regression · 33 Foundry |
 | Runtime proof | 9 migration ids (`20260916000001`–`20260916000009`); Foundry output; no explorer links, nothing deployed |
-| Acceptance mapping | D1 scaffold and setup; D2 schema and RLS tests; D3 auth separation; D6 manifest; D7 KadeLock tests |
+| Acceptance mapping | D1 scaffold and setup; D2 schema (RLS tested: **not delivered**); D3 auth separation; D6 manifest; D7 KadeLock tests |
 | Known limitations | Section 10 |
 | Security notes | No secrets committed; EAS registration guarded and never broadcast; no on-chain writes performed |
 | Reviewer | Adversarial review **FAILED**; promotion by human change-control decision |
