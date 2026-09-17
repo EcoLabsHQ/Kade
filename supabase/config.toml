@@ -1,0 +1,63 @@
+# =============================================================================
+# Kade — local Supabase stack configuration.
+#
+# Consumed by the Supabase CLI (`supabase start`, `supabase db reset`,
+# `supabase test db`). The CLI is NOT installed in the current build
+# environment, so this file has not been executed; see supabase/README.md for
+# what is verified and what is not.
+#
+# Values that the governing documents do not fix are marked [arbitrary].
+# =============================================================================
+
+project_id = "kade"
+
+[api]
+enabled = true
+# Local PostgREST port. [arbitrary] Supabase CLI default.
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+# Local Postgres port. [arbitrary] Supabase CLI default.
+port = 54322
+shadow_port = 54320
+# [arbitrary] Postgres major version; the build guide does not pin one.
+major_version = 17
+# The seed is GENERATED from @kade/shared (ADR 0005); never hand-edit it.
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# Local object storage root. [arbitrary]
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# Must match NEXT_PUBLIC_SITE_URL. [arbitrary] local development origin.
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+# Google OAuth is the ONLY application login (week-1 contract section 2, item 2).
+# The client id/secret are supplied through the environment, never committed.
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+redirect_uri = "http://localhost:54321/auth/v1/callback"
+
+[analytics]
+enabled = false
