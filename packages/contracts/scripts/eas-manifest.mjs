@@ -14,6 +14,7 @@ import {
 } from '@kade/shared';
 
 export const MANIFEST_PATH = new URL('../eas/eas-schema-manifest.json', import.meta.url);
+export const REVIEW_PATH = new URL('../eas/REVIEW.md', import.meta.url);
 export const REGISTRATIONS_PATH = new URL('../eas/registered-uids.json', import.meta.url);
 
 export const TARGET_CHAIN_ID = CHAIN_IDS.sepolia;
