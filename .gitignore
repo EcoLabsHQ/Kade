@@ -2,6 +2,11 @@
 node_modules/
 .opencode/node_modules/
 
+# Foundry dependencies are fetched, not vendored: safe-smart-account is
+# LGPL-3.0 and must not be committed into this MIT-licensed repository.
+# Run scripts/setup.sh (or `forge install`) to populate it.
+packages/contracts/lib/
+
 # env / secrets
 .env
 .env.*
@@ -14,6 +19,13 @@ out/
 .next/
 cache/
 artifacts/
+coverage/
+*.tsbuildinfo
+.turbo/
+
+# supabase local stack
+supabase/.temp/
+.supabase/
 
 # editor / os
 .DS_Store
