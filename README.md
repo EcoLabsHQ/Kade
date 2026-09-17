@@ -7,10 +7,10 @@ instruments, moves money through a licensed fiat partner and spends on a card.
 Governments get a machine-verified queue, attested records and revenue on every
 rail. First deployment: the Curaçao investor permit.
 
-> **Status:** Week 1 foundations, **all-testnet iteration 1**. The repository is
-> being built under the Colosseum Crypto World's Fair hackathon. Source code is
-> in progress; this README and the frozen contract are the current source of
-> truth.
+> **Status:** Week 1 foundations, **all-testnet iteration 1**. The mechanical
+> gate (`./scripts/verify.sh`) passes. See
+> [What is and is not verified](#what-is-and-is-not-verified) before relying on
+> any of it.
 
 ## Hackathon context
 
@@ -28,77 +28,77 @@ rail. First deployment: the Curaçao investor permit.
 
 - **Target chains:** Ethereum, Arbitrum, Base — same Safe address on all three.
 - **Iteration 1:** Ethereum Sepolia (deploy) + Arbitrum Sepolia / Base Sepolia
-  (predicted addresses). EAS schemas registered on Sepolia.
+  (predicted addresses). EAS schemas to be registered on Sepolia.
 - **Stack:** Safe{Core} + ERC-4337 · Pimlico paymaster · EAS · Self (ZK passport
   identity) · USDC + Circle CCTP · Snapshot · Supabase · GOS (fiat + card) ·
   Reflect (USD vault) · Safe WebAuthn · Next.js, wagmi/viem.
 
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph Client["apps/web — Next.js"]
-        UI["Shell, onboarding, Holdings, Residency, Admin"]
-    end
-
-    subgraph Auth["Identity"]
-        Google["Google OAuth (Supabase)"]
-        Passkey["Passkey — direct Safe WebAuthn signer"]
-    end
-
-    subgraph Account["Safe account"]
-        Safe["Resident Safe (Sepolia)"]
-        L2["Arbitrum Sepolia / Base Sepolia (predicted)"]
-    end
-
-    subgraph Data["Supabase"]
-        DB["Schema + RLS"]
-        Seed["chains, fee_schedule"]
-    end
-
-    subgraph Onchain["Contracts"]
-        EAS["EAS schemas on Sepolia"]
-        Lock["KadeLock (Guard/Module, tested)"]
-    end
-
-    UI --> Google --> Passkey --> Safe
-    Safe --> L2
-    UI --> DB
-    DB --> Seed
-    Safe --> EAS
-    Safe --> Lock
-```
-
-## Repository layout (target)
+## Repository layout
 
 ```text
-.
-├── apps/web                     # Next.js application
-├── packages/contracts           # KadeLock + attestation schemas
-├── supabase/                    # migrations, RLS, seeds
-├── scripts/
-│   ├── verify.sh                # canonical mechanical verification
-│   ├── verify-full.sh           # + expensive integration/E2E/system checks
-│   └── regression/README.md     # git bisect protocol
-├── tests/
-│   └── regressions/             # tests protecting fixed regressions
-├── docs/
-│   ├── DEVELOPMENT_CONTRACT.md  # normative development contract
-│   ├── VERIFY_GUIDE.md          # how verify.sh must behave
-│   ├── week-1-frozen-delivery-contract.md
-│   └── planning/
-│       ├── kade-mvp-build-document-v7.docx
-│       └── kade-mvp-backlog.xlsx
-├── .opencode/
-│   ├── agents/                  # orchestrator, reviewer
-│   └── command/                 # /gate, /evidence
-├── opencode.json
-├── AGENTS.md
-└── README.md
+apps/web                     Next.js 15 application (shell, login, onboarding)
+packages/shared              frozen cross-package contracts
+packages/contracts           KadeLock + EAS schema tooling (Foundry)
+supabase/                    migrations, RLS, seeds, pgTAP tests
+tests/acceptance/            executable form of the frozen Week 1 contract
+tests/regressions/           tests protecting previously fixed bugs
+reference/mvp-onchainisland/ the deployed MVP UI, vendored as visual baseline
+docs/architecture/           decisions (ADRs) and the data model
+docs/                        governing contracts and planning sources
+scripts/                     setup, verification and regression tooling
 ```
 
-Application directories are created as workstreams land. `docs/`, `scripts/`,
-`tests/` and `.opencode/` are present from the start.
+## Getting started
+
+Requires Node >= 20.18 and, for the contracts package, [Foundry](https://book.getfoundry.sh/).
+
+```bash
+./scripts/setup.sh          # npm install + pinned Foundry dependencies
+cp .env.example .env.local  # then fill in the project-supplied values
+./scripts/verify.sh         # the mechanical gate
+npm run dev                 # http://localhost:3000
+```
+
+`./scripts/verify.sh` is the only mechanical gate. It runs typecheck, lint, unit
+tests, acceptance tests, regression tests, build, `forge build` and
+`forge test`. `./scripts/verify-full.sh` adds the expensive, environment-dependent
+checks (integration, E2E) when they exist.
+
+## Architecture
+
+Data ownership follows one rule from the build guide: **records on Ethereum,
+balances anywhere.** Anything a third party must verify is attested once;
+anything that is merely value can sit on the cheapest chain.
+
+| Layer | Responsibility |
+|---|---|
+| `apps/web` | Presentation, session handling, client-side validation |
+| `supabase` | Workflow facts, RLS, seeds. Never the source of truth for money |
+| `packages/contracts` | KadeLock policy and the EAS schema manifest |
+| `packages/shared` | Chains, fees, schemas, Safe inputs, auth model — frozen contracts |
+
+Key decisions are recorded in [`docs/architecture/`](docs/architecture/):
+
+- [0001 — Monorepo and toolchain](docs/architecture/adr/0001-monorepo-and-toolchain.md)
+- [0002 — Web framework and design system](docs/architecture/adr/0002-web-framework-and-design-system.md)
+- [0003 — Authentication and signing separation](docs/architecture/adr/0003-auth-and-signing-separation.md)
+- [0004 — Data ownership and RLS](docs/architecture/adr/0004-data-ownership-and-rls.md)
+- [0005 — Configuration over code](docs/architecture/adr/0005-config-over-code.md)
+- [0006 — Contracts toolchain and KadeLock](docs/architecture/adr/0006-contracts-toolchain-and-kadelock.md)
+
+### Authentication model
+
+Two authorities, deliberately separate:
+
+| | Credential | Grants |
+|---|---|---|
+| Application session | Google OAuth via Supabase | Access to the resident's own rows |
+| Transaction signing | Passkey (direct Safe WebAuthn signer) | Authorising Safe transactions |
+
+Google is the only login. There is no email or OTP fallback. The passkey is
+created after sign-in and is never requested during sign-in, and a Google
+session can never authorise a transaction. See
+[ADR 0003](docs/architecture/adr/0003-auth-and-signing-separation.md).
 
 ## Week 1 scope (frozen)
 
@@ -121,13 +121,61 @@ deployed), fee calculation.
 execution, paymaster beyond deployment, indexer, L2 Safe deployment, Aave vault,
 full KYC/Self flow, admin review UI, GOS, CCTP, card, investment, voting.
 
-See `docs/week-1-frozen-delivery-contract.md` for the full contract, gates and
-acceptance evidence.
+See [`docs/week-1-frozen-delivery-contract.md`](docs/week-1-frozen-delivery-contract.md)
+for the full contract, gates and acceptance evidence.
+
+## What is and is not verified
+
+This section exists because the Week 1 contract forbids presenting unverified
+work as complete.
+
+**Verified by `./scripts/verify.sh`:**
+
+- Typecheck, lint and build of the web application.
+- Unit, acceptance and Foundry tests, including the frozen fee model
+  (`1.75 USDC` demo and `447 USDC` production for a household of three), the
+  five schema names, Safe threshold and ownership invariants, and the
+  login/signing separation.
+- `KadeLock` compiles and its policy tests pass: unauthorised configuration,
+  lock enforcement before `unlockAt`, permitted and rejected destinations, and
+  post-unlock behaviour.
+- The committed `supabase/seed.sql` is byte-for-byte reproducible from
+  `packages/shared`, so the database and the application cannot disagree.
+
+**Not yet verified — these require project-supplied inputs that are absent from
+this environment:**
+
+- **Live Google sign-in and session restore.** No Supabase project or Google
+  OAuth credentials are configured. The PKCE flow and session handling are
+  implemented; the app renders an explicit "not configured" state rather than a
+  fake signed-in state.
+- **Database RLS against a real database.** The migrations, policies and pgTAP
+  tests are written; the Supabase CLI is not installed here, so they have not
+  been run against a live stack. No RLS claim is made beyond the SQL itself.
+- **Credential metadata surviving reload.** No database is reachable, so
+  passkey metadata persistence is a seam with an in-memory implementation.
+- **A test signature through the direct Safe WebAuthn signer.** Requires the
+  signer address and Safe deployment inputs, which the project supplies and the
+  Account gate approves. The signer address is an explicit unresolved sentinel,
+  never a fabricated address.
+- **Any on-chain write.** KadeLock is not deployed and the EAS schemas are not
+  registered. Both are gated on human approval; registration is irreversible.
+
+## Human approval gates
+
+No irreversible on-chain write happens before its gate is approved
+(week-1 contract section 7):
+
+1. **Foundation** — repository shape, environment contract, schema/RLS matrix, shared types.
+2. **Account** — authentication separation, passkey implementation, Safe initializer, deterministic deployment inputs.
+3. **Onchain** — exact EAS encodings and the KadeLock interface/threat model.
+4. **Acceptance** — a human executes D8 and reviews the evidence bundle.
 
 ## Demo pricing
 
 Roughly 1/1000 of production; the flow and attestations are identical. Values
-live in the `fee_schedule` table (`mode` = `demo | production`).
+live in the `fee_schedule` table (`mode` = `demo | production`) and are selected
+by `KADE_FEE_MODE`. No amount is hard-coded in the client.
 
 | Function | Production | Demo |
 |---|---|---|
@@ -161,6 +209,8 @@ Key rules:
 - Never move `known-good` while verification fails or a regression is open.
 - Regression tests live in `tests/regressions/`; the bisect protocol is in
   `scripts/regression/README.md`.
+- Values absent from the governing documents are labelled `[arbitrary]` and
+  must be confirmed at the matching human gate.
 
 ## Agent harness (opencode)
 
@@ -179,14 +229,41 @@ Kade is developed for the Colosseum Crypto World's Fair. Only work performed
 between 14 September and 12 October 2026 is submitted as hackathon work; earlier
 prototypes and third-party components are disclosed here and attributed.
 
-- Design reference: the Kade MVP prototype (`mvp.onchainisland.co`); its source
-  is not available in this repository.
-- Third-party code is attributed in the repository as it is integrated.
+- **Design prototype.** The Kade MVP (`mvp.onchainisland.co`) existed before the
+  contest as a static design with no backend and no contracts. Its source
+  repository is not published, so the deployed bundle was extracted to
+  `reference/mvp-onchainisland/` as the frozen visual baseline. That directory
+  is documentation: it is never built, imported or executed, and its provenance
+  and hashes are recorded in `PROVENANCE.json`. All application code,
+  contracts, schema and integrations in this repository were written from
+  14 September 2026.
+- **Business case and specification.** `docs/planning/` predates the contest.
+- **Third-party and open-source code** is listed below.
 
-_This section is completed before the 9 October upload._
+## Third-party attribution
+
+| Component | Licence | Use |
+|---|---|---|
+| Next.js, React, React DOM | MIT | Web application |
+| Tailwind CSS | MIT | Styling |
+| Supabase JS / SSR | MIT / Apache-2.0 | Auth and Postgres client |
+| viem | MIT | Chain interaction |
+| zod | MIT | Runtime validation |
+| SimpleWebAuthn | MIT | Passkey enrolment |
+| Plus Jakarta Sans | SIL OFL 1.1 | Typeface (via `next/font`) |
+| forge-std | MIT / Apache-2.0 | Foundry test library — installed, not committed |
+| safe-smart-account | **LGPL-3.0** | `Guard` interface — installed, **deliberately not vendored** |
+| EAS contracts / SDK | MIT | Attestation schemas |
+| USDC addresses | — | From Circle's published contract address list |
+| EAS registry addresses | — | From the EAS project's published deployments |
+
+Foundry dependencies are installed by `scripts/setup.sh` and are not committed;
+`safe-smart-account` is LGPL-3.0 and is kept out of this MIT-licensed repository
+rather than vendored into it.
 
 ## Links
 
-- Build guide: `docs/planning/kade-mvp-build-document-v7.docx`
+- Build guide: `docs/planning/kade-mvp-build-document-v7.docx` (plain-text extract: `.txt`)
 - Backlog and 80-hour plan: `docs/planning/kade-mvp-backlog.xlsx`
 - Week 1 contract: `docs/week-1-frozen-delivery-contract.md`
+- Development contract: `docs/DEVELOPMENT_CONTRACT.md`
