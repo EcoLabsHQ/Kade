@@ -1,0 +1,40 @@
+{
+  "source": "https://mvp.onchainisland.co/",
+  "retrievedAt": "2026-09-17T03:23:15Z",
+  "retrievedBy": "kade week-1 foundation agent",
+  "method": "HTTP GET of the served bundle document; embedded __bundler/manifest and __bundler/template parsed; JSON-encoded template decoded into HTML plus its text/x-dc component script",
+  "responseHeaders": {
+    "server": "Netlify",
+    "contentType": "text/html; charset=UTF-8",
+    "contentLength": 390983,
+    "etag": "\"6158b7e7f06acefd151b3d2a45a6193e-ssl\""
+  },
+  "artifacts": [
+    {
+      "file": "template.html",
+      "description": "Decoded x-dc document (shell, sidebar, screens)",
+      "sha256": "0ad1e2e56377c68ca24372670ece80a5d8d268b2cc66df9adf24236b20f2f8a1",
+      "bytes": 190277
+    },
+    {
+      "file": "component-logic.js",
+      "description": "Extracted data-dc-script component logic",
+      "sha256": "dcf221d20a6e96c7248df1d92612951db11c73cac2e66d0c51134bf7c031ef19",
+      "bytes": 47851
+    },
+    {
+      "file": "onchain-island-logo.png",
+      "description": "Onchain Island wordmark from the bundle manifest",
+      "sha256": "4faaa75afede0eb3cec290e277afbddd66393a949a256b86725a8834689e000a",
+      "bytes": 2322
+    }
+  ],
+  "bundledResponseSha256": "e50597e26db9e19fb2e1d2b7d5e4f2b9669ae117f864623e2e519e937e065d82",
+  "priorWorkDisclosure": "Pre-hackathon design prototype. Source repository is not published; this is extracted from the public deployment. Used only as the frozen visual and interaction baseline. Not imported by any built package.",
+  "excluded": [
+    "react.production.min.js",
+    "react-dom.production.min.js",
+    "dc-runtime bundle",
+    "Plus Jakarta Sans woff2 subsets (OFL; loaded via next/font instead)"
+  ]
+}
