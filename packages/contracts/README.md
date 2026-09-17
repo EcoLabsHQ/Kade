@@ -25,11 +25,14 @@ forge test
 | Path | Contents |
 |---|---|
 | `src/KadeLock.sol` | The minimum Safe Guard (frozen model A). |
+| `src/SafeAddress.sol` | Pure CREATE2 Safe proxy address derivation (D4). |
 | `test/KadeLock.t.sol` | Guard policy tests (D7). |
 | `test/KadeLockSafeIntegration.t.sol` | Value actually moves through the guard. |
+| `test/SafeAddress.t.sol` | Deterministic-address vector and sensitivity tests (D4). |
 | `test/mocks/MockGuardHost.sol` | Minimal Safe-like host; test-only, never deployed. |
-| `scripts/` | EAS manifest generation, registration planner, read-only verifier. |
-| `eas/` | Approval record, committed manifest, registered-UID record. |
+| `scripts/` | EAS manifest generation, registration planner, read-only verifier, Safe address/manifest tooling. |
+| `eas/` | Approval record, committed manifest, review pack, registered-UID record. |
+| `safe/` | `SafeDeploymentManifest` JSON Schema and `[arbitrary]` example. |
 | `lib/` | Foundry dependencies, installed by `scripts/setup.sh`. **Not committed.** |
 
 ## KadeLock
@@ -87,6 +90,7 @@ of "approved".
 | `eas/approval.json` | Approval record. Intentionally unapproved in Week 1. |
 | `eas/approval.example.json` | Template; fails closed because approval stays false. |
 | `eas/eas-schema-manifest.json` | Generated review artifact. |
+| `eas/REVIEW.md` | Generated Onchain-gate review pack (same generator). |
 | `eas/registered-uids.json` | Populated only after a human registers the schemas. |
 
 > **Note:** the EAS scripts need Node >= 22.6 for native TypeScript stripping.
@@ -101,6 +105,31 @@ recorded registrations to compare.
 > **Note:** There is no broadcast mode. The planner rejects every argument and
 > prints calldata for a human to execute with the authorised registration
 > account.
+
+## Safe address machinery (D4)
+
+D4 requires one resident Safe address across Ethereum Sepolia, Arbitrum Sepolia
+and Base Sepolia, derived from frozen deployment inputs. `src/SafeAddress.sol`
+implements the canonical `SafeProxyFactory.createProxyWithNonce` arithmetic;
+`test/SafeAddress.t.sol` pins a known vector, cross-checks
+`vm.computeCreate2Address`, and proves that changing any one input changes the
+address.
+
+> **Warning:** No concrete Safe input is approved. The Safe version, factory,
+> singleton, handler, initializer, signer and salt are project-supplied and
+> Account-gate blocked (contract section 5). Every value used by the tests and
+> examples is `[arbitrary]`.
+
+```bash
+# Validate the D4 manifest shape against its JSON Schema (read-only).
+npm run safe:manifest --workspace @kade/contracts
+
+# Re-derive the known address vector independently with viem (reads out/).
+npm run safe:vector --workspace @kade/contracts
+```
+
+The persisted shape is `safe/SafeDeploymentManifest.schema.json`; an all-
+`[arbitrary]` example is `safe/safe-deployment-manifest.example.json`.
 
 ## Dependencies
 

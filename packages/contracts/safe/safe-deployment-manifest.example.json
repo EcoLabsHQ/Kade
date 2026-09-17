@@ -1,0 +1,31 @@
+{
+  "$comment": "Shape example only. EVERY concrete value below is [arbitrary] and awaits the Account gate (week-1-frozen-delivery-contract.md sections 5 and 7, checkpoint 2). The zero addresses are placeholders, not configuration. Nothing is deployed.",
+  "deploymentTxHash": null,
+  "deploymentChainId": 11155111,
+  "safeAddress": "0x0000000000000000000000000000000000000000",
+  "predictedL2Addresses": [
+    { "chainId": 421614, "name": "Arbitrum Sepolia", "address": "0x0000000000000000000000000000000000000000" },
+    { "chainId": 84532, "name": "Base Sepolia", "address": "0x0000000000000000000000000000000000000000" }
+  ],
+  "safeVersion": "[arbitrary]",
+  "factory": "0x0000000000000000000000000000000000000000",
+  "singleton": "0x0000000000000000000000000000000000000000",
+  "initializer": "0x",
+  "handler": "0x0000000000000000000000000000000000000000",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "threshold": 1,
+  "salt": {
+    "saltNonce": "[arbitrary]",
+    "initializerHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "salt": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "creationCodeAssumptions": {
+    "proxyCreationCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "initCodeHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "initCodeFormula": "proxyCreationCode ++ uint256(uint160(singleton))",
+    "saltFormula": "keccak256(keccak256(initializer) ++ uint256(saltNonce))",
+    "create2Formula": "keccak256(0xff ++ factory ++ salt ++ initCodeHash)[12:]",
+    "chainSpecific": false
+  },
+  "provenance": "unapproved"
+}

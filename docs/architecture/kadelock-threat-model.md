@@ -197,6 +197,8 @@ confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 | `solc_version = 0.8.24` | `foundry.toml` | Not specified. | Onchain gate |
 | `forge-std` v1.16.2 | `lib/` | Not specified. | Onchain gate |
 | `safe-smart-account` v1.4.1 | `lib/` | The Safe version is itself `[arbitrary]` in `@kade/shared` (`safe.ts`). | Account gate |
+| Safe deployment inputs (factory, singleton, fallback handler, initializer, WebAuthn signer, salt nonce) | `@kade/shared` `safe.ts`; shape in `safe/SafeDeploymentManifest.schema.json` | Project-supplied; all marked `[arbitrary]`. | Account gate |
+| Safe proxy creation code | `src/SafeAddress.sol`; pinned by `test/SafeAddress.t.sol` | Derived from the Safe version and the pinned solc/optimizer settings; any change changes the predicted address. | Account gate |
 | EAS field types / encodings | `@kade/shared`, surfaced in the manifest | `@kade/shared` marks types `arbitrary`. | Onchain gate |
 | EAS `revocable` and `resolver` | `@kade/shared`, surfaced in the manifest | `arbitrary`. | Onchain gate |
 | EAS `attester = 'kade-authorized'` | `@kade/shared`, surfaced in the manifest | Not resolved to an on-chain address. | Onchain gate |
