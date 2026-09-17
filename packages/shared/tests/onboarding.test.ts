@@ -1,0 +1,243 @@
+import { describe, expect, it } from 'vitest';
+import {
+  citizenshipList,
+  COUNTRIES,
+  COUNTRY_CODES,
+  householdSize,
+  preapprovalFeeUsdc,
+  residence,
+  residenceCoverage,
+  residenceList,
+  stepOneComplete,
+  stepTwoComplete,
+  TIERS,
+  tierDatabaseValue,
+  tierIndex,
+  type HouseholdMember,
+  type Residence,
+} from '../src/index.js';
+
+/**
+ * The field contract is frozen by docs/week-1-frozen-delivery-contract.md
+ * section 4 (D5) and section 2.1, and specified by
+ * reference/design-handoff/README.md ("Step 2 · Profile & household",
+ * "Business rules"). The persistence targets are the two migrations.
+ */
+
+const EXPECTED_CODES = [
+  'NL',
+  'DE',
+  'US',
+  'GB',
+  'CH',
+  'CA',
+  'AE',
+  'SG',
+  'BR',
+  'VE',
+  'CO',
+  'SR',
+  'ZA',
+  'PT',
+] as const;
+
+const YEAR = new Date().getFullYear();
+
+describe('COUNTRIES', () => {
+  it('is exactly the 14-country handoff list, in order', () => {
+    expect(COUNTRY_CODES).toEqual(EXPECTED_CODES);
+    expect(COUNTRIES.map((c) => c.code)).toEqual(EXPECTED_CODES);
+    expect(COUNTRIES).toHaveLength(14);
+  });
+
+  it('marks every display name as arbitrary, because only the codes are fixed', () => {
+    for (const country of COUNTRIES) {
+      expect(country.name.length).toBeGreaterThan(0);
+      expect(country.nameProvenance).toBe('arbitrary');
+    }
+  });
+});
+
+describe('TIERS', () => {
+  it('matches the three handoff tiers and carries the prototype index', () => {
+    expect(TIERS).toEqual([
+      { index: 0, name: '3-year', minUsdc: 280000 },
+      { index: 1, name: '5-year', minUsdc: 425000 },
+      { index: 2, name: 'Indefinite', minUsdc: 850000 },
+    ]);
+  });
+
+  it('maps the index to the applications.tier encoding', () => {
+    expect(tierDatabaseValue(0)).toBe('3-year');
+    expect(tierDatabaseValue(1)).toBe('5-year');
+    expect(tierDatabaseValue(2)).toBe('indefinite');
+  });
+
+  it('tierIndex accepts 0, 1, 2 and rejects anything else', () => {
+    for (const index of [0, 1, 2]) {
+      expect(tierIndex.safeParse(index).success).toBe(true);
+    }
+    expect(tierIndex.safeParse(3).success).toBe(false);
+    expect(tierIndex.safeParse(-1).success).toBe(false);
+  });
+});
+
+describe('citizenshipList', () => {
+  it('rejects zero citizenships', () => {
+    expect(citizenshipList.safeParse([]).success).toBe(false);
+  });
+
+  it('accepts a single citizenship', () => {
+    expect(citizenshipList.safeParse(['NL']).success).toBe(true);
+  });
+
+  it('accepts multiple citizenships', () => {
+    expect(citizenshipList.safeParse(['NL', 'DE', 'SR']).success).toBe(true);
+  });
+
+  it('rejects a country outside the fixed 14-country list', () => {
+    expect(citizenshipList.safeParse(['XX']).success).toBe(false);
+  });
+});
+
+const fullSpan: Residence[] = [
+  { countryCode: 'NL', fromYear: YEAR - 5, toYear: 'present' },
+];
+
+const gappedSpan: Residence[] = [
+  { countryCode: 'NL', fromYear: YEAR - 5, toYear: YEAR - 3 },
+  { countryCode: 'DE', fromYear: YEAR - 1, toYear: 'present' },
+];
+
+const singleThreeYearsAgo: Residence[] = [
+  { countryCode: 'SR', fromYear: YEAR - 3, toYear: YEAR - 3 },
+];
+
+describe('residence coverage', () => {
+  it('accepts a span that covers the five years preceding the current year', () => {
+    const coverage = residenceCoverage(fullSpan);
+    expect(coverage.covered).toBe(true);
+    expect(coverage.windowFromYear).toBe(YEAR - 5);
+    expect(coverage.windowToYear).toBe(YEAR - 1);
+    expect(coverage.missingYears).toEqual([]);
+    expect(residenceList.safeParse(fullSpan).success).toBe(true);
+  });
+
+  it('fails a span with a gap and reports the gap', () => {
+    const coverage = residenceCoverage(gappedSpan);
+    expect(coverage.covered).toBe(false);
+    expect(coverage.missingYears).toEqual([YEAR - 2]);
+    expect(coverage.gaps).toEqual([{ fromYear: YEAR - 2, toYear: YEAR - 2 }]);
+
+    const parsed = residenceList.safeParse(gappedSpan);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => /missing/.test(issue.message))).toBe(true);
+    }
+  });
+
+  it('fails a single residence from three years ago', () => {
+    const coverage = residenceCoverage(singleThreeYearsAgo);
+    expect(coverage.covered).toBe(false);
+    expect(coverage.missingYears).toEqual([YEAR - 5, YEAR - 4, YEAR - 2, YEAR - 1]);
+    expect(coverage.gaps).toEqual([
+      { fromYear: YEAR - 5, toYear: YEAR - 4 },
+      { fromYear: YEAR - 2, toYear: YEAR - 1 },
+    ]);
+    expect(residenceList.safeParse(singleThreeYearsAgo).success).toBe(false);
+  });
+
+  it('rejects a residence whose end year precedes its start year', () => {
+    const backwards: Residence = { countryCode: 'NL', fromYear: YEAR - 1, toYear: YEAR - 4 };
+    expect(residence.safeParse(backwards).success).toBe(false);
+  });
+});
+
+describe('householdSize', () => {
+  it('includes the applicant: zero members is a household of one (contract 2.1)', () => {
+    expect(householdSize([])).toBe(1);
+    expect(householdSize([{ name: 'A' }])).toBe(2);
+  });
+});
+
+const threeMembers: HouseholdMember[] = [
+  { name: 'Ada', relation: 'spouse', dob: '1990-01-01', citizenship: 'NL' },
+  { name: 'Grace', relation: 'child', dob: '2015-05-05', citizenship: 'DE' },
+  { name: 'Alan', relation: 'child', dob: '2018-08-08', citizenship: 'US' },
+];
+
+describe('step one — profile, citizenships, residence history', () => {
+  const valid = {
+    applicant: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+    citizenships: ['NL'],
+    residences: fullSpan,
+  };
+
+  it('is complete for a full valid input', () => {
+    expect(stepOneComplete(valid)).toEqual({ complete: true, blockers: [] });
+  });
+
+  it('blocks an empty profile', () => {
+    const status = stepOneComplete({
+      ...valid,
+      applicant: { firstName: '', lastName: '', dob: '' },
+    });
+    expect(status.complete).toBe(false);
+    expect(status.blockers.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('blocks when no citizenship remains', () => {
+    const status = stepOneComplete({ ...valid, citizenships: [] });
+    expect(status.complete).toBe(false);
+    expect(status.blockers).toContain('At least one citizenship is required.');
+  });
+
+  it('names the missing residence years', () => {
+    const status = stepOneComplete({ ...valid, residences: gappedSpan });
+    expect(status.complete).toBe(false);
+    expect(status.blockers.some((blocker) => /missing/.test(blocker))).toBe(true);
+  });
+});
+
+describe('step two — tier and household, with the live fee', () => {
+  it('a household of 3 members is size 4 and matches the frozen fee', () => {
+    const status = stepTwoComplete({ mode: 'demo', tier: 2, members: threeMembers });
+    expect(status.complete).toBe(true);
+    expect(status.householdSize).toBe(4);
+    expect(status.householdSize).toBe(householdSize(threeMembers));
+    expect(status.preapprovalUsdc).toBe(preapprovalFeeUsdc('demo', 4));
+  });
+
+  it('derives the production fee from preapprovalFeeUsdc, not a constant', () => {
+    const status = stepTwoComplete({ mode: 'production', tier: 0, members: threeMembers });
+    expect(status.preapprovalUsdc).toBe(preapprovalFeeUsdc('production', 4));
+  });
+
+  it('accepts an applicant-only household', () => {
+    const status = stepTwoComplete({ mode: 'demo', tier: 1, members: [] });
+    expect(status).toEqual({
+      complete: true,
+      blockers: [],
+      householdSize: 1,
+      preapprovalUsdc: preapprovalFeeUsdc('demo', 1),
+    });
+  });
+
+  it('blocks when no tier is selected but still previews the fee', () => {
+    const status = stepTwoComplete({ mode: 'demo', tier: undefined, members: [] });
+    expect(status.complete).toBe(false);
+    expect(status.blockers).toContain('Select a qualifying tier.');
+    expect(status.householdSize).toBe(1);
+    expect(status.preapprovalUsdc).toBe(preapprovalFeeUsdc('demo', 1));
+  });
+
+  it('blocks an invalid household member', () => {
+    const status = stepTwoComplete({
+      mode: 'demo',
+      tier: 0,
+      members: [{ name: '', relation: '', dob: 'not-a-date', citizenship: 'XX' }],
+    });
+    expect(status.complete).toBe(false);
+    expect(status.householdSize).toBe(2);
+  });
+});
