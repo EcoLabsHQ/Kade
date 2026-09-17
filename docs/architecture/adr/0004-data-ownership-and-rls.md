@@ -38,28 +38,17 @@ RLS enabled, or deny-by-default for unused tables. D2 additionally requires:
 
 ## Consequences
 
-- RLS is a testable property. `supabase/tests` asserts that a second resident
-  cannot read or write another resident's rows, that the security-critical
-  columns are unwritable by the `authenticated` role, and that every public table
-  has RLS enabled. The suites passed once during development (29 assertions
-  across 3 suites) against a plain PostgreSQL with a throwaway `auth` shim; that
-  shim and its runner were deliberately not committed, so the authoritative
-  committed path is `supabase test db` against a real project, which is still
-  outstanding. `scripts/verify-full.sh` runs the suites when `SUPABASE_DB_URL` or
-  `DATABASE_URL` is available and reports a loud **SKIP** when it is not;
-  `scripts/verify.sh` does not run them at all.
-- **The suites must call `finish(true)`.** A bare `finish()` does not raise on a
-  failed assertion; it prints a diagnostic and `psql` still exits 0. A gate that
-  trusts the exit code alone would therefore report PASS on a failing RLS suite,
-  which is precisely the false assurance these tests exist to prevent. The gate
-  also greps the TAP output for `not ok` so a future regression to a bare
-  `finish()` cannot reintroduce it.
+- RLS policies are reviewed as SQL, not exercised by a committed harness. The
+  enforcement mechanism is Postgres, configured through Supabase; the policy set
+  itself is ours and lives in a single auditable migration
+  (`20260916000009_rls.sql`), which makes "who can read and write what" readable
+  in one file. `scripts/verify.sh` and `scripts/verify-full.sh` do not test RLS,
+  so no green run should be read as an RLS claim.
 - A migration that forgets `enable row level security` is a defect, not a
-  detail. Two checks enforce it, covering different moments: the guard loop at
-  the end of the RLS migration raises at apply time, and
-  `tests/0003_rls_completeness.test.sql` re-asserts the invariant on every test
-  run, so a table added by a later migration is caught as well. The apply-time
-  loop alone cannot catch that, because it executes only once.
+  detail. The guard loop at the end of the RLS migration raises at apply time, so
+  the migration fails rather than shipping an unprotected table. That loop
+  executes once: a table added by a later migration is not covered by it, and
+  reviewing that is manual.
 - Deny-by-default means a future week must add policies deliberately, which is
   the intended cost.
 
