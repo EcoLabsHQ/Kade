@@ -5,28 +5,30 @@ row level security, and the generated `chains` / `fee_schedule` seed.
 
 ## Verified vs unverified
 
-The Supabase CLI is **not installed** in the environment this was authored in, so
-the suites were verified against a plain PostgreSQL instead. `scripts/db/rls-check.sh`
-applies the shim, every migration and the seed to a disposable PostgreSQL 16
-container and runs the pgTAP suites; that is how the rows below were produced.
+The Supabase CLI is **not installed** in the environment this was authored in.
+The suites were run once during development against a plain PostgreSQL using an
+ad-hoc `auth` shim, which is how the RLS row below was produced. The shim and
+its runner were deliberately **not committed**, so the committed, authoritative
+path is `supabase test db` against a real project — and that has not been run.
 
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 9 apply in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 9 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
-| `supabase/tests/` pgTAP RLS tests | **Verified: 29 assertions across 3 suites pass** — against PostgreSQL 16 with the Supabase shim, not against the Supabase stack |
+| `supabase/tests/` pgTAP RLS tests | **Ran once: 29 assertions across 3 suites passed** — against ad-hoc PostgreSQL, not Supabase. Not reproducible from this repository |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
 
-Two caveats on the RLS result, stated plainly:
+Caveats on the RLS result, stated plainly:
 
-- The shim in `supabase/tests/support/supabase-shim.sql` provides `auth.users`,
-  `auth.uid()` and the API roles. It mirrors Supabase's shape, but it is a
-  reproduction, not Supabase itself. Running `supabase test db` against the real
-  stack is still the authoritative check and has not been done here.
+- The run used a throwaway shim that reproduced Supabase's `auth.users`,
+  `auth.uid()` and API roles. It mirrors Supabase's shape, but it is not
+  Supabase, and the shim is not in the repository, so the result cannot be
+  re-derived without rebuilding it. Treat it as a development-time check, not as
+  D2 evidence, until `supabase test db` has been run against a real project.
 - The suites call `finish(true)`. A bare `finish()` does not raise on a failed
   assertion, so `psql` exits 0 and a failing suite would look green; see the
-  note under "Running the tests".
+  note under "Running the RLS tests" below.
 
 ## Layout
 
@@ -44,7 +46,6 @@ supabase/
     20260916000008_config.sql
     20260916000009_rls.sql         enable RLS, grants, policies, guard
   tests/                          pgTAP tests (live database required)
-    support/supabase-shim.sql     auth schema + roles, for plain PostgreSQL
   seed.sql                        GENERATED — do not edit
 ```
 
@@ -67,30 +68,30 @@ supabase test db
 `supabase db reset` is the clean-database path required by D2: it drops the
 local database, replays every migration in order, then runs `seed.sql`.
 
-### Reproducing the RLS result without the Supabase CLI
+### Running the RLS tests against a plain PostgreSQL
 
-The suites were verified against a plain PostgreSQL using the shim, which
-supplies the `auth` schema, `auth.uid()` and the API roles that Supabase normally
-provides:
+The suites need the `auth` schema with `auth.uid()`, the API roles, and the
+`extensions` schema. A Supabase database already has all of them. If you are
+using a plain PostgreSQL, provide them yourself before running the suites; they
+are the only reason the suites are not portable as-is.
 
 ```bash
-./scripts/db/rls-check.sh          # disposable Docker container, torn down after
-DATABASE_URL=postgresql://... ./scripts/db/rls-check.sh   # or an existing database
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0001_rls_isolation.test.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0002_identity_and_review.test.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0003_rls_completeness.test.sql
 ```
 
-The script applies the shim, all migrations and the seed, runs every
-`*.test.sql`, and prints one line per assertion. It clears a `not ok` line as a
-failure. Expected result: 3 suites, 29 assertions, all passing.
+`DATABASE_URL` is defined in `.env.example`.
 
-If a database is already running, `scripts/verify-full.sh` runs the same suites
-whenever `SUPABASE_DB_URL` or `DATABASE_URL` is set, and prints a loud `SKIP`
-when neither is.
+If a database is already running, `scripts/verify-full.sh` runs every
+`supabase/tests/*.test.sql` whenever `SUPABASE_DB_URL` or `DATABASE_URL` is set,
+and prints a loud `SKIP` when neither is.
 
 > **Note:** the suites must call `finish(true)`, not `finish()`. A bare
 > `finish()` only prints "Looks like you failed N test(s)" and still exits 0, so
 > `psql` reports success and a failing RLS suite would be indistinguishable from
-> a passing one. `scripts/verify-full.sh` additionally greps the TAP output for
-> `not ok` as a second line of defence.
+> a passing one. `scripts/verify-full.sh` also greps the TAP output for `not ok`,
+> and treats a non-zero `psql` exit as a failure.
 
 ## Regenerating the seed
 

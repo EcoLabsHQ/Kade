@@ -38,15 +38,16 @@ RLS enabled, or deny-by-default for unused tables. D2 additionally requires:
 
 ## Consequences
 
-- RLS is a testable property, and it is tested. `supabase/tests` asserts that a
-  second resident cannot read or write another resident's rows, that the
-  security-critical columns are unwritable by the `authenticated` role, and that
-  every public table has RLS enabled. `scripts/db/rls-check.sh` applies the shim,
-  the migrations and the seed to a disposable PostgreSQL and runs all three
-  suites — 29 assertions, verified passing. `scripts/verify-full.sh` runs the
-  same suites whenever `SUPABASE_DB_URL` or `DATABASE_URL` is available and
-  reports a loud **SKIP** when it is not. `scripts/verify.sh` does not run them,
-  and no green `verify.sh` run should be read as an RLS claim.
+- RLS is a testable property. `supabase/tests` asserts that a second resident
+  cannot read or write another resident's rows, that the security-critical
+  columns are unwritable by the `authenticated` role, and that every public table
+  has RLS enabled. The suites passed once during development (29 assertions
+  across 3 suites) against a plain PostgreSQL with a throwaway `auth` shim; that
+  shim and its runner were deliberately not committed, so the authoritative
+  committed path is `supabase test db` against a real project, which is still
+  outstanding. `scripts/verify-full.sh` runs the suites when `SUPABASE_DB_URL` or
+  `DATABASE_URL` is available and reports a loud **SKIP** when it is not;
+  `scripts/verify.sh` does not run them at all.
 - **The suites must call `finish(true)`.** A bare `finish()` does not raise on a
   failed assertion; it prints a diagnostic and `psql` still exits 0. A gate that
   trusts the exit code alone would therefore report PASS on a failing RLS suite,
