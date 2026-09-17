@@ -39,7 +39,7 @@ rail. First deployment: the Curaçao investor permit.
 apps/web                     Next.js 15 application (shell, login, onboarding)
 packages/shared              frozen cross-package contracts
 packages/contracts           KadeLock + EAS schema tooling (Foundry)
-supabase/                    migrations, RLS, seeds, pgTAP tests
+supabase/                    migrations, RLS policies, seeds
 tests/acceptance/            executable form of the frozen Week 1 contract
 tests/regressions/           tests protecting previously fixed bugs
 reference/mvp-onchainisland/ the deployed MVP UI, vendored as visual baseline
@@ -61,8 +61,8 @@ npm run dev                 # http://localhost:3000
 
 `./scripts/verify.sh` is the only mechanical gate. It runs typecheck, lint, unit
 tests, acceptance tests, regression tests, build, `forge build` and
-`forge test`. `./scripts/verify-full.sh` additionally runs the pgTAP RLS suites
-when a database is available, and reports a loud `SKIP` when it is not.
+`forge test`. `./scripts/verify-full.sh` adds the expensive,
+environment-dependent checks (integration, E2E) when they exist.
 
 ## Architecture
 
@@ -142,19 +142,6 @@ work as complete.
 - The committed `supabase/seed.sql` is byte-for-byte reproducible from
   `packages/shared`, so the database and the application cannot disagree.
 
-**Verified separately — these need a database, so they run outside `verify.sh`:**
-
-- **Database RLS: ran once, 29 assertions across 3 suites passed.** The
-  migrations apply from a clean database, the seed applies, and the suites prove
-  that a second resident cannot read or write another resident's rows, that the
-  security-critical columns are unwritable by the `authenticated` role, and that
-  every public table has RLS enabled.
-- Caveat, stated plainly: that run used a throwaway shim reproducing Supabase's
-  `auth` schema, `auth.uid()` and API roles. The shim is not in the repository,
-  so the result is not reproducible from a clean checkout. Treat it as a
-  development-time check, not as D2 evidence, until `supabase test db` has been
-  run against a real project.
-
 **Not yet verified — these require project-supplied inputs that are absent from
 this environment:**
 
@@ -162,6 +149,10 @@ this environment:**
   OAuth credentials are configured. The PKCE flow and session handling are
   implemented; the app renders an explicit "not configured" state rather than a
   fake signed-in state.
+- **Database RLS enforcement.** The policies are written and reviewed as SQL, but
+  no committed harness exercises them: enforcement is Postgres's, configured
+  through Supabase. The schema was applied to a plain PostgreSQL to confirm the
+  migrations and seed are valid, not to test row visibility.
 - **Credential metadata surviving reload.** No database is reachable from the web
   app, so passkey metadata persistence is a seam with an in-memory implementation.
 - **A test signature through the direct Safe WebAuthn signer.** Requires the

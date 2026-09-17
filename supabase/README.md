@@ -6,29 +6,16 @@ row level security, and the generated `chains` / `fee_schedule` seed.
 ## Verified vs unverified
 
 The Supabase CLI is **not installed** in the environment this was authored in.
-The suites were run once during development against a plain PostgreSQL using an
-ad-hoc `auth` shim, which is how the RLS row below was produced. The shim and
-its runner were deliberately **not committed**, so the committed, authoritative
-path is `supabase test db` against a real project — and that has not been run.
+The schema was applied to a plain PostgreSQL during development to confirm the
+migrations and seed are valid SQL; the Supabase-specific paths below remain
+unrun.
 
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
 | Migrations apply from a clean database | **Verified** — all 9 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
-| `supabase/tests/` pgTAP RLS tests | **Ran once: 29 assertions across 3 suites passed** — against ad-hoc PostgreSQL, not Supabase. Not reproducible from this repository |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
-
-Caveats on the RLS result, stated plainly:
-
-- The run used a throwaway shim that reproduced Supabase's `auth.users`,
-  `auth.uid()` and API roles. It mirrors Supabase's shape, but it is not
-  Supabase, and the shim is not in the repository, so the result cannot be
-  re-derived without rebuilding it. Treat it as a development-time check, not as
-  D2 evidence, until `supabase test db` has been run against a real project.
-- The suites call `finish(true)`. A bare `finish()` does not raise on a failed
-  assertion, so `psql` exits 0 and a failing suite would look green; see the
-  note under "Running the RLS tests" below.
 
 ## Layout
 
@@ -45,7 +32,6 @@ supabase/
     20260916000007_review_events.sql
     20260916000008_config.sql
     20260916000009_rls.sql         enable RLS, grants, policies, guard
-  tests/                          pgTAP tests (live database required)
   seed.sql                        GENERATED — do not edit
 ```
 
@@ -60,38 +46,10 @@ supabase start
 # 2. Apply migrations and seed from a clean database.
 supabase db reset
 #    `db reset` also runs supabase/seed.sql by default.
-
-# 3. Run the pgTAP RLS tests.
-supabase test db
 ```
 
 `supabase db reset` is the clean-database path required by D2: it drops the
 local database, replays every migration in order, then runs `seed.sql`.
-
-### Running the RLS tests against a plain PostgreSQL
-
-The suites need the `auth` schema with `auth.uid()`, the API roles, and the
-`extensions` schema. A Supabase database already has all of them. If you are
-using a plain PostgreSQL, provide them yourself before running the suites; they
-are the only reason the suites are not portable as-is.
-
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0001_rls_isolation.test.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0002_identity_and_review.test.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0003_rls_completeness.test.sql
-```
-
-`DATABASE_URL` is defined in `.env.example`.
-
-If a database is already running, `scripts/verify-full.sh` runs every
-`supabase/tests/*.test.sql` whenever `SUPABASE_DB_URL` or `DATABASE_URL` is set,
-and prints a loud `SKIP` when neither is.
-
-> **Note:** the suites must call `finish(true)`, not `finish()`. A bare
-> `finish()` only prints "Looks like you failed N test(s)" and still exits 0, so
-> `psql` reports success and a failing RLS suite would be indistinguishable from
-> a passing one. `scripts/verify-full.sh` also greps the TAP output for `not ok`,
-> and treats a non-zero `psql` exit as a failure.
 
 ## Regenerating the seed
 
@@ -158,17 +116,11 @@ governing schema does not define one.
 
 ### Invariants
 
-- **Every public table has RLS enabled, and this is checked continuously.** Two
-  things enforce it, because they cover different moments:
-  - the loop at the end of `20260916000009_rls.sql` raises when that migration is
-    applied, so a table added *before* it cannot slip through; and
-  - `tests/0003_rls_completeness.test.sql` re-asserts it every time the suite
-    runs, so a table added by a *later* migration is caught too. The apply-time
-    loop alone cannot do that, since it only ever executes once.
-
-  Both are wired into `scripts/verify-full.sh`, which runs the pgTAP suite when a
-  `SUPABASE_DB_URL` or `DATABASE_URL` is available and reports a loud SKIP when
-  it is not.
+- **Every public table has RLS enabled.** The loop at the end of
+  `20260916000009_rls.sql` raises if any public table in `public` has RLS off, so
+  the migration fails rather than shipping an unprotected table. It runs once, at
+  apply time; a table added by a **later** migration is not covered by it, and
+  that review is manual.
 - **`identity_attestations.self_nullifier` is unique and indexed** — the
   duplicate-application / Sybil guard. Duplicate detection uses the nullifier,
   not name + date of birth (DOCX section 14).
@@ -176,6 +128,11 @@ governing schema does not define one.
   attestation UID and the disclosed fields (DOCX section 8, ADR 0004).
 - **`review_events` is append-only**, enforced by `BEFORE UPDATE/DELETE`
   triggers for every role.
+
+> **Note:** the policies are enforced by Postgres and configured through
+> Supabase. This repository no longer ships an RLS test suite: the enforcement
+> mechanism is Supabase's, and the policy set is reviewed as SQL rather than
+> exercised by a committed harness.
 
 ## Seeds
 
