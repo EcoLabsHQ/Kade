@@ -43,3 +43,61 @@ export function isAuthConfigured(env: AuthEnv = readAuthEnv()): boolean {
 export function authCallbackUrl(env: AuthEnv = readAuthEnv()): string {
   return new URL(env.callbackPath, env.siteUrl).toString();
 }
+
+/**
+ * Behaviour switches.
+ *
+ * These are server-only: neither is `NEXT_PUBLIC_`, so they are read on the
+ * server and the resolved values are passed down as props. The browser can
+ * neither read nor override them, which is what "no amount is hard-coded in
+ * the client" requires (contract section 2.1).
+ */
+
+/** Chain sets the application knows how to talk about. */
+export const CHAIN_ENVS = ['testnet', 'mainnet'] as const;
+export type ChainEnv = (typeof CHAIN_ENVS)[number];
+
+/** Fee schedules seeded in `fee_schedule`. */
+export const FEE_MODES = ['demo', 'production'] as const;
+export type FeeMode = (typeof FEE_MODES)[number];
+
+/** [documented] iteration 1 is all-testnet (week-1 contract section 2, item 7). */
+const DEFAULT_CHAIN_ENV: ChainEnv = 'testnet';
+
+/** [documented] the demo schedule is the iteration-1 default (contract 2.1). */
+const DEFAULT_FEE_MODE: FeeMode = 'demo';
+
+function readEnum<T extends string>(
+  raw: string | undefined,
+  allowed: readonly T[],
+  fallback: T,
+  name: string,
+): T {
+  const value = raw?.trim();
+  if (!value) return fallback;
+  if ((allowed as readonly string[]).includes(value)) return value as T;
+  console.warn(
+    `[kade] ${name}="${value}" is not one of ${allowed.join(' | ')}; using "${fallback}".`,
+  );
+  return fallback;
+}
+
+/** Which chain set is active. `testnet` in iteration 1. */
+export function readChainEnv(): ChainEnv {
+  return readEnum(
+    process.env.KADE_CHAIN_ENV,
+    CHAIN_ENVS,
+    DEFAULT_CHAIN_ENV,
+    'KADE_CHAIN_ENV',
+  );
+}
+
+/** Which `fee_schedule` rows are authoritative. */
+export function readFeeMode(): FeeMode {
+  return readEnum(
+    process.env.KADE_FEE_MODE,
+    FEE_MODES,
+    DEFAULT_FEE_MODE,
+    'KADE_FEE_MODE',
+  );
+}

@@ -7,6 +7,7 @@ import { Field } from '@/components/ui/Field';
 import { FeeSummary } from '@/components/fees/FeeSummary';
 import { tokens } from '@/components/ui/tokens';
 import { getSessionUser } from '@/lib/supabase/server';
+import { readFeeMode } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,10 @@ export default async function OnboardingPage() {
   if (!session) {
     redirect('/login');
   }
+
+  // The active fee mode is a server-side configuration switch, passed down as a
+  // prop. The client can display the amount but cannot select or override it.
+  const feeMode = readFeeMode();
 
   return (
     <AppShell email={session.email}>
@@ -124,7 +129,7 @@ export default async function OnboardingPage() {
             >
               Pre-approval fee
             </div>
-            <FeeSummary mode="demo" householdSize={3} />
+            <FeeSummary mode={feeMode} householdSize={3} />
             <p
               style={{
                 margin: '12px 0 0',
@@ -133,8 +138,12 @@ export default async function OnboardingPage() {
                 lineHeight: 1.6,
               }}
             >
-              The demo schedule for a household of 3 is the contract&apos;s
-              worked example (section 2.1). The displayed amount comes from
+              The active schedule is selected by{' '}
+              <code style={{ fontFamily: 'ui-monospace, monospace' }}>
+                KADE_FEE_MODE
+              </code>{' '}
+              on the server; a household of 3 is the contract&apos;s worked
+              example (section 2.1). The displayed amount comes from
               <code style={{ fontFamily: 'ui-monospace, monospace' }}>
                 {' '}
                 @kade/shared
