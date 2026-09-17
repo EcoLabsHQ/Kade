@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/*
+ * Kade design tokens.
+ *
+ * Lifted verbatim from the deployed MVP baseline
+ * (reference/mvp-onchainisland/README.md and ADR 0002). The reference is
+ * documentation only: nothing is imported from it at runtime.
+ */
+:root {
+  --kade-brand-primary: #0063b5;
+  --kade-action: #0a7cff;
+  --kade-ink: #101828;
+  --kade-muted: #667085;
+  --kade-surface: #fafafa;
+  --kade-border: #eaedf1;
+  --kade-active-nav-bg: #eaf2fc;
+  --kade-success: #1b7f5a;
+  --kade-warning: #b7791f;
+  --kade-danger: #b42318;
+  --kade-locked: #98a2b3;
+  --kade-chip-bg: #f2f4f7;
+  --kade-chip-fg: #344054;
+  --kade-sidebar-width: 240px;
+  --kade-content-width: 1160px;
+}
+
+@theme inline {
+  --color-kade-brand: var(--kade-brand-primary);
+  --color-kade-action: var(--kade-action);
+  --color-kade-ink: var(--kade-ink);
+  --color-kade-muted: var(--kade-muted);
+  --color-kade-surface: var(--kade-surface);
+  --color-kade-border: var(--kade-border);
+  --color-kade-active: var(--kade-active-nav-bg);
+  --color-kade-locked: var(--kade-locked);
+  --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--kade-action);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--kade-brand-primary);
+  text-decoration: underline;
+}
+
+input,
+select,
+button,
+textarea {
+  font-family: inherit;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -1,0 +1,250 @@
+import { Chip } from '@/components/ui/Chip';
+import { tokens } from '@/components/ui/tokens';
+import { GoogleGlyph } from '@/components/auth/GoogleGlyph';
+import { NotConfiguredNotice } from '@/components/auth/NotConfiguredNotice';
+import { SignInPanel } from '@/components/auth/SignInPanel';
+import { Logo } from '@/components/shell/Logo';
+import { NetworkChip } from '@/components/shell/NetworkChip';
+
+export interface LoginScreenProps {
+  readonly configured: boolean;
+  readonly callbackUrl: string;
+  readonly reason?: string;
+  readonly error?: string;
+  readonly next?: string;
+}
+
+function statusMessage(error?: string, reason?: string): string | null {
+  if (error === 'missing-code') {
+    return 'Google did not return an authorisation code. Please try again.';
+  }
+  if (error === 'callback-failed') {
+    return 'The sign-in callback could not be completed. Please try again.';
+  }
+  if (reason === 'signed-out') {
+    return 'You have been signed out.';
+  }
+  return null;
+}
+
+/**
+ * Login screen.
+ *
+ * Visual language ported from the reference's "Create your account" step
+ * (template.html lines 268-285), but with the contract's frozen auth model:
+ * Google is the only method, there is no email/OTP/password field and no
+ * wallet option, and the passkey is not requested here.
+ */
+export function LoginScreen({
+  configured,
+  callbackUrl,
+  reason,
+  error,
+  next,
+}: LoginScreenProps) {
+  const message = statusMessage(error, reason);
+  const notConfigured = !configured || reason === 'not-configured';
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#fff' }}>
+      <div
+        style={{
+          maxWidth: '1160px',
+          width: '100%',
+          margin: '0 auto',
+          padding: '36px 40px 64px',
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            marginBottom: '28px',
+          }}
+        >
+          <Logo />
+          <NetworkChip label="Ethereum Sepolia" />
+        </header>
+
+        <section style={{ minWidth: 0, maxWidth: '900px' }}>
+          <div style={{ animation: 'fadeUp .2s ease-out' }}>
+            <div
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                color: tokens.muted,
+              }}
+            >
+              Step 1 of 4
+            </div>
+            <h2
+              style={{
+                margin: '8px 0 6px',
+                fontSize: '30px',
+                fontWeight: 700,
+                letterSpacing: '-.02em',
+              }}
+            >
+              Create your account
+            </h2>
+            <p
+              style={{
+                margin: '0 0 24px',
+                color: tokens.muted,
+                maxWidth: '62ch',
+                textWrap: 'pretty',
+              }}
+            >
+              Sign in with Google. A Safe smart account on Ethereum is created
+              for you in the background — no seed phrase to manage. A separate
+              passkey is enrolled later and authorises transactions only.
+            </p>
+
+            <div
+              style={{
+                background: tokens.surface,
+                border: `1px solid ${tokens.border}`,
+                borderRadius: '16px',
+                padding: '22px 24px',
+                maxWidth: '560px',
+              }}
+            >
+              {notConfigured ? <NotConfiguredNotice /> : null}
+
+              {message ? (
+                <p
+                  role="status"
+                  style={{
+                    margin: '0 0 16px',
+                    padding: '10px 14px',
+                    background: '#fff',
+                    border: `1px solid ${tokens.border}`,
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    color: tokens.chipFg,
+                  }}
+                >
+                  {message}
+                </p>
+              ) : null}
+
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: tokens.muted,
+                  marginBottom: '6px',
+                }}
+              >
+                Sign-in method
+              </label>
+              <div
+                style={{
+                  border: `1.5px solid ${tokens.action}`,
+                  background: '#fff',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <GoogleGlyph size={22} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600 }}>Google</div>
+                  <div
+                    style={{
+                      fontSize: '12px',
+                      color: tokens.muted,
+                      marginTop: '2px',
+                    }}
+                  >
+                    Continue with your Google account
+                  </div>
+                </div>
+                <Chip tone="brand">Selected</Chip>
+              </div>
+              <p
+                style={{
+                  margin: '8px 0 0',
+                  fontSize: '11.5px',
+                  color: tokens.muted,
+                }}
+              >
+                Not offered in Week 1: email one-time codes, passwords, magic
+                links, and external wallets (contract section 2 item 2 and
+                section 9).
+              </p>
+
+              <div
+                style={{
+                  marginTop: '18px',
+                  background: '#fff',
+                  border: `1px solid ${tokens.border}`,
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', color: tokens.muted }}>
+                    Your Onchain Island account
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      fontVariantNumeric: 'tabular-nums',
+                      marginTop: '2px',
+                    }}
+                  >
+                    Safe · 0x… · Ethereum Sepolia
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: tokens.muted,
+                      marginTop: '4px',
+                    }}
+                  >
+                    No address is shown because no Safe has been deployed in
+                    this environment. The address is withheld rather than
+                    fabricated.
+                  </div>
+                </div>
+                <Chip tone="neutral" dot dotColor={tokens.muted}>
+                  Created in the background
+                </Chip>
+              </div>
+
+              <SignInPanel configured={configured} callbackUrl={callbackUrl} />
+
+              {next ? (
+                <p
+                  style={{
+                    margin: '12px 0 0',
+                    fontSize: '11.5px',
+                    color: tokens.muted,
+                  }}
+                >
+                  After sign-in you will return to{' '}
+                  <code style={{ fontFamily: 'ui-monospace, monospace' }}>
+                    {next}
+                  </code>
+                  .
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
