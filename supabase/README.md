@@ -13,8 +13,9 @@ unrun.
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 9 applied in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 10 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
+| Fee function + recompute triggers (pgTAP) | **Verified** — `supabase/tests/0001_fee_recompute.test.sql` runs 18 assertions green on a `postgres:16` container; a deliberately failing assertion makes `psql` exit 3 |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
 
 ## Layout
@@ -32,6 +33,10 @@ supabase/
     20260916000007_review_events.sql
     20260916000008_config.sql
     20260916000009_rls.sql         enable RLS, grants, policies, guard
+    20260916000010_fee_function.sql  fee formula columns, function, triggers
+  tests/                          pgTAP suites (see tests/README.md)
+    0001_fee_recompute.test.sql
+    support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
   seed.sql                        GENERATED — do not edit
 ```
 
@@ -134,10 +139,39 @@ governing schema does not define one.
 > mechanism is Supabase's, and the policy set is reviewed as SQL rather than
 > exercised by a committed harness.
 
+## Fee recomputation tests
+
+`supabase/tests/0001_fee_recompute.test.sql` is a pgTAP suite for the D2 fee
+recomputation: both worked examples (1.75 demo, 447 production), the
+`household_members` and application triggers, mode switching, the definer path
+for a resident insert, and the protected-column privileges.
+
+Run it with the Supabase CLI (`supabase test db`), or against any PostgreSQL
+that already has the migrations and seed applied:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f supabase/tests/0001_fee_recompute.test.sql
+```
+
+`supabase/tests/support/supabase-shim.sql` supplies the `auth` schema,
+`auth.uid()` and the API roles that a plain PostgreSQL (for example a
+disposable `postgres:16` container) does not provide. It is never applied to a
+real Supabase project.
+
+The suite ends with `finish(true)`, which raises on a failed assertion so
+`psql` exits non-zero. A bare `finish()` prints a summary and exits 0 even when
+assertions fail, which is how a failing suite can be reported as success. The
+plan count must be exact: pgTAP checks the plan before it checks failures, so a
+wrong `plan(n)` masks failing assertions and `psql` still exits 0.
+
 ## Seeds
 
 `seed.sql` contains six `chains` rows (Ethereum / Arbitrum / Base, testnet and
 mainnet in `@kade/shared`) and four `fee_schedule` rows (both keys in both
-`demo` and `production` modes). Both inserts are upserts, so re-running the seed
-is safe. Values are generated from `@kade/shared` and the `[arbitrary]` rows are
-listed as comments in the file.
+`demo` and `production` modes). Each pre-approval row carries the formula
+parameters `base_amount`, `per_member_amount` and `rounding_scale`, in USDC.
+Both inserts are upserts, so re-running the seed is safe. Values are generated
+from `@kade/shared`; `scripts/db/seed-sql.ts` asserts the parameters reproduce
+`preapprovalFeeUsdc()` for household sizes 1..1000 before writing the file, so
+the seed cannot drift from the shared implementation.
