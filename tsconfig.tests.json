@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "noEmit": true
+  },
+  "include": [
+    "tests/**/*.ts",
+    "vitest.regressions.config.ts",
+    "vitest.acceptance.config.ts"
+  ]
+}

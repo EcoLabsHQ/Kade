@@ -1,0 +1,29 @@
+{
+  "name": "kade",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kade — the resident platform for investment-linked residency programmes.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.tests.json --noEmit",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:regressions": "vitest run --config vitest.regressions.config.ts",
+    "test:acceptance": "vitest run --config vitest.acceptance.config.ts",
+    "build": "npm run build --workspace @kade/web",
+    "dev": "npm run dev --workspace @kade/web"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.3",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
