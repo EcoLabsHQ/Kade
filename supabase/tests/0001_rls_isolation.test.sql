@@ -133,5 +133,8 @@ select is((select first_name from public.profiles
              where id = '22222222-2222-2222-2222-222222222222'),
           'Bob', 'B profile is unchanged after A write attempt');
 
-select * from finish();
+-- finish(true) raises on a failed assertion, so psql exits non-zero. A bare
+-- finish() only prints "Looks like you failed N test(s)" and still exits 0,
+-- which would let this suite fail while the verification gate reports PASS.
+select * from finish(true);
 rollback;

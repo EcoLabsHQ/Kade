@@ -86,5 +86,8 @@ select throws_ok($$ update public.review_events set note = 'edit' $$,
 select throws_ok($$ delete from public.review_events $$,
   'P0001', null, 'review_events cannot be deleted');
 
-select * from finish();
+-- finish(true) raises on a failed assertion, so psql exits non-zero. A bare
+-- finish() only prints "Looks like you failed N test(s)" and still exits 0,
+-- which would let this suite fail while the verification gate reports PASS.
+select * from finish(true);
 rollback;
