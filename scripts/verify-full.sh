@@ -12,6 +12,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 FAILED=0
+RAN=0
 
 section() { printf '\n=== %s ===\n' "$1"; }
 pass() { printf 'PASS\n'; }
