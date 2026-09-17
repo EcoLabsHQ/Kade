@@ -77,7 +77,14 @@ describe('login screen', () => {
   it('does not fabricate a Safe address', () => {
     render(<LoginScreen configured callbackUrl={callbackUrl} />);
 
-    expect(screen.getByText(/Safe · 0x… · Ethereum Sepolia/)).toBeInTheDocument();
+    // The label must not imply a Safe exists. It previously read
+    // "Safe · 0x… · Ethereum Sepolia", which showed a placeholder address
+    // beside a "Created in the background" chip while no Safe was deployed.
+    expect(
+      screen.getByText(/Safe · not yet deployed · Ethereum Sepolia/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Not yet created/)).toBeInTheDocument();
     expect(screen.getByText(/address is withheld rather than fabricated/i)).toBeInTheDocument();
+    expect(screen.queryByText(/0x…/)).not.toBeInTheDocument();
   });
 });
