@@ -1,0 +1,17 @@
+# Foundry configuration for the Kade on-chain core.
+#
+# KadeLock is compiled and tested here; it is NOT deployed in Week 1
+# (docs/week-1-frozen-delivery-contract.md section 6.2 and section 9).
+#
+# Dependencies are installed into lib/ by scripts/setup.sh (`forge install
+# --no-git`, pinned versions). They are NOT committed: safe-smart-account is
+# LGPL-3.0 and is deliberately kept out of this MIT-licensed repository.
+
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.24"
+optimizer = false
+verbosity = 2
