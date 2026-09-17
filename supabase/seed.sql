@@ -50,16 +50,23 @@ on conflict (chain_id) do update set
   explorer_url = excluded.explorer_url;
 
 -- fee_schedule: both keys in both modes (contract section 2.1).
--- amount is the base fee for the key; the pre-approval per-member increment
--- is applied by preapprovalFeeUsdc() in @kade/shared (ADR 0005).
-insert into public.fee_schedule (mode, key, amount, currency)
+-- amount is the household-size-1 fee (pre-approval) or flat fee (service).
+-- The pre-approval formula parameters are data, in USDC:
+--   fee = round(base_amount + per_member_amount x household_size, rounding_scale)
+-- Production folds the documented XCG 500 / XCG 100 table into USDC through
+-- XCG_PER_USDC from @kade/shared. feeRows() asserts these parameters
+-- reproduce preapprovalFeeUsdc() before this seed is written (ADR 0005).
+insert into public.fee_schedule (mode, key, amount, base_amount, per_member_amount, rounding_scale, currency)
 values
-  ('demo', 'preapproval', 1.25, 'USDC'),
-  ('demo', 'service', 10, 'USDC'),
-  ('production', 'preapproval', 335, 'USDC'),
-  ('production', 'service', 2000, 'USDC')
+  ('demo', 'preapproval', 1.25, 1, 0.25, 2, 'USDC'),
+  ('demo', 'service', 10, 10, 0, 2, 'USDC'),
+  ('production', 'preapproval', 335, 279.329609, 55.865922, 0, 'USDC'),
+  ('production', 'service', 2000, 2000, 0, 2, 'USDC')
 on conflict (mode, key) do update set
   amount = excluded.amount,
+  base_amount = excluded.base_amount,
+  per_member_amount = excluded.per_member_amount,
+  rounding_scale = excluded.rounding_scale,
   currency = excluded.currency;
 
 commit;
