@@ -234,10 +234,10 @@ exercised those policies.
 
 Consequences, stated plainly:
 
-- The Week 1 contract lists "automated RLS tests" as part of the D2 evidence
-  (section 4, D2; Appendix A and C). That evidence is therefore **not
-  delivered**. The frozen contract was not edited to accommodate this; the gap is
-  recorded here instead.
+- The Week 1 contract listed "automated RLS tests" as part of the D2 evidence.
+  Rather than leave a knowingly unmet acceptance criterion, the contract was
+  amended: **v1.1** removes that requirement and records the change in section
+  8.1. RLS itself remains a required deliverable and is unchanged.
 - Nothing in `verify.sh` or `verify-full.sh` exercises row visibility, so no
   green run should be read as an RLS claim.
 - Before this change the RLS suites had produced four review findings across
@@ -271,7 +271,7 @@ Two supporting decisions are recorded in those ADRs and in the README:
 | ID | Deliverable | Status |
 |---|---|---|
 | D1 | Public development foundation | Mostly — README, licence, disclosure and clean build; no shared preview URL |
-| D2 | Supabase schema, RLS and seeds | Partial — schema, policies and seeds complete; RLS test evidence **not delivered** |
+| D2 | Supabase schema, RLS and seeds | Partial — schema, policies and seeds complete; no live Supabase project |
 | D3 | Login and transaction signer | Partial — separation tested; live sign-in unverified |
 | D4 | Resident Safe and deterministic L2 address | Blocked — invariant guards only; no signer address |
 | D5 | Steps 1–2 live | Not started — shell and fee display only |
@@ -292,9 +292,9 @@ is not silent.
 
 ## 10. Known limitations
 
-- **No RLS harness.** Row level security is enabled and its policies are
-  reviewed as SQL, but nothing exercises row visibility, so no green run is an
-  RLS claim. The D2 evidence item "automated RLS tests" is not delivered.
+- **No RLS harness.** Row level security is enabled and its policies are reviewed
+  as SQL, but nothing exercises row visibility, so no green run is an RLS claim.
+  D2's evidence requirement was amended to match (contract v1.1, section 8.1).
 - **Nothing is on-chain.** KadeLock is not deployed; the EAS schemas are not
   registered. Both are gated on human approval, and registration is
   irreversible.
@@ -317,8 +317,10 @@ is not silent.
       deployment inputs, then produce the deterministic L2 address test (D4).
 - [ ] Clear the Onchain gate: approve the EAS encodings and the KadeLock
       interface and threat model.
-- [ ] Decide how D2's "automated RLS tests" evidence is satisfied, given the
-      harness was removed.
+- [ ] Provision a Supabase project and run `supabase db reset` against it.
+- [ ] Close the §6.1 escalation formally: the reference UI source was recovered
+      from the deployment, which removes the risk that justified re-scoping
+      D3/D5.
 - [ ] Confirm the KadeLock model A freeze (§6.2) and the contracts licence.
 - [ ] Decide the shared HTTPS preview requirement.
 - [ ] Record human orchestration hours against EXE-001–EXE-006.
@@ -332,7 +334,7 @@ is not silent.
 | Hours | Not measured by the agent; human to record |
 | Tests | `./scripts/verify.sh` → PASS · 97 unit · 12 acceptance · 4 regression · 33 Foundry |
 | Runtime proof | 9 migration ids (`20260916000001`–`20260916000009`); Foundry output; no explorer links, nothing deployed |
-| Acceptance mapping | D1 scaffold and setup; D2 schema (RLS tested: **not delivered**); D3 auth separation; D6 manifest; D7 KadeLock tests |
+| Acceptance mapping | D1 scaffold and setup; D2 schema and seeds; D3 auth separation; D6 manifest; D7 KadeLock tests |
 | Known limitations | Section 10 |
 | Security notes | No secrets committed; EAS registration guarded and never broadcast; no on-chain writes performed |
 | Reviewer | Adversarial review **FAILED**; promotion by human change-control decision |
