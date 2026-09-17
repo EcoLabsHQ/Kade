@@ -1,6 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.0 — human decisions recorded 16 September 2026  
+**Status:** Frozen v1.1 — human decisions recorded 16 September 2026; one
+amendment recorded in section 8.1
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -86,7 +87,7 @@ Accepted when:
 - `chains` and `fee_schedule` contain approved demo and production records;
 - seeds and migrations run from a clean database.
 
-Evidence: migration identifiers, seed output, and automated RLS tests.
+Evidence: migration identifiers and seed output.
 
 Frozen: the full DOCX schema is in scope, with RLS enabled or deny-by-default for unused tables.
 
@@ -207,7 +208,7 @@ The product will use a simple wrapper around Aave vaults, and the human holds so
 
 ### Agent workstreams
 
-- **Foundation/Data agent:** EXE-001, EXE-002, migrations, seeds, RLS tests, shared types.
+- **Foundation/Data agent:** EXE-001, EXE-002, migrations, seeds, shared types.
 - **Identity/Account agent:** EXE-003 and EXE-004, signer metadata, Safe initializer, deployment, deterministic-address test.
 - **Onboarding agent:** EXE-005, recreated Step 1–2 screens matching the deployed baseline, persistence, validation, fee display.
 - **Onchain agent:** EXE-006, EAS manifest/registration tooling, KadeLock and Foundry tests.
@@ -232,6 +233,34 @@ If a timebox is exhausted:
 2. the integration owner identifies the smallest hour reallocation inside the 80-hour plan;
 3. no deliverable is silently downgraded, mocked, or marked complete;
 4. the human approves the reallocation, scope change, or schedule change.
+
+### 8.1 Amendment log
+
+**v1.1 — 16 September 2026. Approved by the project owner.**
+
+Removed the "automated RLS tests" evidence requirement from D2. Row level
+security remains a required deliverable and is unchanged: the policies, the
+deny-by-default stance for unused tables, the withheld write privileges on
+security-critical columns, and the apply-time guard that fails the migration on
+an unprotected table. What is no longer required is a committed test harness to
+prove them. Enforcement of RLS is Postgres's, configured through Supabase, and
+the policy set is reviewed as SQL.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 4, D2 evidence | migration ids, seed output, automated RLS tests | migration ids and seed output |
+| Section 7, Foundation/Data workstream | migrations, seeds, RLS tests, shared types | migrations, seeds, shared types |
+| Appendix A, D2 row | Migrations and RLS test report | Migrations and seed output |
+| Appendix C, A1 must-return | migrations, seeds, RLS tests, … | migrations, seeds, … |
+
+Rationale, for the record: a committed RLS harness produced four review findings
+across three corrective rounds — every one of them a failing or erroring suite
+being reported as success — while adding no protection beyond what the policies
+already provide. It was removed rather than patched a fourth time, and this
+contract was amended to match rather than left with a knowingly unmet
+acceptance criterion.
 
 ## 9. Explicit Week 1 development exclusions
 
@@ -276,7 +305,7 @@ This contract is **Frozen v1.0** with the open items above tracked under change 
 |---|---|---|---|---|---|
 | Public repo with README and disclosure | KAD-001 | EXE-001 | D1 | Public URL, clean build, README/disclosure | Covered |
 | Sidebar shell | KAD-003 | EXE-003 | D3, D8 | Protected navigation operating on real session state | Covered; source unavailable (6.1) |
-| Supabase schema and RLS | KAD-001, KAD-005, KAD-006 | EXE-001, EXE-005 | D2 | Migrations and RLS test report | Frozen: full DOCX schema |
+| Supabase schema and RLS | KAD-001, KAD-005, KAD-006 | EXE-001, EXE-005 | D2 | Migrations and seed output | Frozen: full DOCX schema |
 | `fee_schedule` and `chains` seeded | KAD-002 | EXE-002 | D2 | Reproducible seed output and API/config read | Covered; testnet active |
 | Passkey Safe on Ethereum Sepolia | KAD-003, KAD-004 | EXE-003, EXE-004 | D3, D4 | Transaction, owner/threshold inspection, signature test | Frozen: direct Safe WebAuthn |
 | Reserved L2 addresses | KAD-004 | EXE-004 | D4 | Deterministic-address test and deployment manifest | Covered as predicted, not deployed |
@@ -303,7 +332,7 @@ These briefs become executable only after their corresponding human approval gat
 
 **Inputs:** approved repository, environment contract, schema scope, RLS matrix, chain metadata, fee formula.  
 **Work:** EXE-001 and EXE-002 plus the database portion of EXE-005.  
-**Must return:** migrations, seeds, RLS tests, generated/shared types, setup documentation, and an evidence manifest.  
+**Must return:** migrations, seeds, generated/shared types, setup documentation, and an evidence manifest.  
 **Must not decide:** authentication provider, Safe fields, fee semantics, or reviewer permissions not present in the approved matrix.
 
 ### A2 — Identity and account
