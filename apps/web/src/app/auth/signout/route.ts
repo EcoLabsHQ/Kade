@@ -3,9 +3,12 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 
 /** Sign-out endpoint. POST-only so it cannot be triggered by a link. */
-export async function POST(request: Request) {
-  const { origin } = new URL(request.url);
+export async function POST() {
   const env = readAuthEnv();
+  // Redirect targets come from the configured origin, never the request, so the
+  // destination cannot be influenced by a spoofed Host header (see
+  // lib/safe-redirect.ts for the same reasoning).
+  const origin = env.siteUrl;
 
   if (!isAuthConfigured(env)) {
     return NextResponse.redirect(

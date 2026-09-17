@@ -1,19 +1,13 @@
 import { redirect } from 'next/navigation';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { authCallbackUrl, isAuthConfigured, readAuthEnv } from '@/lib/env';
+import { resolveSafeReturnPath } from '@/lib/safe-redirect';
 import { getSessionUser } from '@/lib/supabase/server';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function safeNext(value: string | undefined, fallback = '/'): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) {
-    return fallback;
-  }
-  return value;
 }
 
 export default async function LoginPage({
@@ -24,7 +18,9 @@ export default async function LoginPage({
   const params = await searchParams;
   const env = readAuthEnv();
   const configured = isAuthConfigured(env);
-  const next = safeNext(firstValue(params.next));
+  // Safety is decided against the configured origin, never the request origin,
+  // so a spoofed Host header cannot influence the redirect (see safe-redirect.ts).
+  const next = resolveSafeReturnPath(firstValue(params.next), env.siteUrl);
 
   if (configured) {
     const session = await getSessionUser();
