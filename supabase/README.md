@@ -87,10 +87,9 @@ of the acceptance gate:
 npm run test:acceptance
 ```
 
-> **Note:** the root `npm run test` currently exits non-zero for an unrelated,
-> pre-existing reason (`@kade/web` has no test files, and Vitest exits 1 when it
-> collects none). Run the drift guard with `npm run test:acceptance` or directly
-> with `npx vitest run tests/acceptance/seed-drift.test.ts`.
+> **Note:** the drift guard runs as part of the acceptance gate, which
+> `scripts/verify.sh` invokes. Run it directly with `npm run test:acceptance` or
+> `npx vitest run tests/acceptance/seed-drift.test.ts`.
 
 ## Security model
 
@@ -136,9 +135,17 @@ governing schema does not define one.
 
 ### Invariants
 
-- **Every public table has RLS enabled.** The final migration loops over
-  `pg_class` and raises if any public table has RLS off, so a future migration
-  that forgets `enable row level security` fails on apply.
+- **Every public table has RLS enabled, and this is checked continuously.** Two
+  things enforce it, because they cover different moments:
+  - the loop at the end of `20260916000009_rls.sql` raises when that migration is
+    applied, so a table added *before* it cannot slip through; and
+  - `tests/0003_rls_completeness.test.sql` re-asserts it every time the suite
+    runs, so a table added by a *later* migration is caught too. The apply-time
+    loop alone cannot do that, since it only ever executes once.
+
+  Both are wired into `scripts/verify-full.sh`, which runs the pgTAP suite when a
+  `SUPABASE_DB_URL` or `DATABASE_URL` is available and reports a loud SKIP when
+  it is not.
 - **`identity_attestations.self_nullifier` is unique and indexed** — the
   duplicate-application / Sybil guard. Duplicate detection uses the nullifier,
   not name + date of birth (DOCX section 14).
