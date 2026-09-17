@@ -8,9 +8,13 @@ The schema is the full DOCX §9 model. Week 1 uses only the pre-registration
 tables; the rest are created in full and left deny-by-default so a later week
 adds a policy deliberately rather than discovering an open table.
 
+The design handoff is the visual and interaction baseline, but its schema table
+is not the frozen authority. See "Handoff vs DOCX" below for every difference
+and how each was resolved.
+
 ## Migration order
 
-| Migration | Tables created |
+| Migration | Creates |
 |---|---|
 | `20260916000001_profiles.sql` | `profiles`, `profile_citizenships`, `profile_residences` |
 | `20260916000002_applications.sql` | `applications`, `household_members` |
@@ -21,11 +25,14 @@ adds a policy deliberately rather than discovering an open table.
 | `20260916000007_review_events.sql` | `reviewers`, `review_events` (+ status trigger) |
 | `20260916000008_config.sql` | `fee_schedule`, `chains` |
 | `20260916000009_rls.sql` | none; enable RLS, grants, policies, guard |
+| `20260916000010_fee_function.sql` | no tables; `fee_schedule` formula columns, `preapproval_fee_usdc()`, fee-recompute triggers |
 
-Also created: three trigger functions (`apply_review_event`,
-`review_events_immutable`), one helper (`is_reviewer`), and foreign-key lookup
-indexes. Table migrations create structure only; `…_rls.sql` is the single place
-RLS is declared, so the review checklist can read one file.
+Also created: trigger/helper functions (`apply_review_event`,
+`review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
+`recompute_application_preapproval_fee`, `recompute_preapproval_fee`,
+`init_preapproval_fee`), and foreign-key lookup indexes. Table migrations create
+structure only; `…_rls.sql` is the single place RLS is declared, so the review
+checklist can read one file.
 
 ## Columns
 
@@ -49,13 +56,60 @@ list are flagged in the migrations, and are marked `[added]` here.
 | `identity_attestations` | `[added] id`, `profile_id`, `attestation_uid`, `chain`, `nationality`, `over18`, `not_sanctioned`, `self_nullifier`, `expires_at`, `created_at` |
 | `review_events` | `[added] id`, `application_id`, `reviewer_id`, `action`, `note`, `attestation_uid`, `created_at` |
 | `reviewers` | `id`, `role`, `signer_address` |
-| `fee_schedule` | `mode`, `key`, `amount`, `currency` (PK `mode, key`) |
+| `fee_schedule` | `mode`, `key`, `amount`, `currency`, `[added] base_amount`, `[added] per_member_amount`, `[added] rounding_scale` (PK `mode, key`) |
 | `chains` | `chain_id`, `name`, `[added] env`, `usdc_address`, `eas_address`, `[added] schema_registry_address`, `kadelock_address`, `paymaster_policy_id`, `explorer_url` |
 
 `[added] id` is a surrogate primary key: several DOCX tables name no key and
 their natural fields are not unique. `chains.env` and
 `chains.schema_registry_address` are required by ADR 0005 (environment switch)
 and D6 (schema registry address) but are absent from the DOCX §9 column list.
+
+`fee_schedule` keeps the four DOCX columns and adds three. `amount` is retained
+as the household-size-1 fee (pre-approval) or flat fee (service), in
+`currency` = USDC. `base_amount` and `per_member_amount` are the frozen
+formula's constant and per-member components, in USDC; `rounding_scale` is the
+number of decimal places the result is rounded to. They are required to make
+the DOCX's "DB function recomputes the pre-approval fee" possible, because the
+old table stored only the size-1 fee and no increment. The regenerated seed is
+the authoritative writer for the new columns, as for the existing rows
+(ADR 0005); there is no way to recover the per-member increment from the old
+`amount`, so the migration deliberately does not backfill.
+
+## Handoff vs DOCX
+
+Two schema sources exist and they disagree:
+
+- **DOCX §9** (`docs/planning/kade-mvp-build-document-v7.txt`), the frozen
+  authority. The Week 1 contract (§2 item 10, §4 D2) freezes the full DOCX
+  schema.
+- **Design handoff** (`reference/design-handoff/README.md`, "Supabase schema"),
+  the visual/interaction baseline. Useful, but it is a design reference written
+  from the prototype's state object, not a data-model authority.
+
+Rule applied: where the two disagree, DOCX §9 wins for anything already
+implemented; handoff-only constructs that belong to a later week are **listed
+as deferred, not added**. The handoff's own four-week plan places Reflect in
+week 3, which corroborates the deferrals.
+
+Every difference, verified against both tables:
+
+| Handoff | DOCX §9 | This repository | Resolution |
+|---|---|---|---|
+| `profiles.reflect_default` | absent | absent | **Deferred.** Reflect is week 3 (contract §9 excludes it). |
+| `wealth_snapshots` key columns omit `chain` | `wealth_snapshots` includes `chain` | `chain` present | **DOCX wins.** The handoff omission is a documentation gap; its own architecture notes read balances per chain. |
+| `container_balances.usdtplus_ratio` | absent | absent | **Deferred.** Reflect USDT+ ratio is week 3. |
+| `reflect_positions` (whole table) | absent | absent | **Deferred.** Reflect position tracking is week 3. |
+| `gos_transfers.chain` (a single chain) | `gos_transfers.user_chain`, `.settlement_chain`, `.bridge_msg_hash` | `user_chain`, `settlement_chain`, `bridge_msg_hash` | **DOCX wins.** A single `chain` cannot express the CCTP source leg, the settlement leg and the bridge message. |
+| absent | `card_transactions` | present | **DOCX wins.** Implemented in `20260916000004_rails.sql`. |
+| absent | `identity_attestations` | present | **DOCX wins.** Implemented in `20260916000006_identity_attestations.sql`; carries the `self_nullifier` Sybil guard. |
+| absent | `chains` | present | **DOCX wins.** Implemented in `20260916000008_config.sql`. |
+| `fee_schedule` = `mode, key, amount, currency` | `fee_schedule` = `mode, key, amount, currency` | plus `base_amount`, `per_member_amount`, `rounding_scale` | **Additive extension**, not a replacement: the four DOCX columns are unchanged. Required for the DOCX fee function; see `20260916000010_fee_function.sql`. |
+| `allocations` key columns ordered `application_id, instrument, …` | ordered `application_id, chain, instrument, …` | DOCX order | Same column set; only declaration order differs. No action. |
+| business rule `round((500 + 100 × householdMembers) / 1.79)` | §7 fee table, §9 household note | `preapprovalFeeUsdc()` in `@kade/shared` + the DB function | **Both agree.** The seeded parameters (`base_amount`, `per_member_amount`, `rounding_scale`) reproduce both worked examples exactly. |
+
+Deferred handoff-only items, recorded so they are not mistaken for coverage:
+`profiles.reflect_default`, `container_balances.usdtplus_ratio`,
+`reflect_positions`. They are the Reflect surface, which is week 3 work.
 
 ## RLS matrix
 
@@ -112,16 +166,19 @@ resident sees zero rows and can modify zero rows.
 
 ## Invariants enforced by the database
 
-- Every public table has RLS enabled; the final migration raises on apply if any
-  does not.
+- Every public table has RLS enabled; `20260916000009_rls.sql` raises on apply
+  if any does not.
 - `identity_attestations.self_nullifier` is unique (index
   `identity_attestations_self_nullifier_key`).
 - `identity_attestations.attestation_uid` is unique.
 - `review_events` rejects `UPDATE` and `DELETE` for every role.
-- `applications.status` is the only field changed by the review trigger;
-  `household_members` recomputation of the fee is deliberately left to
-  `preapprovalFeeUsdc()` in `@kade/shared`, the single implementation, rather
-  than duplicated in PL/pgSQL.
+- `applications.status` is the only field changed by the review trigger.
+- `applications.preapproval_usdc` is recomputed by `SECURITY DEFINER` triggers
+  from `fee_schedule`: `public.preapproval_fee_usdc(mode, household_size)` is
+  `round(base_amount + per_member_amount × household_size, rounding_scale)`.
+  The formula parameters are data, and the seed generator asserts they
+  reproduce `preapprovalFeeUsdc()` in `@kade/shared` for every household size
+  before it writes a row, so the two cannot drift silently (ADR 0005).
 
 ## `[arbitrary]` values
 
@@ -142,3 +199,5 @@ and the generated seed. These are the notable ones:
 | surrogate `id` columns | `bigint identity` | not in the DOCX column list; required keys |
 | numeric precision | `numeric(20, 6)` | not stated; covers USDC's 6 decimals |
 | `chains.env`, `chains.schema_registry_address` | added columns | required by ADR 0005 / D6, absent from DOCX §9 |
+| `fee_schedule.base_amount`, `.per_member_amount`, `.rounding_scale` | added columns | required by the DOCX fee function, absent from its column list |
+| `kade.fee_mode` | Postgres setting name | the database mirror of `KADE_FEE_MODE`; the mapping is deliberate, the setting name is chosen |

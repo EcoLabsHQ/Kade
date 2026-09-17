@@ -15,7 +15,13 @@
  * (scripts/db/generate-seed.mjs) and Vitest (the drift guard).
  */
 
-import { ALL_CHAINS, feeScheduleFor } from '../../packages/shared/src/index.js';
+import {
+  ALL_CHAINS,
+  feeScheduleFor,
+  preapprovalFeeUsdc,
+  XCG_PER_USDC,
+  type FeeMode,
+} from '../../packages/shared/src/index.js';
 
 /** Column order for the `chains` insert. Matches the DOCX section 9 order for
  *  the documented columns; env and schema_registry_address are appended because
@@ -33,6 +39,100 @@ const CHAIN_COLUMNS = [
 ] as const;
 
 const FEE_MODES = ['demo', 'production'] as const;
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+/**
+ * Pre-approval formula parameters as seeded into `fee_schedule`, in USDC.
+ *
+ * [documented] contract section 2.1 / DOCX section 7:
+ *   demo:       1.00 USDC + 0.25 USDC per household member, exact to the cent
+ *               (household of 3 -> 1.75).
+ *   production: XCG 500 + XCG 100 per household member, settled in USDC at the
+ *               CBCS peg and rounded to whole USDC (household of 3 -> 447).
+ *
+ * The production XCG parameters are divided by XCG_PER_USDC from @kade/shared,
+ * so the peg is never re-typed here. Rounding the resulting USDC parameters to
+ * the fee_schedule precision is checked by assertFormulaMatchesShared() below.
+ */
+const PREAPPROVAL_FORMULA: Record<
+  FeeMode,
+  { readonly base: number; readonly perMember: number; readonly roundingScale: number }
+> = {
+  demo: { base: 1, perMember: 0.25, roundingScale: 2 },
+  production: {
+    base: roundTo(500 / XCG_PER_USDC, 6),
+    perMember: roundTo(100 / XCG_PER_USDC, 6),
+    roundingScale: 0,
+  },
+};
+
+/**
+ * The seeded parameters are only correct if they reproduce the single shared
+ * implementation for every household size. Running this at seed-build time
+ * means a change in @kade/shared that the schedule no longer satisfies fails
+ * generation (and therefore the drift guard) instead of silently diverging.
+ */
+function assertFormulaMatchesShared(): void {
+  for (const mode of FEE_MODES) {
+    const { base, perMember, roundingScale } = PREAPPROVAL_FORMULA[mode];
+    for (let size = 1; size <= 1000; size++) {
+      const fromSchedule = roundTo(base + perMember * size, roundingScale);
+      const fromShared = preapprovalFeeUsdc(mode, size);
+      if (fromSchedule !== fromShared) {
+        throw new Error(
+          `fee drift: ${mode} household of ${size} -> schedule ` +
+            `${fromSchedule}, @kade/shared ${fromShared}`,
+        );
+      }
+    }
+  }
+}
+
+interface FeeRow {
+  readonly mode: FeeMode;
+  readonly key: string;
+  /** Household-size-1 fee (pre-approval) or flat fee (service), USDC. */
+  readonly amount: number;
+  readonly baseAmount: number;
+  readonly perMemberAmount: number;
+  readonly roundingScale: number;
+  readonly currency: string;
+}
+
+function feeRows(): FeeRow[] {
+  assertFormulaMatchesShared();
+  return FEE_MODES.flatMap((mode) => {
+    const formula = PREAPPROVAL_FORMULA[mode];
+    const service = feeScheduleFor(mode).find((fee) => fee.key === 'service');
+    if (service === undefined) {
+      throw new Error(`@kade/shared has no service fee for mode ${mode}`);
+    }
+    return [
+      {
+        mode,
+        key: 'preapproval',
+        amount: roundTo(formula.base + formula.perMember, formula.roundingScale),
+        baseAmount: formula.base,
+        perMemberAmount: formula.perMember,
+        roundingScale: formula.roundingScale,
+        currency: 'USDC',
+      },
+      {
+        mode,
+        key: service.key,
+        amount: service.amount,
+        baseAmount: service.amount,
+        perMemberAmount: 0,
+        roundingScale: 2,
+        currency: service.currency,
+      },
+    ];
+  });
+}
 
 function sqlLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -107,21 +207,29 @@ function chainsInsert(): string[] {
 }
 
 function feeScheduleInsert(): string[] {
-  const rows = FEE_MODES.flatMap((mode) =>
-    feeScheduleFor(mode).map(
-      (fee) => `  (${sqlLiteral(fee.mode)}, ${sqlLiteral(fee.key)}, ${String(fee.amount)}, ${sqlLiteral(fee.currency)})`,
-    ),
+  const rows = feeRows().map(
+    (fee) =>
+      `  (${sqlLiteral(fee.mode)}, ${sqlLiteral(fee.key)}, ${String(fee.amount)}, ` +
+      `${String(fee.baseAmount)}, ${String(fee.perMemberAmount)}, ` +
+      `${String(fee.roundingScale)}, ${sqlLiteral(fee.currency)})`,
   );
 
   return [
     '-- fee_schedule: both keys in both modes (contract section 2.1).',
-    '-- amount is the base fee for the key; the pre-approval per-member increment',
-    '-- is applied by preapprovalFeeUsdc() in @kade/shared (ADR 0005).',
-    'insert into public.fee_schedule (mode, key, amount, currency)',
+    '-- amount is the household-size-1 fee (pre-approval) or flat fee (service).',
+    '-- The pre-approval formula parameters are data, in USDC:',
+    '--   fee = round(base_amount + per_member_amount x household_size, rounding_scale)',
+    '-- Production folds the documented XCG 500 / XCG 100 table into USDC through',
+    '-- XCG_PER_USDC from @kade/shared. feeRows() asserts these parameters',
+    '-- reproduce preapprovalFeeUsdc() before this seed is written (ADR 0005).',
+    'insert into public.fee_schedule (mode, key, amount, base_amount, per_member_amount, rounding_scale, currency)',
     'values',
     rows.join(',\n'),
     'on conflict (mode, key) do update set',
     '  amount = excluded.amount,',
+    '  base_amount = excluded.base_amount,',
+    '  per_member_amount = excluded.per_member_amount,',
+    '  rounding_scale = excluded.rounding_scale,',
     '  currency = excluded.currency;',
   ];
 }
