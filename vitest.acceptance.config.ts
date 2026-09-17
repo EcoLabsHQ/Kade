@@ -16,7 +16,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['tests/acceptance/**/*.test.ts'],
+    include: ['tests/acceptance/**/*.test.{ts,tsx}'],
     environment: 'node',
     reporters: ['default'],
   },
