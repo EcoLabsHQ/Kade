@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "orchestrator",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "bash": {
+      "*": "allow",
+      "git push*": "ask",
+      "gh pr create*": "ask",
+      "cast send*": "ask",
+      "cast wallet*": "ask",
+      "forge script*--broadcast*": "ask"
+    }
+  }
+}
