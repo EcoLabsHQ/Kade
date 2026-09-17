@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
+import { readChainEnv } from '@/lib/env';
 
 export interface AppShellProps {
   readonly children: ReactNode;
@@ -8,6 +10,18 @@ export interface AppShellProps {
   readonly safeAddress?: string | null;
   readonly network?: string;
   readonly nav?: readonly NavGroupConfig[];
+}
+
+/**
+ * The label for the active settlement chain, resolved from KADE_CHAIN_ENV and
+ * the shared chain registry rather than hard-coded, so switching to the mainnet
+ * configuration is a config change with no code edit (ADR 0005).
+ */
+function activeSettlementChainLabel(): string {
+  const chains = chainsForEnv(readChainEnv());
+  const ethereum =
+    chains.find((chain) => chain.key === 'ethereum') ?? chains[0];
+  return ethereum?.name ?? 'Ethereum Sepolia';
 }
 
 /**
@@ -19,7 +33,7 @@ export function AppShell({
   children,
   email,
   safeAddress = null,
-  network = 'Ethereum Sepolia',
+  network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
 }: AppShellProps) {
   return (
