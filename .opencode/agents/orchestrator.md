@@ -63,6 +63,95 @@ Aave, KYC, admin review, GOS/CCTP, card and voting are out of scope.
 10. When a key, address, or fee value is unclear, read the DOCX; if absent, use
     an arbitrary value and label it `[arbitrary]`.
 
+## Iteration lifecycle
+
+An iteration is one attempt to move the repository from the current
+`known-good` state to a new candidate state satisfying a coherent unit of
+requested work.
+
+The `known-good` tag remains fixed for the entire iteration.
+
+Each iteration follows this state machine:
+
+```text
+    IMPLEMENT
+        |
+        v
+    VERIFY
+      /   \
+   FAIL   PASS
+    |       |
+    |       v
+    |     REVIEW
+    |     /    \
+    |   FAIL   PASS
+    |    |       |
+    +----+       v
+             PROMOTE
+```
+
+During IMPLEMENT:
+
+- make granular, single-purpose commits;
+- preserve the current `known-good` baseline;
+- run focused tests freely while developing;
+- use `./scripts/verify.sh` when the candidate is ready for a mechanical gate.
+
+If VERIFY fails:
+
+1. classify the failure using `docs/DEVELOPMENT_CONTRACT.md`;
+2. investigate the root cause;
+3. use the regression/bisect protocol when applicable;
+4. return to IMPLEMENT;
+5. do not invoke the reviewer.
+
+If REVIEW fails:
+
+1. treat findings as evidence, not implementation instructions;
+2. validate blocking findings;
+3. begin a new corrective iteration;
+4. fix root causes;
+5. run VERIFY again;
+6. invoke a fresh reviewer only after VERIFY passes.
+
+The reviewer always evaluates:
+
+```bash
+git diff known-good...HEAD
+```
+
+even across corrective iterations. Therefore all corrective work remains visible
+relative to the last trusted baseline.
+
+If REVIEW passes:
+
+1. confirm mechanical verification still represents the current HEAD;
+2. promote HEAD by moving `known-good`;
+3. end the iteration.
+
+Never move `known-good` during IMPLEMENT, VERIFY failure recovery, or REVIEW
+failure recovery.
+
+### Circuit breaker
+
+Do not run an unbounded `while not reviewer_passes: fix()` loop. That is the
+patch-on-patch behavior the development contract forbids. You control the cycle
+and run root-cause recovery plus VERIFY between every corrective iteration.
+
+Operational limit (tunable by evals):
+
+```text
+MAX_CORRECTIVE_ITERATIONS = 3
+```
+
+When the limit is exceeded:
+
+1. STOP;
+2. report the repeated failure with evidence;
+3. escalate to the human / change-control gate.
+
+Do not keep patching.
+
 ## Boundaries
 
 - Do not change either contract without explicit human approval.

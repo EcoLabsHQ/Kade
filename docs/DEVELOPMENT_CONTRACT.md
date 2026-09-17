@@ -516,6 +516,27 @@ only makes the candidate eligible for reviewer/adversarial verification.
 
 ## 11. Development Iteration
 
+An **iteration** is one attempt to move the repository from the current
+`known-good` state to a new candidate state satisfying a coherent unit of
+requested work.
+
+An iteration may contain several granular commits. The reviewer does not run per
+commit:
+
+```text
+known-good
+    |
+    +-- commit A
+    +-- commit B
+    +-- commit C
+             |
+             v
+           VERIFY
+             |
+             v
+           REVIEW
+```
+
 The normal development loop is:
 
 ```text
@@ -578,9 +599,62 @@ next corrective iteration
 The reviewer runs once per completed development iteration. It does not run
 after every granular commit.
 
-A reviewer failure begins another implementation/correction iteration. After
-corrections are complete, mechanical verification must pass again before the
-reviewer evaluates the new candidate.
+The iteration is a state machine, not a linear script:
+
+```text
+    IMPLEMENT
+        |
+        v
+    VERIFY
+      /   \
+   FAIL   PASS
+    |       |
+    |       v
+    |     REVIEW
+    |     /    \
+    |   FAIL   PASS
+    |    |       |
+    +----+       v
+             PROMOTE
+```
+
+- **VERIFY FAIL** returns to IMPLEMENT after the failure protocol in section 13.
+  The reviewer is not invoked.
+- **REVIEW FAIL** begins a **new corrective iteration**: fix root causes, run
+  VERIFY again, and invoke a fresh reviewer only after VERIFY passes. Findings
+  are evidence, not implementation instructions.
+- The `known-good` tag stays fixed for the entire iteration. It must not move
+  during IMPLEMENT, VERIFY failure recovery, or REVIEW failure recovery.
+
+The reviewer always evaluates:
+
+```bash
+git diff known-good...HEAD
+```
+
+even across corrective iterations, so all corrective work remains visible
+relative to the last trusted baseline.
+
+### 11.1 Circuit breaker
+
+An unbounded `while not reviewer_passes: fix()` loop is forbidden; it produces
+exactly the patch-on-patch behavior this contract prohibits. The orchestrator
+drives the cycle and runs root-cause recovery plus VERIFY between every
+corrective iteration.
+
+Operational limit (tunable by evals):
+
+```text
+MAX_CORRECTIVE_ITERATIONS = 3
+```
+
+When the limit is exceeded:
+
+1. STOP;
+2. report the repeated failure with evidence;
+3. escalate to the human / change-control gate.
+
+Do not keep patching.
 
 ## 12. Reviewer / Adversarial Gate
 
@@ -695,7 +769,8 @@ Reviewer Checklist
 [FAIL] Existing session invalidation behavior changed unexpectedly.
 ```
 
-`PASS` items should represent properties the reviewer actually verified.
+`PASS` items are meaningful evidence and must represent properties the reviewer
+actually verified. Report them explicitly.
 
 `WARN` and `FAIL` items must include concrete reasoning.
 
@@ -739,10 +814,15 @@ becoming known-good.
 If review fails:
 
 1. do not move `known-good`;
-2. return findings to the implementation loop;
-3. correct root causes rather than blindly satisfying reviewer wording;
-4. rerun mechanical verification;
-5. run the reviewer again only after the corrective iteration is complete.
+2. treat findings as evidence, not implementation instructions;
+3. validate blocking findings before acting on them;
+4. begin a new corrective iteration and correct root causes rather than blindly
+   satisfying reviewer wording;
+5. rerun mechanical verification;
+6. run a fresh reviewer only after the corrective iteration is complete.
+
+Correcting a review means fixing the underlying defect, not producing the
+smallest patch that makes the reviewer stop objecting.
 
 Only after:
 
