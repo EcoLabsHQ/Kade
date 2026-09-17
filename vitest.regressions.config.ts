@@ -15,7 +15,9 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['tests/regressions/**/*.test.ts'],
+    // Must match what scripts/verify.sh counts, or a .tsx regression test would
+    // be counted by the gate but never executed and never fail it.
+    include: ['tests/regressions/**/*.test.{ts,tsx}'],
     environment: 'node',
     reporters: ['default'],
     // The suite is intentionally empty until the first reproducible bug is
