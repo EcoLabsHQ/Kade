@@ -277,3 +277,4 @@ rather than vendored into it.
 - Backlog and 80-hour plan: `docs/planning/kade-mvp-backlog.xlsx`
 - Week 1 contract: `docs/week-1-frozen-delivery-contract.md`
 - Development contract: `docs/DEVELOPMENT_CONTRACT.md`
+- Iteration report: `docs/reports/2026-09-16-week-1-foundation.md`
