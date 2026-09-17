@@ -205,7 +205,7 @@ export function LoginScreen({
                       marginTop: '2px',
                     }}
                   >
-                    Safe · 0x… · Ethereum Sepolia
+                    Safe · not yet deployed · Ethereum Sepolia
                   </div>
                   <div
                     style={{
@@ -220,7 +220,7 @@ export function LoginScreen({
                   </div>
                 </div>
                 <Chip tone="neutral" dot dotColor={tokens.muted}>
-                  Created in the background
+                  Not yet created
                 </Chip>
               </div>
 
