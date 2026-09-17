@@ -39,10 +39,18 @@ RLS enabled, or deny-by-default for unused tables. D2 additionally requires:
 ## Consequences
 
 - RLS is a testable property. `supabase/tests` asserts that a second resident
-  cannot read or write another resident's rows. Those tests require a live
-  database and therefore run under `scripts/verify-full.sh`, not `verify.sh`.
+  cannot read or write another resident's rows, that the security-critical
+  columns are unwritable by the `authenticated` role, and that every public table
+  has RLS enabled. These require a live database, so `scripts/verify-full.sh`
+  runs them when `SUPABASE_DB_URL` or `DATABASE_URL` is available and reports a
+  loud **SKIP** when it is not. `scripts/verify.sh` does not run them, and no
+  green `verify.sh` run should be read as an RLS claim.
 - A migration that forgets `enable row level security` is a defect, not a
-  detail. The migration review checklist treats it as such.
+  detail. Two checks enforce it, covering different moments: the guard loop at
+  the end of the RLS migration raises at apply time, and
+  `tests/0003_rls_completeness.test.sql` re-asserts the invariant on every test
+  run, so a table added by a later migration is caught as well. The apply-time
+  loop alone cannot catch that, because it executes only once.
 - Deny-by-default means a future week must add policies deliberately, which is
   the intended cost.
 

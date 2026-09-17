@@ -49,6 +49,38 @@ fi
 
 if [ -f foundry.toml ] && have forge; then
   run "FORGE TEST (full)" forge test -vvv
+elif [ -f packages/contracts/foundry.toml ] && have forge; then
+  section "FORGE TEST (full)"
+  if (cd packages/contracts && forge test -vvv); then pass; else fail; fi
+fi
+
+# 3. Supabase RLS tests (D2 evidence).
+#
+# These need a live Supabase database, so they cannot run in the fast gate. They
+# are skipped LOUDLY rather than silently: a green run here must never be read as
+# a verified RLS claim when no database was present.
+section "SUPABASE RLS TESTS"
+DB_URL="${SUPABASE_DB_URL:-${DATABASE_URL:-}}"
+if [ -z "$DB_URL" ]; then
+  printf 'SKIP: neither SUPABASE_DB_URL nor DATABASE_URL is set.\n'
+  printf 'RLS IS NOT VERIFIED BY THIS RUN.\n'
+  printf 'Start a Supabase database (supabase start) and re-run, or use: supabase test db\n'
+elif ! have psql; then
+  printf 'SKIP: psql not found, so the pgTAP suite cannot run.\n'
+  printf 'RLS IS NOT VERIFIED BY THIS RUN.\n'
+elif [ ! -d supabase/tests ]; then
+  printf 'SKIP: supabase/tests does not exist.\n'
+else
+  for test_file in supabase/tests/*.test.sql; do
+    [ -e "$test_file" ] || continue
+    RAN=$((RAN + 1))
+    section "RLS: $(basename "$test_file")"
+    if psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$test_file"; then
+      pass
+    else
+      fail
+    fi
+  done
 fi
 
 printf '\n'
