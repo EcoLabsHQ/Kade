@@ -60,8 +60,19 @@ fi
 # These need a live Supabase database, so they cannot run in the fast gate. They
 # are skipped LOUDLY rather than silently: a green run here must never be read as
 # a verified RLS claim when no database was present.
+#
+# pgTAP does NOT fail psql by default: a failing assertion prints "not ok" and
+# `finish()` only diagnoses it, so psql still exits 0. The suites therefore call
+# `finish(true)`, which raises. This gate additionally inspects the TAP output,
+# so it cannot report PASS on a failing assertion even if a suite regresses to a
+# bare `finish()`.
 section "SUPABASE RLS TESTS"
 DB_URL="${SUPABASE_DB_URL:-${DATABASE_URL:-}}"
+RLS_FILES=()
+for candidate in supabase/tests/*.test.sql; do
+  [ -e "$candidate" ] && RLS_FILES+=("$candidate")
+done
+
 if [ -z "$DB_URL" ]; then
   printf 'SKIP: neither SUPABASE_DB_URL nor DATABASE_URL is set.\n'
   printf 'RLS IS NOT VERIFIED BY THIS RUN.\n'
@@ -69,19 +80,32 @@ if [ -z "$DB_URL" ]; then
 elif ! have psql; then
   printf 'SKIP: psql not found, so the pgTAP suite cannot run.\n'
   printf 'RLS IS NOT VERIFIED BY THIS RUN.\n'
-elif [ ! -d supabase/tests ]; then
-  printf 'SKIP: supabase/tests does not exist.\n'
+elif [ "${#RLS_FILES[@]}" -eq 0 ]; then
+  printf 'SKIP: no *.test.sql files found under supabase/tests.\n'
+  printf 'RLS IS NOT VERIFIED BY THIS RUN.\n'
 else
-  for test_file in supabase/tests/*.test.sql; do
-    [ -e "$test_file" ] || continue
+  for test_file in "${RLS_FILES[@]}"; do
     RAN=$((RAN + 1))
     section "RLS: $(basename "$test_file")"
-    if psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$test_file"; then
-      pass
-    else
+    rls_output=""
+    rls_status=0
+    rls_output=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$test_file" 2>&1) || rls_status=$?
+    printf '%s\n' "$rls_output"
+
+    if [ "$rls_status" -ne 0 ]; then
       fail
+      continue
+    fi
+
+    # Defence in depth: a "not ok" line is a real failure even when psql exits 0.
+    if printf '%s\n' "$rls_output" | grep -qE '^[[:space:]]*not ok'; then
+      printf 'pgTAP reported a failing assertion while psql exited 0.\n'
+      fail
+    else
+      pass
     fi
   done
+  printf 'RLS test files run: %s\n' "${#RLS_FILES[@]}"
 fi
 
 printf '\n'

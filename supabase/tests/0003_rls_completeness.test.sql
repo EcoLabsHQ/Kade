@@ -14,6 +14,9 @@
 
 begin;
 
+create extension if not exists pgtap with schema extensions;
+set search_path to public, extensions;
+
 select plan(3);
 
 select is(
@@ -63,6 +66,9 @@ select is(
   'the anonymous role has no table privileges in the public schema'
 );
 
-select * from finish();
+-- finish(true) raises on a failed assertion, so psql exits non-zero. A bare
+-- finish() only prints "Looks like you failed N test(s)" and still exits 0,
+-- which would let this suite fail while the verification gate reports PASS.
+select * from finish(true);
 
 rollback;
