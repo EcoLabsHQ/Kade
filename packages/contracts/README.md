@@ -34,10 +34,24 @@ forge test
 
 ## KadeLock
 
+**What it does, stated exactly:** *KadeLock blocks non-allowlisted native-value
+transactions while locked.*
+
 `KadeLock` is a Safe transaction guard. Before `unlockAt` it blocks outbound
 native value to any address that is not on its allowlist; at or after
 `unlockAt` it stops blocking. Configuration (admin, unlock time, allowlist) is
 restricted to the configured admin.
+
+> **Scope:** this is a Week 1 demonstration of time-based locking and
+> destination allowlisting, not the production enforcement layer and not
+> complete protection of the assets in a resident Safe. It inspects `to` and
+> `value` only: a call with `value == 0` is never blocked, so ERC-20 movements
+> and arbitrary contract calls pass through while the lock is engaged.
+
+> **Future improvement:** a production version should authorize each
+> locked-asset operation individually—for example, through a single-use approval
+> signed by Kade's backend and bound to the exact transaction—and extend
+> enforcement to ERC-20 transfers and protocol interactions.
 
 The full interface, roles, threat assumptions, invariants and limitations are in
 [`docs/architecture/kadelock-threat-model.md`](../../docs/architecture/kadelock-threat-model.md).

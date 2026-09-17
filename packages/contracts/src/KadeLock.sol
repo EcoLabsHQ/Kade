@@ -5,14 +5,22 @@ import {Guard} from "safe-smart-account/contracts/base/GuardManager.sol";
 import {Enum} from "safe-smart-account/contracts/common/Enum.sol";
 import {IERC165} from "safe-smart-account/contracts/interfaces/IERC165.sol";
 
-// KadeLock — the frozen Week 1 minimum Safe Guard (model A).
+// KadeLock — Week 1 MVP Safe Guard.
 //
-// Scope, roles, invariants and limitations are documented in
-// docs/architecture/kadelock-threat-model.md. It is compiled and Foundry-tested
-// only and is NOT deployed in Week 1 (week-1 contract section 6.2 and section 9).
+// This implementation demonstrates time-based locking and destination
+// allowlisting for native-value transactions. It is compiled and tested
+// during Week 1 but is not intended as the production enforcement layer.
+//
+// Future versions may require a single-use, transaction-specific
+// authorization signed by Kade's compliance service.
+//
+// Scope, roles, invariants and residual risks:
+// docs/architecture/kadelock-threat-model.md.
+// Compiled and Foundry-tested only; NOT deployed in Week 1
+// (week-1 contract sections 6.2 and 9).
 //
 // Guard interface source: safe-smart-account v1.4.1
-// (contracts/base/GuardManager.sol), vendored under lib/.
+// (contracts/base/GuardManager.sol), installed under lib/ by scripts/setup.sh.
 contract KadeLock is Guard {
     event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
     event UnlockAtChanged(uint64 previousUnlockAt, uint64 newUnlockAt);

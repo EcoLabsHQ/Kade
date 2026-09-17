@@ -17,11 +17,22 @@ still needs a human decision.
 
 ## 1. Purpose and scope
 
-KadeLock blocks value from leaving a resident Safe until an unlock time, while
-permitting transfers to allowlisted destinations (for example the treasury fee
-address, approved instruments, the GOS settlement address, the CCTP
-TokenMessenger, and the Self verifier). This is the frozen Week 1 enforcement
-model; it is **not** the qualified vault described elsewhere in the build guide.
+**What KadeLock does, stated exactly:** *KadeLock blocks non-allowlisted
+native-value transactions while locked.*
+
+That sentence is deliberately narrow, because the implementation is narrow:
+
+- It inspects `to` and `value` only. It does **not** inspect call data.
+- A call with `value == 0` is never blocked, so ERC-20 operations and arbitrary
+  contract calls pass through even while the lock is engaged.
+- It is a demonstration of the mechanism, not complete protection of the assets
+  held in a resident Safe.
+
+KadeLock permits native-value transfers to allowlisted destinations (for example
+the treasury fee address, approved instruments, the GOS settlement address, the
+CCTP TokenMessenger, and the Self verifier) while locked. This is the frozen
+Week 1 enforcement model; it is **not** the qualified vault described elsewhere
+in the build guide.
 
 In scope for the Week 1 model:
 
@@ -29,6 +40,13 @@ In scope for the Week 1 model:
   destination is allowlisted;
 - the allowlist and the unlock time are admin-controlled;
 - after `unlockAt` the lock no longer blocks.
+
+> **Future improvement:** The Week 1 KadeLock implementation is intentionally
+> limited to demonstrating time-based locking and destination allowlisting. A
+> production version should authorize each locked-asset operation
+> individually—for example, through a single-use approval signed by Kade's
+> backend and bound to the exact transaction—and extend enforcement to ERC-20
+> transfers and protocol interactions.
 
 ## 2. Trust assumptions
 
@@ -156,7 +174,7 @@ section 9). They are **not** implemented and **not** tested:
 
 | ID | Risk | Impact |
 |---|---|---|
-| R1 | **Native value only.** ERC-20 transfers call the token contract, so `to` is the token, not the recipient. USDC movement is not destination-restricted. | Largest gap versus the USDC-centric product model. Onchain-gate item. |
+| R1 | **Native value only — the largest limitation.** ERC-20 transfers call the token contract, so `to` is the token, not the recipient, and `value == 0` calls are never blocked. USDC movement is not destination-restricted. | This is why KadeLock is described as a demonstration of the mechanism, not as asset protection. It is the first item for the production version: see the *Future improvement* note in section 1. |
 | R2 | **Delegatecall.** A locked Safe can move value through a delegatecall payload the guard does not inspect. | Bypass; bypass tests are out of scope per D7. |
 | R3 | **Admin compromise.** A compromised admin can unlock or reconfigure the lock; there is no timelock or second signer. | Weakens the lock by design. |
 | R4 | **Single source of truth is a timestamp.** Validator clock manipulation shifts the boundary within a small window. | Low precision, not a full bypass. |
