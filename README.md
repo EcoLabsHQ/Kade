@@ -63,8 +63,6 @@ npm run dev                 # http://localhost:3000
 tests, acceptance tests, regression tests, build, `forge build` and
 `forge test`. `./scripts/verify-full.sh` additionally runs the pgTAP RLS suites
 when a database is available, and reports a loud `SKIP` when it is not.
-`./scripts/db/rls-check.sh` creates a disposable database, applies every
-migration and seed, and runs those suites — that is the reproducible RLS check.
 
 ## Architecture
 
@@ -146,16 +144,16 @@ work as complete.
 
 **Verified separately — these need a database, so they run outside `verify.sh`:**
 
-- **Database RLS: 29 assertions across 3 suites pass.** The migrations apply from
-  a clean database, the seed applies, and the pgTAP suites prove that a second
-  resident cannot read or write another resident's rows, that the
+- **Database RLS: ran once, 29 assertions across 3 suites passed.** The
+  migrations apply from a clean database, the seed applies, and the suites prove
+  that a second resident cannot read or write another resident's rows, that the
   security-critical columns are unwritable by the `authenticated` role, and that
-  every public table has RLS enabled. Reproduce with `./scripts/db/rls-check.sh`,
-  which builds a disposable PostgreSQL and tears it down.
-- Caveat, stated plainly: that result comes from PostgreSQL 16 with the shim in
-  `supabase/tests/support/`, which reproduces Supabase's `auth` schema, `auth.uid()`
-  and API roles. It is a reproduction, not the Supabase stack. `supabase test db`
-  against a real project is still outstanding.
+  every public table has RLS enabled.
+- Caveat, stated plainly: that run used a throwaway shim reproducing Supabase's
+  `auth` schema, `auth.uid()` and API roles. The shim is not in the repository,
+  so the result is not reproducible from a clean checkout. Treat it as a
+  development-time check, not as D2 evidence, until `supabase test db` has been
+  run against a real project.
 
 **Not yet verified — these require project-supplied inputs that are absent from
 this environment:**
