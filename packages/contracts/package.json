@@ -1,0 +1,12 @@
+{
+  "name": "@kade/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KadeLock and EAS schema tooling. Built and tested with Foundry; verify.sh invokes forge directly.",
+  "scripts": {
+    "typecheck": "node -e \"process.exit(0)\"",
+    "eas:manifest": "node --experimental-strip-types --import ./scripts/ts-module-loader.mjs ./scripts/generate-eas-manifest.mjs",
+    "eas:register": "node --experimental-strip-types --import ./scripts/ts-module-loader.mjs ./scripts/register-eas-schemas.mjs",
+    "eas:verify": "node --experimental-strip-types --import ./scripts/ts-module-loader.mjs ./scripts/verify-eas-schemas.mjs"
+  }
+}

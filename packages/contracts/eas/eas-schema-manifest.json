@@ -1,0 +1,184 @@
+{
+  "$comment": "Proposal only. Generated from @kade/shared. Nothing here is registered; registration is irreversible and blocked behind the Onchain gate.",
+  "source": "@kade/shared registrationManifest()",
+  "targetChainId": 11155111,
+  "targetChainName": "Ethereum Sepolia",
+  "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
+  "schemas": [
+    {
+      "name": "kade.kyc.v1",
+      "schema": "string nationality,bool over18,bool notSanctioned,bytes32 selfNullifier,uint64 expiresAt",
+      "revocable": true,
+      "resolver": null,
+      "attester": "kade-authorized",
+      "recipient": "resident-safe",
+      "fields": [
+        {
+          "name": "nationality",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "over18",
+          "type": "bool",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "notSanctioned",
+          "type": "bool",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "selfNullifier",
+          "type": "bytes32",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "expiresAt",
+          "type": "uint64",
+          "provenance": "arbitrary"
+        }
+      ],
+      "provenance": {
+        "revocable": "arbitrary",
+        "resolver": "arbitrary",
+        "attester": "arbitrary",
+        "recipient": "documented"
+      }
+    },
+    {
+      "name": "kade.fee.v1",
+      "schema": "string applicationRef,uint256 amountUSDC,bytes32 txHash,string feeType",
+      "revocable": false,
+      "resolver": null,
+      "attester": "kade-authorized",
+      "recipient": "treasury-safe",
+      "fields": [
+        {
+          "name": "applicationRef",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "amountUSDC",
+          "type": "uint256",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "txHash",
+          "type": "bytes32",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "feeType",
+          "type": "string",
+          "provenance": "arbitrary"
+        }
+      ],
+      "provenance": {
+        "revocable": "arbitrary",
+        "resolver": "arbitrary",
+        "attester": "arbitrary",
+        "recipient": "documented"
+      }
+    },
+    {
+      "name": "kade.application.v1",
+      "schema": "string applicationRef,string tier,bytes32 docsRoot,uint256 qualifyingBalance",
+      "revocable": true,
+      "resolver": null,
+      "attester": "kade-authorized",
+      "recipient": "resident-safe",
+      "fields": [
+        {
+          "name": "applicationRef",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "tier",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "docsRoot",
+          "type": "bytes32",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "qualifyingBalance",
+          "type": "uint256",
+          "provenance": "arbitrary"
+        }
+      ],
+      "provenance": {
+        "revocable": "arbitrary",
+        "resolver": "arbitrary",
+        "attester": "arbitrary",
+        "recipient": "documented"
+      }
+    },
+    {
+      "name": "kade.review.v1",
+      "schema": "string applicationRef,bool cleared,string note",
+      "revocable": true,
+      "resolver": null,
+      "attester": "kade-authorized",
+      "recipient": "resident-safe",
+      "fields": [
+        {
+          "name": "applicationRef",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "cleared",
+          "type": "bool",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "provenance": "arbitrary"
+        }
+      ],
+      "provenance": {
+        "revocable": "arbitrary",
+        "resolver": "arbitrary",
+        "attester": "arbitrary",
+        "recipient": "documented"
+      }
+    },
+    {
+      "name": "kade.permit.v1",
+      "schema": "string applicationRef,string tier,uint64 validUntil",
+      "revocable": true,
+      "resolver": null,
+      "attester": "kade-authorized",
+      "recipient": "resident-safe",
+      "fields": [
+        {
+          "name": "applicationRef",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "tier",
+          "type": "string",
+          "provenance": "arbitrary"
+        },
+        {
+          "name": "validUntil",
+          "type": "uint64",
+          "provenance": "arbitrary"
+        }
+      ],
+      "provenance": {
+        "revocable": "arbitrary",
+        "resolver": "arbitrary",
+        "attester": "arbitrary",
+        "recipient": "documented"
+      }
+    }
+  ]
+}

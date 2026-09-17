@@ -1,0 +1,5 @@
+{
+  "$comment": "Record of executed EAS schema registrations. Populated only after the Onchain gate approves and a human executes the registration plan. Empty in Week 1: nothing is registered.",
+  "chainId": 11155111,
+  "registrations": []
+}

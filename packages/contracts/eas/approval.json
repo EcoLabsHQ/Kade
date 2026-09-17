@@ -1,0 +1,6 @@
+{
+  "$comment": "Onchain gate approval record. assertRegistrationApproved() in @kade/shared requires onchainGateApproved=true plus a non-empty approvedBy and approvedAt. This file is intentionally UNAPPROVED in Week 1: EAS schema registration is irreversible and blocked behind the Onchain gate (week-1 contract section 7, checkpoint 3).",
+  "onchainGateApproved": false,
+  "approvedBy": "",
+  "approvedAt": ""
+}

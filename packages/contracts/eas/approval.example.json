@@ -1,0 +1,6 @@
+{
+  "$comment": "Template only. Do NOT copy this file over eas/approval.json until a human reviewer has actually approved the manifest and the KadeLock interface at the Onchain gate. Keeping onchainGateApproved=false makes an accidental copy fail closed.",
+  "onchainGateApproved": false,
+  "approvedBy": "<human reviewer name and role>",
+  "approvedAt": "<ISO-8601 timestamp>"
+}
