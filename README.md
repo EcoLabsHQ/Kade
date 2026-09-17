@@ -61,8 +61,10 @@ npm run dev                 # http://localhost:3000
 
 `./scripts/verify.sh` is the only mechanical gate. It runs typecheck, lint, unit
 tests, acceptance tests, regression tests, build, `forge build` and
-`forge test`. `./scripts/verify-full.sh` adds the expensive, environment-dependent
-checks (integration, E2E) when they exist.
+`forge test`. `./scripts/verify-full.sh` additionally runs the pgTAP RLS suites
+when a database is available, and reports a loud `SKIP` when it is not.
+`./scripts/db/rls-check.sh` creates a disposable database, applies every
+migration and seed, and runs those suites — that is the reproducible RLS check.
 
 ## Architecture
 
@@ -142,6 +144,19 @@ work as complete.
 - The committed `supabase/seed.sql` is byte-for-byte reproducible from
   `packages/shared`, so the database and the application cannot disagree.
 
+**Verified separately — these need a database, so they run outside `verify.sh`:**
+
+- **Database RLS: 29 assertions across 3 suites pass.** The migrations apply from
+  a clean database, the seed applies, and the pgTAP suites prove that a second
+  resident cannot read or write another resident's rows, that the
+  security-critical columns are unwritable by the `authenticated` role, and that
+  every public table has RLS enabled. Reproduce with `./scripts/db/rls-check.sh`,
+  which builds a disposable PostgreSQL and tears it down.
+- Caveat, stated plainly: that result comes from PostgreSQL 16 with the shim in
+  `supabase/tests/support/`, which reproduces Supabase's `auth` schema, `auth.uid()`
+  and API roles. It is a reproduction, not the Supabase stack. `supabase test db`
+  against a real project is still outstanding.
+
 **Not yet verified — these require project-supplied inputs that are absent from
 this environment:**
 
@@ -149,11 +164,8 @@ this environment:**
   OAuth credentials are configured. The PKCE flow and session handling are
   implemented; the app renders an explicit "not configured" state rather than a
   fake signed-in state.
-- **Database RLS against a real database.** The migrations, policies and pgTAP
-  tests are written; the Supabase CLI is not installed here, so they have not
-  been run against a live stack. No RLS claim is made beyond the SQL itself.
-- **Credential metadata surviving reload.** No database is reachable, so
-  passkey metadata persistence is a seam with an in-memory implementation.
+- **Credential metadata surviving reload.** No database is reachable from the web
+  app, so passkey metadata persistence is a seam with an in-memory implementation.
 - **A test signature through the direct Safe WebAuthn signer.** Requires the
   signer address and Safe deployment inputs, which the project supplies and the
   Account gate approves. The signer address is an explicit unresolved sentinel,
