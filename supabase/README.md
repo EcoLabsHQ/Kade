@@ -5,19 +5,28 @@ row level security, and the generated `chains` / `fee_schedule` seed.
 
 ## Verified vs unverified
 
-The Supabase CLI is **not installed** in the environment this was authored in.
-What that means concretely:
+The Supabase CLI is **not installed** in the environment this was authored in, so
+the suites were verified against a plain PostgreSQL instead. `scripts/db/rls-check.sh`
+applies the shim, every migration and the seed to a disposable PostgreSQL 16
+container and runs the pgTAP suites; that is how the rows below were produced.
 
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations parse / apply | **Not verified** — no database was started |
-| `supabase/tests/` pgTAP RLS tests | **Not verified** — they require a live database |
-| `supabase/config.toml` | **Not verified** — not executed against the CLI |
+| Migrations apply from a clean database | **Verified** — all 9 apply in order with `ON_ERROR_STOP=1` |
+| Seed applies | **Verified** |
+| `supabase/tests/` pgTAP RLS tests | **Verified: 29 assertions across 3 suites pass** — against PostgreSQL 16 with the Supabase shim, not against the Supabase stack |
+| `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
 
-No claim of a passing database test is made here. The SQL is written to be
-reviewable on its own and the RLS guard migration fails loudly if any public
-table lacks RLS.
+Two caveats on the RLS result, stated plainly:
+
+- The shim in `supabase/tests/support/supabase-shim.sql` provides `auth.users`,
+  `auth.uid()` and the API roles. It mirrors Supabase's shape, but it is a
+  reproduction, not Supabase itself. Running `supabase test db` against the real
+  stack is still the authoritative check and has not been done here.
+- The suites call `finish(true)`. A bare `finish()` does not raise on a failed
+  assertion, so `psql` exits 0 and a failing suite would look green; see the
+  note under "Running the tests".
 
 ## Layout
 
@@ -35,6 +44,7 @@ supabase/
     20260916000008_config.sql
     20260916000009_rls.sql         enable RLS, grants, policies, guard
   tests/                          pgTAP tests (live database required)
+    support/supabase-shim.sql     auth schema + roles, for plain PostgreSQL
   seed.sql                        GENERATED — do not edit
 ```
 
@@ -57,18 +67,30 @@ supabase test db
 `supabase db reset` is the clean-database path required by D2: it drops the
 local database, replays every migration in order, then runs `seed.sql`.
 
-### Running the RLS tests without the CLI
+### Reproducing the RLS result without the Supabase CLI
 
-If a Postgres connection is available, the tests are plain pgTAP SQL:
+The suites were verified against a plain PostgreSQL using the shim, which
+supplies the `auth` schema, `auth.uid()` and the API roles that Supabase normally
+provides:
 
 ```bash
-psql "$DATABASE_URL" -f supabase/tests/0001_rls_isolation.test.sql
-psql "$DATABASE_URL" -f supabase/tests/0002_identity_and_review.test.sql
+./scripts/db/rls-check.sh          # disposable Docker container, torn down after
+DATABASE_URL=postgresql://... ./scripts/db/rls-check.sh   # or an existing database
 ```
 
-`DATABASE_URL` is defined in `.env.example`. The tests need the Supabase `auth`
-schema and the `authenticated` / `anon` roles, i.e. a Supabase database, not a
-vanilla Postgres.
+The script applies the shim, all migrations and the seed, runs every
+`*.test.sql`, and prints one line per assertion. It clears a `not ok` line as a
+failure. Expected result: 3 suites, 29 assertions, all passing.
+
+If a database is already running, `scripts/verify-full.sh` runs the same suites
+whenever `SUPABASE_DB_URL` or `DATABASE_URL` is set, and prints a loud `SKIP`
+when neither is.
+
+> **Note:** the suites must call `finish(true)`, not `finish()`. A bare
+> `finish()` only prints "Looks like you failed N test(s)" and still exits 0, so
+> `psql` reports success and a failing RLS suite would be indistinguishable from
+> a passing one. `scripts/verify-full.sh` additionally greps the TAP output for
+> `not ok` as a second line of defence.
 
 ## Regenerating the seed
 
