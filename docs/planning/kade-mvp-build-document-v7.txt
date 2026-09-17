@@ -1,0 +1,549 @@
+<!--
+DERIVED FILE — do not edit by hand.
+
+Plain-text extraction of the paragraphs in:
+  docs/planning/kade-mvp-build-document-v7.docx
+
+The .docx remains the authoritative artefact. This extraction exists so the
+build guide is readable by tools, agents and diffs. Tables are flattened to
+one cell per line; formatting is lost. Regenerate with the extraction script
+recorded in docs/architecture/ if the DOCX changes.
+-->
+
+Onchain Island Resident Platform — MVP build guide
+Kade · v7.0 · Crypto World's Fair edition · 15 September 2026 · Ethereum (main track) · Arbitrum · Base · Safe · EAS · Self · GOS · Snapshot · Supabase
+Reference build: Kade MVP.dc.html, deployed from deploy-mvp-onchainisland. This version re-cuts the v5.0 guide to the Colosseum Crypto World's Fair hackathon (14 September – 12 October 2026). Everything the judges score, everything the submission portal asks for, and the four-week calendar now sit in one place, ahead of the technical spec. Ethereum mainnet is the main track and the settlement network; qualified vaults, deposits, yield positions, card top-ups and fiat legs also run on Arbitrum and Base, so the product enters three tracks with one codebase.
+SUBMIT BY  Internal target Friday 9 October 2026 (second week of October). Hard deadline Monday 12 October, 11:59 pm PT = Tuesday 13 October, 02:59 am Curaçao time. The team leader uploads; every teammate needs a Colosseum account before then.
+WHAT CHANGED IN V7  Identity verification is now powered by Self (self.xyz), not a traditional KYC vendor: new partners line in section 1, new flow subsection in section 6, updated kade.kyc.v1 schema, Self verifier on the paymaster and KadeLock allowlists, a demo-pricing row, three development tips, a revised demo beat and one open decision. Everything else is unchanged from v6.
+WHAT CHANGED IN V6  New sections 1–3 (hackathon, submission package, scoring map), section 5 (chain matrix), rewritten plan (section 10) cut to the hackathon calendar, presentation-video script (section 11), GTM text for the portal (section 12), team and prior-work disclosure (section 13). Sections on the model, flows, demo pricing, architecture and schema are updated for three chains and multi-chain GOS rails; production amounts are unchanged.
+1. The hackathon
+Colosseum runs the Crypto World's Fair as a startup competition, not a code contest: submissions are read as a pitch to Colosseum's venture fund and an application to its accelerator ($250k pre-seed, 12 weeks in San Francisco). Judging is one pool across all chains — track prizes are extra, not the main event. That shapes every choice below: a working product on three chains matters, but so do the founder story, the market and the go-to-market.
+PARTNERS  Self (identity), Reflect (USD vault), GOS (fiat rails + card issuing), Altitude (banking, next phase), Snapshot (voting).
+Dates
+WHEN (Curaçao time)
+WHAT
+OUR ACTION
+Mon 14 Sep, 09:00
+Contest opens (6:00 am PT). Only work done from here on is judged.
+Public repo, first commit, team registered at colosseum.com/arena.
+Tue 15 Sep, 14:00
+Kickoff workshop (Robbins, Taylor, Levine).
+Attend; note what they say they want to see in submissions.
+Tue 22 Sep, 14:00
+Ethereum Foundation session.
+Attend — Ethereum is our main track; ask about L1/L2 composition scoring.
+Mon 21 Sep · 28 Sep · 5 Oct
+Weekly update (optional, strongly recommended): one-minute video.
+Post three updates. Reviewers use them to see who did the work.
+Wed 7 Oct
+Feature freeze.
+Only fixes after this. Record videos on the frozen build.
+Fri 9 Oct
+Internal submission target.
+Upload the full package; keep the weekend as buffer.
+Mon 12 Oct, 11:59 pm PT
+Hard deadline (= Tue 13 Oct, 02:59 Curaçao).
+Profile information for every teammate must also be complete by then.
+Oct – 5 Dec
+Multiple evaluation rounds, then finalists to the judging panel and 15-minute Zoom interviews. Winners announced by 5 December.
+Keep the mainnet demo live and funded through December.
+
+Prizes we are targeting
+PRIZE
+AMOUNT
+WHY WE QUALIFY
+Overall — Grand Champion
+$30,000
+One pool, chain-agnostic, judged on startup merit.
+Overall — next 20 teams
+$15,000 each ($300k)
+Realistic target: a working regulated-finance product with a government customer path.
+Ethereum L1 track (main)
+$25,000 across 5 projects
+Safe, EAS, fees and canonical attestations on mainnet; settlement network for all rails.
+Arbitrum track
+$25,000 across 5 projects
+KadeLock vault, deposits, yield positions and card/fiat legs on Arbitrum.
+Base track
+$25,000 across 5 projects
+Same on Base; Morpho USDC yield already benchmarked on Base.
+Accelerator interview
+$250k pre-seed
+Winners are interviewed; Kade has not raised outside capital, which is the stated fit.
+
+Verify on Discord in week 1 whether the portal lets one product select more than one ecosystem track. The rules only say a team may submit one product; they do not prohibit multi-track. If only one track can be chosen, choose Ethereum and describe Arbitrum and Base under integrated blockchains.
+Rules that bind us
+Only work done between 14 Sep and 12 Oct is judged, and prior development must be disclosed. Misrepresentation allows disqualification or prize revocation. Section 13 holds our disclosure.
+One product per person, one team per person. Team leader is the official contact and receives prizes (paid in Phantom CASH stablecoin; a wallet may be required).
+Everyone must be 18+ and not in an excluded jurisdiction; the Netherlands and Curaçao are fine. Participation must not violate employer policies.
+All content in English. Disclose open-source and third-party code ownership. We keep IP; Colosseum claims none.
+Repo may be private, but the rules' own criteria include open-source and composability — we go public.
+GitHub review looks for two things: significant work during the hackathon, and that we were the ones who did it. Commit under real identities, small commits, no bulk imports on day one.
+2. Submission package (portal checklist)
+These are the portal fields as published in the Colosseum FAQ. Each has an owner and a due date; everything is ready before the 9 October upload.
+PORTAL FIELD
+WHAT WE SUBMIT
+OWNER
+DUE
+Product name + brief description
+Kade — the resident platform for Curaçao's investor-permit programme: pre-approval on payment, a qualified vault that counts toward residency, local and tokenized investments, fiat rails and a card, all on Ethereum, Arbitrum and Base. Two sentences, see section 12.
+Luuk
+6 Oct
+Blockchains and tools integrated
+Ethereum mainnet (main), Arbitrum, Base · Safe{Core} + ERC-4337 · Pimlico paymaster · EAS · Self (ZK passport identity) · USDC + Circle CCTP · Snapshot · Supabase · GOS (fiat + card) · Reflect (USD vault) · Privy / Safe WebAuthn · Next.js, wagmi/viem.
+Dev lead
+6 Oct
+Teammates, backgrounds, previous experience, location
+Section 13. Every teammate creates a Colosseum account; leader adds them.
+Luuk
+18 Sep (accounts) · 6 Oct (text)
+Product logo or graphic
+Kade wordmark on #0063B5 (1:1 PNG, 1024 px) plus a 16:9 hero showing the Overview screen.
+Design
+2 Oct
+GitHub repository link
+Public monorepo kade-mvp: apps/web, packages/contracts (KadeLock, attestation schemas), supabase/ (migrations, RLS, seed), README with architecture diagram, chain addresses, demo-pricing note and prior-work disclosure.
+Dev lead
+14 Sep (create) · 9 Oct (final)
+Presentation video, 2–3 min
+Founder-to-camera pitch, script in section 11. Not a screen recording.
+Luuk
+8 Oct
+Product-demo video, ≤ 3 min
+Screen recording of the demo script in section 11 on mainnet + Base + Arbitrum at demo pricing, with the Etherscan / Basescan / Arbiscan receipts shown.
+Dev lead + Luuk
+8 Oct
+Go-to-market, demand validation, distribution
+Section 12, pasted as written.
+Luuk
+6 Oct
+Weekly updates (optional)
+Three one-minute videos: 21 Sep, 28 Sep, 5 Oct.
+Rotating
+Mondays
+
+3. How judges score us
+Colosseum publishes seven evaluation factors in the FAQ and six in the official rules. The table merges them and states, for each, what we already have and what must exist in the submission to score. Items in amber are the gaps to close.
+CRITERION
+WHAT WE HAVE
+WHAT THE SUBMISSION MUST SHOW
+Founder + market fit
+Luuk: Curaçao ecosystem builder, Kolektivo / EcoLabs / DCIF, several years onchain, Dutch-Caribbean-Netherlands network, runs the Onchain Island programme with the government-facing relationships.
+Say it in the presentation video in 20 seconds. Name the DCSX, CBCS, CINEX and MEO conversations. Confirm which teammates appear on camera.
+Insight
+Nobody couples digital-asset banking with residency qualification. Curaçao's investor permit already accepts DCSX-listed securities, offers a Dutch/EU passport after five years and 0% private capital gains. The EU has ordered all five Caribbean CBI programmes to close by June 2028.
+One slide-worth of narrative: the CBI shake-out is the window, residency-by-investment is untouched, and Kade is the rail.
+Product + execution (Functionality, UX)
+Full spec in sections 4–9; design prototype exists.
+Live on mainnet, Base and Arbitrum. Passkey onboarding, gas sponsored, one signature per fee, real receipts. No dead buttons in the demo path; empty and error states done.
+Potential market size (Impact)
+~142k millionaires relocated in 2025; 713k UHNWIs; crypto-backed lending $67bn; Curaçao model 150–350 participants/yr at $280k–850k = $15–45m direct investment/yr, 0.5–1.5% GDP; expansion list Panama, Gibraltar, Dominica, Sint Maarten, Suriname.
+Bottom-up: one country contract ≈ $100k POC + $250k build + $100k/yr; 10–20 country leads via Abad Ventures network. Refresh the Henley 2026 figure before recording.
+Founder communication
+—
+Tight 2–3 minute video, plain English, no crypto jargon, one clear ask. Rehearse for the 15-minute Zoom interview.
+Viability / business plan
+Business case v2 (Aug 2026): government-by-government sales, volume-linked fees, membership-fee model kept outside VASP thresholds, GOS as licensed fiat partner.
+State revenue lines: pre-approval fee, service fee, 0.5% / 1% GOS rails, card interchange share, instrument placement fees. State why no token.
+Traction
+Onchain Island Phase 1 delivered; DCSX product concepts socialized; CBCS engaged on the pilot accelerator; Q4 pop-up residency with 12+ design partners planned.
+Secure before 6 Oct: a signed LOI or written intent from at least one of CINEX / DCSX / GOS, a design-partner waitlist count, and any paid POC discussion in writing.
+Novelty
+Pre-approve on payment, review in the background; qualified vault as a Safe Guard; attestations as the permit record.
+Show the KadeLock cure logic and the attestation chain in the demo — this is the part no one else has.
+Open-source / composability
+—
+Public repo, MIT or Apache-2.0 on contracts, EAS schemas registered publicly so third parties can verify a Kade permit attestation, Snapshot strategy published.
+
+4. The model
+THESIS  Pre-approve on payment, review in the background. Residents get value on day one; the programme keeps a machine-verified queue and intervenes only on exception.
+PRE-APPROVAL FEE  Production: XCG 500 + XCG 100 per household member, settled in USDC (household of 3 → 447 USDC). Paid at signup, pre-approves instantly. Paid on Ethereum mainnet.
+RESIDENCY SERVICE FEE  Production: 2,000 USDC, payable only once four checks are green. Covers package compilation and submission, household permits, biometrics scheduling and Kranshi registration. Paid on Ethereum mainnet.
+QUALIFYING TIERS  3-year $280k · 5-year $425k · Indefinite $850k. Only assets inside a qualified vault count — summed across Ethereum, Arbitrum and Base.
+GOS FEES  Fund vault 0.5%; cash out 1%. Same fee on every chain; bridging cost is absorbed by Kade at demo scale and itemised in production.
+CHAINS  Ethereum mainnet is the main network: identity Safe, all attestations, both programme fees, the GOS settlement leg. Arbitrum and Base carry qualified vaults, deposits, yield positions and can be the source or destination of card top-ups and fiat legs. Safe smart accounts (ERC-4337) at the same address on all three; USDC for all value; gas sponsored by a Kade paymaster on each chain.
+DATA  Supabase (Postgres + Auth + Realtime + RLS) owns workflow; the chains own money and attestations.
+5. Chain matrix
+One rule keeps this simple: records on Ethereum, balances anywhere. Anything that a third party must be able to verify (KYC, fee paid, application, review, permit) is attested once, on mainnet. Anything that is just value can sit on whichever of the three chains is cheapest or where the user already holds it.
+CAPABILITY
+ETHEREUM MAINNET
+ARBITRUM
+BASE
+Identity Safe
+Deployed at signup, gas sponsored.
+Same address, counterfactual until first use.
+Same address, counterfactual until first use.
+EAS attestations (kyc, fee, application, review, permit)
+Canonical. Only here.
+Read via mainnet RPC; no mirror in MVP.
+Read via mainnet RPC; no mirror in MVP.
+Pre-approval + service fee
+USDC → Treasury Safe, batched with attestations.
+—
+—
+KadeLock qualified vault
+Deployed.
+Deployed.
+Deployed.
+Deposits into vault
+From EOA or GOS.
+From EOA or GOS (bridged from mainnet).
+From EOA or GOS (bridged from mainnet).
+Yield / Invest positions
+USDY, BENJI; DCSX feeder rows.
+Aave v3 USDC; USDY.
+Morpho USDC (≈4.1%); tokenized treasuries.
+Borrow against vault
+—
+Aave v3 (stretch).
+Morpho (primary, 40% LTV demo).
+GOS fund vault (fiat in)
+Settlement leg. GOS pays USDC here.
+Destination option; Kade bridges via CCTP.
+Destination option; Kade bridges via CCTP.
+GOS cash out (fiat out)
+Settlement leg. USDC leaves to GOS from here.
+Source option; Kade bridges to mainnet first.
+Source option; Kade bridges to mainnet first.
+Card top-up
+Source option; direct to GOS card funding address.
+Source option; bridged to mainnet in the back.
+Source option; bridged to mainnet in the back.
+Snapshot vote
+Strategy reads kade.kyc.v1 here.
+—
+—
+Paymaster
+Pimlico, allowlisted targets, daily cap.
+Pimlico, same policy.
+Pimlico, same policy.
+
+BRIDGING RULE  Users never see a bridge. When a fiat leg or card top-up needs mainnet and the money is on an L2 (or the reverse), the Kade relayer moves native USDC with Circle CCTP and the UI shows one pending state with an ETA. The gos_transfers and card_transactions rows record source_chain, settlement_chain and the CCTP message hash. If CCTP attestation is slow in the demo, the relayer pre-positions mainnet USDC and settles the bridge asynchronously.
+6. Flows
+Pre-registration — four steps
+STEP
+USER DOES
+SYSTEM DOES
+1 · Create account
+Email + passkey, or an existing wallet.
+Deploy a Safe on mainnet; gas sponsored. Same address reserved on Arbitrum and Base. Supabase profiles row keyed by Safe address.
+2 · Profile & household
+Name, date of birth, multiple citizenships and countries of residence (last 5 years) via country dropdowns with flag chips; pick tier; add household members.
+Insert applications + household_members. Fee recomputes from household size; residence list drives the police-clearance checklist.
+3 · Proof of wealth
+Starts at $0. Connect self-custodied EOAs only — browser extension (MetaMask, Rabby), WalletConnect QR, hardware (Ledger, Trezor), Bitcoin watch-only xpub. Sign per wallet.
+SIWE proves ownership; balances read on mainnet, Arbitrum and Base into wealth_snapshots with a chain column. Continue stays disabled until ≥1 wallet is signed.
+4 · Pay pre-approval fee
+"Pay now to start pre-approval" — one signature.
+USDC → Treasury Safe + kade.fee.v1 + kade.application.v1 batched in one UserOp on mainnet. Status → pre_approved.
+
+Inside the platform
+SCREEN
+WHAT IT DOES
+GATED UNTIL REVIEW CLEARS?
+Overview
+KPIs, permit stages, qualified-holdings summary with a per-chain breakdown chip (ETH / ARB / BASE), next-step links.
+No
+Residency
+Start Residency: four readiness checks (identity via Self, qualified holdings meet tier, documents 6 of 6, intake review) each with an inline action; the 2,000 USDC service-fee card unlocks only when all four are green. After payment: submitted / decision-due / fees / documents KPIs, six residency stages, document list, receipts.
+Service fee needs review cleared
+Vote
+Snapshot proposal, tallies, gasless ballot; eligibility = KYC attestation on mainnet.
+No
+Holdings
+Merged view: total, qualified, not qualified, vault lock. Chain filter (All / Ethereum / Arbitrum / Base). Qualified vault lists vault assets and Invest allocations per chain; wallet section has "Move to vault" per asset on the asset's own chain. Allocating debits vault USDC so totals always reconcile.
+Borrow locked
+Invest
+Qualifying instruments, each tagged with the chain it settles on; "Allocate" opens an amount modal (presets, minimum, estimated income, vault USDC after) capped at available USDC on that chain; result appears in Holdings.
+No
+Bank ↔ Crypto
+Two action cards — Fund your vault (deposit-details sheet with USD/EUR/XCG tabs, payment reference, destination chain selector: Ethereum / Arbitrum / Base, recent top-ups) and Cash out (amount, source chain selector, beneficiary, IBAN, 1% fee, recent payouts). KPIs plus a full transfer-history table with GOS references and, where bridged, the CCTP hash.
+Cash out locked
+Card & Banking
+Onchain Island Card powered by GOS: before-order explainer, after-order KPIs, live card controls, top-up modal with source selector — vault balance on Ethereum, Arbitrum or Base, or an external deposit address per chain — and an XCG/USDC transaction table showing the source chain of each top-up. Slash banking as a compact early-access strip.
+Card order locked
+
+Identity verification with Self
+Identity is proven, not uploaded. Kade uses Self (self.xyz) so the programme never holds a passport copy for the checks it can prove instead.
+The resident scans their passport's NFC chip in the Self app; Self generates a zero-knowledge proof from the passport's signed data.
+Kade receives proofs, not documents: nationality disclosed, over-18 proven, not-on-sanctions-list proven, plus a nullifier that guarantees one verification per passport without revealing which passport. Passport number, photograph and date of birth are never transmitted to us.
+The proof is verified onchain and written to the resident's Safe as kade.kyc.v1, then reused by the card issuer, the banking partner and the Snapshot voting strategy — verify once, reuse everywhere.
+Verification happens inside the platform after pre-approval (it is readiness check 1 of 4 on the Start Residency screen), not during pre-registration.
+Admin console
+Lane switcher: Pre-approval (paid, awaiting intake review) / Residency applications (service fee paid, with Immigration) / All.
+Filters: search over ref, name and Safe address; status; tier; funding (meets / below tier); sort by oldest, largest wealth or name; Clear; "n of m shown"; empty state.
+Rows show days in stage (red past the 3-day SLA), citizenships, household size, tier, proof of wealth, qualified balance with per-chain split on hover, both fees, status. Expanded row shows checks, onchain refs on all three explorers and the reviewer note.
+Approve signs kade.review.v1 and flips the applicant's gates; Block freezes and notifies; Reopen reverts. Treasury & Attestations shows the fee ledger, schema counts and the relayer's bridge queue (pending CCTP transfers).
+7. Demo-scale amounts (for the hackathon videos and judges)
+Mainnet is real money, so run the demo on a demo fee schedule driven by config, not code. Every threshold below is roughly 1/1000 of production — the flow, the attestations and the gating are identical. Because vault moves, allocations and top-ups can run on Base and Arbitrum, a full end-to-end run now costs about $66 in value (most of it returnable) plus under $15 in gas.
+FUNCTION
+PRODUCTION
+DEMO VALUE
+CHAIN IN DEMO
+WHY
+Pre-approval fee
+447 USDC (household of 3)
+1 USDC flat (+ 0.25 USDC per household member)
+Ethereum
+Judges can pay it live from a phone wallet; still a real mainnet payment with a real receipt.
+Residency service fee
+2,000 USDC
+10 USDC
+Ethereum
+Keeps the two-fee model visible; the Start Residency gate is paid on stage.
+Identity verification
+Full Self passport proof
+Same flow, Self staging / mock passport
+Cheapest supported chain
+Free, no per-check vendor cost, and the whole thing runs on a phone in ~30 seconds on stage.
+Qualifying tier · 3-year
+$280,000
+$100
+Sum of 3 chains
+Reachable with test funds; tier bar and cure logic behave the same.
+Qualifying tier · 5-year
+$425,000
+$250
+Sum of 3 chains
+A second tier to cross during the demo.
+Qualifying tier · Indefinite
+$850,000
+$500
+Sum of 3 chains
+Shows the top band without large capital.
+Minimum investment
+$2,800–$10,000 by instrument
+50 USDC for every instrument
+Base (Morpho) / Arbitrum (Aave)
+One threshold to remember; presets 50 / 100 / 250.
+Card top-up
+2,000 USDC typical
+5 USDC, split 2 / 2 / 1
+Ethereum + Base + Arbitrum
+Shows all three sources and the bridged leg in one ledger.
+Card monthly limit
+XCG 9,000
+XCG 90
+—
+Keeps the limit bar meaningful.
+GOS fund vault
+0.5% fee, $25k typical
+0.5% fee, $20 transfer, destination Base
+Ethereum → Base
+One SEPA instant transfer shows the credit path and the bridge.
+GOS cash out
+1% fee
+1% fee, $10 payout, source Arbitrum
+Arbitrum → Ethereum
+Demonstrates the reverse leg through the settlement chain.
+Borrow against vault
+40% LTV, 4.12% APR
+40% LTV on a $250 vault → $100 draw
+Base
+Small enough to unwind after the demo.
+
+How to implement the demo schedule
+One table, fee_schedule, with a mode column (production | demo) and a row per fee and threshold; a single env var picks the mode. No amount is ever hard-coded in the client.
+Expose the active schedule through one API call so the UI labels, gates and modals read the same numbers the contracts enforce.
+Keep the attestation schemas unchanged — a 1 USDC kade.fee.v1 is structurally identical to a 447 USDC one, so nothing needs re-registering when you flip to production.
+Add a visible "Demo pricing" chip beside the network chip (which now shows the active chain per action) so judges know the amounts are scaled, and log the production equivalent in the receipt detail.
+Pre-fund the demo Safe with about 150 USDC on mainnet, 50 USDC on Base, 50 USDC on Arbitrum, plus 0.05 ETH on mainnet and 0.01 ETH on each L2 for the relayer; the paymaster covers user operations.
+Keep the demo funded and live until 5 December — finalists are interviewed after the deadline and may be asked to show the product.
+8. Architecture
+FRONTEND  Next.js 14 + wagmi/viem, chains configured for mainnet (1), Arbitrum One (42161) and Base (8453). 240px sidebar + 1160px content column; Plus Jakarta Sans; #0063B5 / #0A7CFF / #101828 / #667085 / #FAFAFA.
+ACCOUNTS  Safe{Core} + 4337; passkey via Privy or the Safe WebAuthn signer; identical Safe address on all three chains (same owners, same salt, same factory). Pimlico paymaster per chain, restricted to Kade contracts, EAS, the Self verifier contract and USDC → treasury, with a per-account daily cap — identity verification calls are sponsored.
+ATTESTATIONS  EAS on Ethereum mainnet: kade.kyc.v1 (nationality · over18 · notSanctioned · selfNullifier · expiresAt), kade.fee.v1, kade.application.v1, kade.review.v1, kade.permit.v1. Schema UIDs published in the README so anyone can verify a permit.
+IDENTITY  Self verifies a zero-knowledge passport proof onchain; the verifier contract is on the paymaster allowlist and on the KadeLock allowlist so a locked vault can still call it. Self supports Celo, Ethereum and several L2s, so proof verification can happen on whichever chain is cheapest and the resulting kade.kyc.v1 attestation is mirrored to the resident's primary chain. Kade stores the attestation UID and the disclosed fields only — never the raw proof payload.
+QUALIFIED VAULT  Safe Guard/Module KadeLock, one deployment per chain, same bytecode: blocks outbound value before unlockAt except allowlisted addresses (treasury fee address, approved instruments on that chain, GOS settlement address, the CCTP TokenMessenger, the Self verifier contract — verification calls are sponsored and carry no value); compliance co-signer 2-of-2 on withdrawals; cure event when the cross-chain sum of value < tier, evaluated by the indexer and written as a container_balances row.
+ACCOUNTING RULE  Qualified total = Σ over chains of (vault assets + instrument allocations). An allocation debits vault USDC and credits an instrument row on the same chain, so the qualified total is unchanged and Total = Qualified + Not qualified always holds — per chain and in aggregate. A bridge in flight counts on the source chain until the CCTP mint lands.
+FEES  Each programme fee is a USDC transfer to the Treasury Safe on mainnet batched with its attestations via MultiSend — one signature.
+FIAT RAILS & CARD  GOS API for on/off-ramp and card issuing; GOS settles on Ethereum mainnet. A Kade relayer (Edge Function + hot wallet, daily cap) bridges native USDC with Circle CCTP v2 between mainnet and Arbitrum / Base whenever the user's chosen chain differs from the settlement chain. Card settles XCG at the CBCS peg (1.79) against the chosen vault balance.
+VOTING  Snapshot space onchainisland.eth; strategy checks kade.kyc.v1 on mainnet; gasless EIP-712.
+INDEXER  One worker polls balances and vault events on all three chains (Alchemy or a Helius-equivalent per chain), writes container_balances and wealth_snapshots with a chain column, and emits the cure event. Never block a render on a chain read.
+9. Supabase schema
+TABLE
+KEY COLUMNS
+NOTES
+profiles
+id, safe_address, email, first_name, last_name, dob
+RLS: owner read/write, reviewer read. One Safe address serves all chains.
+profile_citizenships
+profile_id, country_code
+Multiple citizenships.
+profile_residences
+profile_id, country_code, from_year, to_year
+Drives the police-clearance checklist.
+applications
+id, ref, profile_id, tier, status, preapproval_usdc, service_usdc, fee_tx, fee_uid, app_uid, review_uid, service_uid
+Status changes via review_events trigger only. All UIDs are mainnet.
+household_members
+application_id, name, relation, dob, citizenship
+DB function recomputes the pre-approval fee.
+wallets
+profile_id, address, chain, provider, siwe_sig, verified_at
+EOA and xpub rows; one row per chain the EOA is read on.
+wealth_snapshots
+wallet_id, chain, taken_at, assets jsonb, usd_value, provenance
+Balance indexer output per chain.
+container_balances
+application_id, safe_address, chain, taken_at, assets jsonb, usd_value
+Qualified balance per chain; a view sums to the tier check.
+allocations
+application_id, chain, instrument, amount_usdc, tx, created_at
+Instrument rows shown in Holdings.
+gos_transfers
+application_id, direction, currency, amount, fee_bps, gos_ref, user_chain, settlement_chain, bridge_msg_hash, status, settled_at
+Fund and cash-out history; status includes bridging.
+card_transactions
+application_id, kind (topup | spend), source_chain, amount_usdc, amount_xcg, tx, bridge_msg_hash, created_at
+New. Top-ups show their source chain; spends show XCG at peg.
+documents
+application_id, kind, owner, sha256, cid, status
+Hash + pin only.
+review_events
+application_id, reviewer_id, action, note, attestation_uid, created_at
+Append-only; Realtime feeds both UIs.
+identity_attestations
+profile_id, attestation_uid, chain, nationality, over18, not_sanctioned, self_nullifier, expires_at, created_at
+Mirror of kade.kyc.v1 for queries. `self_nullifier` must be indexed and unique — it is the Sybil / duplicate-application guard. No raw proof payload stored.
+fee_schedule
+mode, key, amount, currency
+Demo vs production amounts live here.
+chains
+chain_id, name, usdc_address, kadelock_address, eas_address, paymaster_policy_id, explorer_url
+New. Single source of truth for per-chain addresses; seeded for 1, 42161, 8453.
+reviewers
+id, role, signer_address
+RLS gate for Admin screens.
+
+10. Four-week hackathon plan
+Cut to the contest calendar. Each week ends with a Monday one-minute update video. Feature freeze Wednesday 7 October; upload Friday 9 October; the 10–12 October weekend is buffer only.
+WEEK
+GOAL
+DELIVERABLES
+SUBMISSION WORK
+1 · 14–20 Sep · Foundations
+Account + pre-registration on mainnet
+Public repo with README and disclosure; sidebar shell; Supabase schema + RLS + fee_schedule and chains seeded; passkey Safe on mainnet with reserved L2 addresses; steps 1–2 live; EAS schemas registered on mainnet; KadeLock compiled and tested with LiteSVM-equivalent Foundry tests.
+Register team and every teammate; attend kickoff (15 Sep); ask on Discord about multi-track selection; update #1 on 21 Sep.
+2 · 21–27 Sep · Wealth, fee, vaults
+Steps 3–4 end to end; vaults on three chains
+EOA connect flows (extension, WalletConnect QR, hardware, xpub) + SIWE + multi-chain balance reads; pre-approval fee UserOp with batched attestations at demo pricing; KadeLock deployed on mainnet, Arbitrum, Base; indexer summing across chains.
+Attend EF session (22 Sep); start LOI conversations (CINEX, DCSX, GOS); update #2 on 28 Sep.
+3 · 28 Sep–4 Oct · Holdings, residency, admin, rails
+Money in, review out, on any chain
+Merged Holdings with chain filter, move-to-vault and allocation accounting; Invest modal (Morpho on Base, Aave on Arbitrum); Start Residency gate + service fee; Admin lanes, filters, Approve/Block signing kade.review.v1; GOS fund/cash-out with chain selectors and CCTP relayer; card order → active with three-source top-up.
+Draft portal text (section 12) and team text (section 13); logo; update #3 on 5 Oct.
+4 · 5–11 Oct · Polish and submit
+Demo-proof, then submitted
+Vote; empty/error states; seeded rows; Netlify deploy; accounting invariant test green on all chains; freeze Wed 7 Oct; record demo and presentation videos Thu 8 Oct; upload Fri 9 Oct; weekend buffer for fixes and a re-upload if the portal allows.
+Collect LOIs and waitlist numbers; final README; confirm every teammate's profile is complete; hard deadline Mon 12 Oct 11:59 pm PT.
+
+SCOPE GUARD  If week 3 slips, cut in this order: Aave on Arbitrum (keep Morpho on Base) → cash-out from an L2 (keep fund-to-L2) → Bitcoin xpub → Slash strip. Never cut: the two mainnet fees with attestations, one vault on each of the three chains, one card top-up per chain, Admin approve flipping gates in real time.
+11. Videos
+Presentation video (2–3 minutes, founder to camera)
+Problem (25 s). Small states sell residency by investment on paper and PDFs; applicants wait months and cannot use their capital while they wait. The EU is closing all five Caribbean citizenship programmes by June 2028 — the money and the governments are looking for a compliant successor.
+Insight (20 s). Curaçao already accepts listed securities toward its investor permit, gives a Dutch/EU passport after five years and taxes private capital gains at zero. Nobody has wired digital-asset banking into that qualification. We did.
+Product (35 s). Kade: pay a pre-approval fee, get pre-approved instantly, move assets into a qualified vault that counts toward the permit, invest in local and tokenized instruments, fund and cash out through a licensed fiat partner, spend on a card — on Ethereum, Arbitrum and Base, one Safe account, no gas, no seed phrases.
+Proof (20 s). Three-line demo recap with the mainnet receipt on screen: fee paid and attested, vault filled across three chains, admin approval unlocking residency in real time.
+Market and model (25 s). 142k millionaires moved in 2025. One Curaçao deployment is 150–350 residents a year, $15–45m direct investment; we sell government-by-government at $100k POC + $250k build + $100k/yr, plus fees on every rail. Ten to twenty country leads. No token.
+Team and traction (25 s). Who we are, the Onchain Island programme, DCSX and CBCS engagement, LOIs and the Q4 pop-up residency with design partners.
+Ask (10 s). We are entering the Ethereum, Arbitrum and Base tracks and applying to the accelerator to be live in Curaçao by early 2027, ahead of the 2028 window.
+Demo video (3 minutes, demo pricing, three chains)
+Step 1 — create account with a passkey; point at the Safe on mainnet and the same address on Basescan and Arbiscan (20 s).
+Step 2 — add a second citizenship and a prior residence country, add a household member; the fee updates to 1.75 USDC (20 s).
+Step 3 — connect an extension wallet (SIWE sheet), then WalletConnect (QR); proof of wealth reads balances on all three chains and crosses the $100 demo tier (25 s).
+Step 4 — pay 1 USDC on mainnet; receipt attested (show the EAS UID), account pre-approved, enter the platform (20 s).
+Holdings — move USDC into the vault on Base and USDY into the vault on mainnet; chain filter shows the split; tier met on the sum (20 s).
+Invest — allocate 50 USDC to Morpho on Base; vault USDC drops, qualified total unchanged (15 s).
+Bank ↔ Crypto — fund $20 via SEPA with destination Arbitrum; row shows bridging then settled with the CCTP hash (20 s).
+Admin — Pre-approval lane, open the demo row, Approve; the resident's gates flip live on the other screen (20 s).
+Residency — tap Verify with Self, scan the passport on a phone, watch kade.kyc.v1 land in the receipts list; four checks green, pay 10 USDC on mainnet, tracker appears (25 s).
+Card — top up 2 USDC from mainnet, 2 from Base, 1 from Arbitrum; the ledger shows three sources and XCG at peg. Vote on Snapshot — eligibility is the same kade.kyc.v1. Close on the "Demo pricing" chip and the production equivalents in the receipt (20 s).
+RECORDING  1440p screen capture, cursor highlighted, no narration over silence — narrate every action in one sentence. Show explorer tabs for each chain once, then trust the in-app receipts. Keep both videos unlisted on YouTube or Loom; the portal takes links.
+12. Go-to-market, demand validation, distribution (portal text)
+Paste the following into the portal field; keep it under 400 words. Amber items must be replaced with facts before upload.
+PRODUCT  Kade is the resident platform for investment-linked residency programmes. Applicants pre-approve by paying a fee onchain, hold qualifying assets in a locked Safe vault on Ethereum, Arbitrum or Base, invest in local and tokenized instruments, move money through a licensed fiat partner and spend on a card. Governments get a machine-verified queue, attested records and revenue on every rail. First deployment: invest.cw for Curaçao's investor permit.
+GO-TO-MARKET  Sold government-by-government. Curaçao first: the Onchain Island programme (Kolektivo Curaçao Foundation × EcoLabs) has run the readiness assessment, drafted the regulatory annexes and lined up the Q4 2026 pop-up residency as the V0 cohort. Commercial path is a paid proof of concept (~$100k), a build contract (~$250k) and an annual management fee (~$100k), plus volume-linked fees: pre-approval and service fees, 0.5% / 1% fiat rails, card interchange share, instrument placement fees. Next markets via existing investor and partner networks: Panama, Gibraltar, Dominica, Sint Maarten, Suriname.
+DEMAND VALIDATION  The EU Commission has required all five Caribbean citizenship-by-investment programmes to close by June 2028; residency-by-investment is not targeted, and Curaçao's permit ends in a Dutch/EU passport. 142k millionaires relocated in 2025. Crypto-backed lending passed $67bn. In Curaçao: DCSX has received two Kade-aligned product concepts, the central bank (CBCS) is engaged on the onchain pilot accelerator, and n design partners have registered for the pop-up residency. Insert LOI / intent letters obtained by 6 Oct.
+DISTRIBUTION  Three channels that already exist: (1) the 85+ CBCS-licensed trust companies that place foreign clients into Curaçao structures, (2) DCSX and its six brokers for qualifying instruments, (3) the Dutch crypto-holder segment facing the 2028 Box 3 reform, who need no permit and are the zero-friction first cohort via Crypto Discovery Tours. Onchain Island's brand and events (Curaçao Fintech Week, October 2026) are the top of the funnel.
+13. Team and prior-work disclosure
+Team (portal: teammates, backgrounds, previous experience, location)
+NAME
+ROLE IN KADE
+BACKGROUND
+LOCATION
+Luuk Weber (team leader)
+Founder — product, government and partner relationships, pitch
+Curaçao-based entrepreneur and ecosystem builder; founder of Kolektivo, EcoLabs (venture studio and onchain dev firm) and the Dutch Caribbean Innovation Fund; co-founder Curaçao Innovation Hub; runs the Onchain Island programme; several years building in the Ethereum ecosystem; BSc Business Administration and BA Philosophy, Erasmus/RSM.
+Willemstad, Curaçao
+Teammate 2
+e.g. Engineering lead — contracts, 4337, indexer
+Background, previous shipped products, GitHub handle
+City
+Teammate 3
+e.g. Product / design
+Background
+City
+
+Every teammate needs a Colosseum account before the upload; the leader adds them in the portal. Each builder can be on only one team and submit only one product this hackathon.
+Prior work (disclose in the portal and in the README)
+ITEM
+STATUS ON 14 SEP
+HOW WE DESCRIBE IT
+Design prototype Kade MVP.dc.html
+Existed before the contest — static design, no backend, no contracts.
+"Pre-hackathon design prototype; all application code, contracts, schema and integrations written from 14 September."
+Business case and MVP spec (this document)
+Existed before the contest.
+"Pre-hackathon research and specification."
+Kolektivo Angel platform code
+Confirm whether any of it is reused. The business case estimated it at ~70% of V1.
+If reused: name the packages, link the original repo and dates, and keep them in a clearly labelled vendor/ or separate package with its own commit history.
+Third-party and open-source code
+Safe{Core}, EAS SDK, Pimlico, wagmi/viem, Supabase, Snapshot.js, Circle CCTP contracts.
+List in README with licences (rules require disclosure of open-source and third-party code).
+
+14. Development tips
+Money and attestations onchain, workflow in Supabase. Never block a render on a chain read.
+Drive every amount from fee_schedule and every address from chains; flipping demo → production, or adding a fourth chain, must be a config change with no code edit.
+Cap the paymaster and the relayer hot wallet per account per day and alert on anomalies — this is mainnet plus two L2s.
+Everything starts empty: proof of wealth $0, no qualified assets, no card. Gate the Continue buttons instead of pre-filling data.
+Keep the accounting invariant in a test: Total Holdings = Qualified + Not qualified, before and after every allocation, transfer and bridge, per chain and in aggregate.
+Seed six applications so the Admin lanes look alive; approving the demo applicant must unlock the resident account in real time.
+Documents: hash + pin, attest the root, show the CID. Uploads live in Residency, not pre-registration.
+Self gives us proofs, not PII: never store the raw proof payload, only the attestation UID and the disclosed fields we are legally required to keep.
+Treat the nullifier as the primary identity key for duplicate detection, not name + date of birth.
+Keep a manual-review fallback for passports Self does not support (non-NFC or unsupported issuing countries) — a document-upload path gated to admin review.
+Commit hygiene is judged: real names, small commits, conventional messages, PRs for anything larger than a fix. No bulk import of pre-existing code without a disclosed provenance.
+UI conventions: stat cards #FAFAFA + #EAEDF1; clickable cards hover #0A7CFF; locked actions #98A2B3 + cursor: not-allowed; green #1B7F5A, amber #B7791F, red #B42318; chain chips ETH / ARB / BASE in #667085 outline; equal-height cards via align-items: stretch plus a flex spacer above the CTA.
+15. Risks and open decisions
+RISK
+IMPACT
+MITIGATION
+Multi-track selection not allowed in portal
+Lose two of three track entries
+Ask on Discord in week 1; if single-track, enter Ethereum and list Arbitrum and Base under integrated blockchains.
+GOS sandbox not ready for card or off-ramp
+Fiat legs and card cannot be shown live
+Stub the GOS API with realistic quotes and references behind the same interface; say so on screen; keep the onchain legs real.
+CCTP attestation latency during recording
+Bridged rows sit in bridging too long for a 3-minute video
+Relayer pre-positions USDC on the settlement chain and settles the bridge asynchronously; record the bridging state once, cut to settled.
+Mainnet gas spike on demo day
+Paymaster budget blown
+Fund the paymaster for 3× expected; record videos off-peak; every value action except fees and attestations runs on an L2.
+Scope creep from three chains
+Nothing fully works
+Section 10 scope guard; same bytecode, same address, config-driven chain list.
+Thin traction evidence
+Low score on the criterion Colosseum weighs most for accelerator admission
+LOI push in weeks 2–3; count design-partner sign-ups; put any paid POC discussion in writing.
+
+Open decisions
+Passkey provider: Privy (fast) vs Safe WebAuthn signer (fully self-custodial). Decide by 18 Sep; Privy if the WebAuthn signer is not stable across all three chains.
+Reviewer signing: server-side key in an Edge Function vs reviewer wallet signature. Start server-side, log every signature.
+Bridge provider: Circle CCTP v2 (native USDC, no wrapped assets) vs a third-party bridge for speed. CCTP by default; only switch if attestation times exceed 5 minutes in testing.
+Attestation mirroring to Arbitrum and Base: resolved — not in MVP. Mainnet is canonical; third parties verify there.
+Licence for contracts: MIT vs Apache-2.0. Decide before the first public contract commit.
+Which Self disclosure set is the legal minimum for the investor permit — is nationality + over-18 + sanctions enough for Immigration, or does the ordinance require full identity on file? If the latter, Self still covers the sanctions and uniqueness checks and we only collect documents for the registry step.
