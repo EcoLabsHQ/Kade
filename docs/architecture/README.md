@@ -107,7 +107,7 @@ must never be presented as approved configuration. See
 |---|---|
 | [0001](adr/0001-monorepo-and-toolchain.md) | npm workspaces monorepo, single verification entry point |
 | [0002](adr/0002-web-framework-and-design-system.md) | Next.js App Router with design tokens taken from the reference UI |
-| [0003](adr/0003-auth-and-signing-separation.md) | Google-only login, passkey as a separate transaction authority |
+| [0003](adr/0003-auth-and-signing-separation.md) | Google or email magic-link session, passkey as a separate transaction authority |
 | [0004](adr/0004-data-ownership-and-rls.md) | Supabase owns workflow; chains own money and attestations |
 | [0005](adr/0005-config-over-code.md) | Chains and fees are seeded configuration, not code |
 | [0006](adr/0006-contracts-toolchain-and-kadelock.md) | Foundry; KadeLock compiled and tested but not deployed |

@@ -114,11 +114,16 @@ because an unreachable probe is not evidence that sign-in is impossible.
 ### 5.2 A latent test bug, fixed
 
 `vitest.setup.ts` did not register React Testing Library's cleanup. With
-`globals: false`, RTL's automatic cleanup never installs, so every `render`
-accumulated in the same jsdom document: a later test could match elements left
-behind by an earlier one, passing against the wrong render or failing with
-"found multiple elements". Cleanup is now explicit and applies to every test
-file.
+`globals: false`, RTL's automatic cleanup never installs, so renders accumulate
+in the same jsdom document and a later test can match elements left behind by an
+earlier one — passing against the wrong render, or failing with "found multiple
+elements".
+
+Scope, stated precisely: the three test files that already called `render` at
+the previous `known-good` happened to register `cleanup` themselves, so no DOM
+actually leaked before this change. The new `auth-providers.test.tsx` did not,
+which is how the gap surfaced. The fix registers cleanup once in
+`vitest.setup.ts` and applies it to every file, present and future.
 
 ## 6. Verification
 
@@ -132,8 +137,9 @@ file.
 | Regression | 4 |
 | Foundry | 45 |
 
-177 JavaScript tests plus 45 Foundry tests. The count grew from 142 because the
-login surface gained the magic-link path and its failure modes.
+177 JavaScript tests plus 45 Foundry tests. Unit tests grew from 142 (100 web
++ 61 shared, was 81 + 61) because the login surface gained the magic-link path
+and its failure modes; the JavaScript total is 177, up from 158.
 
 ## 7. What is still blocked
 

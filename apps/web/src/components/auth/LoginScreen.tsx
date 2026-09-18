@@ -6,6 +6,36 @@ import { SignInPanel } from '@/components/auth/SignInPanel';
 import { Logo } from '@/components/shell/Logo';
 import { NetworkChip } from '@/components/shell/NetworkChip';
 
+const METHOD_ROW: React.CSSProperties = {
+  border: `1px solid ${tokens.border}`,
+  background: '#fff',
+  borderRadius: '12px',
+  padding: '14px 16px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+};
+
+const METHOD_SUB: React.CSSProperties = {
+  fontSize: '12px',
+  color: tokens.muted,
+  marginTop: '2px',
+};
+
+const METHOD_GLYPH: React.CSSProperties = {
+  width: '22px',
+  height: '22px',
+  flex: '0 0 22px',
+  borderRadius: '50%',
+  background: tokens.chipBg,
+  color: tokens.chipFg,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '12px',
+  fontWeight: 700,
+};
+
 export interface LoginScreenProps {
   readonly configured: boolean;
   /** false only when the project is connected and the method is known-disabled. */
@@ -20,7 +50,8 @@ export interface LoginScreenProps {
 
 function statusMessage(error?: string, reason?: string): string | null {
   if (error === 'missing-code') {
-    return 'Google did not return an authorisation code. Please try again.';
+    // The callback is shared by both providers, so do not name one.
+    return 'The sign-in provider did not return an authorisation code. Please try again.';
   }
   if (error === 'callback-failed') {
     return 'The sign-in callback could not be completed. Please try again.';
@@ -35,9 +66,9 @@ function statusMessage(error?: string, reason?: string): string | null {
  * Login screen.
  *
  * Visual language ported from the reference's "Create your account" step
- * (template.html lines 268-285), but with the contract's frozen auth model:
- * Google is the only method, there is no email/OTP/password field and no
- * wallet option, and the passkey is not requested here.
+ * (template.html lines 268-285), but with the contract's frozen auth model as
+ * amended v1.2: Google OAuth and email magic link are the methods, there is no
+ * password field and no wallet option, and the passkey is not requested here.
  */
 export function LoginScreen({
   configured,
@@ -108,9 +139,10 @@ export function LoginScreen({
                 textWrap: 'pretty',
               }}
             >
-              Sign in with Google. A Safe smart account on Ethereum is created
-              for you in the background — no seed phrase to manage. A separate
-              passkey is enrolled later and authorises transactions only.
+              Sign in with Google or a one-time email link. A Safe smart
+              account on Ethereum is created for you in the background — no seed
+              phrase to manage. A separate passkey is enrolled later and
+              authorises transactions only.
             </p>
 
             <div
@@ -164,31 +196,27 @@ export function LoginScreen({
               >
                 Sign-in method
               </label>
-              <div
-                style={{
-                  border: `1.5px solid ${tokens.action}`,
-                  background: '#fff',
-                  borderRadius: '12px',
-                  padding: '14px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
-              >
-                <GoogleGlyph size={22} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600 }}>Google</div>
-                  <div
-                    style={{
-                      fontSize: '12px',
-                      color: tokens.muted,
-                      marginTop: '2px',
-                    }}
-                  >
-                    Continue with your Google account
+              <div style={{ display: 'grid', gap: '10px' }}>
+                <div style={METHOD_ROW}>
+                  <GoogleGlyph size={22} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>Google</div>
+                    <div style={METHOD_SUB}>Continue with your Google account</div>
                   </div>
                 </div>
-                <Chip tone="brand">Selected</Chip>
+                <div style={METHOD_ROW}>
+                  <span aria-hidden style={METHOD_GLYPH}>
+                    @
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                      Email link
+                    </div>
+                    <div style={METHOD_SUB}>
+                      A one-time sign-in link. No password.
+                    </div>
+                  </div>
+                </div>
               </div>
               <p
                 style={{
@@ -197,9 +225,8 @@ export function LoginScreen({
                   color: tokens.muted,
                 }}
               >
-                Not offered in Week 1: email one-time codes, passwords, magic
-                links, and external wallets (contract section 2 item 2 and
-                section 9).
+                Not offered in Week 1: passwords, wallet login, and external
+                wallets (contract section 2 item 2, amended v1.2, and section 9).
               </p>
 
               <div

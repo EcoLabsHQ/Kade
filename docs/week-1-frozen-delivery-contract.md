@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
 **Status:** Frozen v1.2 — human decisions recorded 16 September 2026; two
-amendments recorded in section 8.1
+amendments recorded in sections 8.1 and 8.2
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -276,6 +276,7 @@ Affected clauses:
 | Section 2, item 2 | Google OAuth is the only application login; no email OTP fallback | Google OAuth and email magic link are the permitted logins; no password, no wallet |
 | Section 10, freeze checklist | Google-only versus email fallback — Google only | Login methods — Google and email magic link |
 | Appendix B.1 | Resolved: Google-only login | Resolved: Google and email magic link |
+| Appendix C, A2 inputs | approved login method (Google-only) | approved login methods (Google OAuth and email magic link) |
 
 What this does **not** change, and why the amendment is safe:
 
@@ -329,7 +330,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.1** with the open items above tracked under change control.
+This contract is **Frozen v1.2** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
@@ -369,7 +370,7 @@ These briefs become executable only after their corresponding human approval gat
 
 ### A2 — Identity and account
 
-**Inputs:** approved login method (Google-only), direct Safe WebAuthn signer, Safe deployment manifest template, and Sepolia deployment payer.  
+**Inputs:** approved login methods (Google OAuth and email magic link, per section 2 item 2 as amended v1.2), direct Safe WebAuthn signer, Safe deployment manifest template, and Sepolia deployment payer.  
 **Work:** EXE-003 and EXE-004.  
 **Must return:** login/session implementation, passkey enrollment and verification, Sepolia Safe deployment record, deterministic L2 test, and evidence manifest.  
 **Must not decide:** Safe version, owners, threshold, salt, fallback handler, or credential-storage policy.

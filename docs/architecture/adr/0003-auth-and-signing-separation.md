@@ -5,6 +5,10 @@
 
 ## Context
 
+> **Amended by contract v1.2.** The contract originally permitted Google OAuth
+> only; it now also permits email magic link. See section 8.2 of
+> `docs/week-1-frozen-delivery-contract.md`.
+
 The DOCX (Step 1) says "Email + passkey, or an existing wallet". The Week 1
 contract overrides this and records the resolution in Appendix B.1:
 
@@ -27,8 +31,12 @@ ApplicationSession    { domain: 'application-session', provider: 'google', userI
 TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', credentialId }
 ```
 
-- A single `LOGIN_PROVIDER = 'google'` constant is the only permitted provider,
-  with `EXCLUDED_LOGIN_PROVIDERS` recording what is deliberately not offered.
+- `LOGIN_PROVIDERS = ['google', 'email']` lists the permitted providers, with
+  `EXCLUDED_LOGIN_PROVIDERS` recording what is deliberately not offered
+  (password, wallet, SAML, phone). Email is used for magic links only; there is
+  no password field. The set was widened from Google-only by contract v1.2
+  (section 8.2); the separation below is unchanged by that, because it is a
+  property of the session, not of the provider.
 - `assertSessionCannotAuthoriseTransaction()` is a type-guard: passing a session
   to the signing path is a compile error where possible and a runtime throw
   everywhere else.
