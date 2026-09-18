@@ -21,8 +21,8 @@ of scope for Week 1.
 
 | Area | State | Why | Revisit |
 |---|---|---|---|
-| Onboarding Steps 1–2 screen | Placeholder shell; fields disabled, save nothing. The field contract now exists in `packages/shared/src/onboarding.ts` | The contract landed first; the screen is delivered by the onboarding workstream (D5) | With that workstream |
-| `/onboarding` validation and save | Validation exists in `@kade/shared` (`applicantProfile`, citizenships, residence history, household members, and the `stepOneComplete`/`stepTwoComplete` helpers); persistence is not implemented | Validation was the prerequisite; there is still no reachable database from the web app | Save with the UI; persistence when a Supabase project exists |
+| Onboarding Steps 1–2 screen | Built: stepper rail, applicant fields, citizenship and residence chips, tier cards, household editor, live fee | D5 | Faithfulness review against the handoff screenshots |
+| `/onboarding` validation and save | Validation delegates to `@kade/shared`; persistence is implemented behind a seam with a real Supabase store | There is no reachable database from the web app, so no write has been executed | First run against a Supabase project |
 | Fee at runtime | Web app computes the fee from the shared formula + `KADE_FEE_MODE`; the database can now recompute it independently via `public.preapproval_fee_usdc()` (`supabase/migrations/20260916000010_fee_function.sql`) | One formula, one source; the seed generator asserts the database parameters reproduce `@kade/shared`. The web path is not yet wired to the database function | Small change; contract says "from the active `fee_schedule`" |
 | Passkey credential metadata | In-memory seam; does not survive reload | No reachable database from the web app | When a Supabase project exists |
 | Safe WebAuthn signer address | Unresolved sentinel, never a fabricated address | Requires the Account-gate deployment inputs | Account gate |
