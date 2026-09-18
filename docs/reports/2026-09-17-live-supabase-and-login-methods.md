@@ -169,17 +169,22 @@ when a human completes the flow:
    `https://<project-ref>.supabase.co/auth/v1/callback` (the project hop, not
    the app's callback).
 
-## 8. Not verified
+## 8. Verification status
 
-- **A completed sign-in.** No session has been established end to end: the
-  redirect boundary is verified but no browser has followed the flow to Google
-  and back, and no magic link has been delivered and followed. The code paths
-  are covered by tests with a mocked Supabase client; the round trip is not.
+- **Google sign-in: completed end to end.** The project owner signed in with
+  Google and the session was established and restored, which proves the two
+  configuration details a request cannot prove: the app callback is accepted by
+  the project's redirect allow-list, and the Google client's authorised redirect
+  URI matches the project's `/auth/v1/callback`. This result is the project
+  owner's; the agent verified the redirect boundary only.
+- **Email magic link: not delivered and followed.** The provider is enabled and
+  the send path is implemented and tested against a mocked client, but no link
+  has completed the round trip through a real mailbox.
 - **The onboarding write path through the app.** The schema, triggers and RLS are
   verified directly with SQL; no onboarding save has been executed through the
   running application with a signed-in session.
 - **Mail delivery.** Resend is configured by the project owner but no message has
-  been observed arriving.
+  been observed arriving, so the magic-link path is unproven past the API call.
 
 ## 9. Secrets handling
 
