@@ -168,9 +168,7 @@ export function AuthPanel({
           background: tokens.surface,
           border: `1px solid ${tokens.border}`,
           borderRadius: '16px',
-          padding: '24px',
-          display: 'grid',
-          gap: '16px',
+          padding: '22px 24px',
           maxWidth: '560px',
         }}
       >
@@ -191,8 +189,9 @@ export function AuthPanel({
         ) : (
           <>
             <div>
-              <div
+              <label
                 style={{
+                  display: 'block',
                   fontSize: '12px',
                   fontWeight: 600,
                   color: tokens.muted,
@@ -200,7 +199,7 @@ export function AuthPanel({
                 }}
               >
                 Sign-in method
-              </div>
+              </label>
               <SignInMethodGroup
                 value={method}
                 onChange={(next) => {
@@ -214,24 +213,28 @@ export function AuthPanel({
             </div>
 
             {method === 'email' ? (
-              <EmailLinkForm
-                email={email}
+              <div style={{ marginTop: '16px' }}>
+                <EmailLinkForm
+                  email={email}
                 onEmailChange={(next) => {
                   setEmail(next);
                   setEmailError(null);
                 }}
-                error={emailError}
-                disabled={sending}
-              />
+                  error={emailError}
+                  disabled={sending}
+                />
+              </div>
             ) : null}
 
-            <AccountSummary state={accountState} />
+            <div style={{ marginTop: '18px' }}>
+              <AccountSummary state={accountState} />
+            </div>
           </>
         )}
       </form>
 
       {sentTo ? null : (
-        <div style={{ marginTop: '24px' }}>
+        <div style={{ marginTop: '22px' }}>
           <Button
             type="submit"
             form={FORM_ID}

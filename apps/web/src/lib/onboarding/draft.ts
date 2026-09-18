@@ -56,6 +56,47 @@ export function emptyDraft(): OnboardingDraft {
   };
 }
 
+/**
+ * Demo defaults for the setup screens.
+ *
+ * This is a demo build and the reference pre-fills its forms, so Step 2 starts
+ * populated instead of empty. The values reproduce the contract's worked
+ * example: a household of three, which is the documented 1.75 USDC demo
+ * pre-approval fee (section 2.1). Clearly demo data, not a real filing.
+ */
+export function demoDraft(
+  currentYear: number = new Date().getFullYear(),
+): OnboardingDraft {
+  return {
+    firstName: 'Marcus',
+    lastName: 'Feldt',
+    dob: '1982-03-14',
+    citizenships: ['DE'],
+    residences: [
+      {
+        countryCode: 'DE',
+        fromYear: currentYear - RESIDENCE_COVERAGE_YEARS,
+        toYear: 'present',
+      },
+    ],
+    tier: 0,
+    members: [
+      {
+        name: 'Lena Feldt',
+        relation: 'Spouse',
+        dob: '1985-07-22',
+        citizenship: 'NL',
+      },
+      {
+        name: 'Emil Feldt',
+        relation: 'Son',
+        dob: '2015-05-03',
+        citizenship: 'DE',
+      },
+    ],
+  };
+}
+
 export function countryName(code: CountryCode | ''): string {
   if (code === '') return '';
   return COUNTRIES.find((country) => country.code === code)?.name ?? code;

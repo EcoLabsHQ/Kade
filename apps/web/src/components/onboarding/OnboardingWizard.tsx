@@ -8,7 +8,6 @@ import { Field } from '@/components/ui/Field';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { Notice } from '@/components/ui/Notice';
 import { tokens } from '@/components/ui/tokens';
-import { FeeSummary } from '@/components/fees/FeeSummary';
 import {
   addCitizenship,
   addMember,
@@ -17,7 +16,7 @@ import {
   countryName,
   draftFromSnapshot,
   draftToSnapshot,
-  emptyDraft,
+  demoDraft,
   evaluateDraft,
   removeCitizenship,
   removeMember,
@@ -80,7 +79,7 @@ export function OnboardingWizard({
 }: OnboardingWizardProps) {
   const currentYear = currentYearProp ?? new Date().getFullYear();
   const [draft, setDraft] = useState<OnboardingDraft>(() =>
-    initial ? draftFromSnapshot(initial) : emptyDraft(),
+    initial ? draftFromSnapshot(initial) : demoDraft(currentYear),
   );
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
 
@@ -174,20 +173,6 @@ export function OnboardingWizard({
         </Notice>
       ) : null}
 
-      {!evaluation.canContinue ? (
-        <Notice
-          tone="warning"
-          title="Before you can continue"
-          style={{ maxWidth: '920px', marginBottom: '16px' }}
-        >
-          <ul style={{ margin: 0, paddingLeft: '18px' }}>
-            {evaluation.blockers.map((blocker) => (
-              <li key={blocker}>{blocker}</li>
-            ))}
-          </ul>
-        </Notice>
-      ) : null}
-
       {status.kind === 'saving' ? (
         <Notice tone="info" style={{ maxWidth: '920px', marginBottom: '16px' }}>
           Saving your file…
@@ -200,9 +185,6 @@ export function OnboardingWizard({
           style={{ maxWidth: '920px', marginBottom: '16px' }}
         >
           Your profile and household are stored against the active schedule.
-          {status.serverFee !== null
-            ? ` Server-confirmed pre-approval fee: ${status.serverFee.toFixed(2)} USDC.`
-            : ' The server-recomputed fee could not be read back in this environment.'}
         </Notice>
       ) : null}
       {status.kind === 'error' ? (
@@ -317,24 +299,6 @@ export function OnboardingWizard({
         />
       </div>
 
-      <Card
-        style={{ maxWidth: '920px', marginTop: '16px' }}
-        padding="16px 24px"
-      >
-        <FeeSummary mode={mode} householdSize={evaluation.householdSize} />
-        <p
-          style={{
-            margin: '8px 0 0',
-            fontSize: '11.5px',
-            color: tokens.muted,
-            lineHeight: 1.6,
-          }}
-        >
-          Recalculated live from the frozen formula as the household changes. The
-          authoritative amount is recomputed by the database on save; the browser
-          supplies no amount.
-        </p>
-      </Card>
 
       <div
         style={{

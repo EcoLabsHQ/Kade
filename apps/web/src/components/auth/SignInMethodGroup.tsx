@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import { tokens } from '@/components/ui/tokens';
+import { GoogleGlyph } from './GoogleGlyph';
 
 export type SignInMethod = 'google' | 'email';
 
@@ -33,10 +34,13 @@ const OPTIONS: readonly {
 /**
  * The sign-in method selector.
  *
- * A real radio group, not two decorative cards: it is keyboard operable with
- * arrow keys, exposes `role="radio"` and `aria-checked`, and keeps a roving
- * tabindex so Tab moves through the group once. Selecting a method drives both
- * the form below and the single primary action outside the card.
+ * A real radio group, not two decorative cards: keyboard operable with arrow
+ * keys, `role="radio"` with `aria-checked`, and a roving tabindex so Tab moves
+ * through the group once. Selecting a method drives both the form below and the
+ * single primary action outside the card.
+ *
+ * Styling follows the reference's method cards: 1fr 1fr grid, 10px gap, 14px/16px
+ * padding, 12px radius, 1.5px blue border on the selected card.
  */
 export function SignInMethodGroup({
   value,
@@ -105,7 +109,17 @@ export function SignInMethodGroup({
               opacity: enabled ? 1 : 0.6,
             }}
           >
-            <div style={{ fontSize: '14px', fontWeight: 600 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '14px',
+                fontWeight: 600,
+                color: selected ? tokens.ink : tokens.chipFg,
+              }}
+            >
+              {option.key === 'google' ? <GoogleGlyph size={18} /> : null}
               {option.title}
             </div>
             <div

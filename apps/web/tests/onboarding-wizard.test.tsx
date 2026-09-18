@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { preapprovalFeeUsdc } from '@kade/shared';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import type {
@@ -41,74 +35,47 @@ function renderWizard(
   );
 }
 
-function fillValidForm() {
-  fireEvent.change(screen.getByLabelText('First name'), {
-    target: { value: 'Ada' },
-  });
-  fireEvent.change(screen.getByLabelText('Last name'), {
-    target: { value: 'Lovelace' },
-  });
-  fireEvent.change(screen.getByLabelText('Date of birth'), {
-    target: { value: '1990-01-01' },
-  });
-  fireEvent.change(
-    screen.getByRole('combobox', { name: 'Add citizenship' }),
-    { target: { value: 'NL' } },
-  );
-  fireEvent.change(
-    screen.getByRole('combobox', { name: 'Add residence country' }),
-    { target: { value: 'DE' } },
-  );
-  fireEvent.click(screen.getByRole('radio', { name: /3-year/ }));
-}
-
 describe('Step 2 wizard', () => {
-  it('starts empty, shows the shared live fee, and gates Continue', () => {
+  it('starts populated with demo defaults, so the demo can be clicked through', () => {
     const { store } = makeStore();
     renderWizard(store);
 
-    expect(screen.getByText('1.25 USDC')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /continue/i }),
-    ).toBeDisabled();
-    expect(screen.getByText('First name is required.')).toBeInTheDocument();
-    expect(screen.getByText('At least one citizenship is required.')).toBeInTheDocument();
-  });
-
-  it('recalculates the fee when a household member is added and removed', () => {
-    const { store } = makeStore();
-    renderWizard(store);
-
-    fireEvent.click(screen.getByRole('button', { name: '+ Add member' }));
-    expect(
-      screen.getByText(`${preapprovalFeeUsdc('demo', 2).toFixed(2)} USDC`),
-    ).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Remove household member 1' }),
+    expect(screen.getByLabelText('First name')).toHaveValue('Marcus');
+    expect(screen.getByLabelText('Last name')).toHaveValue('Feldt');
+    // Household of three, the contract's worked example.
+    expect(screen.getByRole('radio', { name: /3-year/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
-    expect(
-      screen.getByText(`${preapprovalFeeUsdc('demo', 1).toFixed(2)} USDC`),
-    ).toBeInTheDocument();
   });
 
-  it('cannot advance while validation fails, then enables when valid', () => {
+  it('enables Continue with the populated draft', () => {
     const { store } = makeStore();
     renderWizard(store);
 
-    const continueButton = screen.getByRole('button', { name: /continue/i });
-    expect(continueButton).toBeDisabled();
-
-    fillValidForm();
-    expect(
-      screen.getByRole('button', { name: /continue/i }),
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
   });
 
-  it('saves through the seam and reports the server-confirmed fee', async () => {
+  it('does not mention the pre-approval fee: it belongs to step 4', () => {
+    const { store } = makeStore();
+    renderWizard(store);
+
+    expect(screen.queryByText(/pre-approval fee/i)).toBeNull();
+    expect(screen.queryByText(/USDC/)).toBeNull();
+  });
+
+  it('does not list validation blockers above the form', () => {
+    const { store } = makeStore();
+    renderWizard(store);
+
+    // The blocker list was developer-facing copy at the top of the screen; the
+    // fields themselves say what is missing.
+    expect(screen.queryByText(/before you can continue/i)).toBeNull();
+  });
+
+  it('saves the populated draft through the seam', async () => {
     const { store, save } = makeStore();
     renderWizard(store);
-    fillValidForm();
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
@@ -117,14 +84,11 @@ describe('Step 2 wizard', () => {
     expect(userId).toBe('user-1');
     expect(snapshot).not.toHaveProperty('amount');
     expect(snapshot?.profile).toEqual({
-      firstName: 'Ada',
-      lastName: 'Lovelace',
-      dob: '1990-01-01',
+      firstName: 'Marcus',
+      lastName: 'Feldt',
+      dob: '1982-03-14',
     });
-
-    await waitFor(() =>
-      expect(screen.getByText(/Server-confirmed pre-approval fee/i)).toBeInTheDocument(),
-    );
+    expect(snapshot?.members).toHaveLength(2);
   });
 
   it('renders a not-configured state and never fakes a save', () => {
@@ -135,7 +99,6 @@ describe('Step 2 wizard', () => {
       save,
     };
     renderWizard(store, 'not-configured');
-    fillValidForm();
 
     expect(screen.getByText('Saving not configured')).toBeInTheDocument();
     const continueButton = screen.getByRole('button', { name: /continue/i });
