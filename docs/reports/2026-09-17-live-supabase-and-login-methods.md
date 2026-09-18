@@ -131,15 +131,15 @@ which is how the gap surfaced. The fix registers cleanup once in
 
 | Suite | Tests |
 |---|---|
-| `apps/web` unit | 100 |
+| `apps/web` unit | 102 |
 | `packages/shared` unit | 61 |
 | Acceptance | 12 |
 | Regression | 4 |
 | Foundry | 45 |
 
-177 JavaScript tests plus 45 Foundry tests. Unit tests grew from 142 (100 web
+179 JavaScript tests plus 45 Foundry tests. Unit tests grew from 142 (102 web
 + 61 shared, was 81 + 61) because the login surface gained the magic-link path
-and its failure modes; the JavaScript total is 177, up from 158.
+and its failure modes; the JavaScript total is 179, up from 158.
 
 ## 7. Both providers are now enabled
 

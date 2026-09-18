@@ -143,12 +143,18 @@ work as complete.
   post-unlock behaviour.
 - The committed `supabase/seed.sql` is byte-for-byte reproducible from
   `packages/shared`, so the database and the application cannot disagree.
+- The Supabase schema, RLS and seed are applied to the live project and verified
+  there: 17 tables, RLS on all 17, 10 deny-by-default, and the fee function and
+  its triggers reproduce the contract's worked examples.
 
-**Not yet verified — these require project-supplied inputs that are absent from
-this environment:**
+**Verified outside the gate — not by the agent:**
 
-- **Google sign-in is verified end to end** — the project owner completed and
-  restored a session. That result is theirs, not the agent's.
+- **Google sign-in was completed end to end by the project owner**, who signed in
+  and restored the session. That result is theirs; the agent verified the
+  redirect boundary only.
+
+**Not yet verified:**
+
 - **Email magic link has not been delivered and followed.** The provider is
   enabled and the form is implemented and tested, but no link has completed the
   round trip through a real mailbox.
