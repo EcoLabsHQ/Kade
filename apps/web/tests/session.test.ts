@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { LOGIN_PROVIDERS } from '@kade/shared';
+import { providerLabel } from '@/lib/auth/provider-label';
 import { toApplicationSession } from '@/lib/auth/session';
 
 describe('application session mapping', () => {
@@ -41,5 +43,19 @@ describe('application session mapping', () => {
       'provider',
       'userId',
     ]);
+  });
+});
+
+describe('providerLabel', () => {
+  it('names the provider that actually established the session', () => {
+    // A resident who signed in by email must not be told they used Google.
+    expect(providerLabel('google')).toBe('Google');
+    expect(providerLabel('email')).toBe('Email link');
+  });
+
+  it('has a label for every permitted provider', () => {
+    for (const provider of LOGIN_PROVIDERS) {
+      expect(providerLabel(provider)).toBeTruthy();
+    }
   });
 });

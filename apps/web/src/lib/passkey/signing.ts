@@ -7,7 +7,7 @@ import {
 /**
  * Transaction-authorisation seam.
  *
- * Contract section 2 items 3-4: Google credentials cannot authorise financial
+ * Contract section 2 items 3-4: session credentials cannot authorise financial
  * transactions; only the passkey can. The guard is a runtime throw here and a
  * type error wherever the signature is used.
  *

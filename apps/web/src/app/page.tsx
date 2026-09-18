@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
+import { providerLabel } from '@/lib/auth/provider-label';
 import { getSessionUser } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -48,8 +49,8 @@ export default async function OverviewPage() {
                 textWrap: 'pretty',
               }}
             >
-              You are signed in through Google. Your transaction passkey is
-              separate and not yet enrolled.
+              You are signed in through {providerLabel(session.provider)}. Your
+              transaction passkey is separate and not yet enrolled.
             </p>
           </div>
         </div>
@@ -65,7 +66,7 @@ export default async function OverviewPage() {
           <StatCard
             label="Account status"
             value="Signed in"
-            sub="Google application session"
+            sub={`${providerLabel(session.provider)} application session`}
             valueColor={tokens.success}
           />
           <StatCard
@@ -104,7 +105,9 @@ export default async function OverviewPage() {
                 }}
               >
                 <span style={{ color: tokens.muted }}>Sign-in</span>
-                <span style={{ fontWeight: 600 }}>Google</span>
+                <span style={{ fontWeight: 600 }}>
+                  {providerLabel(session.provider)}
+                </span>
               </div>
               <div
                 style={{
