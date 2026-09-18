@@ -9,7 +9,6 @@ import { LockedAction } from '@/components/ui/LockedAction';
 import { Notice } from '@/components/ui/Notice';
 import { tokens } from '@/components/ui/tokens';
 import { FeeSummary } from '@/components/fees/FeeSummary';
-import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import {
   addCitizenship,
   addMember,
@@ -87,7 +86,8 @@ export function OnboardingWizard({
 
   const defaultStore = useMemo(
     () =>
-      createOnboardingStore(persistence, () => createSupabaseBrowserClient()),
+      // Writes go through a server action; the browser shapes none of them.
+      createOnboardingStore(persistence),
     [persistence],
   );
   const store = storeProp ?? defaultStore;
