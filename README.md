@@ -279,6 +279,7 @@ rather than vendored into it.
 - Backlog and 80-hour plan: `docs/planning/kade-mvp-backlog.xlsx`
 - Week 1 contract: `docs/week-1-frozen-delivery-contract.md`
 - Development contract: `docs/DEVELOPMENT_CONTRACT.md`
+- Human approval gates (the four Week 1 checkpoints): `docs/gates/README.md`
 - Known gaps and deliberate shortcuts: `docs/known-gaps.md`
 - Iteration reports: `docs/reports/2026-09-16-week-1-foundation.md`,
   `docs/reports/2026-09-17-week-1-ui-and-domains.md`,
