@@ -8,9 +8,14 @@ import { NetworkChip } from './NetworkChip';
 import { SafeAddressCard } from './SafeAddressCard';
 import { SidebarFooter } from './SidebarFooter';
 import type { NavGroupConfig } from './nav';
+import {
+  PreRegistrationStepper,
+  type StepperItem,
+} from '@/components/onboarding/PreRegistrationStepper';
 
 export interface SidebarProps {
   readonly nav: readonly NavGroupConfig[];
+  readonly stepper?: readonly StepperItem[];
   readonly network: string;
   readonly safeAddress: string | null;
   readonly email: string | null;
@@ -20,7 +25,13 @@ export interface SidebarProps {
  * The reference sidebar: fixed 240px column, logo, network chip, grouped nav,
  * the Safe address card and the footer.
  */
-export function Sidebar({ nav, network, safeAddress, email }: SidebarProps) {
+export function Sidebar({
+  nav,
+  stepper,
+  network,
+  safeAddress,
+  email,
+}: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -47,33 +58,37 @@ export function Sidebar({ nav, network, safeAddress, email }: SidebarProps) {
         <NetworkChip label={network} />
       </div>
 
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        {nav.map((group, groupIndex) => (
-          <div key={group.label ?? `group-${groupIndex}`}>
-            {group.label ? (
-              <div
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  letterSpacing: '.08em',
-                  textTransform: 'uppercase',
-                  color: tokens.muted,
-                  padding: '16px 12px 6px',
-                }}
-              >
-                {group.label}
-              </div>
-            ) : null}
-            {group.items.map((item) => (
-              <NavItem
-                key={item.href}
-                item={item}
-                active={pathname === item.href}
-              />
-            ))}
-          </div>
-        ))}
-      </nav>
+      {stepper ? (
+        <PreRegistrationStepper items={stepper} />
+      ) : (
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {nav.map((group, groupIndex) => (
+            <div key={group.label ?? `group-${groupIndex}`}>
+              {group.label ? (
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    letterSpacing: '.08em',
+                    textTransform: 'uppercase',
+                    color: tokens.muted,
+                    padding: '16px 12px 6px',
+                  }}
+                >
+                  {group.label}
+                </div>
+              ) : null}
+              {group.items.map((item) => (
+                <NavItem
+                  key={item.href}
+                  item={item}
+                  active={pathname === item.href}
+                />
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
 
       <div style={{ marginTop: '18px' }}>
         <SafeAddressCard address={safeAddress} network={network} />
