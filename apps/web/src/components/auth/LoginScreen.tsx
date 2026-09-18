@@ -93,7 +93,10 @@ export function LoginScreen({
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          padding: '40px 40px 40px',
+          maxWidth: '1160px',
+          width: '100%',
+          margin: '0 auto',
+          padding: '36px 40px 64px',
         }}
       >
         <div
@@ -110,7 +113,7 @@ export function LoginScreen({
 
         <h1
           style={{
-            margin: '10px 0 8px',
+            margin: '8px 0 6px',
             fontSize: '30px',
             fontWeight: 700,
             letterSpacing: '-.02em',
@@ -129,7 +132,7 @@ export function LoginScreen({
         >
           {returning
             ? 'Sign in to continue your application.'
-            : 'Sign in with Google or a one-time email link. No password or seed phrase to manage.'}
+            : 'Sign in with Google or a one-time email link. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'}
         </p>
 
         {noMethodEnabled ? (
