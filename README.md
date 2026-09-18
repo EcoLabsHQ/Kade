@@ -92,13 +92,15 @@ Two authorities, deliberately separate:
 
 | | Credential | Grants |
 |---|---|---|
-| Application session | Google OAuth via Supabase | Access to the resident's own rows |
+| Application session | Google OAuth or email magic link, via Supabase | Access to the resident's own rows |
 | Transaction signing | Passkey (direct Safe WebAuthn signer) | Authorising Safe transactions |
 
-Google is the only login. There is no email or OTP fallback. The passkey is
-created after sign-in and is never requested during sign-in, and a Google
-session can never authorise a transaction. See
-[ADR 0003](docs/architecture/adr/0003-auth-and-signing-separation.md).
+Google OAuth and email magic link are the permitted logins; there is no
+password field and no wallet login. The passkey is created after sign-in and is
+never requested during sign-in, and neither session type can authorise a
+transaction. See
+[ADR 0003](docs/architecture/adr/0003-auth-and-signing-separation.md) and
+contract v1.2 section 8.2.
 
 ## Week 1 scope (frozen)
 
@@ -109,7 +111,7 @@ development/orchestration hours; agents run in parallel).
 |---|---|
 | EXE-001 | Public repo, environments, provider config, Supabase setup |
 | EXE-002 | `chains` and `fee_schedule` seeded (testnet active) |
-| EXE-003 | Google-only login, protected routes, transaction passkey |
+| EXE-003 | Google or email magic-link login, protected routes, transaction passkey |
 | EXE-004 | Resident Safe on Ethereum Sepolia + predicted L2 addresses |
 | EXE-005 | Steps 1–2 live, persisted, with server-calculated fee |
 | EXE-006 | Five EAS schemas on Sepolia + tested KadeLock baseline |
@@ -272,4 +274,5 @@ rather than vendored into it.
 - Development contract: `docs/DEVELOPMENT_CONTRACT.md`
 - Known gaps and deliberate shortcuts: `docs/known-gaps.md`
 - Iteration reports: `docs/reports/2026-09-16-week-1-foundation.md`,
-  `docs/reports/2026-09-17-week-1-ui-and-domains.md`
+  `docs/reports/2026-09-17-week-1-ui-and-domains.md`,
+  `docs/reports/2026-09-17-live-supabase-and-login-methods.md`
