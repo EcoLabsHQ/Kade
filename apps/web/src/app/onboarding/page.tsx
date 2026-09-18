@@ -1,36 +1,19 @@
 import { redirect } from 'next/navigation';
-import { AppShell } from '@/components/shell/AppShell';
-import { ContentContainer } from '@/components/shell/ContentContainer';
-import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
-import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
+import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { chainsForEnv } from '@kade/shared';
 import { getSessionUser } from '@/lib/supabase/server';
-import { isAuthConfigured, readAuthEnv, readFeeMode } from '@/lib/env';
+import { isAuthConfigured, readAuthEnv, readChainEnv, readFeeMode } from '@/lib/env';
 import { loadOnboardingSnapshot } from '@/lib/onboarding/server';
 import type { OnboardingSnapshot } from '@/lib/onboarding/persistence';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * The pre-registration stepper. Step 1 (account creation) is satisfied by the
- * authenticated session; Step 2 is this screen. Steps 3–4 are Week 1
- * exclusions (contract section 9), so they are shown locked rather than hidden.
- */
-const PRE_REGISTRATION_STEPS: readonly StepperItem[] = [
-  { title: 'Create account', state: 'done' },
-  { title: 'Profile & household', state: 'active' },
-  {
-    title: 'Proof of wealth',
-    state: 'locked',
-    lockReason:
-      'Proof of wealth is out of Week 1 scope (contract section 9).',
-  },
-  {
-    title: 'Pay pre-approval fee',
-    state: 'locked',
-    lockReason:
-      'Pre-approval payment execution is out of Week 1 scope (contract section 9).',
-  },
-];
+/** The chain the flow is actually running on: Sepolia while testing. */
+function activeNetworkLabel(): string {
+  const chains = chainsForEnv(readChainEnv());
+  const ethereum = chains.find((chain) => chain.key === 'ethereum') ?? chains[0];
+  return ethereum?.name ?? 'Ethereum Sepolia';
+}
 
 export default async function OnboardingPage() {
   const session = await getSessionUser();
@@ -39,9 +22,6 @@ export default async function OnboardingPage() {
   }
 
   const configured = isAuthConfigured(readAuthEnv());
-
-  // The active fee mode is a server-side configuration switch, passed down as a
-  // prop. The client can display the amount but cannot select or override it.
   const feeMode = readFeeMode();
 
   let initial: OnboardingSnapshot | null = null;
@@ -49,8 +29,7 @@ export default async function OnboardingPage() {
     try {
       initial = await loadOnboardingSnapshot(session.userId);
     } catch (cause) {
-      // A failed restore must not be mistaken for "no saved data". The wizard
-      // still starts empty and will not save until the applicant asks it to.
+      // A failed restore must not be mistaken for "no saved data".
       console.warn(
         '[kade] Could not restore the onboarding draft:',
         cause instanceof Error ? cause.message : cause,
@@ -59,15 +38,13 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <AppShell email={session.email} stepper={PRE_REGISTRATION_STEPS}>
-      <ContentContainer>
-        <OnboardingWizard
-          mode={feeMode}
-          userId={session.userId}
-          persistence={configured ? 'supabase' : 'not-configured'}
-          initial={initial}
-        />
-      </ContentContainer>
-    </AppShell>
+    <OnboardingFlow
+      userId={session.userId}
+      mode={feeMode}
+      persistence={configured ? 'supabase' : 'not-configured'}
+      initial={initial}
+      network={activeNetworkLabel()}
+      accountState={{ kind: 'pending' }}
+    />
   );
 }

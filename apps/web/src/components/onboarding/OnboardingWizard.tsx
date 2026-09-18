@@ -48,6 +48,11 @@ export interface OnboardingWizardProps {
   readonly initial?: OnboardingSnapshot | null;
   /** Test seam: supply a store instead of building one from `persistence`. */
   readonly store?: OnboardingStore;
+  /**
+   * Where a successful save leads. Receives the snapshot that was saved, so
+   * later steps show what is actually stored. Defaults to the dashboard.
+   */
+  readonly onContinue?: (snapshot: OnboardingSnapshot) => void;
   readonly currentYear?: number;
 }
 
@@ -79,6 +84,7 @@ export function OnboardingWizard({
   initial = null,
   store: storeProp,
   currentYear: currentYearProp,
+  onContinue,
 }: OnboardingWizardProps) {
   const router = useRouter();
   const currentYear = currentYearProp ?? new Date().getFullYear();
@@ -139,10 +145,13 @@ export function OnboardingWizard({
       const persisted = await store.save(userId, snapshot);
       setStatus({ kind: 'saved', serverFee: persisted.preapprovalUsdc });
       // Saving is the step's whole purpose, so move the resident forward rather
-      // than leaving them on a screen that looks like nothing happened. The
-      // dashboard is now reachable because onboarding is complete.
-      router.push('/');
-      router.refresh();
+      // than leaving them on a screen that looks like nothing happened.
+      if (onContinue) {
+        onContinue(snapshot);
+      } else {
+        router.push('/');
+        router.refresh();
+      }
     } catch (cause) {
       setStatus({
         kind: 'error',
@@ -189,11 +198,6 @@ export function OnboardingWizard({
         </Notice>
       ) : null}
 
-      {status.kind === 'saving' ? (
-        <Notice tone="info" style={{ maxWidth: '920px', marginBottom: '16px' }}>
-          Saving your file…
-        </Notice>
-      ) : null}
       {status.kind === 'error' ? (
         <Notice
           tone="error"
