@@ -408,38 +408,3 @@ export function createSupabaseOnboardingStore(
   };
 }
 
-/**
- * The store the browser uses to save.
- *
- * `save` delegates to a server action, so no write is shaped or issued by the
- * browser. `load` is served by the server-rendered page (`lib/onboarding/server.ts`),
- * so this side has nothing to read.
- *
- * Kept behind the same `OnboardingStore` interface as the other stores so the
- * wizard can still be tested with a fake.
- */
-export function createServerActionOnboardingStore(): OnboardingStore {
-  return {
-    mode: 'supabase',
-    async load() {
-      return null;
-    },
-    async save(_userId: string, snapshot: OnboardingSnapshot) {
-      const { saveOnboardingStep2 } = await import('@/app/onboarding/actions');
-      return saveOnboardingStep2(snapshot);
-    },
-  };
-}
-
-/** Chooses the store for a persistence mode. */
-export function createOnboardingStore(
-  mode: PersistenceMode,
-  getClient?: () => SupabaseClient,
-): OnboardingStore {
-  if (mode !== 'supabase') return createNotConfiguredOnboardingStore();
-  // `getClient` is retained for the server-side restore path; the browser save
-  // always goes through the action.
-  return getClient
-    ? createSupabaseOnboardingStore(getClient)
-    : createServerActionOnboardingStore();
-}

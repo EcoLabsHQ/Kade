@@ -1,30 +1,34 @@
-import { tokens } from '@/components/ui/tokens';
+import Image from 'next/image';
 
 export interface CountryBadgeProps {
   readonly code: string;
 }
 
-/** The reference's country-code badge: 22x16, `rgba(16,24,40,.08)`, 10px/700. */
+/**
+ * The reference's country mark: a 16x12 flag image with a 2px radius.
+ *
+ * The reference loads these from `flagcdn.com` (`w40/<iso>.png`), which is what
+ * the deployed MVP does; the handoff README's claim that badges are text-only
+ * does not match the prototype's own markup, and the rendered reference clearly
+ * shows flags.
+ */
 export function CountryBadge({ code }: CountryBadgeProps) {
+  const iso = code.toLowerCase();
+
   return (
-    <span
-      aria-hidden
+    <Image
+      src={`https://flagcdn.com/w40/${iso}.png`}
+      alt=""
+      width={16}
+      height={12}
+      unoptimized
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth: '22px',
-        height: '16px',
-        borderRadius: '3px',
-        background: 'rgba(16,24,40,.08)',
-        fontSize: '10px',
-        fontWeight: 700,
-        letterSpacing: '.02em',
-        color: tokens.chipFg,
+        width: '16px',
+        height: '12px',
+        borderRadius: '2px',
+        objectFit: 'cover',
         flex: '0 0 auto',
       }}
-    >
-      {code}
-    </span>
+    />
   );
 }

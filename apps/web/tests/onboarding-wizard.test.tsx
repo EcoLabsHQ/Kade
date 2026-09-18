@@ -1,13 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { preapprovalFeeUsdc } from '@kade/shared';
+
+const hoisted = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
+}));
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
 } from '@/lib/onboarding/persistence';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  hoisted.push.mockReset();
+  hoisted.refresh.mockReset();
+});
 
 function makeStore() {
   const save = vi.fn(
@@ -89,6 +98,9 @@ describe('Step 2 wizard', () => {
       dob: '1982-03-14',
     });
     expect(snapshot?.members).toHaveLength(2);
+
+    // Saving moves the resident on: the button does something visible.
+    await waitFor(() => expect(hoisted.push).toHaveBeenCalledWith('/'));
   });
 
   it('renders a not-configured state and never fakes a save', () => {

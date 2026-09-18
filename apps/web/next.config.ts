@@ -12,6 +12,10 @@ import type { NextConfig } from 'next';
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Country marks are loaded from the same source the reference uses.
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: 'flagcdn.com' }],
+  },
   transpilePackages: ['@kade/shared'],
   webpack(config) {
     config.resolve = config.resolve ?? {};

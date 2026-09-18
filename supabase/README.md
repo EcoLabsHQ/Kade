@@ -56,6 +56,24 @@ supabase db reset
 `supabase db reset` is the clean-database path required by D2: it drops the
 local database, replays every migration in order, then runs `seed.sql`.
 
+## Resetting the demo to its base state
+
+The demo should start from the same state every time. `reset_demo_data()` deletes
+every resident (which cascades from `auth.users` through profiles, applications,
+household members, wallets, attestations, documents and the rail and card rows)
+and then asserts that the seeded configuration survived.
+
+```sql
+select public.reset_demo_data();
+```
+
+It is `SECURITY DEFINER` with `EXECUTE` revoked from `public`, `anon` and
+`authenticated`, so it cannot be reached with the publishable key. Run it before
+a demo, and after anything that writes resident data.
+
+> **Warning:** only ever run it against the demo project. It is a demo reset, not
+> a maintenance tool.
+
 ## Regenerating the seed
 
 `supabase/seed.sql` is generated from `@kade/shared`; never edit it by hand.
