@@ -12,11 +12,13 @@
 The DOCX (Step 1) says "Email + passkey, or an existing wallet". The Week 1
 contract overrides this and records the resolution in Appendix B.1:
 
-- Google OAuth through Supabase is the **only** application login.
-- No email OTP fallback.
+- Google OAuth and email magic link through Supabase are the permitted
+  application logins (contract v1.2, section 8.2). Password authentication and
+  wallet login are excluded.
 - The passkey is **separate** from the login session and authorises Safe
   transactions only.
-- Google credentials **cannot** authorise financial transactions.
+- Session credentials **cannot** authorise financial transactions, whichever
+  provider issued them.
 - The signer is the **direct Safe WebAuthn signer**; no managed embedded signer
   (Privy, Turnkey) in Week 1.
 - The resident Safe has one operational owner — the passkey — and threshold 1.

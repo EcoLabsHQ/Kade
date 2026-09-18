@@ -46,7 +46,7 @@ export function NotConfiguredNotice({ detail, title }: NotConfiguredNoticeProps)
         }}
       >
         {detail ??
-          'No Supabase project is connected, so Google sign-in cannot start. ' +
+          'No Supabase project is connected, so sign-in cannot start. ' +
             'The app will not fake a signed-in state.'}
       </p>
       {title ? null : (
