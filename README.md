@@ -208,6 +208,8 @@ Key rules:
 - **commit ≠ known-good.** Intermediate commits may be granular and unreviewed.
 - The reviewer compares `git diff known-good...HEAD`, not individual commits.
 - Never move `known-good` while verification fails or a regression is open.
+- CI (`.github/workflows/ci.yml`) runs the same `./scripts/verify.sh` on every
+  push and pull request against `main`; `./scripts/verify-full.sh` stays manual.
 - Regression tests live in `tests/regressions/`; the bisect protocol is in
   `scripts/regression/README.md`.
 - Values absent from the governing documents are labelled `[arbitrary]` and

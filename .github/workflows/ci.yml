@@ -1,0 +1,60 @@
+name: CI
+
+# The canonical mechanical gate, run automatically. CI runs the same
+# `./scripts/verify.sh` a human runs locally; it does not define its own
+# notion of "passing" (docs/VERIFY_GUIDE.md).
+#
+# No secrets are configured or required. Any check that would need credentials
+# stays out of this workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Same version a contributor gets from `nvm use`; it satisfies the
+          # `engines.node` range in package.json (>=20.18.0).
+          node-version-file: .nvmrc
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install pinned Foundry dependencies
+        # `scripts/setup.sh` is the single source of truth for the pinned
+        # Foundry dependency versions (forge-std, safe-smart-account); the
+        # versions are deliberately not repeated here. The installs are
+        # `--no-git` because `packages/contracts/lib/` is git-ignored
+        # (safe-smart-account is LGPL-3.0 and is not vendored).
+        #
+        # The script's `npm install` is a no-op after the `npm ci` above.
+        run: ./scripts/setup.sh
+
+      - name: Run the canonical verification gate
+        run: ./scripts/verify.sh
