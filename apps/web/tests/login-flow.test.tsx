@@ -17,8 +17,20 @@ vi.mock('@/lib/supabase/browser', () => ({
 }));
 
 const callbackUrl = 'http://localhost:3000/auth/callback';
-
 const webauthn = { get: vi.fn(), create: vi.fn() };
+
+function renderLogin(overrides: Record<string, unknown> = {}) {
+  return render(
+    <LoginScreen
+      configured
+      available={{ google: true, email: true }}
+      callbackUrl={callbackUrl}
+      network="Ethereum Sepolia"
+      accountState={{ kind: 'anonymous' }}
+      {...overrides}
+    />,
+  );
+}
 
 beforeEach(() => {
   hoisted.signInWithOAuth.mockReset();
@@ -33,35 +45,71 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  cleanup();
-});
+afterEach(() => cleanup());
 
-describe('login screen', () => {
-  it('offers Google and email magic link, and no password or wallet option', () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
+describe('account creation, step 1', () => {
+  it('renders as the first step of the resident setup flow', () => {
+    renderLogin();
 
+    expect(screen.getByText(/step 1 of 4/i)).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /continue with google/i }),
+      screen.getByRole('heading', { name: /create your account/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /email me a link/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    // The setup steps are in the sidebar, with step 1 current.
+    expect(screen.getByText('Create account')).toBeInTheDocument();
+    expect(screen.getByText('Profile & household')).toBeInTheDocument();
+  });
 
-    // Still excluded by contract section 2 item 2 (amended v1.2).
+  it('offers Google and email link as one accessible radio group', () => {
+    renderLogin();
+
+    const group = screen.getByRole('radiogroup', { name: /sign-in method/i });
+    expect(group).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: /google/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('does not offer a password field or a wallet option', () => {
+    renderLogin();
+
     expect(document.querySelector('input[type="password"]')).toBeNull();
     for (const button of screen.getAllByRole('button')) {
       expect(button).not.toHaveAccessibleName(/password|wallet|passkey/i);
     }
   });
 
-  it('starts the Google OAuth flow without invoking WebAuthn', async () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
+  it('shows the email field only while the email method is selected', () => {
+    renderLogin();
 
-    fireEvent.click(
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /email link/i }));
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+  });
+
+  it('moves the single primary action with the selected method', () => {
+    renderLogin();
+
+    expect(
       screen.getByRole('button', { name: /continue with google/i }),
-    );
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: /email link/i }));
+
+    expect(
+      screen.getByRole('button', { name: /email me a link/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /continue with google/i }),
+    ).toBeNull();
+  });
+
+  it('starts the Google flow without invoking WebAuthn', async () => {
+    renderLogin();
+
+    fireEvent.click(screen.getByRole('button', { name: /continue with google/i }));
 
     await waitFor(() =>
       expect(hoisted.signInWithOAuth).toHaveBeenCalledWith({
@@ -69,14 +117,14 @@ describe('login screen', () => {
         options: { redirectTo: callbackUrl },
       }),
     );
-
     expect(webauthn.get).not.toHaveBeenCalled();
     expect(webauthn.create).not.toHaveBeenCalled();
   });
 
-  it('sends a magic link, with account creation allowed, without invoking WebAuthn', async () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
+  it('sends a magic link, allowing account creation, without WebAuthn', async () => {
+    renderLogin();
 
+    fireEvent.click(screen.getByRole('radio', { name: /email link/i }));
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: 'resident@example.com' },
     });
@@ -88,28 +136,14 @@ describe('login screen', () => {
         options: { emailRedirectTo: callbackUrl, shouldCreateUser: true },
       }),
     );
-
     expect(webauthn.get).not.toHaveBeenCalled();
     expect(webauthn.create).not.toHaveBeenCalled();
   });
 
-  it('confirms where the link went, and offers a way back', async () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
+  it('rejects an invalid address before asking Supabase for anything', async () => {
+    renderLogin();
 
-    fireEvent.change(screen.getByLabelText(/email/i), {
-      target: { value: 'resident@example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /email me a link/i }));
-
-    expect(await screen.findByText(/resident@example.com/)).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /use a different address/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('rejects an invalid address before calling Supabase', async () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
-
+    fireEvent.click(screen.getByRole('radio', { name: /email link/i }));
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: 'not-an-email' },
     });
@@ -119,29 +153,38 @@ describe('login screen', () => {
     expect(hoisted.signInWithOtp).not.toHaveBeenCalled();
   });
 
-  it('renders an explicit not-configured state and locks both methods', () => {
-    render(<LoginScreen configured={false} callbackUrl={callbackUrl} />);
+  it('replaces the form with a confirmation once the link is sent', async () => {
+    renderLogin();
 
-    expect(screen.getByText(/authentication not configured/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /email link/i }));
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: 'resident@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /email me a link/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: /check your email/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/resident@example.com/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /use a different email/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('disables the action when sign-in is not configured', () => {
+    renderLogin({ configured: false });
+
     expect(
       screen.getByRole('button', { name: /continue with google/i }),
     ).toBeDisabled();
-    expect(
-      screen.getByRole('button', { name: /email me a link/i }),
-    ).toBeDisabled();
   });
 
-  it('does not fabricate a Safe address', () => {
-    render(<LoginScreen configured callbackUrl={callbackUrl} />);
+  it('does not fabricate an account before authentication', () => {
+    renderLogin();
 
-    // The label must not imply a Safe exists. It previously read
-    // "Safe · 0x… · Ethereum Sepolia", which showed a placeholder address
-    // beside a "Created in the background" chip while no Safe was deployed.
     expect(
-      screen.getByText(/Safe · not yet deployed · Ethereum Sepolia/),
+      screen.getByText(/your account will be set up after you sign in/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Not yet created/)).toBeInTheDocument();
-    expect(screen.getByText(/address is withheld rather than fabricated/i)).toBeInTheDocument();
-    expect(screen.queryByText(/0x…/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/0x/)).toBeNull();
   });
 });

@@ -1,60 +1,57 @@
-import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
-import { GoogleGlyph } from '@/components/auth/GoogleGlyph';
-import { NotConfiguredNotice } from '@/components/auth/NotConfiguredNotice';
-import { SignInPanel } from '@/components/auth/SignInPanel';
-import { Logo } from '@/components/shell/Logo';
-import { NetworkChip } from '@/components/shell/NetworkChip';
-
-const METHOD_ROW: React.CSSProperties = {
-  border: `1px solid ${tokens.border}`,
-  background: '#fff',
-  borderRadius: '12px',
-  padding: '14px 16px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '12px',
-};
-
-const METHOD_SUB: React.CSSProperties = {
-  fontSize: '12px',
-  color: tokens.muted,
-  marginTop: '2px',
-};
-
-const METHOD_GLYPH: React.CSSProperties = {
-  width: '22px',
-  height: '22px',
-  flex: '0 0 22px',
-  borderRadius: '50%',
-  background: tokens.chipBg,
-  color: tokens.chipFg,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '12px',
-  fontWeight: 700,
-};
+import { SetupSidebar } from '@/components/shell/SetupSidebar';
+import { SiteFooter } from '@/components/shell/SiteFooter';
+import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
+import type { AccountState } from './AccountSummary';
+import { AuthPanel } from './AuthPanel';
+import type { SignInMethod } from './SignInMethodGroup';
 
 export interface LoginScreenProps {
   readonly configured: boolean;
-  /** false only when the project is connected and the method is known-disabled. */
-  readonly googleEnabled?: boolean;
-  readonly emailEnabled?: boolean;
-  readonly anyProviderEnabled?: boolean;
+  readonly available: Readonly<Record<SignInMethod, boolean>>;
   readonly callbackUrl: string;
+  readonly network: string;
+  readonly accountState: AccountState;
+  /** True when we know the visitor already has an account (for example they
+   *  just signed out), which changes only the heading copy. */
+  readonly returning?: boolean;
   readonly reason?: string;
   readonly error?: string;
-  readonly next?: string;
 }
+
+/**
+ * Account creation / sign-in, as step 1 of the resident setup flow.
+ *
+ * The reference renders this step inside the setup shell, so it carries the
+ * sidebar and the footer rather than standing alone. Only the sign-in methods
+ * differ from the reference: contract section 2 item 2 (amended v1.2) permits
+ * Google OAuth and email magic link, not the prototype's passkey or wallet.
+ */
+const STEPS: readonly StepperItem[] = [
+  { title: 'Create account', state: 'active' },
+  {
+    title: 'Profile & household',
+    state: 'locked',
+    lockReason: 'Sign in to continue.',
+  },
+  {
+    title: 'Proof of wealth',
+    state: 'locked',
+    lockReason: 'Sign in to continue.',
+  },
+  {
+    title: 'Pay pre-approval fee',
+    state: 'locked',
+    lockReason: 'Sign in to continue.',
+  },
+];
 
 function statusMessage(error?: string, reason?: string): string | null {
   if (error === 'missing-code') {
-    // The callback is shared by both providers, so do not name one.
     return 'The sign-in provider did not return an authorisation code. Please try again.';
   }
   if (error === 'callback-failed') {
-    return 'The sign-in callback could not be completed. Please try again.';
+    return 'The sign-in link could not be completed. Request a new one and try again.';
   }
   if (reason === 'signed-out') {
     return 'You have been signed out.';
@@ -62,243 +59,143 @@ function statusMessage(error?: string, reason?: string): string | null {
   return null;
 }
 
-/**
- * Login screen.
- *
- * Visual language ported from the reference's "Create your account" step
- * (template.html lines 268-285), but with the contract's frozen auth model as
- * amended v1.2: Google OAuth and email magic link are the methods, there is no
- * password field and no wallet option, and the passkey is not requested here.
- */
 export function LoginScreen({
   configured,
-  googleEnabled = true,
-  emailEnabled = true,
-  anyProviderEnabled = true,
+  available,
   callbackUrl,
+  network,
+  accountState,
+  returning = false,
   reason,
   error,
-  next,
 }: LoginScreenProps) {
   const message = statusMessage(error, reason);
-  const notConfigured = !configured || reason === 'not-configured';
-  // Connected but the provider is missing: a different problem, with a
-  // different fix. Never conflate the two.
-  const providerDisabled = configured && !anyProviderEnabled;
+  // Connected, but neither provider is enabled: the redirect would land on the
+  // provider's raw error, so say so here instead.
+  const noMethodEnabled =
+    configured && !available.google && !available.email;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#fff' }}>
-      <div
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#fff',
+        display: 'flex',
+        alignItems: 'stretch',
+        animation: 'fadeUp .2s ease-out',
+      }}
+    >
+      <SetupSidebar steps={STEPS} network={network} accountState={accountState} />
+
+      <main
         style={{
-          maxWidth: '1160px',
-          width: '100%',
-          margin: '0 auto',
-          padding: '36px 40px 64px',
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '40px 40px 40px',
         }}
       >
-        <header
+        <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '28px',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            textTransform: 'uppercase',
+            color: tokens.muted,
           }}
         >
-          <Logo />
-          <NetworkChip label="Ethereum Sepolia" />
-        </header>
+          Step 1 of 4
+        </div>
 
-        <section style={{ minWidth: 0, maxWidth: '900px' }}>
-          <div style={{ animation: 'fadeUp .2s ease-out' }}>
+        <h1
+          style={{
+            margin: '10px 0 8px',
+            fontSize: '30px',
+            fontWeight: 700,
+            letterSpacing: '-.02em',
+          }}
+        >
+          {returning ? 'Welcome back' : 'Create your account'}
+        </h1>
+
+        <p
+          style={{
+            margin: '0 0 24px',
+            color: tokens.muted,
+            maxWidth: '62ch',
+            textWrap: 'pretty',
+          }}
+        >
+          {returning
+            ? 'Sign in to continue your application.'
+            : 'Sign in with Google or a one-time email link. No password or seed phrase to manage.'}
+        </p>
+
+        {noMethodEnabled ? (
+          <div
+            role="status"
+            style={{
+              margin: '0 0 16px',
+              background: '#FDF6E7',
+              border: `1px solid ${tokens.warning}`,
+              borderRadius: '12px',
+              padding: '14px 16px',
+              maxWidth: '560px',
+            }}
+          >
             <div
               style={{
-                fontSize: '11px',
+                fontSize: '12px',
                 fontWeight: 700,
-                letterSpacing: '.08em',
+                letterSpacing: '.04em',
                 textTransform: 'uppercase',
-                color: tokens.muted,
+                color: tokens.warning,
               }}
             >
-              Step 1 of 4
+              No sign-in method is enabled
             </div>
-            <h2
-              style={{
-                margin: '8px 0 6px',
-                fontSize: '30px',
-                fontWeight: 700,
-                letterSpacing: '-.02em',
-              }}
-            >
-              Create your account
-            </h2>
             <p
               style={{
-                margin: '0 0 24px',
-                color: tokens.muted,
-                maxWidth: '62ch',
-                textWrap: 'pretty',
+                margin: '6px 0 0',
+                fontSize: '13px',
+                color: tokens.chipFg,
+                lineHeight: 1.55,
               }}
             >
-              Sign in with Google or a one-time email link. A Safe smart
-              account on Ethereum is created for you in the background — no seed
-              phrase to manage. A separate passkey is enrolled later and
-              authorises transactions only.
+              This project is connected, but neither Google nor email sign-in is
+              enabled on it yet.
             </p>
-
-            <div
-              style={{
-                background: tokens.surface,
-                border: `1px solid ${tokens.border}`,
-                borderRadius: '16px',
-                padding: '22px 24px',
-                maxWidth: '560px',
-              }}
-            >
-              {notConfigured ? <NotConfiguredNotice /> : null}
-              {providerDisabled ? (
-                <NotConfiguredNotice
-                  title="No sign-in method is enabled"
-                  detail={
-                    'This Supabase project is connected, but neither the Google ' +
-                    'nor the email provider is enabled on it, so sign-in cannot ' +
-                    'start. Enable one in the Supabase dashboard under ' +
-                    'Authentication > Providers, then add this app\u2019s ' +
-                    'callback URL to the project\u2019s redirect allow-list.'
-                  }
-                />
-              ) : null}
-
-              {message ? (
-                <p
-                  role="status"
-                  style={{
-                    margin: '0 0 16px',
-                    padding: '10px 14px',
-                    background: '#fff',
-                    border: `1px solid ${tokens.border}`,
-                    borderRadius: '10px',
-                    fontSize: '13px',
-                    color: tokens.chipFg,
-                  }}
-                >
-                  {message}
-                </p>
-              ) : null}
-
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: tokens.muted,
-                  marginBottom: '6px',
-                }}
-              >
-                Sign-in method
-              </label>
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <div style={METHOD_ROW}>
-                  <GoogleGlyph size={22} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '14px', fontWeight: 600 }}>Google</div>
-                    <div style={METHOD_SUB}>Continue with your Google account</div>
-                  </div>
-                </div>
-                <div style={METHOD_ROW}>
-                  <span aria-hidden style={METHOD_GLYPH}>
-                    @
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                      Email link
-                    </div>
-                    <div style={METHOD_SUB}>
-                      A one-time sign-in link. No password.
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <p
-                style={{
-                  margin: '8px 0 0',
-                  fontSize: '11.5px',
-                  color: tokens.muted,
-                }}
-              >
-                Not offered in Week 1: passwords, wallet login, and external
-                wallets (contract section 2 item 2, amended v1.2, and section 9).
-              </p>
-
-              <div
-                style={{
-                  marginTop: '18px',
-                  background: '#fff',
-                  border: `1px solid ${tokens.border}`,
-                  borderRadius: '12px',
-                  padding: '14px 16px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '12px', color: tokens.muted }}>
-                    Your Onchain Island account
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      fontVariantNumeric: 'tabular-nums',
-                      marginTop: '2px',
-                    }}
-                  >
-                    Safe · not yet deployed · Ethereum Sepolia
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: tokens.muted,
-                      marginTop: '4px',
-                    }}
-                  >
-                    No address is shown because no Safe has been deployed in
-                    this environment. The address is withheld rather than
-                    fabricated.
-                  </div>
-                </div>
-                <Chip tone="neutral" dot dotColor={tokens.muted}>
-                  Not yet created
-                </Chip>
-              </div>
-
-              <SignInPanel
-                configured={configured}
-                googleEnabled={googleEnabled}
-                emailEnabled={emailEnabled}
-                callbackUrl={callbackUrl}
-              />
-
-              {next ? (
-                <p
-                  style={{
-                    margin: '12px 0 0',
-                    fontSize: '11.5px',
-                    color: tokens.muted,
-                  }}
-                >
-                  After sign-in you will return to{' '}
-                  <code style={{ fontFamily: 'ui-monospace, monospace' }}>
-                    {next}
-                  </code>
-                  .
-                </p>
-              ) : null}
-            </div>
           </div>
-        </section>
-      </div>
+        ) : null}
+
+        {message ? (
+          <p
+            role="status"
+            style={{
+              margin: '0 0 16px',
+              fontSize: '13px',
+              color: tokens.chipFg,
+              background: tokens.surface,
+              border: `1px solid ${tokens.border}`,
+              borderRadius: '10px',
+              padding: '10px 12px',
+              maxWidth: '560px',
+            }}
+          >
+            {message}
+          </p>
+        ) : null}
+
+        <AuthPanel
+          configured={configured}
+          available={available}
+          callbackUrl={callbackUrl}
+          accountState={accountState}
+        />
+
+        <SiteFooter />
+      </main>
     </div>
   );
 }

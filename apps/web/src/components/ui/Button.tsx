@@ -12,6 +12,8 @@ export interface ButtonProps {
   readonly title?: string;
   readonly style?: CSSProperties;
   readonly fullWidth?: boolean;
+  /** Associates the button with a form it is not nested inside. */
+  readonly form?: string;
 }
 
 const base: CSSProperties = {
@@ -56,6 +58,7 @@ export function Button({
   title,
   style,
   fullWidth,
+  form,
 }: ButtonProps) {
   return (
     <button
@@ -63,6 +66,7 @@ export function Button({
       disabled={disabled}
       onClick={onClick}
       title={title}
+      form={form}
       style={{
         ...base,
         ...variants[variant],
