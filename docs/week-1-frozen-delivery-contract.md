@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.1 — human decisions recorded 16 September 2026; one
-amendment recorded in section 8.1
+**Status:** Frozen v1.2 — human decisions recorded 16 September 2026; two
+amendments recorded in section 8.1
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -18,7 +18,7 @@ No deliverable is accepted solely because code was generated, a mock is displaye
 All Week 1 decisions are frozen. This contract covers an **all-testnet iteration 1**; the target product chains remain Ethereum, Arbitrum, and Base.
 
 1. The deployed MVP at `https://mvp.onchainisland.co/` is the visual and interaction baseline. Its source code is **not available** (see section 6.1).
-2. Google OAuth through Supabase is the only application login. No email OTP fallback in Week 1.
+2. Google OAuth and email magic link through Supabase are the permitted application logins. There is no password authentication and no wallet login. (Amended v1.2; originally Google-only.)
 3. The passkey is separate from the login session and is used only to authorize Safe transactions.
 4. Google credentials cannot authorize financial transactions.
 5. The signer implementation is the **direct Safe WebAuthn signer**. No managed embedded signer (Privy, Turnkey) in Week 1.
@@ -262,6 +262,38 @@ already provide. It was removed rather than patched a fourth time, and this
 contract was amended to match rather than left with a knowingly unmet
 acceptance criterion.
 
+### 8.2 Amendment v1.2 — login methods
+
+**v1.2 — 17 September 2026. Approved by the project owner.**
+
+Added **email magic link** as a second permitted login alongside Google OAuth.
+Password authentication and wallet login remain excluded.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 2, item 2 | Google OAuth is the only application login; no email OTP fallback | Google OAuth and email magic link are the permitted logins; no password, no wallet |
+| Section 10, freeze checklist | Google-only versus email fallback — Google only | Login methods — Google and email magic link |
+| Appendix B.1 | Resolved: Google-only login | Resolved: Google and email magic link |
+
+What this does **not** change, and why the amendment is safe:
+
+- The passkey remains the only transaction authority; the sign-in flow still
+  must not prompt for one (D3).
+- A session — from either provider — confers row access and nothing else, and
+  cannot authorise a transaction. That separation, not the identity of the
+  provider, is the property this contract protects.
+- The resident Safe still has exactly one owner (the passkey signer) and
+  threshold 1; no EOA is an owner.
+
+Rationale, for the record: Google OAuth requires a Google Cloud OAuth client,
+which is the project's to create, and a single-provider login was a startup
+risk for the demo. Mail delivery is handled by the project's own SMTP provider
+(Resend), so the magic link does not depend on Supabase's rate-limited built-in
+mailer. The design handoff's own Step 1 was email-based, so this restores the
+baseline rather than departing from it.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -284,7 +316,7 @@ Freeze status at v1.0:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours with parallel agents.
 - [ ] authoritative UI source repository — **not available; escalation in section 6.1**.
-- [x] Google-only versus email fallback — Google only.
+- [x] Login methods — Google OAuth and email magic link. Password and wallet excluded. (Amended v1.2; originally Google-only.)
 - [x] direct Safe WebAuthn versus managed embedded signer — direct Safe WebAuthn signer.
 - [x] full versus partial Supabase schema scope — full DOCX schema, RLS/deny-by-default.
 - [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Arbitrum Sepolia and Base Sepolia.
@@ -317,7 +349,7 @@ The DOCX submission-work column—team registration, kickoff attendance, Discord
 
 ## Appendix B — Source inconsistencies and resolutions
 
-1. DOCX Step 1 says “Email + passkey, or an existing wallet”; the product decision is Google/Supabase login with a transaction-only passkey and no EOA login. **Resolved:** Google-only login, passkey is transaction-only, no EOA login.
+1. DOCX Step 1 says “Email + passkey, or an existing wallet”; the product decision is Supabase login with a transaction-only passkey and no EOA login. **Resolved:** Google OAuth and email magic link are the permitted logins (amended v1.2, matching the design handoff's original email-based Step 1); the passkey is transaction-only and no EOA can log in.
 2. DOCX fee table says `1 USDC flat + 0.25 USDC per household member`, while the demo script jumps to `1.75 USDC`. **Resolved:** formula `1.00 + 0.25 × household_size`; the `1.75` example corresponds to a household of 3 (section 2.1).
 3. DOCX account architecture permits Privy or Safe WebAuthn. **Resolved:** direct Safe WebAuthn signer.
 4. DOCX calls KadeLock a Safe Guard/Module and also a qualified vault. **Resolved:** Week 1 model is the minimum Safe Guard/Module (confirm section 6.2).
