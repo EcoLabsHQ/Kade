@@ -17,7 +17,7 @@ import {
   EAS_SCHEMA_NAMES,
   EXCLUDED_LOGIN_PROVIDERS,
   feeScheduleFor,
-  LOGIN_PROVIDER,
+  LOGIN_PROVIDERS,
   preapprovalFeeUsdc,
   residencyServiceFeeUsdc,
   SAFE_THRESHOLD,
@@ -25,10 +25,11 @@ import {
 } from '@kade/shared';
 
 describe('contract section 2 - frozen product decisions', () => {
-  it('item 2: Google OAuth is the only application login, with no email fallback', () => {
-    expect(LOGIN_PROVIDER).toBe('google');
-    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('email');
-    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('email_otp');
+  it('item 2 (amended v1.2): Google and email magic link are the permitted logins', () => {
+    expect([...LOGIN_PROVIDERS].sort()).toEqual(['email', 'google']);
+    // Still excluded: password authentication and wallet login.
+    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('password');
+    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('wallet');
   });
 
   it('item 6: the resident Safe has threshold 1', () => {
