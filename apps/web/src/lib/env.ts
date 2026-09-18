@@ -39,7 +39,7 @@ export function isAuthConfigured(env: AuthEnv = readAuthEnv()): boolean {
   return env.supabaseUrl !== null && env.supabaseAnonKey !== null;
 }
 
-/** Absolute URL Google redirects back to after the OAuth consent step. */
+/** Absolute URL the auth provider redirects back to after the consent step. */
 export function authCallbackUrl(env: AuthEnv = readAuthEnv()): string {
   return new URL(env.callbackPath, env.siteUrl).toString();
 }

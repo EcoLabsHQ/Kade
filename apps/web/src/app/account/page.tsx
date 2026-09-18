@@ -4,6 +4,7 @@ import { ContentContainer } from '@/components/shell/ContentContainer';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { PasskeyEnrolmentPanel } from '@/components/passkey/PasskeyEnrolmentPanel';
+import { providerLabel } from '@/lib/auth/provider-label';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 import { getSessionUser } from '@/lib/supabase/server';
 
@@ -38,9 +39,9 @@ export default async function AccountPage() {
             textWrap: 'pretty',
           }}
         >
-          Your Google session identifies you to Kade. It cannot move funds. The
-          passkey is a second authority that exists only to authorise Safe
-          transactions.
+          Your {providerLabel(session.provider)} session identifies you to
+          Kade. It cannot move funds. The passkey is a second authority that
+          exists only to authorise Safe transactions.
         </p>
 
         <div

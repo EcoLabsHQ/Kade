@@ -7,8 +7,8 @@ import { resolveSafeReturnPath } from '@/lib/safe-redirect';
  * PKCE code exchange for the Supabase auth callback, shared by Google OAuth
  * and the email magic link.
  *
- * The project is connected and both providers are enabled, but no sign-in has
- * been completed end to end yet, so the round trip remains unverified
+ * Google sign-in has been completed end to end by the project owner; the email
+ * magic link has not been delivered and followed, which is the remaining gap
  * (docs/known-gaps.md).
  *
  * Redirect targets are built from the configured site origin and the return

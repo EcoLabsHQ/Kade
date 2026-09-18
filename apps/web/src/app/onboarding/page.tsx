@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * The pre-registration stepper. Step 1 (account creation) is satisfied by the
- * authenticated Google session; Step 2 is this screen. Steps 3–4 are Week 1
+ * authenticated session; Step 2 is this screen. Steps 3–4 are Week 1
  * exclusions (contract section 9), so they are shown locked rather than hidden.
  */
 const PRE_REGISTRATION_STEPS: readonly StepperItem[] = [
