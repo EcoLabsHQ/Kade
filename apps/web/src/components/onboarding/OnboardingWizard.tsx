@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 import { useMemo, useState } from 'react';
 import { COUNTRIES, type CountryCode, type FeeMode, type TierIndex } from '@kade/shared';
 import { Button } from '@/components/ui/Button';
@@ -25,8 +27,9 @@ import {
   updateResidence,
   type OnboardingDraft,
 } from '@/lib/onboarding/draft';
+import { saveOnboardingStep2 } from '@/app/onboarding/actions';
 import {
-  createOnboardingStore,
+  createNotConfiguredOnboardingStore,
   NOT_CONFIGURED_PERSISTENCE_REASON,
   type OnboardingSnapshot,
   type OnboardingStore,
@@ -77,16 +80,24 @@ export function OnboardingWizard({
   store: storeProp,
   currentYear: currentYearProp,
 }: OnboardingWizardProps) {
+  const router = useRouter();
   const currentYear = currentYearProp ?? new Date().getFullYear();
   const [draft, setDraft] = useState<OnboardingDraft>(() =>
     initial ? draftFromSnapshot(initial) : demoDraft(currentYear),
   );
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
 
-  const defaultStore = useMemo(
+  const defaultStore = useMemo<OnboardingStore>(
     () =>
-      // Writes go through a server action; the browser shapes none of them.
-      createOnboardingStore(persistence),
+      persistence === 'supabase'
+        ? {
+            mode: 'supabase',
+            // Restore happens server-side before render; nothing to read here.
+            load: async () => null,
+            // Writes go through a server action; the browser shapes none of them.
+            save: (_userId, snapshot) => saveOnboardingStep2(snapshot),
+          }
+        : createNotConfiguredOnboardingStore(),
     [persistence],
   );
   const store = storeProp ?? defaultStore;
@@ -127,6 +138,11 @@ export function OnboardingWizard({
       const snapshot = draftToSnapshot(draft, mode);
       const persisted = await store.save(userId, snapshot);
       setStatus({ kind: 'saved', serverFee: persisted.preapprovalUsdc });
+      // Saving is the step's whole purpose, so move the resident forward rather
+      // than leaving them on a screen that looks like nothing happened. The
+      // dashboard is now reachable because onboarding is complete.
+      router.push('/');
+      router.refresh();
     } catch (cause) {
       setStatus({
         kind: 'error',
@@ -176,15 +192,6 @@ export function OnboardingWizard({
       {status.kind === 'saving' ? (
         <Notice tone="info" style={{ maxWidth: '920px', marginBottom: '16px' }}>
           Saving your file…
-        </Notice>
-      ) : null}
-      {status.kind === 'saved' ? (
-        <Notice
-          tone="success"
-          title="Saved"
-          style={{ maxWidth: '920px', marginBottom: '16px' }}
-        >
-          Your profile and household are stored against the active schedule.
         </Notice>
       ) : null}
       {status.kind === 'error' ? (
