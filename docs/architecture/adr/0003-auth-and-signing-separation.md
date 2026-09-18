@@ -29,7 +29,7 @@ contract overrides this and records the resolution in Appendix B.1:
 Model the two authorities as distinct types that cannot be substituted:
 
 ```text
-ApplicationSession    { domain: 'application-session', provider: 'google', userId, email }
+ApplicationSession    { domain: 'application-session', provider: LoginProvider, userId, email }
 TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', credentialId }
 ```
 
@@ -53,8 +53,8 @@ TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', cre
 
 ## Consequences
 
-- A regression that couples login to the passkey, or that lets a Google session
-  reach the signing path, fails a test rather than shipping.
+- A regression that couples login to the passkey, or that lets a session from
+  either provider reach the signing path, fails a test rather than shipping.
 - The Supabase session is an *application* credential. It grants access to
   rows the RLS policy allows; it grants no on-chain authority.
 - Because there is no managed signer, the WebAuthn signer address is a

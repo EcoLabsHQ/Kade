@@ -36,9 +36,6 @@ export function assertPermittedSignIn(
   }
 }
 
-/** Backwards-compatible alias; the flow is no longer Google-only. */
-export const assertGoogleOnlySignIn = assertPermittedSignIn;
-
 export function assertProviderAllowed(
   provider: string,
 ): asserts provider is LoginProvider {

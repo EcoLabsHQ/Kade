@@ -156,18 +156,19 @@ google: True | email: True
 ```
 
 A 302 to Google carrying the correct `client_id` and the project's own
-`/auth/v1/callback` as `redirect_uri` is as far as a request can be checked
-without a browser and a Google account. Email magic link needs no further
-setup: the provider is enabled and SMTP is configured by the project owner.
+`/auth/v1/callback` as `redirect_uri` is as far as a *request* can be checked.
+The two configuration details below are not observable from a request; they were
+subsequently proven by the project owner's completed sign-in (section 8):
 
-Two configuration details still belong to the project, and are only observable
-when a human completes the flow:
+1. `http://localhost:3000/auth/callback` is accepted by the project's redirect
+   allow-list — otherwise the callback would have been refused after Google
+   returned.
+2. The Google Cloud OAuth client's authorised redirect URI matches
+   `https://<project-ref>.supabase.co/auth/v1/callback` (the project hop, not the
+   app's callback).
 
-1. `http://localhost:3000/auth/callback` must be in the project's redirect
-   allow-list, or the callback will be refused after Google returns.
-2. The Google Cloud OAuth client's authorised redirect URI must be
-   `https://<project-ref>.supabase.co/auth/v1/callback` (the project hop, not
-   the app's callback).
+Email magic link needs no further provider setup: the provider is enabled and
+SMTP is configured by the project owner.
 
 ## 8. Verification status
 

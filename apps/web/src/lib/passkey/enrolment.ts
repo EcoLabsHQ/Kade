@@ -9,7 +9,7 @@ import {
   type PublicKeyCredentialCreationOptionsJSON,
   type RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
-import { assertGoogleOnlySignIn } from '@/lib/auth/provider';
+import { assertPermittedSignIn } from '@/lib/auth/provider';
 
 /**
  * Passkey enrolment scaffold.
@@ -53,7 +53,7 @@ export function assertEnrolmentAllowed(
       'Passkey enrolment requires an authenticated application session (contract D3).',
     );
   }
-  assertGoogleOnlySignIn();
+  assertPermittedSignIn();
 }
 
 /** Relying-party metadata. `[arbitrary]` until the project supplies the domain. */
