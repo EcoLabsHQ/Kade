@@ -8,7 +8,7 @@ import {
   type PasskeyCredentialRecord,
   type TransactionAuthorisation,
 } from '@kade/shared';
-import { assertGoogleOnlySignIn, isExcludedProvider, SIGN_IN_STEPS } from '@/lib/auth/provider';
+import { assertPermittedSignIn, isExcludedProvider, SIGN_IN_STEPS } from '@/lib/auth/provider';
 import { asTransactionAuthorisation } from '@/lib/passkey/signing';
 import {
   assertEnrolmentAllowed,
@@ -39,7 +39,7 @@ const authorisation: TransactionAuthorisation = {
 describe('login does not require a passkey', () => {
   it('passes for the real sign-in steps', () => {
     expect(() => assertLoginDoesNotRequirePasskey(SIGN_IN_STEPS)).not.toThrow();
-    expect(() => assertGoogleOnlySignIn(SIGN_IN_STEPS)).not.toThrow();
+    expect(() => assertPermittedSignIn(SIGN_IN_STEPS)).not.toThrow();
   });
 
   it('fails if a passkey step is introduced', () => {

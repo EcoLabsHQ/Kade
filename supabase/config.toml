@@ -48,8 +48,10 @@ enabled = true
 # Must match NEXT_PUBLIC_SITE_URL. [arbitrary] local development origin.
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
-# Google OAuth is the ONLY application login (week-1 contract section 2, item 2).
-# The client id/secret are supplied through the environment, never committed.
+# Google OAuth and email magic link are the permitted logins (week-1 contract
+# section 2, item 2, as amended v1.2); password and wallet login are excluded.
+# The client id/secret and the SMTP sender are supplied through the dashboard
+# or the environment, never committed.
 jwt_expiry = 3600
 enable_signup = true
 
