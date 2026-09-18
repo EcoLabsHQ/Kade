@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
+import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import { readChainEnv } from '@/lib/env';
 
 export interface AppShellProps {
@@ -10,6 +11,8 @@ export interface AppShellProps {
   readonly safeAddress?: string | null;
   readonly network?: string;
   readonly nav?: readonly NavGroupConfig[];
+  /** When present, the sidebar shows the pre-registration stepper instead of nav. */
+  readonly stepper?: readonly StepperItem[];
 }
 
 /**
@@ -35,6 +38,7 @@ export function AppShell({
   safeAddress = null,
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
+  stepper,
 }: AppShellProps) {
   return (
     <div
@@ -47,6 +51,7 @@ export function AppShell({
     >
       <Sidebar
         nav={nav}
+        stepper={stepper}
         network={network}
         safeAddress={safeAddress}
         email={email}
