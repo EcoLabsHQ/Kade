@@ -109,7 +109,7 @@ development/orchestration hours; agents run in parallel).
 
 | Package | Outcome |
 |---|---|
-| EXE-001 | Public repo, environments, provider config, Supabase setup |
+| EXE-001 | Repo (private), environments, provider config, Supabase setup |
 | EXE-002 | `chains` and `fee_schedule` seeded (testnet active) |
 | EXE-003 | Google or email magic-link login, protected routes, transaction passkey |
 | EXE-004 | Resident Safe on Ethereum Sepolia + predicted L2 addresses |
