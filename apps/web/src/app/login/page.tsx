@@ -1,19 +1,27 @@
 import { redirect } from 'next/navigation';
 import { LoginScreen } from '@/components/auth/LoginScreen';
-import { authCallbackUrl, isAuthConfigured, readAuthEnv } from '@/lib/env';
+import { authCallbackUrl, isAuthConfigured, readAuthEnv, readChainEnv } from '@/lib/env';
 import {
-  canAttemptAnySignIn,
   canAttemptEmailSignIn,
   canAttemptGoogleSignIn,
   fetchAuthProviderStatus,
 } from '@/lib/auth/providers';
+import { chainsForEnv } from '@kade/shared';
 import { resolveSafeReturnPath } from '@/lib/safe-redirect';
 import { getSessionUser } from '@/lib/supabase/server';
+import { postLoginPath } from '@/lib/onboarding/state';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/** The chain the flow is actually running on: Sepolia while testing. */
+function activeNetworkLabel(): string {
+  const chains = chainsForEnv(readChainEnv());
+  const ethereum = chains.find((chain) => chain.key === 'ethereum') ?? chains[0];
+  return ethereum?.name ?? 'Ethereum Sepolia';
 }
 
 export default async function LoginPage({
@@ -25,13 +33,15 @@ export default async function LoginPage({
   const env = readAuthEnv();
   const configured = isAuthConfigured(env);
   // Safety is decided against the configured origin, never the request origin,
-  // so a spoofed Host header cannot influence the redirect (see safe-redirect.ts).
+  // so a spoofed Host header cannot influence the redirect.
   const next = resolveSafeReturnPath(firstValue(params.next), env.siteUrl);
 
   if (configured) {
     const session = await getSessionUser();
     if (session) {
-      redirect(next);
+      // A requested protected destination wins if the resident meets its
+      // requirements; otherwise they are sent to their first pending step.
+      redirect(next !== '/' ? next : await postLoginPath(session.userId));
     }
   }
 
@@ -41,26 +51,27 @@ export default async function LoginPage({
       ? baseCallbackUrl
       : `${baseCallbackUrl}?next=${encodeURIComponent(next)}`;
 
-  // A project can be connected and still have no sign-in provider enabled, in
-  // which case the redirect lands on Supabase's raw JSON error. Ask first so the
-  // screen can explain it. Unknown (unreachable) must not block the user.
+  // A connected project can still have a provider disabled, in which case the
+  // redirect lands on raw JSON. Ask first. Unknown must not block the attempt.
   const providerStatus = configured
     ? await fetchAuthProviderStatus(env)
     : { google: null, email: null, checked: false };
-  const googleEnabled = canAttemptGoogleSignIn(providerStatus);
-  const emailEnabled = canAttemptEmailSignIn(providerStatus);
-  const anyProviderEnabled = canAttemptAnySignIn(providerStatus);
+
+  const reason = firstValue(params.reason);
 
   return (
     <LoginScreen
       configured={configured}
-      googleEnabled={googleEnabled}
-      emailEnabled={emailEnabled}
-      anyProviderEnabled={anyProviderEnabled}
+      available={{
+        google: canAttemptGoogleSignIn(providerStatus),
+        email: canAttemptEmailSignIn(providerStatus),
+      }}
       callbackUrl={callbackUrl}
-      reason={firstValue(params.reason)}
+      network={activeNetworkLabel()}
+      accountState={{ kind: 'anonymous' }}
+      returning={reason === 'signed-out'}
+      reason={reason}
       error={firstValue(params.error)}
-      next={next === '/' ? undefined : next}
     />
   );
 }

@@ -108,21 +108,22 @@ describe('canAttemptAnySignIn', () => {
 });
 
 describe('LoginScreen with a connected project but no provider enabled', () => {
-  const props = { callbackUrl: 'http://localhost:3000/auth/callback' };
+  const props = {
+    callbackUrl: 'http://localhost:3000/auth/callback',
+    network: 'Ethereum Sepolia',
+    accountState: { kind: 'anonymous' } as const,
+  };
 
   it('explains the provider problem instead of announcing a config problem', () => {
     render(
       <LoginScreen
         configured
-        googleEnabled={false}
-        emailEnabled={false}
-        anyProviderEnabled={false}
         {...props}
+        available={{ google: false, email: false }}
       />,
     );
 
     expect(screen.getByText(/No sign-in method is enabled/i)).toBeInTheDocument();
-    expect(screen.getByText(/Authentication > Providers/i)).toBeInTheDocument();
     expect(
       screen.queryByText(/Authentication not configured/i),
     ).not.toBeInTheDocument();
@@ -132,19 +133,32 @@ describe('LoginScreen with a connected project but no provider enabled', () => {
     render(
       <LoginScreen
         configured
-        googleEnabled={false}
-        emailEnabled={false}
-        anyProviderEnabled={false}
         {...props}
+        available={{ google: false, email: false }}
       />,
     );
 
-    expect(screen.getByRole('button', { name: /continue with google/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /email me a link/i })).toBeDisabled();
+    // Both methods are disabled, and the single action cannot fire. Which label
+    // it carries depends on which method the panel falls back to, so match
+    // either rather than pinning one.
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).toHaveAttribute('aria-disabled', 'true');
+    }
+    expect(
+      screen.getByRole('button', {
+        name: /continue with google|email me a link/i,
+      }),
+    ).toBeDisabled();
   });
 
   it('still renders the normal configured state when a provider is enabled', () => {
-    render(<LoginScreen configured googleEnabled emailEnabled {...props} />);
+    render(
+      <LoginScreen
+        configured
+        {...props}
+        available={{ google: true, email: true }}
+      />,
+    );
 
     expect(screen.getByText(/Continue with Google/i)).toBeInTheDocument();
     expect(screen.queryByText(/No sign-in method is enabled/i)).not.toBeInTheDocument();

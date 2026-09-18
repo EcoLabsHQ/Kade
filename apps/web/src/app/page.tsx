@@ -7,6 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
 import { providerLabel } from '@/lib/auth/provider-label';
+import { hasCompletedOnboarding } from '@/lib/onboarding/state';
 import { getSessionUser } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,13 @@ export default async function OverviewPage() {
   const session = await getSessionUser();
   if (!session) {
     redirect('/login');
+  }
+
+  // Spec section 8: an authenticated session is not enough to see the account
+  // screens. Until the onboarding steps are complete there is no account state
+  // to show, so the resident is sent to the step that is actually pending.
+  if (!(await hasCompletedOnboarding(session.userId))) {
+    redirect('/onboarding');
   }
 
   return (
