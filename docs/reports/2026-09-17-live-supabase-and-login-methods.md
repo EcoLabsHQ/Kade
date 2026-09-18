@@ -141,38 +141,40 @@ which is how the gap surfaced. The fix registers cleanup once in
 + 61 shared, was 81 + 61) because the login surface gained the magic-link path
 and its failure modes; the JavaScript total is 177, up from 158.
 
-## 7. What is still blocked
+## 7. Both providers are now enabled
 
-**The Google provider is not enabled on the project.** Measured, not assumed:
+The Google provider was disabled when this work started, which the app now
+detects and reports rather than failing into raw JSON. The project owner enabled
+it, and the change is verified at the redirect boundary:
 
 ```text
-enabled providers: ['email']
-google: False | email: True
-/authorize?provider=google → 400 Unsupported provider: provider is not enabled
+enabled providers: ['google', 'email']
+google: True | email: True
+/authorize?provider=google → 302  https://accounts.google.com/o/oauth2/v2/auth
+     ?client_id=<the project's client id>
+     &redirect_uri=https://<project-ref>.supabase.co/auth/v1/callback
 ```
 
-Enabling it is not possible with the tools available here: the MCP exposes
-database, branches, functions and logs, but no auth-provider configuration, and
-`auth` provider settings are platform configuration rather than a writable table.
+A 302 to Google carrying the correct `client_id` and the project's own
+`/auth/v1/callback` as `redirect_uri` is as far as a request can be checked
+without a browser and a Google account. Email magic link needs no further
+setup: the provider is enabled and SMTP is configured by the project owner.
 
-Two ways forward:
+Two configuration details still belong to the project, and are only observable
+when a human completes the flow:
 
-1. **Supabase dashboard** — Authentication → Providers → Google, paste the client
-   id and secret, and add `http://localhost:3000/auth/callback` to the redirect
-   allow-list. The Google Cloud OAuth client's authorised redirect URI must be
-   `https://<project-ref>.supabase.co/auth/v1/callback`.
-2. **Supabase Management API** — requires a personal access token, which would
-   let this be scripted and re-applied.
-
-Email magic link needs no further setup: the provider is already enabled, and the
-project owner configured SMTP.
+1. `http://localhost:3000/auth/callback` must be in the project's redirect
+   allow-list, or the callback will be refused after Google returns.
+2. The Google Cloud OAuth client's authorised redirect URI must be
+   `https://<project-ref>.supabase.co/auth/v1/callback` (the project hop, not
+   the app's callback).
 
 ## 8. Not verified
 
-- **A completed sign-in.** No session has been established end to end, because
-  the Google provider is not enabled and no magic link has been delivered and
-  followed. The code paths are covered by tests with a mocked Supabase client;
-  the round trip through a real inbox is not.
+- **A completed sign-in.** No session has been established end to end: the
+  redirect boundary is verified but no browser has followed the flow to Google
+  and back, and no magic link has been delivered and followed. The code paths
+  are covered by tests with a mocked Supabase client; the round trip is not.
 - **The onboarding write path through the app.** The schema, triggers and RLS are
   verified directly with SQL; no onboarding save has been executed through the
   running application with a signed-in session.
