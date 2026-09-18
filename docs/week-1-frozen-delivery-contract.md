@@ -297,7 +297,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.0** with the open items above tracked under change control.
+This contract is **Frozen v1.1** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
