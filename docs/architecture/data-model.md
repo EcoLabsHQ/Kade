@@ -177,7 +177,7 @@ resident sees zero rows and can modify zero rows.
   from `fee_schedule`: `public.preapproval_fee_usdc(mode, household_size)` is
   `round(base_amount + per_member_amount × household_size, rounding_scale)`.
   The formula parameters are data, and the seed generator asserts they
-  reproduce `preapprovalFeeUsdc()` in `@kade/shared` for every household size
+  reproduce `preapprovalFeeUsdc()` in `@kade/shared` for household sizes 1-1000
   before it writes a row, so the two cannot drift silently (ADR 0005).
 
 ## `[arbitrary]` values

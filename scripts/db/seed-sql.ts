@@ -72,7 +72,7 @@ const PREAPPROVAL_FORMULA: Record<
 
 /**
  * The seeded parameters are only correct if they reproduce the single shared
- * implementation for every household size. Running this at seed-build time
+ * implementation for household sizes 1-1000. Running this at seed-build time
  * means a change in @kade/shared that the schedule no longer satisfies fails
  * generation (and therefore the drift guard) instead of silently diverging.
  */

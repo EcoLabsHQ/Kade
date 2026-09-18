@@ -19,8 +19,10 @@
 -- Drift control
 --   The arithmetic is not copy-pasted from `preapprovalFeeUsdc()` in
 --   `@kade/shared`. `scripts/db/seed-sql.ts` asserts, before it emits a single
---   row, that the seeded parameters reproduce `preapprovalFeeUsdc()` for every
---   household size, and then the seed is what populates this table (ADR 0005).
+--   row, that the seeded parameters reproduce `preapprovalFeeUsdc()` for
+--   household sizes 1-1000, and then the seed is what populates this table (ADR
+--   0005). The two formulas first diverge at size 13,200, far beyond any real
+--   household, so the stated bound is the honest one.
 --   If the two ever disagree, seed generation fails loudly.
 --
 -- Parameters chosen

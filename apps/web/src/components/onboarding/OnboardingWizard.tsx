@@ -134,7 +134,7 @@ export function OnboardingWizard({
         message:
           cause instanceof Error
             ? cause.message
-            : 'Saving failed for an unknown reason. Nothing was written.',
+            : 'Saving failed for an unknown reason. The save is not transactional, so some data may already have been written.',
       });
     }
   }
@@ -208,7 +208,7 @@ export function OnboardingWizard({
       {status.kind === 'error' ? (
         <Notice
           tone="error"
-          title="Not saved"
+          title="Save failed"
           style={{ maxWidth: '920px', marginBottom: '16px' }}
         >
           {status.message}
