@@ -147,11 +147,11 @@ work as complete.
 **Not yet verified — these require project-supplied inputs that are absent from
 this environment:**
 
-- **A completed sign-in.** The project is provisioned and both Google and email
-  magic link are enabled; the redirect boundary is verified (the authorise
-  endpoint returns 302 to Google carrying the project's own callback). No
-  browser has completed the round trip, and no magic link has been delivered and
-  followed.
+- **Google sign-in is verified end to end** — the project owner completed and
+  restored a session. That result is theirs, not the agent's.
+- **Email magic link has not been delivered and followed.** The provider is
+  enabled and the form is implemented and tested, but no link has completed the
+  round trip through a real mailbox.
 - **Database RLS enforcement.** The policies are applied to the live project with
   RLS enabled on all 17 tables and 10 deny-by-default, but no committed harness
   exercises row visibility: enforcement is Postgres's, configured through
