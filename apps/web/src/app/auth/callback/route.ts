@@ -4,11 +4,12 @@ import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 import { resolveSafeReturnPath } from '@/lib/safe-redirect';
 
 /**
- * PKCE code exchange for the Supabase Google OAuth callback.
+ * PKCE code exchange for the Supabase auth callback, shared by Google OAuth
+ * and the email magic link.
  *
- * This is the real code path. It cannot be exercised in this environment
- * because no Supabase project or Google credentials have been supplied
- * (contract section 5); live sign-in is therefore unverified.
+ * The project is connected and both providers are enabled, but no sign-in has
+ * been completed end to end yet, so the round trip remains unverified
+ * (docs/known-gaps.md).
  *
  * Redirect targets are built from the configured site origin and the return
  * path is resolved by `resolveSafeReturnPath`, so both the redirect origin and
