@@ -11,7 +11,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: 'Kade — Resident Platform',
   description:
-    'Kade resident platform: Google sign-in with a separate transaction passkey.',
+    'Kade resident platform: Google or email sign-in, with a separate transaction passkey.',
   robots: { index: false },
 };
 

@@ -147,16 +147,17 @@ work as complete.
 **Not yet verified — these require project-supplied inputs that are absent from
 this environment:**
 
-- **Live Google sign-in and session restore.** No Supabase project or Google
-  OAuth credentials are configured. The PKCE flow and session handling are
-  implemented; the app renders an explicit "not configured" state rather than a
-  fake signed-in state.
-- **Database RLS enforcement.** The policies are written and reviewed as SQL, but
-  no committed harness exercises them: enforcement is Postgres's, configured
-  through Supabase. The schema was applied to a plain PostgreSQL to confirm the
-  migrations and seed are valid, not to test row visibility.
-- **Credential metadata surviving reload.** No database is reachable from the web
-  app, so passkey metadata persistence is a seam with an in-memory implementation.
+- **A completed sign-in.** The project is provisioned and both Google and email
+  magic link are enabled; the redirect boundary is verified (the authorise
+  endpoint returns 302 to Google carrying the project's own callback). No
+  browser has completed the round trip, and no magic link has been delivered and
+  followed.
+- **Database RLS enforcement.** The policies are applied to the live project with
+  RLS enabled on all 17 tables and 10 deny-by-default, but no committed harness
+  exercises row visibility: enforcement is Postgres's, configured through
+  Supabase.
+- **Credential metadata surviving reload.** Passkey metadata persistence is still
+  a seam with an in-memory implementation; it is not yet written to the database.
 - **A test signature through the direct Safe WebAuthn signer.** Requires the
   signer address and Safe deployment inputs, which the project supplies and the
   Account gate approves. The signer address is an explicit unresolved sentinel,
