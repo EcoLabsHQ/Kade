@@ -22,9 +22,9 @@ of scope for Week 1.
 | Area | State | Why | Revisit |
 |---|---|---|---|
 | Onboarding Steps 1–2 screen | Built: stepper rail, applicant fields, citizenship and residence chips, tier cards, household editor, live fee | D5 | Faithfulness review against the handoff screenshots |
-| `/onboarding` validation and save | Validation delegates to `@kade/shared`; persistence is implemented behind a seam with a real Supabase store | There is no reachable database from the web app, so no write has been executed | First run against a Supabase project |
+| `/onboarding` validation and save | Validation delegates to `@kade/shared`; persistence is implemented behind a seam with a real Supabase store, and the web app is now wired to a live Supabase project | The schema, triggers and RLS have been verified directly with SQL, but no onboarding write has yet been executed *through the app* | First end-to-end run with a signed-in session |
 | Fee at runtime | Web app computes the fee from the shared formula + `KADE_FEE_MODE`; the database can now recompute it independently via `public.preapproval_fee_usdc()` (`supabase/migrations/20260916000010_fee_function.sql`) | One formula, one source; the seed generator asserts the database parameters reproduce `@kade/shared`. The web path is not yet wired to the database function | Small change; contract says "from the active `fee_schedule`" |
-| Passkey credential metadata | In-memory seam; does not survive reload | No reachable database from the web app | When a Supabase project exists |
+| Passkey credential metadata | In-memory seam; does not survive reload | Persistence is not implemented against the database yet | When passkey enrolment is wired to the schema |
 | Safe WebAuthn signer address | Unresolved sentinel, never a fabricated address | Requires the Account-gate deployment inputs | Account gate |
 | Safe address derivation | `packages/contracts/src/SafeAddress.sol` derives the CREATE2 proxy address; a test pins one all-`[arbitrary]` vector and proves input sensitivity | Every concrete input (factory, singleton, initializer, salt) is project-supplied and Account-gate blocked, so no real address exists yet | Account gate (D4) |
 | Safe address on the login screen | Withheld, labelled "not yet deployed" | Nothing is deployed | After D4 |
@@ -33,10 +33,11 @@ of scope for Week 1.
 | Admin toggle | Rendered locked | Admin review UI is out of scope | Week 3 |
 | KadeLock | Compiled and tested only; not deployed | Frozen model A; deployment is out of scope | Post-Week 1 |
 | EAS schemas | Manifest, registration planner and Onchain-gate review pack (`packages/contracts/eas/REVIEW.md`) generated; nothing registered | Registration is irreversible and the approval record is still unapproved (Onchain gate, checkpoint 3) | Onchain gate |
-| Database tests (fee formula) | pgTAP suite `supabase/tests/0001_fee_recompute.test.sql` covers the formula, the recompute triggers, mode switching and the definer path; no RLS coverage | It proves only our own arithmetic, not row visibility, and is run by hand against Docker rather than by any gate | When RLS enforcement needs a gate |
+| Database tests (fee formula) | pgTAP suite `supabase/tests/0001_fee_recompute.test.sql` covers the formula, the recompute triggers, mode switching and the definer path; no RLS coverage | It proves only our own arithmetic, not row visibility, and is run by hand rather than by any gate. `pgtap` is available on the project, so it can also run there | When RLS enforcement needs a gate |
 | RLS | Policies written and reviewed as SQL; no harness exercises row visibility | Enforcement is Postgres's; the removed RLS harness produced four review findings (contract v1.1) | Only if it earns its keep |
-| Live Google sign-in | Real code path, unverified | No Supabase project or Google credentials available | When credentials exist |
-| Supabase project | None provisioned | Project-supplied dependency | Foundation gate |
+| Live Google sign-in | Real code path; the app now reaches a live Supabase project and the sign-in button is enabled, but the round trip has not been completed | The **Google provider is not enabled** on the project. That needs a Google Cloud OAuth client (client id + secret) and the provider configured in Supabase Auth, which no tool available here can do | When the OAuth client is supplied |
+| Google OAuth provider | Not enabled on the Supabase project | Needs a Google Cloud OAuth client and its configuration in Supabase Auth | When the client is supplied |
+| Supabase project | **Provisioned.** All 10 migrations and the seed are applied; 17 tables, RLS on every one, 10 deny-by-default, the fee function and its triggers verified live (`preapproval_fee_usdc('demo', 3)` = 1.75, `('production', 3)` = 447) | Project-supplied dependency | Applied 17 Sep |
 | CI | Present. GitHub Actions runs `./scripts/verify.sh` on push and pull request against `main` (`.github/workflows/ci.yml`) | The canonical gate now runs without a human remembering; no secrets are configured or required | Add `verify-full.sh` when its extra checks are wired |
 | Design system | Design tokens ported as inline styles on primitives | Fast, and faithful to the vendored handoff at `reference/design-handoff/` | When the real UI lands |
 
