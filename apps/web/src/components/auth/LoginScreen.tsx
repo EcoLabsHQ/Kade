@@ -8,6 +8,10 @@ import { NetworkChip } from '@/components/shell/NetworkChip';
 
 export interface LoginScreenProps {
   readonly configured: boolean;
+  /** false only when the project is connected and the method is known-disabled. */
+  readonly googleEnabled?: boolean;
+  readonly emailEnabled?: boolean;
+  readonly anyProviderEnabled?: boolean;
   readonly callbackUrl: string;
   readonly reason?: string;
   readonly error?: string;
@@ -37,6 +41,9 @@ function statusMessage(error?: string, reason?: string): string | null {
  */
 export function LoginScreen({
   configured,
+  googleEnabled = true,
+  emailEnabled = true,
+  anyProviderEnabled = true,
   callbackUrl,
   reason,
   error,
@@ -44,6 +51,9 @@ export function LoginScreen({
 }: LoginScreenProps) {
   const message = statusMessage(error, reason);
   const notConfigured = !configured || reason === 'not-configured';
+  // Connected but the provider is missing: a different problem, with a
+  // different fix. Never conflate the two.
+  const providerDisabled = configured && !anyProviderEnabled;
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
@@ -113,6 +123,18 @@ export function LoginScreen({
               }}
             >
               {notConfigured ? <NotConfiguredNotice /> : null}
+              {providerDisabled ? (
+                <NotConfiguredNotice
+                  title="No sign-in method is enabled"
+                  detail={
+                    'This Supabase project is connected, but neither the Google ' +
+                    'nor the email provider is enabled on it, so sign-in cannot ' +
+                    'start. Enable one in the Supabase dashboard under ' +
+                    'Authentication > Providers, then add this app\u2019s ' +
+                    'callback URL to the project\u2019s redirect allow-list.'
+                  }
+                />
+              ) : null}
 
               {message ? (
                 <p
@@ -224,7 +246,12 @@ export function LoginScreen({
                 </Chip>
               </div>
 
-              <SignInPanel configured={configured} callbackUrl={callbackUrl} />
+              <SignInPanel
+                configured={configured}
+                googleEnabled={googleEnabled}
+                emailEnabled={emailEnabled}
+                callbackUrl={callbackUrl}
+              />
 
               {next ? (
                 <p

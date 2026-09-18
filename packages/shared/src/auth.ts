@@ -2,30 +2,54 @@
  * Authentication and transaction-authorisation model.
  *
  * Source: docs/week-1-frozen-delivery-contract.md section 2 items 2-6 and
- * section 4 (D3).
+ * section 4 (D3), as amended to v1.2.
  *
  * Frozen facts:
- *   - Google OAuth through Supabase is the only application login.
- *   - No email OTP fallback in Week 1.
+ *   - Google OAuth and email magic link through Supabase are the permitted
+ *     application logins. The email provider is used for magic links only;
+ *     password authentication is excluded.
+ *   - No wallet login: the passkey is the only transaction authority and no EOA
+ *     is an owner of the resident Safe.
  *   - The passkey is separate from the login session and is used only to
  *     authorise Safe transactions.
- *   - Google credentials cannot authorise financial transactions.
+ *   - Session credentials cannot authorise financial transactions.
  *   - Login must not prompt for a passkey.
  *   - Credential metadata required for future signing is stored securely and
  *     survives reload.
  *   - A test signature validates through the direct Safe WebAuthn signer.
  *
  * This module encodes the separation as data and guards, so that a regression
- * which couples login to the passkey, or which lets a Google session reach the
- * signing path, fails a test rather than shipping.
+ * which couples login to the passkey, or which lets a session reach the signing
+ * path, fails a test rather than shipping.
+ *
+ * The property the contract actually protects is the *separation*: whichever
+ * provider establishes the session, it confers row access and nothing else, and
+ * the passkey remains the only transaction authority. Adding or removing a
+ * session provider does not touch that.
  */
 
-/** The only permitted login provider (contract section 2, item 2). */
-export const LOGIN_PROVIDER = 'google' as const;
-export type LoginProvider = typeof LOGIN_PROVIDER;
+/**
+ * The permitted login providers (contract section 2, item 2, amended v1.2).
+ *
+ * `google` — OAuth through Supabase.
+ * `email` — magic link (Supabase `signInWithOtp`), no password.
+ */
+export const LOGIN_PROVIDERS = ['google', 'email'] as const;
+export type LoginProvider = (typeof LOGIN_PROVIDERS)[number];
 
-/** Providers explicitly excluded in Week 1 (contract section 2, item 2). */
-export const EXCLUDED_LOGIN_PROVIDERS = ['email', 'email_otp', 'password', 'magic_link'] as const;
+/**
+ * Providers explicitly excluded in Week 1.
+ *
+ * `password` is excluded because the email provider is used for magic links
+ * only; the rest are excluded because the session is not an on-chain authority
+ * (contract section 2, items 3-6).
+ */
+export const EXCLUDED_LOGIN_PROVIDERS = [
+  'password',
+  'wallet',
+  'saml',
+  'phone',
+] as const;
 
 /**
  * The two authority domains. They never overlap: an application session

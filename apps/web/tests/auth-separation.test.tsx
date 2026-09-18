@@ -49,8 +49,12 @@ describe('login does not require a passkey', () => {
   });
 
   it('records the excluded providers', () => {
-    expect(isExcludedProvider('email')).toBe(true);
+    // Contract section 2 item 2 as amended v1.2: email magic link is now a
+    // permitted method, but password and wallet login remain excluded.
+    expect(isExcludedProvider('password')).toBe(true);
+    expect(isExcludedProvider('wallet')).toBe(true);
     expect(isExcludedProvider('google')).toBe(false);
+    expect(isExcludedProvider('email')).toBe(false);
   });
 });
 

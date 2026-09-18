@@ -1,6 +1,12 @@
 import { redirect } from 'next/navigation';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { authCallbackUrl, isAuthConfigured, readAuthEnv } from '@/lib/env';
+import {
+  canAttemptAnySignIn,
+  canAttemptEmailSignIn,
+  canAttemptGoogleSignIn,
+  fetchAuthProviderStatus,
+} from '@/lib/auth/providers';
 import { resolveSafeReturnPath } from '@/lib/safe-redirect';
 import { getSessionUser } from '@/lib/supabase/server';
 
@@ -35,9 +41,22 @@ export default async function LoginPage({
       ? baseCallbackUrl
       : `${baseCallbackUrl}?next=${encodeURIComponent(next)}`;
 
+  // A project can be connected and still have no sign-in provider enabled, in
+  // which case the redirect lands on Supabase's raw JSON error. Ask first so the
+  // screen can explain it. Unknown (unreachable) must not block the user.
+  const providerStatus = configured
+    ? await fetchAuthProviderStatus(env)
+    : { google: null, email: null, checked: false };
+  const googleEnabled = canAttemptGoogleSignIn(providerStatus);
+  const emailEnabled = canAttemptEmailSignIn(providerStatus);
+  const anyProviderEnabled = canAttemptAnySignIn(providerStatus);
+
   return (
     <LoginScreen
       configured={configured}
+      googleEnabled={googleEnabled}
+      emailEnabled={emailEnabled}
+      anyProviderEnabled={anyProviderEnabled}
       callbackUrl={callbackUrl}
       reason={firstValue(params.reason)}
       error={firstValue(params.error)}

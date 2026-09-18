@@ -4,7 +4,7 @@ import {
   assertSessionCannotAuthoriseTransaction,
   assertUserVerification,
   EXCLUDED_LOGIN_PROVIDERS,
-  LOGIN_PROVIDER,
+  LOGIN_PROVIDERS,
   type ApplicationSession,
   type PasskeyCredentialRecord,
   type TransactionAuthorisation,
@@ -23,14 +23,16 @@ const authorisation: TransactionAuthorisation = {
   credentialId: 'cred_abc',
 };
 
-describe('login model (contract section 2, item 2)', () => {
-  it('permits Google only', () => {
-    expect(LOGIN_PROVIDER).toBe('google');
+describe('login model (contract section 2, item 2, amended v1.2)', () => {
+  it('permits Google OAuth and email magic link', () => {
+    expect([...LOGIN_PROVIDERS].sort()).toEqual(['email', 'google']);
   });
 
-  it('excludes email and OTP fallbacks', () => {
-    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('email');
-    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('email_otp');
+  it('excludes password authentication and wallet login', () => {
+    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('password');
+    expect(EXCLUDED_LOGIN_PROVIDERS).toContain('wallet');
+    // The email provider is permitted, but only for magic links.
+    expect(EXCLUDED_LOGIN_PROVIDERS).not.toContain('email');
   });
 });
 
