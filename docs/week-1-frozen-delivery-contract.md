@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.3 — human decisions recorded 16 September 2026; three
-amendments recorded in sections 8.1-8.3
+**Status:** Frozen v1.4 — human decisions recorded 16 September 2026; four
+amendments recorded in sections 8.1-8.4
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -182,16 +182,23 @@ Missing dependencies trigger change control; they do not convert testnet accepta
 
 ## 6. Resolved items and change-control escalations
 
-### 6.1 UI source repository — escalation
+### 6.1 UI source repository — **resolved**
 
-The MVP UI source code is not available; only the deployment at `https://mvp.onchainisland.co/` exists. This invalidates the original EXE-003 and EXE-005 assumption of “connecting existing screens”. Week 1 therefore must recreate the shell and Steps 1–2 to match the deployed baseline, which materially increases frontend effort inside the fixed 20-hour allocation.
+**Resolved 17 September 2026 by option 1: the source was supplied.**
 
-Required human action: either
-1. supply the MVP UI source before Week 1 starts; or
-2. approve a reallocation that funds recreation of the shell and Steps 1–2 within the 80-hour plan; or
-3. re-scope D3/D5 to a reduced, specified subset of the baseline.
+The MVP UI source code was recorded as unavailable, and only the deployment at
+`https://mvp.onchainisland.co/` existed. In the meantime the deployed bundle was
+parsed and its markup and component logic recovered, and the project then
+supplied the official design handoff — the spec, the prototype source, 34
+screenshots and the logo — which is vendored at `reference/design-handoff/`
+with its provenance recorded there.
 
-Until one option is approved, D3 and D5 are at risk under change control.
+The escalation is therefore closed under option 1 rather than by reallocating
+hours or re-scoping D3/D5. D3 and D5 are no longer at risk under this item.
+
+The escalation and the recovery are both recorded rather than deleted, because
+the recovery is what makes the recreated screens defensible as a port of the
+frozen baseline rather than an interpretation of it.
 
 ### 6.2 KadeLock enforcement model — confirm
 
@@ -327,6 +334,18 @@ Rationale, for the record: the hackathon's own rules permit a private
 repository ("Repo may be private"), and the owner has chosen to keep it private.
 The submission's open-source and composability signal is carried by the
 published schemas and the licence rather than by repository visibility.
+
+### 8.4 Amendment v1.4 — the §6.1 escalation is closed
+
+**v1.4 — 18 September 2026. Approved implicitly by the project supplying the
+design handoff; recorded here so the contract does not carry a stale risk.**
+
+Section 6.1 required a human choice among three options for the unavailable MVP
+UI source. The project supplied the source (option 1), so section 6.1 is marked
+resolved and D3/D5 are no longer flagged at risk.
+
+No acceptance criterion changed. This is a status correction to a record that
+would otherwise claim an open risk that no longer exists.
 
 ## 9. Explicit Week 1 development exclusions
 
