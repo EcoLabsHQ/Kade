@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.2 — human decisions recorded 16 September 2026; two
-amendments recorded in sections 8.1 and 8.2
+**Status:** Frozen v1.3 — human decisions recorded 16 September 2026; three
+amendments recorded in sections 8.1-8.3
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -53,7 +53,7 @@ The fee is calculated server-side from the active `fee_schedule`; the client may
 
 | ID | Package | Hours | Backlog IDs | Contracted outcome |
 |---|---|---:|---|---|
-| EXE-001 | Project setup and Supabase environment | 3 | KAD-001 | Public repository, README, license/prior-work disclosure, provider configuration, environment-variable contract, Supabase environments, and repeatable local setup are ready. The deployed MVP is the visual baseline; its source is not available (section 6.1). |
+| EXE-001 | Project setup and Supabase environment | 3 | KAD-001 | Repository (private, reviewer access), README, license/prior-work disclosure, provider configuration, environment-variable contract, Supabase environments, and repeatable local setup are ready. The deployed MVP is the visual baseline; its source is not available (section 6.1). |
 | EXE-002 | Seed chains and fee schedule | 1 | KAD-002 | Ethereum `1`/Sepolia `11155111`, Arbitrum `42161`/Arbitrum Sepolia `421614`, and Base `8453`/Base Sepolia `84532`, token metadata, contract/config placeholders, and demo/production fee schedules are migration-seeded and readable by the application. Testnet is active for iteration 1. |
 | EXE-003 | Connect shell, login, and passkey signer | 4 | KAD-003 | Sidebar/routes use a real Supabase session; Google login/logout and protected routes work; the independent transaction passkey can be created and restored after reload. |
 | EXE-004 | Create Safe and predict L2 addresses | 3 | KAD-004 | One resident Safe is deployed on Ethereum Sepolia, stored against the resident, and displayed in the UI; deterministic Arbitrum Sepolia and Base Sepolia addresses and all reproducibility inputs are persisted. |
@@ -65,17 +65,18 @@ Hours are timeboxes, not permission to omit acceptance criteria silently. A pack
 
 ## 4. High-level deliverables and acceptance evidence
 
-### D1 — Public development foundation
+### D1 — Development foundation
 
 Accepted when:
 
-- the repository is public;
+- the repository exists and the reviewer has access (it is private; see section
+  8.3);
 - a clean checkout installs, builds, and starts using documented commands;
 - README includes setup, architecture summary, third-party attribution, prior-work disclosure, and Week 1 limitations;
 - secrets are excluded from source control;
 - a shared HTTPS preview is available if approved by the human reviewer.
 
-Evidence: repository URL, clean-build output, preview URL, and secret-scan result.
+Evidence: repository URL with reviewer access, clean-build output, preview URL, and secret-scan result.
 
 ### D2 — Supabase schema, RLS, and seeds
 
@@ -295,6 +296,38 @@ risk for the demo. Mail delivery is handled by the project's own SMTP provider
 mailer. The design handoff's own Step 1 was email-based, so this restores the
 baseline rather than departing from it.
 
+### 8.3 Amendment v1.3 — the repository stays private
+
+**v1.3 — 18 September 2026. Approved by the project owner.**
+
+Removed the requirement that the repository be public. It stays private, and
+the reviewer is given access instead.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 3, EXE-001 outcome | Public repository, README, disclosure, ... | Repository (private, reviewer access), README, disclosure, ... |
+| Section 4, D1 heading | Public development foundation | Development foundation |
+| Section 4, D1 accepted-when | the repository is public | the repository exists and the reviewer has access |
+| Section 4, D1 evidence | repository URL | repository URL with reviewer access |
+| Appendix A, D1 row | Public repo with README and disclosure | Repo with README and disclosure |
+
+What this does **not** change:
+
+- the licence and the prior-work disclosure remain required, and the contracts
+  are still intended to be MIT (an open decision recorded in the build guide,
+  section 15);
+- EAS schema UIDs are still published so a third party can verify a Kade permit
+  attestation independently — that is public *on-chain*, which is unaffected by
+  the repository's visibility;
+- secrets are still excluded from source control.
+
+Rationale, for the record: the hackathon's own rules permit a private
+repository ("Repo may be private"), and the owner has chosen to keep it private.
+The submission's open-source and composability signal is carried by the
+published schemas and the licence rather than by repository visibility.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -336,7 +369,7 @@ This contract is **Frozen v1.2** with the open items above tracked under change 
 
 | DOCX Week 1 requirement | Backlog | 80h package | Contract deliverable | Required proof | Status |
 |---|---|---|---|---|---|
-| Public repo with README and disclosure | KAD-001 | EXE-001 | D1 | Public URL, clean build, README/disclosure | Covered |
+| Repo with README and disclosure | KAD-001 | EXE-001 | D1 | Repository URL (private, reviewer access), clean build, README/disclosure | Covered; private per section 8.3 |
 | Sidebar shell | KAD-003 | EXE-003 | D3, D8 | Protected navigation operating on real session state | Covered; source unavailable (6.1) |
 | Supabase schema and RLS | KAD-001, KAD-005, KAD-006 | EXE-001, EXE-005 | D2 | Migrations and seed output | Frozen: full DOCX schema |
 | `fee_schedule` and `chains` seeded | KAD-002 | EXE-002 | D2 | Reproducible seed output and API/config read | Covered; testnet active |

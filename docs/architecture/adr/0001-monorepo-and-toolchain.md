@@ -5,7 +5,7 @@
 
 ## Context
 
-Week 1 needs a public monorepo holding a Next.js application, Solidity
+Week 1 needs a monorepo holding a Next.js application, Solidity
 contracts, database migrations and shared types. The portal checklist expects
 `apps/web`, `packages/contracts` and `supabase/` to exist as visible parts of
 one repository.
