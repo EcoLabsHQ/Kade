@@ -21,8 +21,14 @@ export interface SetupSidebarProps {
  * changes what the session may read or write.
  */
 export function SetupSidebar({ steps, network, accountState }: SetupSidebarProps) {
-  const address =
-    accountState.kind === 'deployed' ? accountState.address : null;
+  // An authenticated resident without a deployed Safe is not "signed out"; the
+  // card says what is actually true at each stage.
+  const headline =
+    accountState.kind === 'deployed'
+      ? accountState.address
+      : accountState.kind === 'anonymous'
+        ? 'Not signed in'
+        : 'Safe pending';
   const accountLabel =
     accountState.kind === 'deployed'
       ? `Safe · ${accountState.network}`
@@ -90,7 +96,7 @@ export function SetupSidebar({ steps, network, accountState }: SetupSidebarProps
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {address ?? 'Not signed in'}
+            {headline}
           </div>
           <div style={{ fontSize: '11px', color: tokens.muted }}>
             {accountLabel}
