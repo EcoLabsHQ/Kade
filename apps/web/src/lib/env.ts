@@ -39,6 +39,19 @@ export function isAuthConfigured(env: AuthEnv = readAuthEnv()): boolean {
   return env.supabaseUrl !== null && env.supabaseAnonKey !== null;
 }
 
+/**
+ * Supabase service-role key.
+ *
+ * Server-only, and deliberately **not** `NEXT_PUBLIC_`: it grants elevated
+ * database capability, including writing `passkey_credentials.signer_address`,
+ * which the `authenticated` role is denied. It is read on the server and never
+ * exposed to the browser. Returns null when it is absent, so a caller can
+ * degrade honestly instead of pretending the capability exists.
+ */
+export function readServiceRoleKey(): string | null {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
+}
+
 /** Absolute URL the auth provider redirects back to after the consent step. */
 export function authCallbackUrl(env: AuthEnv = readAuthEnv()): string {
   return new URL(env.callbackPath, env.siteUrl).toString();
