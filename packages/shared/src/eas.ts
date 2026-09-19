@@ -12,12 +12,13 @@
  *     Identity) and section 9 (`identity_attestations`, `applications`).
  *
  * The Onchain gate approved these encodings on 18 September 2026
- * (docs/gates/onchain.md, checkpoint 3). NOTHING IN THIS FILE IS REGISTERED:
- * registration is irreversible and this repository broadcasts nothing. The
- * exact, ready-to-send `register(...)` calldata is committed at
- * packages/contracts/eas/registration-calldata.json; the project owner signs
- * and sends each transaction, and the resulting UIDs are recorded in
- * packages/contracts/eas/registered-uids.json.
+ * (docs/gates/onchain.md, checkpoint 3) and **all five are now registered on
+ * Ethereum Sepolia**. The UIDs, transactions and block numbers are recorded in
+ * packages/contracts/eas/registered-uids.json, and
+ * `npm run eas:verify --workspace @kade/contracts` re-reads the registry and
+ * confirms each schema string, resolver and revocable flag against the manifest.
+ * Registration is irreversible and was sent from outside this repository, which
+ * still contains no EAS broadcast path.
  */
 
 import type { Provenance } from './provenance.js';
@@ -171,8 +172,9 @@ export const EAS_SCHEMAS: Readonly<Record<EasSchemaName, EasSchemaDefinition>> =
 
 /**
  * The registration manifest: exactly what the Onchain gate reviewed before any
- * irreversible write. It was approved on 18 September 2026; nothing has been
- * broadcast.
+ * irreversible write. It was approved on 18 September 2026 and the five schemas
+ * were registered the same day; the executed record is in
+ * `registered-uids.json`.
  */
 export function registrationManifest(): readonly {
   name: EasSchemaName;
