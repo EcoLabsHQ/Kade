@@ -38,8 +38,32 @@ export function PasskeyEnrolmentPanel({
   session,
 }: PasskeyEnrolmentPanelProps) {
   const [record, setRecord] = useState<PasskeyEnrolmentRecord | null>(null);
+  const [signerAddress, setSignerAddress] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Ask the chain for the signer this credential owns, so the panel reports the
+   * real address rather than a placeholder state. The passkey exists either way,
+   * so a failure here is not an error the resident needs to act on.
+   */
+  async function resolveSigner(publicKey: string) {
+    try {
+      const [{ parseP256PublicKey }, { deriveAccount }] = await Promise.all([
+        import('@/lib/passkey/public-key'),
+        import('@/app/onboarding/signer-actions'),
+      ]);
+      const { x, y } = parseP256PublicKey(publicKey);
+      const derived = await deriveAccount(
+        x.toString(),
+        y.toString(),
+        session.userId,
+      );
+      setSignerAddress(derived.signerAddress);
+    } catch {
+      setSignerAddress(null);
+    }
+  }
 
   async function handleEnrol() {
     setError(null);
@@ -57,6 +81,7 @@ export function PasskeyEnrolmentPanel({
       // Persistence seam: in-memory only until a database is reachable.
       await passkeyStore().save(session.userId, created);
       setRecord(created);
+      void resolveSigner(created.publicKey);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -119,10 +144,8 @@ export function PasskeyEnrolmentPanel({
       >
         Enrolment requests WebAuthn user verification. It does not sign
         anything and cannot authorise a transaction by itself. The attestation
-        response is not verified server-side in this scaffold, and the displayed
-        signer address stays unresolved until the Account gate supplies the
-        direct Safe WebAuthn signer. Metadata is stored in memory only, so it
-        does not yet survive a reload.
+        response is not verified server-side in this scaffold. Metadata is stored
+        in memory only, so it does not yet survive a reload.
       </p>
 
       {record ? (
@@ -157,9 +180,13 @@ export function PasskeyEnrolmentPanel({
           </div>
           <div>
             <strong>Signer address</strong>{' '}
-            <span style={{ color: tokens.warning }}>
-              unresolved — pending Account gate
-            </span>
+            {signerAddress ? (
+              <span style={{ fontVariantNumeric: 'tabular-nums', wordBreak: 'break-all' }}>
+                {signerAddress}
+              </span>
+            ) : (
+              <span style={{ color: tokens.muted }}>—</span>
+            )}
           </div>
           <div>
             <strong>Created</strong> {record.createdAt}

@@ -10,9 +10,11 @@ Two things:
 
 1. Confirm the authentication and passkey design (no input needed from you
    beyond agreement).
-2. **Supply or confirm the Safe deployment inputs and the Sepolia payer.** These
-   are a project-supplied dependency (contract section 5) and are deliberately
-   *not* invented by the agent.
+2. **Supply the Sepolia deployment payer, and confirm the salt nonce strategy.**
+   The Safe version, its addresses and the signer derivation are now recorded
+   rather than project-supplied. The payer is still yours to provide, and the
+   salt nonce (`keccak256(userId)`) is proposed rather than approved, because it
+   fixes every resident's address.
 
 ## What is already proven
 

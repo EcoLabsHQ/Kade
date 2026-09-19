@@ -35,9 +35,9 @@ contract SafeAddressHarness {
 //   3. the creation-code assumption itself (`keccak256(type(SafeProxy).creationCode)`),
 //      which pins *this repository's* artifact so a toolchain change is loud.
 //
-// The vector's inputs and outputs were computed independently (viem) from this
-// repository's compiled `SafeProxy` after `forge build`; it is reproducible by
-// construction from the constants below and needs no external script.
+// How the known vector was constructed is recorded in the header of
+// scripts/safe-address-vector.mjs and can be re-derived with
+// `node scripts/safe-address-vector.mjs` after `forge build`.
 contract SafeAddressTest is Test {
     // --- Known vector: every input is [arbitrary] and awaits the Account gate.
     address internal constant FACTORY = address(0x1111111111111111111111111111111111111111);
@@ -48,8 +48,9 @@ contract SafeAddressTest is Test {
         0x9a780d80c645a85c08e4b8239cdf4144595d63891e554e6791844c0a7802ce49;
     uint256 internal constant SALT_NONCE = 0;
 
-    // Expected outputs of the same [arbitrary] vector, re-derived independently
-    // (viem) from this repository's compiled `SafeProxy` creation code.
+    // Expected outputs of the same [arbitrary] vector. Re-derived independently
+    // (viem) from this repository's compiled `SafeProxy` creation code by
+    // `node scripts/safe-address-vector.mjs`.
     //
     // NOTE: this hash pins our own build. It is deliberately NOT the code the
     // deployed factory uses (438 bytes, 0x941b3e88…), so it must not be used to

@@ -1,16 +1,16 @@
 # Account step, and the account address derived from the passkey
 
 Seventh iteration report for the Kade Week 1 build. Covers the work from
-`08819b8` (the current `known-good`) to `4326f0c` (this commit).
+`08819b8` (the current `known-good`) to `eb4cd4e` (the last code commit).
 
 | | |
 |:--|:--|
 | `known-good` (unchanged) | `08819b8` |
-| Candidate `HEAD` | `4326f0c` |
+| Candidate `HEAD` | `eb4cd4e` |
 | Window (local time) | 18 September 2026 |
-| Commits since `known-good` | 21 |
-| Change size | 72 files, +5,472 / −751 |
-| Mechanical gate | `./scripts/verify.sh` — passed: web 132 · shared 68 · acceptance 12 · regressions 4 · Foundry 45 |
+| Commits since `known-good` | 22 |
+| Change size | 73 files, +5,470 / −751 |
+| Mechanical gate | `./scripts/verify.sh` — passed: web 132 · shared 67 · acceptance 12 · regressions 4 · Foundry 45 |
 | Adversarial review | **failed, then corrected** — see section 4 |
 
 ## 1. What was requested
@@ -116,7 +116,7 @@ closed — the sweep is still manual.
 
 ```text
 ./scripts/verify.sh  →  exit 0
-web 132 · shared 68 · acceptance 12 · regressions 4 · Foundry 45
+web 132 · shared 67 · acceptance 12 · regressions 4 · Foundry 45
 ```
 
 - `known-good` unmoved at `08819b8`. No on-chain write; all four gates unapproved.

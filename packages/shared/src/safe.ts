@@ -15,13 +15,13 @@
  *     factory, singleton, initializer, handler, owner, threshold, salt and
  *     creation-code assumptions must all be persisted.
  *
- * Concrete version, factory, singleton, handler and salt values are supplied by
- * the project (contract section 5) and approved at the Account gate
- * (section 7, checkpoint 2). They are [arbitrary] here and must be replaced
- * with the approved values before any deployment.
+ * Concrete version, factory, singleton and handler values are recorded in
+ * `./safe-deployments.ts` with their provenance; the passkey module is confirmed
+ * against the deployed contracts. The salt nonce strategy is proposed but not
+ * yet approved at the Account gate (section 7, checkpoint 2).
  */
 
-import { sourced, type Sourced } from './provenance.js';
+import type { Sourced } from './provenance.js';
 import type { ChainId } from './chains.js';
 
 export type Address = `0x${string}`;
@@ -112,17 +112,3 @@ export function assertThresholdOne(threshold: number): void {
     throw new Error(`Safe threshold must be ${SAFE_THRESHOLD}, found ${threshold}.`);
   }
 }
-
-/**
- * Placeholder deployment inputs. Every value is [arbitrary] until the Account
- * gate approves the project-supplied configuration.
- */
-export const UNAPPROVED_SAFE_INPUTS: SafeDeploymentInputs = {
-  safeVersion: sourced('[arbitrary]', 'arbitrary', 'supplied by the project'),
-  proxyFactory: sourced('0x0000000000000000000000000000000000000000', 'arbitrary'),
-  singleton: sourced('0x0000000000000000000000000000000000000000', 'arbitrary'),
-  compatibilityFallbackHandler: sourced('0x0000000000000000000000000000000000000000', 'arbitrary'),
-  signer: sourced('0x0000000000000000000000000000000000000000', 'arbitrary'),
-  saltNonce: sourced('[arbitrary]', 'arbitrary'),
-  threshold: SAFE_THRESHOLD,
-};
