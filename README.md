@@ -28,8 +28,8 @@ rail. First deployment: the Curaçao investor permit.
 
 - **Target chains:** Ethereum, Arbitrum, Base — same Safe address on all three.
 - **Iteration 1:** Ethereum Sepolia (deploy) + Base Sepolia (predicted
-  address). Arbitrum is deferred (contract v1.6). EAS schemas to be registered
-  on Sepolia.
+  address). Arbitrum is deferred (contract v1.6). The five EAS schemas are
+  registered on Sepolia (D6).
 - **Stack:** Safe{Core} + ERC-4337 · Pimlico paymaster · EAS · Self (ZK passport
   identity) · USDC + Circle CCTP · Snapshot · Supabase · GOS (fiat + card) ·
   Reflect (USD vault) · Safe WebAuthn · Next.js, wagmi/viem.
@@ -153,6 +153,13 @@ work as complete.
 - **Google sign-in was completed end to end by the project owner**, who signed in
   and restored the session. That result is theirs; the agent verified the
   redirect boundary only.
+- **The five EAS schema registrations on Ethereum Sepolia were executed by the
+  project owner** from `0x9907Edd6D403AC420cF1A84b10f0d134b13baa84`, after the
+  Onchain gate approved the exact encodings. `npm run eas:verify --workspace
+  @kade/contracts` re-reads `getSchema()` from the registry and confirms each
+  schema string, resolver and revocable flag against the manifest; the UIDs,
+  transactions and block numbers are in
+  `packages/contracts/eas/registered-uids.json`.
 
 **Not yet verified:**
 
@@ -173,11 +180,12 @@ work as complete.
 - **A test signature through the direct Safe WebAuthn signer.** The signer
   address is now derived from the passkey, but signing requires a deployed Safe
   and a real assertion, and nothing is deployed.
-- **Any on-chain write.** KadeLock is not deployed, and the EAS schemas are
-  approved but not registered: the Onchain gate approved the exact encodings on
-  18 September 2026 and the ready-to-send calldata is committed, but this
-  repository broadcasts nothing. Registration is irreversible and is executed by
-  the project owner.
+- **Any on-chain write other than the EAS schema registrations.** No attestation
+  has been issued, KadeLock is not deployed, and the resident Safe is not
+  deployed: the deployment engine exists at `apps/web/src/lib/safe/deploy.ts`
+  but is not wired into the application and its payer key is not configured. The
+  EAS tooling only generates, prints and verifies the plan and never broadcasts;
+  the five registrations were sent from outside the repository.
 
 ## Human approval gates
 

@@ -6,9 +6,12 @@
 ## Context
 
 The frozen contract requires the Week 1 screens to match the deployed MVP at
-`https://mvp.onchainisland.co/`. Contract section 6.1 records that the MVP UI
-**source repository is not available**, which escalated the frontend effort: the
-shell and Steps 1–2 must be recreated rather than wired up.
+`https://mvp.onchainisland.co/`. When this ADR was written, contract section 6.1
+recorded that the MVP UI **source repository was not available**, which
+escalated the frontend effort: the shell and Steps 1–2 must be recreated rather
+than wired up. The project later supplied the source (contract v1.4, section 6.1
+resolved), vendored at `reference/design-handoff/`, so the recreation is a port
+of the supplied handoff.
 
 The deployed MVP is published as a self-contained bundle document, so its
 markup and component logic can be recovered from the deployment itself. That

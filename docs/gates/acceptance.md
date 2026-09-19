@@ -28,7 +28,7 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 | 4 | Complete Steps 1–2 | ⚠️ write path unproven |
 | 5 | Observe the correct fee | ✅ |
 | 6 | Reload and recover application state | ⚠️ same as 4 |
-| 7 | Inspect the EAS UIDs | ⛔ approved, not sent |
+| 7 | Inspect the EAS UIDs | ✅ registered |
 | 8 | Inspect a passing KadeLock test report | ✅ |
 | 9 | Create the transaction passkey | ⚠️ scaffolded |
 
@@ -83,12 +83,13 @@ and `@kade/shared` computes the same. All three agree.
 Reload after step 4. A Supabase session must survive, and the onboarding data
 must return from the database rather than from browser storage.
 
-### 7. EAS UIDs ⛔
+### 7. EAS UIDs ✅
 
-**Gate 3 approved 18 September 2026; nothing is registered yet.** The exact
-`register(...)` calldata is committed, but this repository broadcasts nothing:
-the project owner sends each transaction, after which there are UIDs to inspect.
-After registration: `npm run eas:verify --workspace @kade/contracts`.
+**Registered 18 September 2026, after Gate 3 approval.** All five schemas are on
+Ethereum Sepolia. The UIDs, transactions and block numbers are in
+`packages/contracts/eas/registered-uids.json`; the repository's EAS tooling is
+read-only, and the owner sent each transaction. Verify the on-chain state with
+`npm run eas:verify --workspace @kade/contracts`.
 
 ### 8. KadeLock report ✅
 
@@ -109,12 +110,11 @@ signed-in end-to-end run has not yet exercised the write.
 
 ## What a pass looks like
 
-- Steps 1, 5 and 8 pass today.
+- Steps 1, 5, 7 and 8 pass today.
 - Step 4 plus 6 are the highest-value remaining check and need no gate.
-- Steps 2 and 3 cannot pass until gate 2 is approved. Step 7 cannot pass until
-  the owner sends the approved registration. Step 9's persistence path needs a
-  signed-in end-to-end run; Week 1 cannot be declared complete while they are
-  outstanding.
+- Steps 2 and 3 cannot pass until gate 2 is approved. Step 9's persistence path
+  needs a signed-in end-to-end run; Week 1 cannot be declared complete while
+  they are outstanding.
 
 ## Approval record
 
