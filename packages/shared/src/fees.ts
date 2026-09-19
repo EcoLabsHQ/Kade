@@ -75,6 +75,53 @@ export function residencyServiceFeeUsdc(mode: FeeMode): number {
 }
 
 /**
+ * The pre-approval fee split into its documented parts.
+ *
+ * The receipt shows the base and the per-member component separately, so the
+ * arithmetic has to be available as data rather than only as a total. The total
+ * is computed the same way `preapprovalFeeUsdc` computes it, and a test asserts
+ * the two agree, so a receipt can never disagree with the charge.
+ */
+export interface PreapprovalBreakdown {
+  readonly baseUsdc: number;
+  readonly perMemberUsdc: number;
+  readonly householdSize: number;
+  readonly extraMembers: number;
+  readonly totalUsdc: number;
+}
+
+export function preapprovalFeeBreakdown(
+  mode: FeeMode,
+  householdSize: number,
+): PreapprovalBreakdown {
+  if (!Number.isInteger(householdSize) || householdSize < 1) {
+    throw new RangeError(
+      `householdSize must be an integer >= 1, received ${householdSize}`,
+    );
+  }
+  // The first household member is the applicant's own line; the rest are the
+  // derived permits the reference itemises.
+  const extraMembers = householdSize - 1;
+
+  if (mode === 'demo') {
+    return {
+      baseUsdc: 1,
+      perMemberUsdc: 0.25,
+      householdSize,
+      extraMembers,
+      totalUsdc: (100 + 25 * householdSize) / 100,
+    };
+  }
+  return {
+    baseUsdc: 500 / XCG_PER_USDC,
+    perMemberUsdc: 100 / XCG_PER_USDC,
+    householdSize,
+    extraMembers,
+    totalUsdc: Math.round((500 + 100 * householdSize) / XCG_PER_USDC),
+  };
+}
+
+/**
  * The full `fee_schedule` seed for a mode. Mirrors the contract's fee table.
  */
 export function feeScheduleFor(mode: FeeMode): readonly FeeAmount[] {

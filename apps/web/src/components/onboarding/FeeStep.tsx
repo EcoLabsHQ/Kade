@@ -1,7 +1,6 @@
 'use client';
 
 import { Card } from '@/components/ui/Card';
-import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 
 /**
@@ -9,8 +8,8 @@ import { tokens } from '@/components/ui/tokens';
  *
  * DEMO ONLY. "Paying" flips local state and nothing else: payment execution is
  * excluded from Week 1 (contract section 9), so no transaction is built, signed
- * or sent, and the copy does not claim one was. The amount is the authoritative
- * server value passed in, never a client constant.
+ * or sent, and the screen does not claim one was. The amounts come from the
+ * active fee schedule as passed in, never from a client constant.
  */
 export interface FileRow {
   readonly label: string;
@@ -19,26 +18,36 @@ export interface FileRow {
   readonly tone: 'success' | 'warning';
 }
 
+export interface FeeBreakdownView {
+  readonly baseUsdc: number;
+  readonly perMemberUsdc: number;
+  readonly extraMembers: number;
+  readonly totalUsdc: number;
+}
+
 export interface FeeStepProps {
   readonly rows: readonly FileRow[];
-  readonly feeUsdc: number;
+  readonly breakdown: FeeBreakdownView;
   readonly mode: string;
   readonly paid: boolean;
   readonly onPay: () => void;
   readonly onEnter: () => void;
+  readonly onBack: () => void;
 }
 
-function usd(value: number): string {
-  return `${value.toFixed(2)} USDC`;
+/** Whole amounts print without decimals; 1.75 keeps them. */
+function usdc(value: number): string {
+  return `${Number.isInteger(value) ? value : value.toFixed(2)} USDC`;
 }
 
 export function FeeStep({
   rows,
-  feeUsdc,
+  breakdown,
   mode,
   paid,
   onPay,
   onEnter,
+  onBack,
 }: FeeStepProps) {
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
@@ -52,13 +61,13 @@ export function FeeStep({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)',
+          gridTemplateColumns: 'minmax(0,1.9fr) minmax(0,1fr)',
           gap: '16px',
-          alignItems: 'start',
-          maxWidth: '960px',
+          alignItems: 'stretch',
+          maxWidth: '1060px',
         }}
       >
-        <Card padding="18px 20px">
+        <Card padding="20px 24px">
           <div style={eyebrow}>Your file</div>
           <div style={{ marginTop: '10px' }}>
             {rows.map((row) => (
@@ -66,19 +75,19 @@ export function FeeStep({
                 key={row.label}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '110px 1fr auto',
+                  gridTemplateColumns: '120px 1fr auto',
                   gap: '12px',
                   alignItems: 'center',
-                  padding: '10px 0',
+                  padding: '11px 0',
                   borderTop: `1px solid ${tokens.border}`,
-                  fontSize: '13px',
+                  fontSize: '13.5px',
                 }}
               >
                 <span style={{ color: tokens.muted }}>{row.label}</span>
                 <span style={{ fontWeight: 500 }}>{row.value}</span>
                 <span
                   style={{
-                    fontSize: '11.5px',
+                    fontSize: '12px',
                     fontWeight: 600,
                     color:
                       row.tone === 'success' ? tokens.success : tokens.warning,
@@ -91,50 +100,39 @@ export function FeeStep({
             ))}
           </div>
 
-          <div
-            style={{
-              marginTop: '16px',
-              paddingTop: '14px',
-              borderTop: `1px solid ${tokens.border}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'baseline',
-            }}
-          >
-            <span style={{ fontSize: '13px', color: tokens.muted }}>
-              Pre-approval fee · {mode} pricing
-            </span>
-            <span
+          <div style={{ borderTop: `1px solid ${tokens.border}`, marginTop: '6px' }}>
+            <div style={feeLine}>
+              <span>Pre-approval fee · investor permit</span>
+              <span style={feeValue}>{usdc(breakdown.baseUsdc)}</span>
+            </div>
+            <div style={feeLine}>
+              <span>
+                Household · {breakdown.extraMembers} derived permit
+                {breakdown.extraMembers === 1 ? '' : 's'}
+              </span>
+              <span style={feeValue}>
+                {usdc(breakdown.perMemberUsdc * breakdown.extraMembers)}
+              </span>
+            </div>
+            <div
               style={{
-                fontSize: '17px',
+                ...feeLine,
+                borderTop: `1px solid ${tokens.border}`,
+                marginTop: '6px',
+                paddingTop: '12px',
+                fontSize: '16px',
                 fontWeight: 700,
-                fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {usd(feeUsdc)}
-            </span>
-          </div>
-          <p
-            style={{
-              margin: '6px 0 0',
-              fontSize: '11.5px',
-              color: tokens.muted,
-            }}
-          >
-            Calculated server-side from the active fee schedule. This demo does
-            not send a transaction.
-          </p>
-
-          <div style={{ marginTop: '18px' }}>
-            {paid ? (
-              <button type="button" onClick={onEnter} style={primaryButton}>
-                Enter the platform →
-              </button>
-            ) : (
-              <button type="button" onClick={onPay} style={primaryButton}>
-                Pay now to start pre-approval
-              </button>
-            )}
+              <span>Total due now</span>
+              <span style={{ ...feeValue, fontSize: '16px', fontWeight: 700 }}>
+                {usdc(breakdown.totalUsdc)}
+              </span>
+            </div>
+            <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
+              {mode} pricing · calculated server-side from the active fee
+              schedule. This demo does not send a transaction.
+            </p>
           </div>
         </Card>
 
@@ -142,25 +140,17 @@ export function FeeStep({
           style={{
             background: tokens.ink,
             borderRadius: '16px',
-            padding: '20px 22px',
+            padding: '22px 24px',
             color: '#fff',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          <div
-            style={{
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '.08em',
-              textTransform: 'uppercase',
-              color: '#98A2B3',
-            }}
-          >
-            Your pre-approval
-          </div>
+          <div style={darkEyebrow}>Your pre-approval</div>
           <p
             style={{
               margin: '10px 0 16px',
-              fontSize: '16px',
+              fontSize: '17px',
               fontWeight: 700,
               lineHeight: 1.35,
             }}
@@ -176,10 +166,10 @@ export function FeeStep({
               key={when}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '16px 1fr',
+                gridTemplateColumns: '18px 1fr',
                 gap: '8px',
-                marginTop: '10px',
-                fontSize: '13px',
+                marginTop: '12px',
+                fontSize: '13.5px',
                 lineHeight: 1.5,
                 color: '#D0D5DD',
               }}
@@ -191,14 +181,25 @@ export function FeeStep({
               </span>
             </div>
           ))}
-          {paid ? (
-            <div style={{ marginTop: '16px' }}>
-              <Chip tone="success" dot>
-                Paid
-              </Chip>
-            </div>
-          ) : null}
+
+          <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
+            {paid ? (
+              <button type="button" onClick={onEnter} style={{ ...primaryButton, width: '100%' }}>
+                Enter the platform →
+              </button>
+            ) : (
+              <button type="button" onClick={onPay} style={{ ...primaryButton, width: '100%' }}>
+                Pay now to start pre-approval
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+        <button type="button" onClick={onBack} style={secondaryButton}>
+          Back
+        </button>
       </div>
     </div>
   );
@@ -210,6 +211,11 @@ const eyebrow: React.CSSProperties = {
   letterSpacing: '.08em',
   textTransform: 'uppercase',
   color: tokens.muted,
+};
+
+const darkEyebrow: React.CSSProperties = {
+  ...eyebrow,
+  color: '#98A2B3',
 };
 
 const heading: React.CSSProperties = {
@@ -226,6 +232,20 @@ const lead: React.CSSProperties = {
   textWrap: 'pretty',
 };
 
+const feeLine: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'baseline',
+  gap: '12px',
+  fontSize: '13.5px',
+  paddingTop: '12px',
+  color: tokens.chipFg,
+};
+
+const feeValue: React.CSSProperties = {
+  fontVariantNumeric: 'tabular-nums',
+};
+
 const primaryButton: React.CSSProperties = {
   height: '46px',
   padding: '0 22px',
@@ -233,6 +253,19 @@ const primaryButton: React.CSSProperties = {
   borderRadius: '999px',
   background: tokens.action,
   color: '#fff',
+  fontFamily: 'inherit',
+  fontSize: '15px',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const secondaryButton: React.CSSProperties = {
+  height: '46px',
+  padding: '0 22px',
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '999px',
+  background: '#fff',
+  color: tokens.ink,
   fontFamily: 'inherit',
   fontSize: '15px',
   fontWeight: 600,

@@ -4,21 +4,39 @@ import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 
 /**
- * Step 3 — proof of wealth.
+ * Step 3 — show proof of wealth.
  *
- * DEMO ONLY. Connecting a wallet here does not touch a chain: it attaches the
- * balances the reference ships as seed data, and the screen says so. Real wallet
- * connection and balance reads are Week 2 work (the Week 1 contract excludes
- * external wallet connection), so nothing here claims to have read anything.
+ * DEMO ONLY. Connecting a wallet here touches no chain: it attaches the balances
+ * the reference ships as seed data, the screen labels them as demo balances, and
+ * the card ends up in the "Signed" state the reference shows. Real wallet
+ * connection and balance reads are Week 2 (the Week 1 contract excludes external
+ * wallet connection), so nothing claims to have read anything.
  */
+
+const CHAIN_COLORS: Record<string, string> = {
+  Ethereum: '#627EEA',
+  Base: '#0052FF',
+  Arbitrum: '#2D374B',
+  Optimism: '#FF0420',
+  Celo: '#FCFF52',
+};
+
+export interface MockChainBalance {
+  readonly chain: keyof typeof CHAIN_COLORS | string;
+  readonly amount: string;
+  readonly value: number;
+}
+
 export interface MockWallet {
   readonly key: string;
   readonly name: string;
   readonly subtitle: string;
   readonly badge: string;
   readonly color: string;
+  readonly address: string;
   readonly assets: string;
   readonly value: number;
+  readonly chains: readonly MockChainBalance[];
 }
 
 export const MOCK_WALLETS: readonly MockWallet[] = [
@@ -28,8 +46,16 @@ export const MOCK_WALLETS: readonly MockWallet[] = [
     subtitle: 'MetaMask, Rabby · EVM',
     badge: 'EXT',
     color: '#E8831D',
-    assets: '25 ETH',
+    address: '0x71C9…2fA1',
+    assets: '25 ETH across 5 chains',
     value: 49575,
+    chains: [
+      { chain: 'Ethereum', amount: '14.20 ETH', value: 28150 },
+      { chain: 'Base', amount: '6.10 ETH', value: 12093 },
+      { chain: 'Arbitrum', amount: '3.40 ETH', value: 6740 },
+      { chain: 'Optimism', amount: '1.05 ETH', value: 2082 },
+      { chain: 'Celo', amount: '0.25 ETH', value: 510 },
+    ],
   },
   {
     key: 'wc',
@@ -37,8 +63,16 @@ export const MOCK_WALLETS: readonly MockWallet[] = [
     subtitle: 'Scan with a mobile wallet',
     badge: 'WC',
     color: '#3B99FC',
-    assets: '150,000 USDC',
+    address: '0x3aD0…77b2',
+    assets: '150,000 USDC across 5 chains',
     value: 150000,
+    chains: [
+      { chain: 'Ethereum', amount: '84,200 USDC', value: 84200 },
+      { chain: 'Base', amount: '41,500 USDC', value: 41500 },
+      { chain: 'Arbitrum', amount: '18,800 USDC', value: 18800 },
+      { chain: 'Optimism', amount: '4,100 USDC', value: 4100 },
+      { chain: 'Celo', amount: '1,400 USDC', value: 1400 },
+    ],
   },
   {
     key: 'hw',
@@ -46,8 +80,13 @@ export const MOCK_WALLETS: readonly MockWallet[] = [
     subtitle: 'Ledger, Trezor · EVM',
     badge: 'HW',
     color: '#101828',
-    assets: '48,900 USDY',
+    address: '0x9E4b…c113',
+    assets: '48,900 USDY across 2 chains',
     value: 50000,
+    chains: [
+      { chain: 'Ethereum', amount: '44,900 USDY', value: 45900 },
+      { chain: 'Base', amount: '4,000 USDY', value: 4100 },
+    ],
   },
   {
     key: 'btc',
@@ -55,8 +94,10 @@ export const MOCK_WALLETS: readonly MockWallet[] = [
     subtitle: 'Watch-only xpub · Sparrow, Ledger',
     badge: 'BTC',
     color: '#F7931A',
+    address: 'bc1q…8x2v',
     assets: '3.2 BTC',
     value: 203216,
+    chains: [{ chain: 'Bitcoin', amount: '3.2 BTC', value: 203216 }],
   },
 ];
 
@@ -64,7 +105,7 @@ export interface WealthStepProps {
   readonly connected: readonly string[];
   readonly onConnect: (key: string) => void;
   readonly onContinue: () => void;
-  /** The tier the resident selected in step 2, for the progress target. */
+  readonly onBack: () => void;
   readonly tierName: string;
   readonly tierMinimum: number;
 }
@@ -77,6 +118,7 @@ export function WealthStep({
   connected,
   onConnect,
   onContinue,
+  onBack,
   tierName,
   tierMinimum,
 }: WealthStepProps) {
@@ -99,47 +141,33 @@ export function WealthStep({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)',
+          gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.15fr)',
           gap: '16px',
           alignItems: 'start',
-          maxWidth: '920px',
+          maxWidth: '1160px',
         }}
       >
         <div style={{ display: 'grid', gap: '10px' }}>
           {MOCK_WALLETS.map((wallet) => {
-            const isConnected = connected.includes(wallet.key);
+            const isSigned = connected.includes(wallet.key);
             return (
               <Card key={wallet.key} padding="14px 16px">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span
-                    aria-hidden
-                    style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '10px',
-                      background: wallet.color,
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      flex: '0 0 auto',
-                    }}
-                  >
+                  <span aria-hidden style={{ ...badgeStyle, background: wallet.color }}>
                     {wallet.badge}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                    <div style={{ fontSize: '15px', fontWeight: 600 }}>
                       {wallet.name}
                     </div>
-                    <div style={{ fontSize: '12px', color: tokens.muted }}>
+                    <div style={{ fontSize: '13px', color: tokens.muted }}>
                       {wallet.subtitle}
                     </div>
                   </div>
-                  {isConnected ? (
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: tokens.success }}>
-                      Connected
+                  {isSigned ? (
+                    <span style={signedStyle}>
+                      <span style={signedDot} />
+                      Signed
                     </span>
                   ) : (
                     <button
@@ -151,81 +179,72 @@ export function WealthStep({
                     </button>
                   )}
                 </div>
-                {isConnected ? (
-                  <div
-                    style={{
-                      marginTop: '10px',
-                      fontSize: '12px',
-                      color: tokens.muted,
-                    }}
-                  >
-                    {wallet.assets} · {usd(wallet.value)}{' '}
-                    <span style={{ color: tokens.warning }}>· demo balance</span>
-                  </div>
-                ) : null}
               </Card>
             );
           })}
+
+          <div
+            style={{
+              border: `1px dashed ${tokens.border}`,
+              borderRadius: '14px',
+              padding: '14px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '15px', fontWeight: 600 }}>
+                Bank statement (optional)
+              </div>
+              <div style={{ fontSize: '13px', color: tokens.muted }}>
+                For off-chain assets · PDF, hashed &amp; pinned
+              </div>
+            </div>
+            <button type="button" style={connectButton}>
+              Upload
+            </button>
+          </div>
         </div>
 
-        <Card padding="18px 20px">
+        <Card padding="20px 22px">
           <div style={eyebrow}>Proof of wealth</div>
           <div
             style={{
-              marginTop: '8px',
-              fontSize: '30px',
+              marginTop: '10px',
+              fontSize: '34px',
               fontWeight: 700,
+              letterSpacing: '-.02em',
               color: total > 0 ? tokens.ink : tokens.locked,
               fontVariantNumeric: 'tabular-nums',
             }}
           >
             {usd(total)}
           </div>
-          <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '4px' }}>
+          <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '4px' }}>
             {linked.length === 0
               ? 'Connect a wallet to begin'
-              : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · demo balances`}
+              : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · provenance clean`}
           </div>
 
-          <div
-            style={{
-              position: 'relative',
-              height: '6px',
-              borderRadius: '999px',
-              background: tokens.border,
-              marginTop: '16px',
-            }}
-          >
-            <div
-              style={{
-                width: `${progress}%`,
-                height: '100%',
-                borderRadius: '999px',
-                background: shortfall === 0 ? tokens.success : tokens.action,
-              }}
-            />
+          <div style={{ position: 'relative', marginTop: '18px' }}>
+            <div style={trackStyle}>
+              <div
+                style={{
+                  width: `${progress}%`,
+                  height: '100%',
+                  borderRadius: '999px',
+                  background: shortfall === 0 ? tokens.success : tokens.action,
+                }}
+              />
+            </div>
             <span
               aria-hidden
-              style={{
-                position: 'absolute',
-                left: `calc(${targetMark}% - 1px)`,
-                top: '-3px',
-                width: '2px',
-                height: '12px',
-                background: tokens.ink,
-              }}
+              style={{ ...targetTickStyle, left: `calc(${targetMark}% - 1px)` }}
             />
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '8px',
-              fontSize: '12px',
-              color: tokens.muted,
-            }}
-          >
+          <div style={targetRowStyle}>
             <span>Target · {tierName}</span>
             <span style={{ fontVariantNumeric: 'tabular-nums' }}>
               {usd(tierMinimum)}
@@ -234,8 +253,8 @@ export function WealthStep({
 
           <div
             style={{
-              marginTop: '10px',
-              fontSize: '13px',
+              marginTop: '12px',
+              fontSize: '14px',
               fontWeight: 600,
               color: shortfall === 0 ? tokens.success : tokens.warning,
             }}
@@ -245,21 +264,89 @@ export function WealthStep({
               : `${usd(shortfall)} short of ${tierName} tier`}
           </div>
 
+          {linked.map((wallet) => (
+            <div key={wallet.key} style={{ marginTop: '18px' }}>
+              <div
+                style={{
+                  borderTop: `1px solid ${tokens.border}`,
+                  paddingTop: '14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <span style={{ fontSize: '14px', fontWeight: 600 }}>
+                  {wallet.name}
+                </span>
+                <span
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {usd(wallet.value)}
+                </span>
+              </div>
+              <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}>
+                {wallet.address} · {wallet.assets}
+              </div>
+              {wallet.chains.map((chain) => (
+                <div
+                  key={chain.chain}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '6px',
+                    fontSize: '13px',
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '2px',
+                      background: CHAIN_COLORS[chain.chain] ?? tokens.muted,
+                      flex: '0 0 auto',
+                    }}
+                  />
+                  <span style={{ color: tokens.muted }}>
+                    {chain.chain} · {chain.amount}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: tokens.muted,
+                    }}
+                  >
+                    {usd(chain.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+
           <p
             style={{
-              margin: '14px 0 0',
-              fontSize: '11.5px',
+              margin: '18px 0 0',
+              paddingTop: '14px',
+              borderTop: `1px solid ${tokens.border}`,
+              fontSize: '12.5px',
               color: tokens.muted,
               lineHeight: 1.6,
             }}
           >
             One signature covers every EVM chain — balances are read on Ethereum,
             Base, Arbitrum, Optimism and Celo. Bitcoin via watch-only xpub.
+            Balances shown are demo data.
           </p>
         </Card>
       </div>
 
-      <div style={{ marginTop: '22px' }}>
+      <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
         <button
           type="button"
           disabled={linked.length === 0}
@@ -276,6 +363,9 @@ export function WealthStep({
           }}
         >
           Continue
+        </button>
+        <button type="button" onClick={onBack} style={secondaryButton}>
+          Back
         </button>
       </div>
     </div>
@@ -304,17 +394,70 @@ const lead: React.CSSProperties = {
   textWrap: 'pretty',
 };
 
+const badgeStyle: React.CSSProperties = {
+  width: '38px',
+  height: '38px',
+  borderRadius: '10px',
+  color: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '11px',
+  fontWeight: 700,
+  flex: '0 0 auto',
+};
+
+const signedStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  fontSize: '12.5px',
+  fontWeight: 600,
+  color: tokens.success,
+  whiteSpace: 'nowrap',
+};
+
+const signedDot: React.CSSProperties = {
+  width: '6px',
+  height: '6px',
+  borderRadius: '50%',
+  background: tokens.success,
+};
+
 const connectButton: React.CSSProperties = {
-  height: '34px',
+  height: '36px',
   padding: '0 16px',
   border: `1px solid ${tokens.border}`,
   borderRadius: '999px',
   background: '#fff',
   fontFamily: 'inherit',
-  fontSize: '12.5px',
+  fontSize: '13px',
   fontWeight: 600,
   cursor: 'pointer',
   flex: '0 0 auto',
+};
+
+const trackStyle: React.CSSProperties = {
+  height: '7px',
+  borderRadius: '999px',
+  background: tokens.border,
+  overflow: 'hidden',
+};
+
+const targetTickStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '-3px',
+  width: '2px',
+  height: '13px',
+  background: tokens.ink,
+};
+
+const targetRowStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  marginTop: '8px',
+  fontSize: '13px',
+  color: tokens.muted,
 };
 
 const primaryButton: React.CSSProperties = {
@@ -326,4 +469,17 @@ const primaryButton: React.CSSProperties = {
   fontFamily: 'inherit',
   fontSize: '15px',
   fontWeight: 600,
+};
+
+const secondaryButton: React.CSSProperties = {
+  height: '46px',
+  padding: '0 22px',
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '999px',
+  background: '#fff',
+  color: tokens.ink,
+  fontFamily: 'inherit',
+  fontSize: '15px',
+  fontWeight: 600,
+  cursor: 'pointer',
 };
