@@ -25,7 +25,7 @@ Two things:
 | A passkey can be enrolled with user verification | `lib/passkey/enrolment.ts`; `assertUserVerification` rejects an enrolment without it |
 | The Safe address is derivable and deterministic | `packages/contracts/src/SafeAddress.sol`, 12 Foundry tests including a pinned vector cross-checked three ways |
 | Changing any input changes the address | `test_Changing*ChangesAddress` (factory, singleton, initializer hash, salt, creation code) |
-| The address does not depend on the chain id | `test_AddressIsIndependentOfChainId` — D4 requires one address on three chains |
+| The address does not depend on the chain id | `test_AddressIsIndependentOfChainId` — D4 requires one address on every active chain |
 | The D4 record shape exists | `packages/contracts/safe/SafeDeploymentManifest.schema.json`, with an all-`[arbitrary]` example carrying `provenance: unapproved` |
 
 ## What I need from you
@@ -61,13 +61,14 @@ open is below.
 ## What approval authorises
 
 Deploying one resident Safe on **Ethereum Sepolia**, and recording the D4
-manifest: the transaction, the address, the predicted Arbitrum Sepolia and Base
-Sepolia addresses, and the inputs that produced them.
+manifest: the transaction, the address, the predicted Base Sepolia address, and
+the inputs that produced them.
 
 ## What approval does not authorise
 
 - Any mainnet deployment.
-- Deploying the Safe on Arbitrum or Base (predicted only, in Week 1).
+- Deploying the Safe on Base Sepolia (predicted only in Week 1), or on Arbitrum
+  (deferred by contract v1.6).
 - EAS registration (gate 3).
 - Deploying KadeLock (out of Week 1 scope).
 

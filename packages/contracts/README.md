@@ -109,8 +109,9 @@ recorded registrations to compare.
 
 ## Safe address machinery (D4)
 
-D4 requires one resident Safe address across Ethereum Sepolia, Arbitrum Sepolia
-and Base Sepolia, derived from frozen deployment inputs. `src/SafeAddress.sol`
+D4 requires one resident Safe address across every active chain — iteration 1:
+Ethereum Sepolia and Base Sepolia, with Arbitrum deferred (contract v1.6) —
+derived from frozen deployment inputs. `src/SafeAddress.sol`
 implements the canonical `SafeProxyFactory.createProxyWithNonce` arithmetic;
 `test/SafeAddress.t.sol` pins a known vector, cross-checks
 `vm.computeCreate2Address`, and proves that changing any one input changes the

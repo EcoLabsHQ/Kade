@@ -42,8 +42,8 @@
     },
     "predictedL2Addresses": {
       "type": "array",
-      "minItems": 2,
-      "description": "Counterfactual L2 addresses. D4: stored. Each must equal safeAddress (see tests/SafeAddress.t.sol). [arbitrary].",
+      "minItems": 1,
+      "description": "Counterfactual L2 addresses. D4: stored. Each must equal safeAddress (see tests/SafeAddress.t.sol). Iteration 1 predicts Base Sepolia only; Arbitrum is deferred (contract v1.6). [arbitrary].",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -51,7 +51,7 @@
         "properties": {
           "chainId": {
             "enum": [421614, 84532],
-            "description": "Arbitrum Sepolia (421614) or Base Sepolia (84532). [documented]."
+            "description": "Base Sepolia (84532) is the active prediction; Arbitrum Sepolia (421614) is deferred by contract v1.6 but the shape still accepts it. [documented]."
           },
           "name": { "type": "string" },
           "address": {

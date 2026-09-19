@@ -4,7 +4,6 @@
   "deploymentChainId": 11155111,
   "safeAddress": "0x0000000000000000000000000000000000000000",
   "predictedL2Addresses": [
-    { "chainId": 421614, "name": "Arbitrum Sepolia", "address": "0x0000000000000000000000000000000000000000" },
     { "chainId": 84532, "name": "Base Sepolia", "address": "0x0000000000000000000000000000000000000000" }
   ],
   "safeVersion": "[arbitrary]",

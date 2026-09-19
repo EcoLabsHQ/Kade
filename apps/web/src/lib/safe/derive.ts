@@ -19,7 +19,7 @@ import {
  *
  * D4 uses the chain-agnostic `SafeProxyFactory.createProxyWithNonce`, whose salt
  * does not include the chain id, which is what makes one address valid on
- * Ethereum, Arbitrum and Base. `createChainSpecificProxyWithNonce` is
+ * every chain — including, once they are active, Ethereum, Arbitrum and Base. `createChainSpecificProxyWithNonce` is
  * deliberately not modelled: it would produce a different address per chain.
  *
  * Nothing here deploys. The factory, singleton, fallback handler, signer and

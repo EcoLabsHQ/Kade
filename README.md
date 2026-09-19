@@ -27,8 +27,9 @@ rail. First deployment: the Curaçao investor permit.
 ## Networks and stack
 
 - **Target chains:** Ethereum, Arbitrum, Base — same Safe address on all three.
-- **Iteration 1:** Ethereum Sepolia (deploy) + Arbitrum Sepolia / Base Sepolia
-  (predicted addresses). EAS schemas to be registered on Sepolia.
+- **Iteration 1:** Ethereum Sepolia (deploy) + Base Sepolia (predicted
+  address). Arbitrum is deferred (contract v1.6). EAS schemas to be registered
+  on Sepolia.
 - **Stack:** Safe{Core} + ERC-4337 · Pimlico paymaster · EAS · Self (ZK passport
   identity) · USDC + Circle CCTP · Snapshot · Supabase · GOS (fiat + card) ·
   Reflect (USD vault) · Safe WebAuthn · Next.js, wagmi/viem.
