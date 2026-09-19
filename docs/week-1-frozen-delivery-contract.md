@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.4 — human decisions recorded 16 September 2026; four
-amendments recorded in sections 8.1-8.4
+**Status:** Frozen v1.5 — human decisions recorded 16 September 2026; five
+amendments recorded in sections 8.1-8.5
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -347,6 +347,38 @@ resolved and D3/D5 are no longer flagged at risk.
 No acceptance criterion changed. This is a status correction to a record that
 would otherwise claim an open risk that no longer exists.
 
+### 8.5 Amendment v1.5 — credential metadata gets a home, and the Safe version
+
+**v1.5 — 18 September 2026. Approved by the project owner.**
+
+Two decisions recorded together, because both were blocking D3 and D4.
+
+**1. `passkey_credentials` is added to the schema.** D3 requires the credential
+metadata needed for future signing to be stored securely and to survive a
+reload. The DOCX section 9 data model has no table for it — `wallets` covers
+self-custodied EOAs and Bitcoin xpubs, which a WebAuthn credential is not — so
+the metadata had nowhere to live and did not survive a reload. The table stores
+the credential id, the COSE public key, the authenticator transports, whether
+enrolment required user verification, and the derived `signer_address`.
+It stores no private key and no raw attestation object. RLS is on: a resident
+may read their own credential and propose one, while `signer_address` is
+server-written because it is derived from the public key and the frozen Safe
+inputs.
+
+**2. The active Safe release is v1.4.1, not the latest v1.5.0.** Safe v1.5.0 is
+not deployed on Arbitrum Sepolia (chain 421614): its published deployment file
+carries no entry for that chain, while v1.4.1's does. D4 requires one address
+across Ethereum Sepolia, Arbitrum Sepolia and Base Sepolia, so v1.5.0 cannot
+satisfy D4. v1.4.1 also has its `SafeProxy` creation code pinned by a Foundry
+test in this repository, which is what lets the address derivation be checked
+against a fixed vector. Moving to v1.5.0 is a configuration change once the
+target set drops a chain it does not cover, or once Safe deploys it there.
+
+The addresses for both versions, their code hashes, and the passkey module's
+signer factory and P-256 verifier are recorded in
+`packages/shared/src/safe-deployments.ts`, sourced from Safe's own published
+deployments.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -382,7 +414,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.4** with the open items above tracked under change control.
+This contract is **Frozen v1.5** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
