@@ -1,10 +1,39 @@
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ApplicationSession } from '@kade/shared';
 import { AuthNotConfiguredError } from '@/lib/auth/errors';
 import { toApplicationSession } from '@/lib/auth/session';
-import { isAuthConfigured, readAuthEnv } from '@/lib/env';
+import { isAuthConfigured, readAuthEnv, readServiceRoleKey } from '@/lib/env';
+
+/**
+ * Raised when an elevated operation is attempted without a service-role key.
+ *
+ * Callers that can degrade (write only the resident's own columns and report
+ * that the signer address was not stored) should check
+ * `isServiceRoleConfigured()` first; this error is for callers that genuinely
+ * require the elevated capability.
+ */
+export class ServiceRoleNotConfiguredError extends Error {
+  constructor(
+    message = 'SUPABASE_SERVICE_ROLE_KEY is not configured, so elevated ' +
+      'database writes are unavailable. Set it in the server environment ' +
+      '(see .env.example).',
+  ) {
+    super(message);
+    this.name = 'ServiceRoleNotConfiguredError';
+  }
+}
+
+/**
+ * Whether the service-role key is present, so an elevated write is possible.
+ *
+ * Reads configuration only; it never constructs a client and never touches the
+ * key's value beyond presence.
+ */
+export function isServiceRoleConfigured(): boolean {
+  return isAuthConfigured(readAuthEnv()) && readServiceRoleKey() !== null;
+}
 
 /**
  * Server Supabase client bound to the request cookie jar.
@@ -39,6 +68,34 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient> {
       },
     },
   );
+}
+
+/**
+ * Elevated Supabase client for server-only writes.
+ *
+ * The service-role key bypasses row level security, so this client must never
+ * reach the browser and every query made with it must still be scoped to the
+ * signed-in resident explicitly. It is used only for columns the
+ * `authenticated` role cannot write — currently
+ * `passkey_credentials.signer_address`.
+ *
+ * Sessions are disabled: the service client acts as the server, not as a user,
+ * so it must not read or refresh the request's cookies.
+ *
+ * @throws {ServiceRoleNotConfiguredError} when the key is absent.
+ */
+export async function createSupabaseServiceClient(): Promise<SupabaseClient> {
+  const env = readAuthEnv();
+  const serviceRoleKey = readServiceRoleKey();
+  if (!isAuthConfigured(env) || !serviceRoleKey) {
+    throw new ServiceRoleNotConfiguredError();
+  }
+  return createClient(env.supabaseUrl as string, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 }
 
 /**

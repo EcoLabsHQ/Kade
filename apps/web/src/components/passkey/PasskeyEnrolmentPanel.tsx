@@ -5,15 +5,22 @@ import type { ApplicationSession } from '@kade/shared';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
-import {
-  enrolPasskey,
-  type PasskeyEnrolmentRecord,
-} from '@/lib/passkey/enrolment';
-import { passkeyStore } from '@/lib/passkey/store';
+import { savePasskeyCredential } from '@/app/account/passkey-actions';
+import type {
+  SignerPersistence,
+  StoredPasskeyCredential,
+} from '@/lib/passkey/credential';
+import { enrolPasskey } from '@/lib/passkey/enrolment';
 
 export interface PasskeyEnrolmentPanelProps {
   readonly configured: boolean;
   readonly session: ApplicationSession;
+  /**
+   * The resident's stored credential, loaded on the server before render.
+   * When present the panel shows it instead of offering to create a new one,
+   * which is what makes D3's "survives reload" observable.
+   */
+  readonly initialCredential: StoredPasskeyCredential | null;
 }
 
 function randomChallenge(): string {
@@ -36,34 +43,16 @@ function shortCredentialId(id: string): string {
 export function PasskeyEnrolmentPanel({
   configured,
   session,
+  initialCredential,
 }: PasskeyEnrolmentPanelProps) {
-  const [record, setRecord] = useState<PasskeyEnrolmentRecord | null>(null);
-  const [signerAddress, setSignerAddress] = useState<string | null>(null);
+  const [record, setRecord] = useState<StoredPasskeyCredential | null>(
+    initialCredential,
+  );
+  const [signerStatus, setSignerStatus] = useState<SignerPersistence | null>(
+    null,
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  /**
-   * Ask the chain for the signer this credential owns, so the panel reports the
-   * real address rather than a placeholder state. The passkey exists either way,
-   * so a failure here is not an error the resident needs to act on.
-   */
-  async function resolveSigner(publicKey: string) {
-    try {
-      const [{ parseP256PublicKey }, { deriveAccount }] = await Promise.all([
-        import('@/lib/passkey/public-key'),
-        import('@/app/onboarding/signer-actions'),
-      ]);
-      const { x, y } = parseP256PublicKey(publicKey);
-      const derived = await deriveAccount(
-        x.toString(),
-        y.toString(),
-        session.userId,
-      );
-      setSignerAddress(derived.signerAddress);
-    } catch {
-      setSignerAddress(null);
-    }
-  }
 
   async function handleEnrol() {
     setError(null);
@@ -78,10 +67,17 @@ export function PasskeyEnrolmentPanel({
         userName: session.email || session.userId,
         challenge: randomChallenge(),
       });
-      // Persistence seam: in-memory only until a database is reachable.
-      await passkeyStore().save(session.userId, created);
-      setRecord(created);
-      void resolveSigner(created.publicKey);
+
+      // The server derives the signer from the public key and writes the row;
+      // the browser never names its own signer.
+      const result = await savePasskeyCredential({
+        credentialId: created.credentialId,
+        publicKey: created.publicKey,
+        transports: created.transports,
+        userVerification: created.userVerification,
+      });
+      setRecord(result.credential);
+      setSignerStatus(result.signer);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -144,8 +140,9 @@ export function PasskeyEnrolmentPanel({
       >
         Enrolment requests WebAuthn user verification. It does not sign
         anything and cannot authorise a transaction by itself. The attestation
-        response is not verified server-side in this scaffold. Metadata is stored
-        in memory only, so it does not yet survive a reload.
+        response is not verified server-side in this scaffold. The credential
+        metadata is stored server-side and, once saved, is shown here on every
+        reload.
       </p>
 
       {record ? (
@@ -180,12 +177,17 @@ export function PasskeyEnrolmentPanel({
           </div>
           <div>
             <strong>Signer address</strong>{' '}
-            {signerAddress ? (
-              <span style={{ fontVariantNumeric: 'tabular-nums', wordBreak: 'break-all' }}>
-                {signerAddress}
+            {record.signerAddress ? (
+              <span
+                style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {record.signerAddress}
               </span>
             ) : (
-              <span style={{ color: tokens.muted }}>—</span>
+              <span style={{ color: tokens.muted }}>Not stored</span>
             )}
           </div>
           <div>
@@ -194,19 +196,37 @@ export function PasskeyEnrolmentPanel({
         </div>
       ) : null}
 
-      <div style={{ marginTop: '14px' }}>
-        <Button onClick={handleEnrol} disabled={pending}>
-          {pending ? 'Waiting for authenticator…' : 'Create transaction passkey'}
-        </Button>
-        {error ? (
-          <p
-            role="alert"
-            style={{ margin: '10px 0 0', fontSize: '12.5px', color: tokens.danger }}
-          >
-            {error}
-          </p>
-        ) : null}
-      </div>
+      {signerStatus?.status === 'not-persisted' ? (
+        <p
+          style={{
+            margin: '10px 0 0',
+            fontSize: '12px',
+            color: tokens.muted,
+            lineHeight: 1.6,
+          }}
+        >
+          {signerStatus.reason}
+        </p>
+      ) : null}
+
+      {record ? null : (
+        <div style={{ marginTop: '14px' }}>
+          <Button onClick={handleEnrol} disabled={pending}>
+            {pending
+              ? 'Waiting for authenticator…'
+              : 'Create transaction passkey'}
+          </Button>
+        </div>
+      )}
+
+      {error ? (
+        <p
+          role="alert"
+          style={{ margin: '10px 0 0', fontSize: '12.5px', color: tokens.danger }}
+        >
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
