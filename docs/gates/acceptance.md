@@ -24,7 +24,7 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 |---|---|---|
 | 1 | Sign in with Google or an email link | ✅ |
 | 2 | Create or retrieve the Ethereum Sepolia Safe | ⛔ gate 2 |
-| 3 | Verify matching Sepolia / Arbitrum Sepolia / Base Sepolia addresses | ⛔ gate 2 |
+| 3 | Verify matching Sepolia / Base Sepolia addresses | ⛔ gate 2 |
 | 4 | Complete Steps 1–2 | ⚠️ write path unproven |
 | 5 | Observe the correct fee | ✅ |
 | 6 | Reload and recover application state | ⚠️ same as 4 |
@@ -49,7 +49,7 @@ the overview greets you by your actual provider.
 withholds the address rather than fabricating one. Correct behaviour until the
 deployment is approved.
 
-### 3. Matching addresses on three chains ⛔
+### 3. Matching addresses on the active chains ⛔
 
 **Blocked by gate 2.** Requires the D4 manifest, which the deployment produces.
 

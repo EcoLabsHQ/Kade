@@ -70,8 +70,8 @@ export interface SafeDeploymentRecord {
 }
 
 /**
- * D4: the same Safe address on Ethereum Sepolia, Arbitrum Sepolia and Base
- * Sepolia.
+ * D4: the same Safe address on every active chain (iteration 1: Ethereum
+ * Sepolia and Base Sepolia; Arbitrum deferred, contract v1.6).
  */
 export function assertSameAddressAcrossChains(records: readonly SafeDeploymentRecord[]): void {
   const addresses = new Set(records.map((r) => r.safeAddress.toLowerCase()));
