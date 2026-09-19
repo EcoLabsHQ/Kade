@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeResidenceCoverage,
-  preapprovalFeeUsdc,
   residenceCoverage,
   type Residence,
 } from '@kade/shared';
+import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
 import {
   addCitizenship,
   addMember,
@@ -23,8 +23,9 @@ import {
  * Step 2 model tests (D5).
  *
  * The rules themselves are frozen in `@kade/shared`; these tests prove the UI
- * model calls them rather than re-implementing them, and that the live fee is
- * always the shared value.
+ * model calls them rather than re-implementing them. The model deliberately
+ * computes no fee: that is the server's, resolved from the active
+ * `fee_schedule` (contract section 2.1).
  */
 
 const YEAR = new Date().getFullYear();
@@ -45,19 +46,24 @@ function validDraft(): OnboardingDraft {
   };
 }
 
-describe('live pre-approval fee', () => {
-  it('is the shared formula value, never a constant', () => {
-    expect(evaluateDraft(validDraft(), 'demo').feeUsdc).toBe(
-      preapprovalFeeUsdc('demo', 1),
-    );
-    expect(evaluateDraft(validDraft(), 'production').feeUsdc).toBe(
-      preapprovalFeeUsdc('production', 1),
-    );
+describe('household size and the configured fee', () => {
+  it('no longer computes a fee from the shared formula', () => {
+    // The draft model reports validation and size only. Surfacing a fee here
+    // is what let the shared formula pass for the authoritative amount.
+    const evaluation = evaluateDraft(validDraft(), 'demo');
+    expect(evaluation).not.toHaveProperty('feeUsdc');
+    expect(Object.keys(evaluation).sort()).toEqual([
+      'blockers',
+      'canContinue',
+      'householdSize',
+      'stepOne',
+      'stepTwo',
+    ]);
   });
 
-  it('updates when a household member is added and removed', () => {
+  it('updates the household size when a member is added and removed', () => {
     const base = validDraft();
-    const before = evaluateDraft(base, 'demo');
+    expect(evaluateDraft(base, 'demo').householdSize).toBe(1);
 
     const withMember = updateMember(addMember(base), 0, {
       name: 'Grace',
@@ -65,22 +71,27 @@ describe('live pre-approval fee', () => {
       dob: '2015-05-05',
       citizenship: 'DE',
     });
-    const after = evaluateDraft(withMember, 'demo');
-
-    expect(after.householdSize).toBe(2);
-    expect(after.feeUsdc).toBe(preapprovalFeeUsdc('demo', 2));
-    expect(after.feeUsdc).toBeGreaterThan(before.feeUsdc);
+    expect(evaluateDraft(withMember, 'demo').householdSize).toBe(2);
 
     const removed = removeMember(withMember, 0);
     expect(evaluateDraft(removed, 'demo').householdSize).toBe(1);
-    expect(evaluateDraft(removed, 'demo').feeUsdc).toBe(before.feeUsdc);
   });
 
-  it('previews the applicant-only fee even before the form is valid', () => {
+  it('previews the applicant-only fee from a configured schedule', () => {
+    const schedule = {
+      mode: 'demo',
+      baseUsdc: 1,
+      perMemberUsdc: 0.25,
+      roundingScale: 2,
+    } as const;
     const evaluation = evaluateDraft(emptyDraft(), 'demo');
     expect(evaluation.canContinue).toBe(false);
     expect(evaluation.householdSize).toBe(1);
-    expect(evaluation.feeUsdc).toBe(preapprovalFeeUsdc('demo', 1));
+    // 1.00 base + 0.25 x 1, the seeded demo schedule.
+    expect(
+      preapprovalBreakdownFromSchedule(schedule, evaluation.householdSize)
+        .totalUsdc,
+    ).toBe(1.25);
   });
 });
 

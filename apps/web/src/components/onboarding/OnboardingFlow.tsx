@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { preapprovalFeeBreakdown, type FeeMode } from '@kade/shared';
+import type { FeeMode } from '@kade/shared';
+import { previewPreapprovalFee } from '@/app/onboarding/actions';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { SiteFooter } from '@/components/shell/SiteFooter';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { AccountState } from '@/components/auth/AccountSummary';
+import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
@@ -26,6 +28,12 @@ export interface OnboardingFlowProps {
   readonly initial: OnboardingSnapshot | null;
   readonly network: string;
   readonly accountState: AccountState;
+  /**
+   * The fee for the restored household, resolved on the server from the active
+   * `fee_schedule`. Null when it could not be read; the screen then says so
+   * instead of showing an amount.
+   */
+  readonly initialFee: PreapprovalFeeBreakdown | null;
   readonly currentYear?: number;
   /** A credential that already exists, so a returning resident skips step 1. */
   readonly initialCredentialId?: string | null;
@@ -70,6 +78,7 @@ export function OnboardingFlow({
   initial,
   network,
   accountState,
+  initialFee,
   currentYear,
   initialCredentialId = null,
   store,
@@ -86,9 +95,36 @@ export function OnboardingFlow({
   const [connected, setConnected] = useState<readonly string[]>([]);
   const [paid, setPaid] = useState(false);
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
+  // The server's fee for a household size, tagged with the size it belongs to
+  // so a stale amount is never shown while a new one is being resolved.
+  const [fee, setFee] = useState<{
+    readonly breakdown: PreapprovalFeeBreakdown | null;
+    readonly householdSize: number;
+  }>(() => ({
+    breakdown: initialFee,
+    householdSize: initial ? 1 + initial.members.length : 1,
+  }));
 
   const householdSize = snapshot ? 1 + snapshot.members.length : 1;
-  const breakdown = preapprovalFeeBreakdown(mode, householdSize);
+
+  // The browser never computes the amount. It asks the server, which reads the
+  // active fee_schedule and returns the database's own answer.
+  useEffect(() => {
+    let active = true;
+    previewPreapprovalFee(householdSize)
+      .then((resolved) => {
+        if (active) setFee({ breakdown: resolved, householdSize });
+      })
+      .catch(() => {
+        if (active) setFee({ breakdown: null, householdSize });
+      });
+    return () => {
+      active = false;
+    };
+  }, [householdSize]);
+
+  const breakdown =
+    fee.householdSize === householdSize ? fee.breakdown : null;
 
   const tierName = snapshot
     ? (['3-year', '5-year', 'Indefinite'][snapshot.tier] ?? '3-year')
