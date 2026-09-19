@@ -4,7 +4,6 @@ import {
   assertSameAddressAcrossChains,
   assertThresholdOne,
   SAFE_THRESHOLD,
-  UNAPPROVED_SAFE_INPUTS,
   type SafeDeploymentRecord,
 } from '../src/index.js';
 
@@ -73,13 +72,5 @@ describe('Safe ownership (D4)', () => {
     expect(SAFE_THRESHOLD).toBe(1);
     expect(() => assertThresholdOne(1)).not.toThrow();
     expect(() => assertThresholdOne(2)).toThrow(/threshold/);
-  });
-});
-
-describe('unapproved deployment inputs', () => {
-  it('does not present placeholder inputs as approved', () => {
-    expect(UNAPPROVED_SAFE_INPUTS.safeVersion.provenance).toBe('arbitrary');
-    expect(UNAPPROVED_SAFE_INPUTS.proxyFactory.provenance).toBe('arbitrary');
-    expect(UNAPPROVED_SAFE_INPUTS.saltNonce.provenance).toBe('arbitrary');
   });
 });

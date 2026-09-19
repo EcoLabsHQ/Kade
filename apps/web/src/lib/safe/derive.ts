@@ -18,14 +18,14 @@ import {
  * the chain. A test cross-checks it against viem's own CREATE2 implementation.
  *
  * D4 uses the chain-agnostic `SafeProxyFactory.createProxyWithNonce`, whose salt
- * does not include the chain id, which is what makes one address valid on
- * every chain — including, once they are active, Ethereum, Arbitrum and Base. `createChainSpecificProxyWithNonce` is
- * deliberately not modelled: it would produce a different address per chain.
+ * does not include the chain id, which is what makes one address valid on every
+ * chain. `createChainSpecificProxyWithNonce` is deliberately not modelled: it
+ * would produce a different address per chain.
  *
- * Nothing here deploys. The factory, singleton, fallback handler, signer and
- * salt nonce are project-supplied and Account-gate blocked, so callers must
- * treat every address this produces as provisional until those inputs are
- * approved.
+ * Nothing here deploys. The factory, singleton and fallback handler come from
+ * `@kade/shared` (Safe's own published deployments). The signer address and the
+ * proxy creation code are inputs, read from the deploying contracts, because
+ * neither can be reproduced locally — see `./account.ts`.
  */
 
 export interface SafeDerivationInputs {

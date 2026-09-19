@@ -165,10 +165,9 @@ work as complete.
   Supabase.
 - **Credential metadata surviving reload.** Passkey metadata persistence is still
   a seam with an in-memory implementation; it is not yet written to the database.
-- **A test signature through the direct Safe WebAuthn signer.** Requires the
-  signer address and Safe deployment inputs, which the project supplies and the
-  Account gate approves. The signer address is an explicit unresolved sentinel,
-  never a fabricated address.
+- **A test signature through the direct Safe WebAuthn signer.** The signer
+  address is now derived from the passkey, but signing requires a deployed Safe
+  and a real assertion, and nothing is deployed.
 - **Any on-chain write.** KadeLock is not deployed and the EAS schemas are not
   registered. Both are gated on human approval; registration is irreversible.
 

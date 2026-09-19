@@ -21,8 +21,9 @@ import { assertPermittedSignIn } from '@/lib/auth/provider';
  * This is a scaffold:
  *   - the challenge is generated client-side because there is no server
  *     endpoint yet; a production flow must issue and verify it server-side;
- *   - the signer address is unresolved until the Account gate supplies the
- *     direct Safe WebAuthn signer factory;
+ *   - the record carries a sentinel signer address, because deriving the real one
+ *     needs a chain call; the enrolling caller derives it separately and shows
+ *     the result;
  *   - persistence is the in-memory seam in ./store.
  */
 

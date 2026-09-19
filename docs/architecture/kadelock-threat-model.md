@@ -198,8 +198,8 @@ confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 | `solc_version = 0.8.24` | `foundry.toml` | Not specified. | Onchain gate |
 | `forge-std` v1.16.2 | `lib/` | Not specified. | Onchain gate |
 | `safe-smart-account` v1.5.0 | `lib/` | Chosen by the project owner (contract v1.6); recorded in `@kade/shared` (`safe-deployments.ts`). | Account gate |
-| Safe deployment inputs (factory, singleton, fallback handler, initializer, WebAuthn signer, salt nonce) | `@kade/shared` `safe.ts`; shape in `safe/SafeDeploymentManifest.schema.json` | Project-supplied; all marked `[arbitrary]`. | Account gate |
-| Safe proxy creation code | `src/SafeAddress.sol`; pinned by `test/SafeAddress.t.sol` | Derived from the Safe version and the pinned solc/optimizer settings; any change changes the predicted address. | Account gate |
+| Safe deployment inputs (factory, singleton, fallback handler, signer, salt nonce) | `@kade/shared` `safe-deployments.ts`; shape in `safe.ts`; `safe/SafeDeploymentManifest.schema.json` | Factory, singleton and handler are `[external]` from Safe's published deployments. The signer is derived from the passkey via the deployed signer factory. The salt nonce strategy (`keccak256(userId)`) is proposed but not yet approved. | Account gate |
+| Safe proxy creation code | Read from the deploying factory's `proxyCreationCode()` in `deriveAccount` | **Not a constant.** This repository's build differs from the deployed factory's (649 vs 438 bytes), and the code is part of the CREATE2 digest, so deriving locally yields an address the factory would never deploy. | Account gate |
 | EAS field types / encodings | `@kade/shared`, surfaced in the manifest | `@kade/shared` marks types `arbitrary`. | Onchain gate |
 | EAS `revocable` and `resolver` | `@kade/shared`, surfaced in the manifest | `arbitrary`. | Onchain gate |
 | EAS `attester = 'kade-authorized'` | `@kade/shared`, surfaced in the manifest | Not resolved to an on-chain address. | Onchain gate |
