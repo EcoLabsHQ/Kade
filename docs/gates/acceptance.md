@@ -22,7 +22,7 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 
 | # | Step | Status |
 |---|---|---|
-| 1 | Sign in with Google | ✅ |
+| 1 | Sign in with Google or an email link | ✅ |
 | 2 | Create or retrieve the Ethereum Sepolia Safe | ⛔ gate 2 |
 | 3 | Verify matching Sepolia / Arbitrum Sepolia / Base Sepolia addresses | ⛔ gate 2 |
 | 4 | Complete Steps 1–2 | ⚠️ write path unproven |
@@ -32,9 +32,11 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 | 8 | Inspect a passing KadeLock test report | ✅ |
 | 9 | Create the transaction passkey | ⚠️ scaffolded |
 
-### 1. Sign in with Google ✅
+### 1. Sign in ✅
 
-Go to `/login`, choose *Continue with Google*, complete consent.
+Go to `/login`, choose either method, and complete it: *Continue with Google*,
+or *Email link* followed by the emailed link. Both are permitted (contract
+v1.2), and neither asks for a passkey.
 
 **Expected:** you land back on the app, signed in. `/login` redirects away, and
 the overview greets you by your actual provider.

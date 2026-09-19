@@ -18,7 +18,7 @@ Two things:
 
 | Requirement | Evidence |
 |---|---|
-| Google login is the only session that reaches the app, and it is not the signer | `docs/architecture/adr/0003-auth-and-signing-separation.md`; `assertSessionCannotAuthoriseTransaction` refuses a session, tested |
+| A session, from Google or email magic link, reaches the app and is never the signer | `docs/architecture/adr/0003-auth-and-signing-separation.md`; `assertSessionCannotAuthoriseTransaction` refuses a session, tested |
 | Sign-in does not prompt for a passkey (D3) | `assertPermittedSignIn` calls `assertLoginDoesNotRequirePasskey`; `login-flow.test.tsx` asserts `navigator.credentials` is never touched on either path |
 | Google sign-in works end to end | Completed by the project owner; the redirect boundary was verified by the agent (`/auth/v1/authorize` → 302 to Google with the project's own callback) |
 | Email magic link is implemented | `SignInPanel` posts `signInWithOtp`; delivery not yet observed |

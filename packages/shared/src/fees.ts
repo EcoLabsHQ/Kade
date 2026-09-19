@@ -86,7 +86,8 @@ export interface PreapprovalBreakdown {
   readonly baseUsdc: number;
   readonly perMemberUsdc: number;
   readonly householdSize: number;
-  readonly extraMembers: number;
+  /** The household component actually charged: `perMemberUsdc x householdSize`. */
+  readonly householdUsdc: number;
   readonly totalUsdc: number;
 }
 
@@ -99,24 +100,29 @@ export function preapprovalFeeBreakdown(
       `householdSize must be an integer >= 1, received ${householdSize}`,
     );
   }
-  // The first household member is the applicant's own line; the rest are the
-  // derived permits the reference itemises.
-  const extraMembers = householdSize - 1;
-
+  // The multiplier is the whole household, applicant included (contract section
+  // 2.1), so the household line is perMember x householdSize. Getting this
+  // wrong is how a receipt stops summing to its own total.
   if (mode === 'demo') {
+    const baseUsdc = 1;
+    const perMemberUsdc = 0.25;
+    const householdUsdc = perMemberUsdc * householdSize;
     return {
-      baseUsdc: 1,
-      perMemberUsdc: 0.25,
+      baseUsdc,
+      perMemberUsdc,
       householdSize,
-      extraMembers,
+      householdUsdc,
       totalUsdc: (100 + 25 * householdSize) / 100,
     };
   }
+  const baseUsdc = 500 / XCG_PER_USDC;
+  const perMemberUsdc = 100 / XCG_PER_USDC;
+  const householdUsdc = perMemberUsdc * householdSize;
   return {
-    baseUsdc: 500 / XCG_PER_USDC,
-    perMemberUsdc: 100 / XCG_PER_USDC,
+    baseUsdc,
+    perMemberUsdc,
     householdSize,
-    extraMembers,
+    householdUsdc,
     totalUsdc: Math.round((500 + 100 * householdSize) / XCG_PER_USDC),
   };
 }
