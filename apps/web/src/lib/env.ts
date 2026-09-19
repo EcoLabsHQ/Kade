@@ -101,3 +101,18 @@ export function readFeeMode(): FeeMode {
     'KADE_FEE_MODE',
   );
 }
+
+/**
+ * Sepolia JSON-RPC endpoint.
+ *
+ * Used to ask the deployed Safe WebAuthn signer factory for a signer address,
+ * so the address comes from the contract that will actually deploy the signer
+ * rather than from a local re-implementation of its arithmetic.
+ *
+ * Deliberately **not** `NEXT_PUBLIC_`: the endpoint carries a provider key, so
+ * it is read on the server and reached through a server action. The key is not
+ * in the browser bundle and cannot be read from the page.
+ */
+export function readSepoliaRpcUrl(): string | null {
+  return process.env.SEPOLIA_RPC_URL?.trim() || null;
+}

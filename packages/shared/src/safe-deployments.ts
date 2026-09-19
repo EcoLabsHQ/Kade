@@ -133,30 +133,34 @@ export interface PasskeyModuleDeployment {
  * The passkey module, which provides the Safe owner: a contract that verifies a
  * WebAuthn assertion (EIP-1271) rather than an EOA.
  *
- * [arbitrary] The published addresses below belong to module v0.2.1, the most
- * recent release whose addresses the changelog lists. v0.3.0 removed the
- * FCLP256Verifier and does not publish replacement addresses, so its signer
- * factory address must be confirmed before use.
+ * Module v0.2.1. The signer factory had been recorded as `[arbitrary]` — carried
+ * over from a changelog rather than confirmed. It is now verified: the contract
+ * at that address answers `getSigner(uint256,uint256,uint176)`, the interface
+ * `SafeWebAuthnSignerFactory` declares, with the third parameter being
+ * `P256.Verifiers` (a packed `uint176`, not a `uint256`) — which is why an
+ * earlier check that looked for a `uint256` overload found nothing.
  *
  * The verifier is Daimo's (`p256.eth.limo`), not FCLP256Verifier: the current
- * module version removed the latter because of known bugs.
+ * module version removed the latter because of known bugs. The precompile half
+ * of `P256.Verifiers` is left zero, so verification falls through to this
+ * Solidity verifier — Sepolia has no EIP-7212 precompile.
  */
 export const SAFE_PASSKEY_MODULE: PasskeyModuleDeployment = {
   version: '0.2.1',
   safeWebAuthnSignerFactory: sourced(
     '0x1d31F259eE307358a26dFb23EB365939E8641195',
-    'arbitrary',
-    'safe-modules passkey changelog v0.2.1 expected addresses',
+    'external',
+    'safe-modules passkey/v0.2.1; interface confirmed by calling getSigner(uint256,uint256,uint176) against the deployed contract',
   ),
   safeWebAuthnSharedSigner: sourced(
     '0x94a4F6affBd8975951142c3999aEAB7ecee555c2',
     'arbitrary',
-    'safe-modules passkey changelog v0.2.1 expected addresses',
+    'safe-modules passkey changelog v0.2.1 expected addresses; not yet confirmed against the deployed contract',
   ),
   p256Verifier: sourced(
     '0xc2b78104907F722DABAc4C69f826a522B2754De4',
-    'arbitrary',
-    'Daimo P256 verifier, published by Daimo at p256.eth.limo',
+    'external',
+    'Daimo P256 verifier, published by Daimo at p256.eth.limo; bytecode present on Sepolia',
   ),
   p256VerifierName: 'DaimoP256Verifier',
 };

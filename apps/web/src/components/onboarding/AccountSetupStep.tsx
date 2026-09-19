@@ -5,17 +5,18 @@ import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 
 /**
- * Step 1 — create the transaction passkey.
+ * Step 1 — create the transaction passkey, and derive the account from it.
  *
  * The passkey is created through WebAuthn with user verification, in the
  * authenticator, and authorises Safe transactions. It is not a login method and
  * it is not the session (contract section 2 item 3, ADR 0003), which is why the
  * sign-in screen never asks for it.
  *
- * This is the ordinary path for a new resident, so the screen reads like one:
- * it asks for the passkey, confirms it, and moves on. The Safe address is not
- * shown here because it belongs to the account once the account exists; nothing
- * is displayed that would have to be retracted later.
+ * The address shown afterwards is the resident's account: the Safe the passkey
+ * will own. It is derived from the credential's public key plus inputs frozen in
+ * `@kade/shared`, so it is the same address every time and different for every
+ * resident. It is counterfactual — nothing is deployed — which is the ordinary
+ * state of a Safe before its first transaction.
  */
 export interface AccountSetupStepProps {
   readonly rpId: string;
@@ -25,6 +26,13 @@ export interface AccountSetupStepProps {
   readonly onEnrolled: (credentialId: string) => void;
   readonly onContinue: () => void;
 }
+
+/** What is known about the account address once the passkey exists. */
+type AccountAddress =
+  | { readonly state: 'idle' }
+  | { readonly state: 'deriving' }
+  | { readonly state: 'ready'; readonly value: string }
+  | { readonly state: 'unavailable' };
 
 /** A 32-byte challenge. [arbitrary] client-side: a production flow issues it server-side. */
 function randomChallenge(): string {
@@ -47,7 +55,29 @@ export function AccountSetupStep({
   const [status, setStatus] = useState<'idle' | 'creating' | 'done' | 'error'>(
     credentialId ? 'done' : 'idle',
   );
+  const [account, setAccount] = useState<AccountAddress>({ state: 'idle' });
   const [error, setError] = useState<string | null>(null);
+
+  async function deriveAccount(publicKey: string) {
+    setAccount({ state: 'deriving' });
+    try {
+      const [{ parseP256PublicKey }, { deriveSignerAddress }, { predictedSafeAddress }] =
+        await Promise.all([
+          import('@/lib/passkey/public-key'),
+          import('@/app/onboarding/signer-actions'),
+          import('@/lib/safe/account'),
+        ]);
+      const { x, y } = parseP256PublicKey(publicKey);
+      // The factory is the authority on the signer address; the Safe address is
+      // then pure arithmetic over frozen inputs.
+      const signer = await deriveSignerAddress(x.toString(), y.toString());
+      setAccount({ state: 'ready', value: predictedSafeAddress(userId, signer) });
+    } catch {
+      // The passkey is created and usable either way, so a failure to reach the
+      // chain does not block the resident.
+      setAccount({ state: 'unavailable' });
+    }
+  }
 
   async function createPasskey() {
     setStatus('creating');
@@ -71,6 +101,7 @@ export function AccountSetupStep({
       );
       onEnrolled(record.credentialId);
       setStatus('done');
+      await deriveAccount(record.publicKey);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -96,7 +127,7 @@ export function AccountSetupStep({
         {enrolled ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <CheckMark />
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '15px', fontWeight: 600 }}>
                 Passkey created
               </div>
@@ -136,6 +167,31 @@ export function AccountSetupStep({
           </>
         )}
 
+        {enrolled ? (
+          <div
+            style={{
+              marginTop: '18px',
+              paddingTop: '14px',
+              borderTop: `1px solid ${tokens.border}`,
+            }}
+          >
+            <div style={{ fontSize: '12px', color: tokens.muted }}>
+              Your account address
+            </div>
+            <div
+              style={{
+                marginTop: '4px',
+                fontSize: '13px',
+                fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums',
+                wordBreak: 'break-all',
+              }}
+            >
+              <AccountAddressLine account={account} />
+            </div>
+          </div>
+        ) : null}
+
         {error ? (
           <p
             role="alert"
@@ -162,6 +218,21 @@ export function AccountSetupStep({
       </div>
     </div>
   );
+}
+
+function AccountAddressLine({ account }: { readonly account: AccountAddress }) {
+  if (account.state === 'ready') return <>{account.value}</>;
+  if (account.state === 'deriving') {
+    return <span style={{ color: tokens.muted, fontWeight: 500 }}>Preparing…</span>;
+  }
+  if (account.state === 'unavailable') {
+    return (
+      <span style={{ color: tokens.muted, fontWeight: 500 }}>
+        Will appear once your account is set up.
+      </span>
+    );
+  }
+  return <span style={{ color: tokens.muted, fontWeight: 500 }}>—</span>;
 }
 
 function CheckMark() {
