@@ -73,12 +73,33 @@ describe('fee schedule', () => {
 });
 
 describe('pre-approval breakdown', () => {
-  it('splits the demo fee into base and per-member parts', () => {
+  it('splits the demo fee into base and household parts', () => {
     const breakdown = preapprovalFeeBreakdown('demo', 3);
     expect(breakdown.baseUsdc).toBe(1);
     expect(breakdown.perMemberUsdc).toBe(0.25);
-    expect(breakdown.extraMembers).toBe(2);
+    expect(breakdown.householdUsdc).toBe(0.75);
     expect(breakdown.totalUsdc).toBe(1.75);
+  });
+
+  it('itemises a receipt that sums to its own total', () => {
+    // The bug this replaces: base 1.00 + 0.25 x 2 members read 1.50 against a
+    // total of 1.75. The parts must reconstruct the charge, in every mode.
+    for (const mode of ['demo', 'production'] as const) {
+      for (let size = 1; size <= 200; size += 1) {
+        const b = preapprovalFeeBreakdown(mode, size);
+        expect(b.householdUsdc).toBeCloseTo(b.perMemberUsdc * b.householdSize, 10);
+        // Production rounds its total to whole USDC, so compare within a unit.
+        expect(b.baseUsdc + b.householdUsdc).toBeCloseTo(b.totalUsdc, 0);
+      }
+    }
+  });
+
+  it('charges the whole household, applicant included', () => {
+    // Contract section 2.1: the applicant is in the size that drives the
+    // multiplier, so size 3 pays three increments, not two.
+    const b = preapprovalFeeBreakdown('demo', 3);
+    expect(b.householdSize).toBe(3);
+    expect(b.householdUsdc).toBe(0.75);
   });
 
   it('agrees with preapprovalFeeUsdc for every size and mode', () => {

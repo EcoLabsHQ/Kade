@@ -17,7 +17,7 @@ No deliverable is accepted solely because code was generated, a mock is displaye
 
 All Week 1 decisions are frozen. This contract covers an **all-testnet iteration 1**; the target product chains remain Ethereum, Arbitrum, and Base.
 
-1. The deployed MVP at `https://mvp.onchainisland.co/` is the visual and interaction baseline. Its source code is **not available** (see section 6.1).
+1. The deployed MVP at `https://mvp.onchainisland.co/` is the visual and interaction baseline. Its source was unavailable when this contract was frozen; it has since been supplied and is vendored at `reference/design-handoff/` (section 6.1, resolved).
 2. Google OAuth and email magic link through Supabase are the permitted application logins. There is no password authentication and no wallet login. (Amended v1.2; originally Google-only.)
 3. The passkey is separate from the login session and is used only to authorize Safe transactions.
 4. Google credentials cannot authorize financial transactions.
@@ -53,7 +53,7 @@ The fee is calculated server-side from the active `fee_schedule`; the client may
 
 | ID | Package | Hours | Backlog IDs | Contracted outcome |
 |---|---|---:|---|---|
-| EXE-001 | Project setup and Supabase environment | 3 | KAD-001 | Repository (private, reviewer access), README, license/prior-work disclosure, provider configuration, environment-variable contract, Supabase environments, and repeatable local setup are ready. The deployed MVP is the visual baseline; its source is not available (section 6.1). |
+| EXE-001 | Project setup and Supabase environment | 3 | KAD-001 | Repository (private, reviewer access), README, license/prior-work disclosure, provider configuration, environment-variable contract, Supabase environments, and repeatable local setup are ready. The deployed MVP is the visual baseline; its source has since been supplied (section 6.1, resolved). |
 | EXE-002 | Seed chains and fee schedule | 1 | KAD-002 | Ethereum `1`/Sepolia `11155111`, Arbitrum `42161`/Arbitrum Sepolia `421614`, and Base `8453`/Base Sepolia `84532`, token metadata, contract/config placeholders, and demo/production fee schedules are migration-seeded and readable by the application. Testnet is active for iteration 1. |
 | EXE-003 | Connect shell, login, and passkey signer | 4 | KAD-003 | Sidebar/routes use a real Supabase session; Google login/logout and protected routes work; the independent transaction passkey can be created and restored after reload. |
 | EXE-004 | Create Safe and predict L2 addresses | 3 | KAD-004 | One resident Safe is deployed on Ethereum Sepolia, stored against the resident, and displayed in the UI; deterministic Arbitrum Sepolia and Base Sepolia addresses and all reproducibility inputs are persisted. |
@@ -368,7 +368,7 @@ These exclusions do not remove schema registration or interfaces explicitly requ
 Freeze status at v1.0:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours with parallel agents.
-- [ ] authoritative UI source repository — **not available; escalation in section 6.1**.
+- [x] authoritative UI source repository — **supplied; section 6.1 resolved** (option 1).
 - [x] Login methods — Google OAuth and email magic link. Password and wallet excluded. (Amended v1.2; originally Google-only.)
 - [x] direct Safe WebAuthn versus managed embedded signer — direct Safe WebAuthn signer.
 - [x] full versus partial Supabase schema scope — full DOCX schema, RLS/deny-by-default.
@@ -382,7 +382,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.2** with the open items above tracked under change control.
+This contract is **Frozen v1.4** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
@@ -429,7 +429,7 @@ These briefs become executable only after their corresponding human approval gat
 
 ### A3 — Onboarding
 
-**Inputs:** approved Step 1–2 field contract, validation rules, fee formula (section 2.1), database types, and the deployed MVP as the visual baseline. The UI source is not available (section 6.1).  
+**Inputs:** approved Step 1–2 field contract, validation rules, fee formula (section 2.1), database types, and the design handoff as the visual baseline (section 6.1, resolved).  
 **Work:** UI/application portion of EXE-005.  
 **Must return:** shell and Steps 1–2 that match the deployed baseline, persistence, validation, server fee calculation integration, end-to-end tests, and evidence manifest.  
 **Must not redesign:** navigation, visual language, onboarding sequence, fee formula, or applicant/household semantics.

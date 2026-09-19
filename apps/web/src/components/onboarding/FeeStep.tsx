@@ -21,7 +21,8 @@ export interface FileRow {
 export interface FeeBreakdownView {
   readonly baseUsdc: number;
   readonly perMemberUsdc: number;
-  readonly extraMembers: number;
+  readonly householdSize: number;
+  readonly householdUsdc: number;
   readonly totalUsdc: number;
 }
 
@@ -107,12 +108,11 @@ export function FeeStep({
             </div>
             <div style={feeLine}>
               <span>
-                Household · {breakdown.extraMembers} derived permit
-                {breakdown.extraMembers === 1 ? '' : 's'}
+                Household · {breakdown.householdSize} member
+                {breakdown.householdSize === 1 ? '' : 's'} at{' '}
+                {breakdown.perMemberUsdc} USDC each
               </span>
-              <span style={feeValue}>
-                {usdc(breakdown.perMemberUsdc * breakdown.extraMembers)}
-              </span>
+              <span style={feeValue}>{usdc(breakdown.householdUsdc)}</span>
             </div>
             <div
               style={{
@@ -130,8 +130,8 @@ export function FeeStep({
               </span>
             </div>
             <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
-              {mode} pricing · calculated server-side from the active fee
-              schedule. This demo does not send a transaction.
+              {mode} pricing, from the shared fee formula. This demo does not
+              send a transaction.
             </p>
           </div>
         </Card>
