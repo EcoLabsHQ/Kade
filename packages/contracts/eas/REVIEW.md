@@ -15,7 +15,7 @@ strings below are never hand-copied.
 - Target chain: Ethereum Sepolia (chain 11155111)
 - Schema registry: `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0`
 - Registration order: `kade.kyc.v1`, `kade.fee.v1`, `kade.application.v1`, `kade.review.v1`, `kade.permit.v1`
-- Approval record: not approved (Onchain gate checkpoint 3 has not been recorded)
+- Approval record: approved by project owner at 2026-09-18
 
 ## 1. The irreversible action approval authorises
 
