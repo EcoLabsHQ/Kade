@@ -57,7 +57,23 @@ field order produces a different UID forever.
 
 ## Approval record
 
-_Not yet recorded._
+**Approved 18 September 2026 by the project owner.** EAS schema registration on
+Ethereum Sepolia is approved. The machine-readable record is
+`packages/contracts/eas/approval.json` (`onchainGateApproved: true`).
+
+The exact `register(string,address,bool)` calldata for all five schemas is
+committed at `packages/contracts/eas/registration-calldata.json`, together with
+each schema's string, resolver, revocable flag, target registry and expected UID.
+The registry is `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0`, confirmed against
+EAS's published deployments and by reading `getSchemaRegistry()` from the EAS
+core contract on Sepolia.
+
+This repository broadcasts nothing. The owner signs and sends each transaction
+from their own funded Sepolia account, and the resulting UIDs are recorded in
+`packages/contracts/eas/registered-uids.json`.
+
+> **Note:** `approvedBy` is the literal string "project owner". Replace it with a
+> named person if the gate record needs one.
 
 Required for the guard to release:
 
