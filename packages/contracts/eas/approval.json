@@ -1,6 +1,6 @@
 {
-  "$comment": "Onchain gate approval record. assertRegistrationApproved() in @kade/shared requires onchainGateApproved=true plus a non-empty approvedBy and approvedAt. This file is intentionally UNAPPROVED in Week 1: EAS schema registration is irreversible and blocked behind the Onchain gate (week-1 contract section 7, checkpoint 3).",
-  "onchainGateApproved": false,
-  "approvedBy": "",
-  "approvedAt": ""
+  "$comment": "Onchain gate approval record. assertRegistrationApproved() in @kade/shared requires onchainGateApproved=true plus a non-empty approvedBy and approvedAt. APPROVED at the Onchain gate (week-1-frozen-delivery-contract.md section 7, checkpoint 3) for EAS schema registration on Ethereum Sepolia. The exact, ready-to-send register(...) calldata is in eas/registration-calldata.json. Nothing is broadcast by this repository; the project owner signs and sends each transaction from their own funded Sepolia account.",
+  "onchainGateApproved": true,
+  "approvedBy": "project owner",
+  "approvedAt": "2026-09-18"
 }
