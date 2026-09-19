@@ -17,7 +17,7 @@ is approving the exact bytes that would be registered.
 | The five schema names are frozen | Contract section 2 item 8; asserted in `tests/acceptance/week-1-contract.test.ts` |
 | The encodings are generated, not hand-copied | `npm run eas:manifest --workspace @kade/contracts` regenerates both `eas-schema-manifest.json` and `REVIEW.md` from `@kade/shared` |
 | Every field carries its provenance | `documented` or `arbitrary` per field in `packages/shared/src/eas.ts` |
-| Registration cannot happen accidentally | `assertRegistrationApproved` throws unless an approval record names an approver and a timestamp; `eas/approval.json` is `false`; the planner prints calldata and never signs |
+| Registration cannot happen accidentally | `assertRegistrationApproved` throws unless an approval record names an approver and a timestamp; `eas/approval.json` records the approval (`onchainGateApproved: true`, with the approver and date); the planner prints calldata and never signs |
 | The verifier is read-only | `npm run eas:verify --workspace @kade/contracts` reads the registry and compares it with the manifest; no broadcast path exists anywhere |
 | KadeLock compiles and its policy passes | `forge test` — 33 tests |
 | KadeLock is described exactly | "blocks non-allowlisted native-value transactions while locked"; the ERC-20 gap and the production fix are documented rather than glossed |

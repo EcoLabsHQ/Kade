@@ -103,9 +103,9 @@ of "approved".
 > The Foundry build and tests have no extra requirement beyond the repository
 > minimum.
 
-To approve after the Onchain gate, set `onchainGateApproved` to `true` and fill
-`approvedBy` and `approvedAt`, or point `KADE_EAS_APPROVAL_FILE` at an approved
-record. The verification script needs `SEPOLIA_RPC_URL` only when there are
+The committed approval record already sets `onchainGateApproved` to `true` with
+the approver and date. To use a different record, point `KADE_EAS_APPROVAL_FILE`
+at it. The verification script needs `SEPOLIA_RPC_URL` only when there are
 recorded registrations to compare.
 
 > **Note:** There is no broadcast mode. The planner rejects every argument and

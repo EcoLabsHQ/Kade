@@ -24,8 +24,8 @@ of scope for Week 1.
 | Onboarding Steps 1–2 screen | Built: stepper rail, applicant fields, citizenship and residence chips, tier cards, household editor, live fee | D5 | Faithfulness review against the handoff screenshots |
 | `/onboarding` validation and save | Validation delegates to `@kade/shared`; persistence is implemented behind a seam with a real Supabase store, and the web app is now wired to a live Supabase project | The schema, triggers and RLS have been verified directly with SQL, but no onboarding write has yet been executed *through the app* | First end-to-end run with a signed-in session |
 | Fee at runtime | **Resolved.** The server reads the active `fee_schedule` row and `public.preapproval_fee_usdc(mode, household_size)`; the client previews only through a server action and can supply no amount. `applications.preapproval_usdc` is still recomputed by the trigger and read back | The runtime path reads the database, not the shared formula (contract section 2.1) | Done |
-| Passkey credential metadata | **Persisted.** Enrolment writes `passkey_credentials`; `/account` reloads the stored credential server-side | Needs no service key for the resident-granted columns. **`signer_address` is deliberately not granted to `authenticated`**, so writing it needs `SUPABASE_SERVICE_ROLE_KEY`, which is not set: until it is, the signer is derived and shown but not persisted, and the action reports that rather than faking success | Set `SUPABASE_SERVICE_ROLE_KEY` |
-| Safe WebAuthn signer address | **Derived.** The credential's public key is parsed to its P-256 coordinates and `SafeWebAuthnSignerFactory.getSigner` is called for the address, through a server action so the RPC provider key stays server-side | The factory is the authority: its address depends on its immutable singleton and the proxy creation code it was compiled with, which this repository does not reproduce | Done |
+| Passkey credential metadata | **Persisted.** Enrolment writes the resident-granted columns (credential id, public key, transports, user verification) to `passkey_credentials`; `/account` reloads the stored credential server-side | **`signer_address` is deliberately not granted to `authenticated`**, so it is written only with `SUPABASE_SERVICE_ROLE_KEY`. With the key present, the action derives the signer from the public key and stores it. With the key absent (the current state), the action checks first and does not derive at all: `signer_address` stays NULL, the panel renders "Not stored", and the action reports the missing key rather than deriving an address it cannot save or faking success | Set `SUPABASE_SERVICE_ROLE_KEY` |
+| Safe WebAuthn signer address | **Derived** (when the service key is configured; see the row above). The credential's public key is parsed to its P-256 coordinates and `SafeWebAuthnSignerFactory.getSigner` is called for the address, through a server action so the RPC provider key stays server-side | The factory is the authority: its address depends on its immutable singleton and the proxy creation code it was compiled with, which this repository does not reproduce | Done |
 | Safe address derivation | `packages/contracts/src/SafeAddress.sol` derives the CREATE2 address; `apps/web/src/lib/safe/` mirrors it, and `deriveAccount` reads the signer address and the proxy creation code from the deploying contracts | The Safe release and its addresses come from Safe's published deployments, and the two inputs that cannot be reproduced locally come from the chain, so no input is a placeholder. The Foundry test's pinned creation code is *our* build and is not used to derive addresses — see the next row | Account gate (D4) — only deployment remains |
 | Safe `SafeProxy` creation code | **The deployed factory's code is not this repository's build.** Ours: 649 bytes, `keccak256 = 0xa547798e…adc906cf`. The deployed v1.5.0 factory's `proxyCreationCode()`: 438 bytes, `keccak256 = 0x941b3e88…b87e12` | The creation code is part of the CREATE2 digest, so deriving from our own build produced an address the factory would never deploy. Found in review, after an earlier value had been pinned in tests as correct. The application now reads the code from the factory at runtime; `DEPLOYED_SAFE_PROXY_CREATION_CODE` records the value so the mismatch is reviewable, and a regression test asserts the two hashes do not converge | None — the chain is read at runtime |
 | Salt nonce strategy | **Proposed, not approved.** `residentSaltNonce` derives it as `keccak256(userId)`, so each resident's address is stable and distinct with no server-side counter to lose | This was the Account-gate pack's open question ("what makes each resident's address unique"). Chosen here as the obvious answer, but it fixes every resident's address, so it should be confirmed at the gate before anything is deployed | Account gate (D4) |
@@ -98,14 +98,16 @@ meaning it does not have.
   the ninth review found exactly such an instance. A regression guard was
   proposed for this and was not authorised, so the exposure remains.
 
-- **Four instances are known to remain**, reported by the tenth review and left
-  uncorrected by the owner's decision:
-  | Location | Claim |
-  |---|---|
-  | `docs/architecture/kadelock-threat-model.md:201` | The row's *label* still lists `signer` among the "Safe deployment inputs", though the row's explanation says it is derived |
-  | `packages/shared/src/safe.ts:35-44` | `SafeDeploymentInputs.signer` is typed as a `Sourced` input, which cannot describe a value derived per resident. Unused, but a public export |
-  | `docs/week-1-frozen-delivery-contract.md:414` | §8.6 can be read as saying the Foundry test pins the *deployed* creation code's hash; it pins this repository's build |
-  | `packages/shared/src/auth.ts:17` | "Credential metadata … survives reload" in the present tense; the store is still in memory |
+- **The four instances the tenth review left uncorrected have since been fixed.**
+  They were the last surviving statements contradicted by this iteration's
+  changes, and a later `stale-claims` pass corrected each one against the code:
 
-  These are declared, so they are not review findings under this register's own
-  rules. They are recorded because a reader deserves to know they are there.
+  | Location | Correction |
+  |---|---|
+  | `docs/architecture/kadelock-threat-model.md` §8 | The row label no longer lists `signer` among the deployment inputs; the row states it is derived per resident |
+  | `packages/shared/src/safe.ts` | `SafeDeploymentInputs` no longer types `signer` as a `Sourced` input, because it is derived, not configured |
+  | `docs/week-1-frozen-delivery-contract.md` §8.6 | The clause now says the Foundry test pins *this repository's* `SafeProxy` build, not the deployed factory's creation code |
+  | `packages/shared/src/auth.ts` | The credential-metadata fact is now true: enrolment persists to `passkey_credentials`, so the metadata survives reload |
+
+  The underlying exposure is unchanged: the sweep is still manual and no
+  mechanical check enforces this class.

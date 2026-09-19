@@ -89,7 +89,7 @@ particular:
 
 - `ChainConfig` — the seeded `chains` row shape.
 - `FeeAmount` / `FEE_KEYS` — the `fee_schedule` row shape.
-- `EasSchemaDefinition` — the schema proposal reviewed at the Onchain gate.
+- `EasSchemaDefinition` — the schema definition reviewed and approved at the Onchain gate.
 - `SafeDeploymentInputs` / `SafeDeploymentRecord` — the D4 manifest.
 - `ApplicationSession` / `TransactionAuthorisation` — the two authority domains.
 

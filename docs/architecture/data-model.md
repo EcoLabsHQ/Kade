@@ -26,13 +26,19 @@ and how each was resolved.
 | `20260916000008_config.sql` | `fee_schedule`, `chains` |
 | `20260916000009_rls.sql` | none; enable RLS, grants, policies, guard |
 | `20260916000010_fee_function.sql` | no tables; `fee_schedule` formula columns, `preapproval_fee_usdc()`, fee-recompute triggers |
+| `20260916000011_save_onboarding.sql` | no tables; `save_onboarding(...)` atomic save RPC |
+| `20260916000012_reset_demo.sql` | no tables; `reset_demo_data()` (demo reset) |
+| `20260916000013_passkey_credentials.sql` | `passkey_credentials`, its RLS policies and column grants |
+| `20260916000014_passkey_public_key_comment.sql` | no tables; comment-only correction of the public-key description |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
 `recompute_application_preapproval_fee`, `recompute_preapproval_fee`,
-`init_preapproval_fee`), and foreign-key lookup indexes. Table migrations create
-structure only; `…_rls.sql` is the single place RLS is declared, so the review
-checklist can read one file.
+`init_preapproval_fee`), the `save_onboarding` and `reset_demo_data` RPCs, and
+foreign-key lookup indexes. The original table migrations create structure only;
+`…_rls.sql` is the single place RLS is declared for them. The later
+`passkey_credentials` migration (13) carries its own RLS and policies with the
+table, so those two files are the complete policy set.
 
 ## Columns
 
@@ -46,6 +52,7 @@ list are flagged in the migrations, and are marked `[added]` here.
 | `profile_residences` | `profile_id`, `country_code`, `from_year`, `to_year` |
 | `applications` | `id`, `ref`, `profile_id`, `tier`, `status`, `preapproval_usdc`, `service_usdc`, `fee_tx`, `fee_uid`, `app_uid`, `review_uid`, `service_uid` |
 | `household_members` | `[added] id`, `application_id`, `name`, `relation`, `dob`, `citizenship` |
+| `passkey_credentials` | `[added] id`, `profile_id`, `credential_id`, `public_key`, `signer_address`, `transports`, `user_verification`, `created_at`, `last_used_at` |
 | `wallets` | `[added] id`, `profile_id`, `address`, `chain`, `provider`, `siwe_sig`, `verified_at` |
 | `wealth_snapshots` | `[added] id`, `wallet_id`, `chain`, `taken_at`, `assets`, `usd_value`, `provenance` |
 | `container_balances` | `[added] id`, `application_id`, `safe_address`, `chain`, `taken_at`, `assets`, `usd_value` |
@@ -63,6 +70,8 @@ list are flagged in the migrations, and are marked `[added]` here.
 their natural fields are not unique. `chains.env` and
 `chains.schema_registry_address` are required by ADR 0005 (environment switch)
 and D6 (schema registry address) but are absent from the DOCX §9 column list.
+`passkey_credentials` is an added *table*, not an added column: DOCX §9 has no
+home for a WebAuthn credential, so contract v1.5 adds one to meet D3.
 
 `fee_schedule` keeps the four DOCX columns and adds three. `amount` is retained
 as the household-size-1 fee (pre-approval) or flat fee (service), in
@@ -123,6 +132,7 @@ Legend: **RW** = read/write own rows; **R** = read; **R(rev)** = reviewer read;
 | `profile_residences` | — | RW | — | all |
 | `applications` | — | R own; insert own; update `tier` | R(rev) | all |
 | `household_members` | — | RW via application | — | all |
+| `passkey_credentials` | — | read own; insert own; update `last_used_at` (`signer_address` excluded) | — | all |
 | `chains` | — | read | read | all |
 | `fee_schedule` | — | read | read | all |
 | `wallets` | — | — | — | all |

@@ -17,8 +17,10 @@
  *
  * Concrete version, factory, singleton and handler values are recorded in
  * `./safe-deployments.ts` with their provenance; the passkey module is confirmed
- * against the deployed contracts. The salt nonce strategy is proposed but not
- * yet approved at the Account gate (section 7, checkpoint 2).
+ * against the deployed contracts. The signer (the Safe's `owner`) is not an
+ * input: it is derived per resident from the passkey through the deployed
+ * signer factory. The salt nonce strategy is proposed but not yet approved at
+ * the Account gate (section 7, checkpoint 2).
  */
 
 import type { Sourced } from './provenance.js';
@@ -37,8 +39,6 @@ export interface SafeDeploymentInputs {
   readonly proxyFactory: Sourced<Address>;
   readonly singleton: Sourced<Address>;
   readonly compatibilityFallbackHandler: Sourced<Address>;
-  /** The direct Safe WebAuthn signer. The only operational owner. */
-  readonly signer: Sourced<Address>;
   readonly saltNonce: Sourced<string>;
   readonly threshold: typeof SAFE_THRESHOLD;
 }
@@ -47,6 +47,10 @@ export interface SafeDeploymentInputs {
  * Inputs that must be identical on every chain for the address to match.
  * Changing any of these changes the predicted address and is therefore a
  * change-control item (contract section 8).
+ *
+ * The passkey signer is not listed: it is derived per resident from the
+ * credential, not supplied as configuration, and it is persisted as the
+ * manifest's `owner` rather than as an input (see `SafeDeploymentManifest`).
  */
 export function identicalAcrossChains(inputs: SafeDeploymentInputs): Record<string, string> {
   return {
@@ -54,7 +58,6 @@ export function identicalAcrossChains(inputs: SafeDeploymentInputs): Record<stri
     proxyFactory: inputs.proxyFactory.value,
     singleton: inputs.singleton.value,
     compatibilityFallbackHandler: inputs.compatibilityFallbackHandler.value,
-    signer: inputs.signer.value,
     saltNonce: inputs.saltNonce.value,
     threshold: String(inputs.threshold),
   };

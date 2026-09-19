@@ -17,8 +17,8 @@ written against. No irreversible action is involved.
 | Repository shape | `README.md` layout; three npm workspaces plus `supabase/`; `./scripts/setup.sh` reproduces a clean checkout |
 | Environment contract | `.env.example`, every variable grouped by concern and marked `documented` / `external` / `arbitrary` |
 | Schema scope | 14 migrations creating all 18 tables (the DOCX section 9 set plus `passkey_credentials`, contract v1.5); applied to the live project |
-| RLS matrix | `docs/architecture/data-model.md`; `supabase/migrations/20260916000009_rls.sql` is the single place RLS is declared |
-| RLS applied live | 18/18 tables with RLS enabled; 10 deny-by-default with zero policies; owner policies on `profiles`, `applications`, `citizenships`, `residences`, `household_members`, `chains`, `fee_schedule` |
+| RLS matrix | `docs/architecture/data-model.md`; policies live in `supabase/migrations/20260916000009_rls.sql` and `20260916000013_passkey_credentials.sql` |
+| RLS applied live | 18/18 tables with RLS enabled; 10 deny-by-default with zero policies; owner policies on `profiles`, `applications`, `profile_citizenships`, `profile_residences`, `household_members`, `passkey_credentials`, `chains`, `fee_schedule` |
 | Seeds | `supabase/seed.sql` generated from `@kade/shared`, byte-for-byte drift guard in `tests/acceptance/seed-drift.test.ts` |
 | Fee model | live `preapproval_fee_usdc('demo', 3) = 1.75`, `('production', 3) = 447`; recompute triggers verified |
 | Shared types | `packages/shared/src/*` with 67 unit tests |

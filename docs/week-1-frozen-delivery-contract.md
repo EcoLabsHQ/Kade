@@ -25,7 +25,7 @@ All Week 1 decisions are frozen. This contract covers an **all-testnet iteration
 6. The resident Safe has one operational signer, the passkey, and threshold 1. No user EOA is an owner.
 7. Iteration 1 runs entirely on testnet: the resident Safe is deployed on **Ethereum Sepolia**; the **Base Sepolia** address is counterfactually predicted and persisted. Arbitrum is deferred (section 8.6). No mainnet deployment in Week 1.
 8. The five EAS schemas are `kade.kyc.v1`, `kade.fee.v1`, `kade.application.v1`, `kade.review.v1`, and `kade.permit.v1`.
-9. The five schemas are registered on **Sepolia** with an authorized Sepolia EAS registration account.
+9. The five schemas are approved for registration on **Sepolia** with an authorized Sepolia EAS registration account; the Onchain gate approved the exact encodings on 18 September 2026, and this repository broadcasts nothing.
 10. Supabase uses the full DOCX schema (every table in the DOCX data model) with RLS enabled or deny-by-default for unused tables.
 11. The KadeLock Week 1 enforcement model is the **minimum Safe Guard/Module** (section 6.2).
 12. Recovery is **excluded from Week 1**. The accepted product trust model is the Safe RecoveryHub, but it is not implemented in this contract.
@@ -171,7 +171,7 @@ The delivery clock assumes Day 1 access to:
 - Google OAuth credentials and an approved HTTPS callback domain;
 - Sepolia and Base Sepolia RPC access (Arbitrum deferred, section 8.6);
 - a funded Sepolia deployment account;
-- final Safe deployment version/configuration and the direct Safe WebAuthn signer;
+- a funded Sepolia deployment account (the Safe version and addresses are recorded in `@kade/shared`; the signer is derived from the passkey, not supplied);
 - an authorized Sepolia EAS registration account;
 - DOCX fee parameters and the five EAS schema field definitions;
 - the deployed MVP UI at `https://mvp.onchainisland.co/` as the visual baseline.
@@ -202,7 +202,7 @@ frozen baseline rather than an interpretation of it.
 
 ### 6.2 KadeLock enforcement model — confirm
 
-The recommendation for the 20-hour budget was **A) minimum Safe Guard/Module**, and no contrary answer was recorded for KadeLock; the answer provided addressed the Aave vault (a Week 3 item). This contract freezes A pending explicit confirmation. KadeLock is not deployed on-chain in Week 1 (compiled and Foundry-tested only, per section 9).
+The recommendation for the 20-hour budget was **A) minimum Safe Guard/Module**, and no contrary answer was recorded for KadeLock; the answer provided addressed the Aave vault (a Week 3 item). This contract freezes A; the Onchain gate confirmed the interface and threat model on 18 September 2026 (`docs/gates/onchain.md`). KadeLock is not deployed on-chain in Week 1 (compiled and Foundry-tested only, per section 9).
 
 ### 6.3 Recovery — resolved
 
@@ -358,8 +358,9 @@ metadata needed for future signing to be stored securely and to survive a
 reload. The DOCX section 9 data model has no table for it — `wallets` covers
 self-custodied EOAs and Bitcoin xpubs, which a WebAuthn credential is not — so
 the metadata had nowhere to live and did not survive a reload. The table stores
-the credential id, the COSE public key, the authenticator transports, whether
-enrolment required user verification, and the derived `signer_address`.
+the credential id, the credential's public key (base64url SubjectPublicKeyInfo,
+not a COSE key), the authenticator transports, whether enrolment required user
+verification, and the derived `signer_address`.
 It stores no private key and no raw attestation object. RLS is on: a resident
 may read their own credential and propose one, while `signer_address` is
 server-written because it is derived from the public key and the frozen Safe
@@ -411,9 +412,12 @@ Evidence for the version choice, from Safe's own published deployments: the
 v1.5.0 `safe_l2` deployment file has no entry for chain 421614, while v1.4.1's
 does. Both are deployed on 11155111 and 84532. The addresses, their code hashes,
 the passkey module's signer factory and P-256 verifier, and the v1.5.0
-`SafeProxy` creation code are recorded in
-`packages/shared/src/safe-deployments.ts`; the creation code's hash is pinned by
-`packages/contracts/test/SafeAddress.t.sol`.
+`SafeProxy` creation code built by this repository are recorded in
+`packages/shared/src/safe-deployments.ts`. That recorded build is *not* the code
+the deployed factory uses: `SafeAddress.t.sol` pins this repository's build so a
+toolchain change is caught, while the application reads `proxyCreationCode()`
+from the deployed factory at runtime, and the deployed code is recorded
+separately in the same module.
 
 ## 9. Explicit Week 1 development exclusions
 
@@ -443,8 +447,8 @@ Freeze status at v1.0:
 - [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Base Sepolia. Arbitrum deferred (section 8.6).
 - [x] Safe deployment parameters — frozen per section 4, D4.
 - [x] exact Step 1–2 fields and fee formula — section 2.1.
-- [x] five EAS schema encodings and registration authority — DOCX fields, registered on Sepolia.
-- [ ] KadeLock enforcement model — frozen as A (minimum Guard/Module), **confirm per section 6.2**.
+- [x] five EAS schema encodings and registration authority — DOCX fields, approved at the Onchain gate 18 September 2026; not yet sent.
+- [x] KadeLock enforcement model — frozen as A (minimum Guard/Module), confirmed at the Onchain gate 18 September 2026 (section 6.2).
 - [x] Recovery option — excluded from Week 1 (section 6.3).
 - [ ] shared HTTPS preview requirement — pending explicit approval.
 - [ ] all Day 1 dependencies — pending availability confirmation.
@@ -464,7 +468,7 @@ This contract is **Frozen v1.6** with the open items above tracked under change 
 | Reserved L2 addresses | KAD-004 | EXE-004 | D4 | Deterministic-address test and deployment manifest | Covered as predicted, not deployed |
 | Steps 1–2 live | KAD-005, KAD-006 | EXE-005 | D5, D8 | Clean-browser persistence and fee test | Frozen: section 2.1 |
 | EAS schemas registered on Sepolia | KAD-007 | EXE-006 | D6 | Five UIDs, transactions, registry verification | Frozen: DOCX fields |
-| KadeLock compiled and Foundry-tested | KAD-008 | EXE-006 | D7 | Interface, threat model, passing tests | Frozen as A; confirm 6.2 |
+| KadeLock compiled and Foundry-tested | KAD-008 | EXE-006 | D7 | Interface, threat model, passing tests | Frozen as A; confirmed 6.2 on 18 Sep 2026 |
 
 The DOCX submission-work column—team registration, kickoff attendance, Discord communication, and the Monday update video—is not development scope and is intentionally absent from the 20-hour contract.
 
@@ -473,7 +477,7 @@ The DOCX submission-work column—team registration, kickoff attendance, Discord
 1. DOCX Step 1 says “Email + passkey, or an existing wallet”; the product decision is Supabase login with a transaction-only passkey and no EOA login. **Resolved:** Google OAuth and email magic link are the permitted logins (amended v1.2, matching the design handoff's original email-based Step 1); the passkey is transaction-only and no EOA can log in.
 2. DOCX fee table says `1 USDC flat + 0.25 USDC per household member`, while the demo script jumps to `1.75 USDC`. **Resolved:** formula `1.00 + 0.25 × household_size`; the `1.75` example corresponds to a household of 3 (section 2.1).
 3. DOCX account architecture permits Privy or Safe WebAuthn. **Resolved:** direct Safe WebAuthn signer.
-4. DOCX calls KadeLock a Safe Guard/Module and also a qualified vault. **Resolved:** Week 1 model is the minimum Safe Guard/Module (confirm section 6.2).
+4. DOCX calls KadeLock a Safe Guard/Module and also a qualified vault. **Resolved:** Week 1 model is the minimum Safe Guard/Module (confirmed at the Onchain gate, 18 September 2026).
 5. DOCX requires “Supabase schema + RLS” without scoping the tables. **Resolved:** full DOCX schema, RLS/deny-by-default.
 6. DOCX requires a sponsored mainnet Safe in Week 1 while the paymaster package is Week 2. **Resolved:** iteration 1 is testnet-only on Ethereum Sepolia; the deployment payer is the project’s Sepolia account. Mainnet sponsorship is deferred with the paymaster work.
 

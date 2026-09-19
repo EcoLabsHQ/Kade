@@ -58,8 +58,11 @@ open is below.
 - **A signature validating through the signer.** The signer address is derived
   from the passkey, but validating one needs a deployed Safe and a real
   assertion.
-- **Passkey metadata persisting across a reload.** Still an in-memory seam; it is
-  not written to the database.
+- **The derived signer address persisting across a reload.** The credential
+  metadata is written to `passkey_credentials` and reloaded. The derived
+  `signer_address` is server-written and needs `SUPABASE_SERVICE_ROLE_KEY`,
+  which is not set, so it stays NULL and the panel renders "Not stored". The
+  write path itself has not been exercised against a live signed-in session.
 
 ## What approval authorises
 

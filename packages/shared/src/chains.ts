@@ -59,7 +59,7 @@ export interface ChainConfig {
   readonly schemaRegistryAddress: Sourced<`0x${string}`>;
   /**
    * KadeLock. Week 1 is compile-and-test only, so this is an [arbitrary]
-   * placeholder until the Onchain gate approves deployment.
+   * placeholder; no deployment is approved.
    */
   readonly kadeLockAddress: Sourced<`0x${string}` | null>;
   /**

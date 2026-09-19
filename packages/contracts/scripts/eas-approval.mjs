@@ -1,10 +1,10 @@
 // Onchain gate approval loader.
 //
-// Registration of EAS schemas is irreversible and is blocked behind the
-// Onchain gate (docs/week-1-frozen-delivery-contract.md section 7,
-// checkpoint 3). Every script that could be mistaken for a registration step
-// refuses to run unless an approval record exists and names an approver and a
-// timestamp.
+// Registration of EAS schemas is irreversible and is gated by the Onchain gate
+// (docs/week-1-frozen-delivery-contract.md section 7, checkpoint 3; approved
+// 18 September 2026). Every script that could be mistaken for a registration
+// step refuses to run unless an approval record exists and names an approver
+// and a timestamp.
 //
 // The guard itself lives in @kade/shared (assertRegistrationApproved) and is
 // reused here so there is a single definition of "approved".

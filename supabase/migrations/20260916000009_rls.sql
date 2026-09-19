@@ -1,9 +1,10 @@
 -- =============================================================================
 -- Kade — row level security, privileges and the RLS guard.
 --
--- This is the single place RLS is enabled, so the review checklist can assert
--- "every table has RLS" by reading one file. Decision record:
--- docs/architecture/adr/0004-data-ownership-and-rls.md.
+-- This is where RLS is enabled for the original table set, so the review
+-- checklist can assert "every table has RLS" by reading one file. Tables added
+-- later enable RLS in their own migration (passkey_credentials, migration 13).
+-- Decision record: docs/architecture/adr/0004-data-ownership-and-rls.md.
 --
 -- Model:
 --   * Every table gets `enable row level security`. None is left unprotected.

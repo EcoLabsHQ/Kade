@@ -77,7 +77,8 @@ Field order is significant: it determines the schema UID.
 
 Each row states the attribute, its value, its provenance and the consequence of
 the value. A provenance of `[arbitrary]` means the value is not fixed by the
-governing documents and must be confirmed at the Onchain gate.
+governing documents; the Onchain gate reviewed and accepted these values on 18
+September 2026.
 
 ### 1. kade.kyc.v1
 
@@ -248,7 +249,7 @@ Fields:
 9. **Field order binds downstream code.** Indexers and encoders must consume
    fields in exactly this order.
 
-## 6. `[arbitrary]` values awaiting the Onchain gate
+## 6. `[arbitrary]` values reviewed at the Onchain gate
 
 | Value | Where | Gate that must confirm it |
 |---|---|---|
