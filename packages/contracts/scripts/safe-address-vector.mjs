@@ -17,7 +17,7 @@ import { concat, keccak256, pad, slice, toHex } from 'viem';
 
 const ARTIFACT = new URL('../out/SafeProxy.sol/SafeProxy.json', import.meta.url);
 
-// Fixed [arbitrary] inputs. Awaiting the Account gate; not approved configuration.
+// Fixed synthetic inputs. This is a test fixture, never a deployment config.
 const FACTORY = '0x1111111111111111111111111111111111111111';
 const SINGLETON = '0x2222222222222222222222222222222222222222';
 const INITIALIZER_PREIMAGE = 'kade-safe-initializer-vector-v1';
@@ -53,7 +53,7 @@ console.log(`initializerPreimage "${INITIALIZER_PREIMAGE}"  [arbitrary]`);
 console.log(`initializerHash    ${initializerHash}  [arbitrary]`);
 console.log(`saltNonce          ${hex(SALT_NONCE)}  [arbitrary]`);
 console.log('');
-console.log(`proxyCreationCodeHash ${keccak256(proxyCreationCode)}  [arbitrary] (Account gate: Safe version)`);
+console.log(`proxyCreationCodeHash ${keccak256(proxyCreationCode)}  [our build, not the deployed factory's]`);
 console.log(`initCodeHash          ${initCodeHash}`);
 console.log(`salt                  ${salt}`);
 console.log('');

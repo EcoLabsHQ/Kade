@@ -11,8 +11,8 @@ import {
  * transactions; only the passkey can. The guard is a runtime throw here and a
  * type error wherever the signature is used.
  *
- * There is no signing implementation in Week 1 (the Safe signer address is an
- * Account-gate input), so this function only proves the separation.
+ * There is no signing implementation in Week 1 — signing needs a deployed Safe —
+ * so this function only proves the separation.
  */
 export function asTransactionAuthorisation(
   authorisation: TransactionAuthorisation | ApplicationSession,

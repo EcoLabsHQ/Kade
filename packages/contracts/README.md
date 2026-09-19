@@ -32,7 +32,7 @@ forge test
 | `test/mocks/MockGuardHost.sol` | Minimal Safe-like host; test-only, never deployed. |
 | `scripts/` | EAS manifest generation, registration planner, read-only verifier, Safe address/manifest tooling. |
 | `eas/` | Approval record, committed manifest, review pack, registered-UID record. |
-| `safe/` | `SafeDeploymentManifest` JSON Schema and `[arbitrary]` example. |
+| `safe/` | `SafeDeploymentManifest` JSON Schema and placeholder example. |
 | `lib/` | Foundry dependencies, installed by `scripts/setup.sh`. **Not committed.** |
 
 ## KadeLock
@@ -140,7 +140,7 @@ npm run safe:vector --workspace @kade/contracts
 ```
 
 The persisted shape is `safe/SafeDeploymentManifest.schema.json`; an all-
-`[arbitrary]` example is `safe/safe-deployment-manifest.example.json`.
+placeholder example is `safe/safe-deployment-manifest.example.json`.
 
 ## Dependencies
 

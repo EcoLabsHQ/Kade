@@ -29,8 +29,7 @@ contract SafeAddressHarness {
 // D4 deterministic-address machinery.
 //
 // These tests pin the arithmetic in src/SafeAddress.sol against:
-//   1. a fixed known vector whose inputs are deliberately [arbitrary] — it tests
-//      the arithmetic, not the deployment;
+//   1. a fixed synthetic vector — it tests the arithmetic, not the deployment;
 //   2. Foundry's own `vm.computeCreate2Address` oracle; and
 //   3. the creation-code assumption itself (`keccak256(type(SafeProxy).creationCode)`),
 //      which pins *this repository's* artifact so a toolchain change is loud.
@@ -39,7 +38,7 @@ contract SafeAddressHarness {
 // scripts/safe-address-vector.mjs and can be re-derived with
 // `node scripts/safe-address-vector.mjs` after `forge build`.
 contract SafeAddressTest is Test {
-    // --- Known vector: every input is [arbitrary] and awaits the Account gate.
+    // --- Known vector: synthetic inputs, chosen to exercise the arithmetic.
     address internal constant FACTORY = address(0x1111111111111111111111111111111111111111);
     address internal constant SINGLETON = address(0x2222222222222222222222222222222222222222);
     // keccak256("kade-safe-initializer-vector-v1"). Stands in for the real
