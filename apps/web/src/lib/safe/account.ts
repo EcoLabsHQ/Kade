@@ -1,19 +1,20 @@
-import { getAddress, keccak256, toBytes, type Address } from 'viem';
+import { getAddress, keccak256, toBytes, type Address, type Hex } from 'viem';
 import {
   ACTIVE_SAFE_VERSION,
   SAFE_DEPLOYMENTS,
-  SAFE_PROXY_CREATION_CODE,
 } from '@kade/shared';
 import { initializerHash, predictSafeAddress } from './derive';
 
 /**
  * The resident's account address, derived from their passkey.
  *
- * Every input is frozen except the passkey's signer address, which arrives with
- * the resident: the Safe release and its three addresses come from
- * `@kade/shared`, the `SafeProxy` creation code is pinned by a Foundry test, and
- * the salt nonce is derived from the resident's id. Nothing here is a
- * placeholder, and nothing here is random.
+ * Every input is either frozen in `@kade/shared` or taken from the chain. The
+ * one that must come from the chain is the `SafeProxy` creation code: it is part
+ * of the CREATE2 digest, so an address is only correct if it is computed from
+ * the code the deploying factory will actually use. This repository's own build
+ * of `SafeProxy` does **not** produce it — see `SAFE_PROXY_CREATION_CODE` — so
+ * the factory is asked for its creation code rather than a local copy being
+ * trusted.
  *
  * Nothing is deployed. The Safe address is counterfactual, which is the normal
  * state of a Safe before its first transaction — not a shortcoming of this
@@ -37,29 +38,37 @@ export function residentSaltNonce(userId: string): bigint {
   return BigInt(keccak256(toBytes(userId)));
 }
 
+export interface SafeAddressInputs {
+  readonly userId: string;
+  /** The passkey owner, as the deployed signer factory reports it. */
+  readonly signerAddress: Address;
+  /**
+   * `SafeProxyFactory.proxyCreationCode()` from the deploying factory. Not a
+   * constant: a local build of the same Safe release differs.
+   */
+  readonly proxyCreationCode: Hex;
+}
+
 /**
- * Predict the address of the resident's Safe.
+ * Predict the address of the resident's Safe, given the deploying factory's own
+ * creation code.
  *
- * @param userId the resident's id, used only to derive the salt nonce.
- * @param signerAddress the address of the passkey signer that will own it,
- *   which the deployed signer factory is the authority on.
+ * Callers must supply `proxyCreationCode` from the factory. Passing a locally
+ * compiled value silently yields an address the factory will never deploy.
  */
-export function predictedSafeAddress(
-  userId: string,
-  signerAddress: Address,
-): Address {
+export function predictedSafeAddress(inputs: SafeAddressInputs): Address {
   const deployment = activeSafeDeployment();
   return predictSafeAddress({
     factory: getAddress(deployment.safeProxyFactory.value),
     singleton: getAddress(deployment.safeL2.value),
     initializerHash: initializerHash({
-      owners: [signerAddress],
+      owners: [inputs.signerAddress],
       threshold: 1,
       fallbackHandler: getAddress(
         deployment.compatibilityFallbackHandler.value,
       ),
     }),
-    saltNonce: residentSaltNonce(userId),
-    proxyCreationCode: SAFE_PROXY_CREATION_CODE,
+    saltNonce: residentSaltNonce(inputs.userId),
+    proxyCreationCode: inputs.proxyCreationCode,
   });
 }

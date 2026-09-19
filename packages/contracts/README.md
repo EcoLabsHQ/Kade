@@ -117,10 +117,19 @@ implements the canonical `SafeProxyFactory.createProxyWithNonce` arithmetic;
 `vm.computeCreate2Address`, and proves that changing any one input changes the
 address.
 
-> **Warning:** No concrete Safe input is approved. The Safe version, factory,
-> singleton, handler, initializer, signer and salt are project-supplied and
-> Account-gate blocked (contract section 5). Every value used by the tests and
-> examples is `[arbitrary]`.
+> **Warning:** These tests use a synthetic all-`[arbitrary]` vector to pin the
+> arithmetic, not the deployment's real values. The deployment inputs are now
+> recorded in `@kade/shared`: the Safe release's addresses are `[external]`
+> (Safe's published deployments) and the passkey module is confirmed.
+>
+> **The one input that cannot be pinned is the `SafeProxy` creation code.** This
+> repository's build of `SafeProxy` is 649 bytes; the deployed v1.5.0 factory
+> returns 438 bytes from `proxyCreationCode()`, and the creation code is part of
+> the CREATE2 digest. An address derived from the local build is one the factory
+> will never deploy, so the application reads the code from the factory at
+> runtime. See `DEPLOYED_SAFE_PROXY_CREATION_CODE` in `@kade/shared`.
+>
+> Nothing is deployed, so no real account address exists yet on chain.
 
 ```bash
 # Validate the D4 manifest shape against its JSON Schema (read-only).
