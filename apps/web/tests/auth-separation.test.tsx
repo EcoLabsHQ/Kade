@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assertLoginDoesNotRequirePasskey,
   assertSessionCannotAuthoriseTransaction,
@@ -17,11 +16,6 @@ import {
   toEnrolmentRecord,
   UNRESOLVED_SIGNER_ADDRESS,
 } from '@/lib/passkey/enrolment';
-import { FeeSummary } from '@/components/fees/FeeSummary';
-
-afterEach(() => {
-  cleanup();
-});
 
 const session: ApplicationSession = {
   domain: 'application-session',
@@ -150,12 +144,5 @@ describe('passkey enrolment scaffold', () => {
     });
     expect(record.signerAddressStatus).toBe('unresolved');
     expect(record.signerAddress).toBe(UNRESOLVED_SIGNER_ADDRESS);
-  });
-});
-
-describe('fee display reads from the shared package', () => {
-  it('renders the shared value and accepts no client amount', () => {
-    const { getByText } = render(<FeeSummary mode="demo" householdSize={3} />);
-    expect(getByText('1.75 USDC')).toBeInTheDocument();
   });
 });

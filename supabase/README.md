@@ -13,7 +13,7 @@ unrun.
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 10 applied in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 14 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
 | Fee function + recompute triggers (pgTAP) | **Verified** — `supabase/tests/0001_fee_recompute.test.sql` runs 19 assertions green on a `postgres:16` container; a deliberately failing assertion makes `psql` exit 3 |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
@@ -34,6 +34,10 @@ supabase/
     20260916000008_config.sql
     20260916000009_rls.sql         enable RLS, grants, policies, guard
     20260916000010_fee_function.sql  fee formula columns, function, triggers
+    20260916000011_save_onboarding.sql  atomic Step 2 save RPC
+    20260916000012_reset_demo.sql  demo reset function
+    20260916000013_passkey_credentials.sql  passkey metadata table + RLS
+    20260916000014_passkey_public_key_comment.sql  comment-only correction
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
@@ -98,7 +102,8 @@ npm run test:acceptance
 ## Security model
 
 Security is enforced in the database, not in the client (ADR 0004). The RLS
-migration is the single place it is declared.
+migration declares the policies for the original table set; the later
+`passkey_credentials` migration carries its own RLS and policies with the table.
 
 ### Row ownership
 
@@ -109,6 +114,7 @@ migration is the single place it is declared.
 | `profile_residences` | none | read/write own | none | all |
 | `applications` | none | read own, insert own, update `tier` | read | all |
 | `household_members` | none | read/write own (via application) | none | all |
+| `passkey_credentials` | none | read own, insert own, update `last_used_at` (`signer_address` excluded) | none | all |
 | `chains` | none | read | read | all |
 | `fee_schedule` | none | read | read | all |
 | `wallets`, `wealth_snapshots`, `container_balances`, `allocations`, `gos_transfers`, `card_transactions`, `documents`, `identity_attestations`, `reviewers`, `review_events` | none | **none — deny-by-default** | none | all |
@@ -122,6 +128,8 @@ These columns are removed from the `authenticated` column privileges, so even
 the owner cannot write them from the browser:
 
 - `profiles.safe_address`
+- `passkey_credentials.signer_address` (derived from the public key; the
+  resident may write the other credential columns)
 - `applications.status`, `ref`, `preapproval_usdc`, `service_usdc`, `fee_tx`,
   `fee_uid`, `app_uid`, `review_uid`, `service_uid`
 - all `identity_attestations` columns (table is deny-by-default)

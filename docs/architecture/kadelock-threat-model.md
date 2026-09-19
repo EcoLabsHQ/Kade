@@ -2,18 +2,18 @@
 
 KadeLock is the Week 1 minimum Safe Guard for Kade. This document records its
 threat assumptions, roles, external interface, the invariants the Foundry tests
-protect, what is deliberately out of scope, and every `[arbitrary]` value that
-still needs a human decision.
+protect, what is deliberately out of scope, and every `[arbitrary]` value with
+the human gate that confirms it.
 
-> **Status:** proposal. The development contract freezes KadeLock as the
-> **minimum Safe Guard/Module** (model A) *pending explicit confirmation*
-> (`week-1-frozen-delivery-contract.md` section 6.2). The interface, threat
-> model and exact EAS encodings must be approved at the **Onchain gate**
-> (section 7, checkpoint 3) before any irreversible write or contract
-> implementation is treated as approved.
+> **Status:** reviewed and approved at the Onchain gate on 18 September 2026
+> (docs/gates/onchain.md). The development contract freezes KadeLock as the
+> **minimum Safe Guard/Module** (model A) (`week-1-frozen-delivery-contract.md`
+> section 6.2), and the Onchain gate approved the interface, this threat model
+> and the exact EAS encodings.
 >
 > **Not deployed, not registered.** KadeLock is compiled and Foundry-tested
-> only. The EAS schemas are not registered (sections 6.2 and 9).
+> only. The EAS schemas are approved but not registered: the exact calldata is
+> committed, and this repository broadcasts nothing (sections 6.2 and 9).
 
 ## 1. Purpose and scope
 
@@ -183,9 +183,9 @@ section 9). They are **not** implemented and **not** tested:
 | R6 | **Not deployed.** The tests exercise the guard hook directly and through a mock host, not a real Safe. End-to-end Safe wiring is a later milestone. | Integration untested beyond the hook contract. |
 | R7 | **No pause / no per-asset limits.** The model has no emergency stop. | Recovery relies on Safe ownership. |
 
-## 8. `[arbitrary]` values awaiting the Onchain gate
+## 8. `[arbitrary]` values reviewed at the Onchain gate
 
-Every value not fixed by the governing documents is `[arbitrary]` and must be
+Every value not fixed by the governing documents is `[arbitrary]` and was
 confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 `week-1-frozen-delivery-contract.md` section 7.
 
@@ -198,7 +198,7 @@ confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 | `solc_version = 0.8.24` | `foundry.toml` | Not specified. | Onchain gate |
 | `forge-std` v1.16.2 | `lib/` | Not specified. | Onchain gate |
 | `safe-smart-account` v1.5.0 | `lib/` | Chosen by the project owner (contract v1.6); recorded in `@kade/shared` (`safe-deployments.ts`). | Account gate |
-| Safe deployment inputs (factory, singleton, fallback handler, signer, salt nonce) | `@kade/shared` `safe-deployments.ts`; shape in `safe.ts`; `safe/SafeDeploymentManifest.schema.json` | Factory, singleton and handler are `[external]` from Safe's published deployments. The signer is derived from the passkey via the deployed signer factory. The salt nonce strategy (`keccak256(userId)`) is proposed but not yet approved. | Account gate |
+| Safe deployment inputs (factory, singleton, fallback handler, salt nonce) | `@kade/shared` `safe-deployments.ts`; shape in `safe.ts`; `safe/SafeDeploymentManifest.schema.json` | Factory, singleton and handler are `[external]` from Safe's published deployments. The signer is **not** an input: it is derived per resident from the passkey via the deployed signer factory. The salt nonce strategy (`keccak256(userId)`) is proposed but not yet approved. | Account gate |
 | Safe proxy creation code | Read from the deploying factory's `proxyCreationCode()` in `deriveAccount` | **Not a constant.** This repository's build differs from the deployed factory's (649 vs 438 bytes), and the code is part of the CREATE2 digest, so deriving locally yields an address the factory would never deploy. | Account gate |
 | EAS field types / encodings | `@kade/shared`, surfaced in the manifest | `@kade/shared` marks types `arbitrary`. | Onchain gate |
 | EAS `revocable` and `resolver` | `@kade/shared`, surfaced in the manifest | `arbitrary`. | Onchain gate |
@@ -212,14 +212,20 @@ model, and the Safe threshold/ownership model from D4.
 
 ## 9. Onchain gate review checklist
 
-- [ ] Confirm model A (minimum Guard/Module) per section 6.2.
-- [ ] Approve the external interface in section 4.
-- [ ] Decide whether native-value-only enforcement (R1) is acceptable for
+The gate approved this interface, this threat model and the EAS encodings on
+18 September 2026; the record is `docs/gates/onchain.md` and
+`packages/contracts/eas/approval.json`. Items below that concern concrete
+runtime values (for example the Admin address) are still `[arbitrary]` and are
+confirmed when the value is first used.
+
+- [x] Confirm model A (minimum Guard/Module) per section 6.2.
+- [x] Approve the external interface in section 4.
+- [x] Decide whether native-value-only enforcement (R1) is acceptable for
       Week 1, given the USDC-centric product model.
 - [ ] Decide the Admin address and whether it should equal the Safe owner.
 - [ ] Approve the allowlist categories and their concrete addresses.
-- [ ] Approve the exact EAS encodings, revocability, resolver, attester and
+- [x] Approve the exact EAS encodings, revocability, resolver, attester and
       recipient surfaced in `eas/eas-schema-manifest.json`.
-- [ ] Approve the pinned Solidity and dependency versions.
-- [ ] Re-affirm that KadeLock is not deployed and EAS is not registered in
+- [x] Approve the pinned Solidity and dependency versions.
+- [x] Re-affirm that KadeLock is not deployed and EAS is not registered in
       Week 1.

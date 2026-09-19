@@ -51,9 +51,9 @@ implementation.
   regression fails verification in the same way a TypeScript regression does.
 - The contract cannot drift into an on-chain deployment without an explicit,
   recorded human decision.
-- Because model A is frozen "pending explicit confirmation" (section 6.2), the
-  threat model is written to be reviewable as a proposal rather than presented
-  as already-approved design.
+- Model A was confirmed at the Onchain gate on 18 September 2026
+  (section 6.2; `docs/gates/onchain.md`), and the threat model is recorded there
+  as approved design rather than as an open proposal.
 
 ## Alternatives considered
 

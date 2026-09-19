@@ -60,8 +60,9 @@ export function buildManifest() {
 
   return {
     $comment:
-      'Proposal only. Generated from @kade/shared. Nothing here is registered; ' +
-      'registration is irreversible and blocked behind the Onchain gate.',
+      'Approved at the Onchain gate on 2026-09-18. Generated from @kade/shared. ' +
+      'Nothing here is registered; registration is irreversible and this ' +
+      'repository broadcasts nothing.',
     source: '@kade/shared registrationManifest()',
     targetChainId: chain.chainId,
     targetChainName: chain.name,

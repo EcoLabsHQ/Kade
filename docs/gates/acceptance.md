@@ -28,7 +28,7 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 | 4 | Complete Steps 1–2 | ⚠️ write path unproven |
 | 5 | Observe the correct fee | ✅ |
 | 6 | Reload and recover application state | ⚠️ same as 4 |
-| 7 | Inspect the EAS UIDs | ⛔ gate 3 |
+| 7 | Inspect the EAS UIDs | ⛔ approved, not sent |
 | 8 | Inspect a passing KadeLock test report | ✅ |
 | 9 | Create the transaction passkey | ⚠️ scaffolded |
 
@@ -85,7 +85,9 @@ must return from the database rather than from browser storage.
 
 ### 7. EAS UIDs ⛔
 
-**Blocked by gate 3.** Nothing is registered, so there are no UIDs.
+**Gate 3 approved 18 September 2026; nothing is registered yet.** The exact
+`register(...)` calldata is committed, but this repository broadcasts nothing:
+the project owner sends each transaction, after which there are UIDs to inspect.
 After registration: `npm run eas:verify --workspace @kade/contracts`.
 
 ### 8. KadeLock report ✅
@@ -100,15 +102,19 @@ cd packages/contracts && forge test
 ### 9. The transaction passkey ⚠️
 
 Open `/account`. The passkey panel exists, enforces user verification, and shows
-the signer address derived from the credential. The credential is still not
-persisted to the database. "Not enrolled" is the honest current state.
+the signer address derived from the credential when `SUPABASE_SERVICE_ROLE_KEY`
+is configured. Credential metadata is written to `passkey_credentials`; without
+the service key the derived signer stays NULL and the panel says "Not stored". A
+signed-in end-to-end run has not yet exercised the write.
 
 ## What a pass looks like
 
 - Steps 1, 5 and 8 pass today.
 - Step 4 plus 6 are the highest-value remaining check and need no gate.
-- Steps 2, 3, 7 and 9 cannot pass until gates 2 and 3 are approved, and Week 1
-  cannot be declared complete while they are blocked.
+- Steps 2 and 3 cannot pass until gate 2 is approved. Step 7 cannot pass until
+  the owner sends the approved registration. Step 9's persistence path needs a
+  signed-in end-to-end run; Week 1 cannot be declared complete while they are
+  outstanding.
 
 ## Approval record
 

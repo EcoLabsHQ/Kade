@@ -16,8 +16,8 @@
  *   - No amount is hard-coded in the client: the server computes from the
  *     active schedule.
  *
- * This module is the single implementation of the frozen formula. It is used
- * to seed `fee_schedule` and to verify that the seeded rows are correct. The
+ * This module is the canonical reference implementation of the frozen formula.
+ * It seeds `fee_schedule` and verifies that the seeded rows are correct. The
  * runtime reads the seeded rows, not these constants.
  */
 

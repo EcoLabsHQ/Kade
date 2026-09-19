@@ -19,8 +19,10 @@
  * contract governs; the only material disagreement in this area is the
  * household size used by the fee (see `householdSize`).
  *
- * The fee is NOT recomputed here. This module calls `preapprovalFeeUsdc` from
- * ./fees.js, the single frozen implementation (ADR 0005), and nothing else.
+ * The fee formula lives in ./fees.js (`preapprovalFeeUsdc`); this module uses it
+ * to validate and preview. The runtime authority is the database function
+ * `public.preapproval_fee_usdc`, which reads the seeded `fee_schedule`; the seed
+ * generator asserts the two agree (ADR 0005).
  *
  * Step split. Neither source divides this single handoff screen ("Step 2 ·
  * Profile & household") into two numbered steps, while the contract labels the
@@ -420,8 +422,9 @@ export function stepTwoComplete(input: StepTwoInput): StepTwoStatus {
     complete: unique.length === 0,
     blockers: unique,
     householdSize: size,
-    // The fee is always derived through the frozen implementation, never
-    // recomputed here and never accepted from the caller (contract section 2.1).
+    // A preview through the shared reference. The stored and charged amount is
+    // recomputed by the database from `fee_schedule`, and is never accepted
+    // from the caller (contract section 2.1).
     preapprovalUsdc: preapprovalFeeUsdc(input.mode, size),
   };
 }

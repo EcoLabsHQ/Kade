@@ -1,18 +1,23 @@
 /**
- * EAS schema definitions — proposal only.
+ * EAS schema definitions.
  *
  * Sources:
  *   - docs/week-1-frozen-delivery-contract.md section 2, item 8: the five
  *     schema names are frozen.
  *   - docs/week-1-frozen-delivery-contract.md section 4 (D6): fields come from
  *     the DOCX; encodings, revocability, resolver, attester rules and
- *     recipients must be reviewed before registration; any field absent from
- *     the DOCX is an [arbitrary] demo value flagged as such.
+ *     recipients were reviewed at the Onchain gate; any field absent from the
+ *     DOCX is an [arbitrary] demo value flagged as such.
  *   - docs/planning/kade-mvp-build-document-v7.docx section 8 (Attestations,
  *     Identity) and section 9 (`identity_attestations`, `applications`).
  *
- * NOTHING IN THIS FILE IS REGISTERED. Registration is irreversible and is
- * blocked behind the Onchain gate (contract section 7, checkpoint 3).
+ * The Onchain gate approved these encodings on 18 September 2026
+ * (docs/gates/onchain.md, checkpoint 3). NOTHING IN THIS FILE IS REGISTERED:
+ * registration is irreversible and this repository broadcasts nothing. The
+ * exact, ready-to-send `register(...)` calldata is committed at
+ * packages/contracts/eas/registration-calldata.json; the project owner signs
+ * and sends each transaction, and the resulting UIDs are recorded in
+ * packages/contracts/eas/registered-uids.json.
  */
 
 import type { Provenance } from './provenance.js';
@@ -165,8 +170,9 @@ export const EAS_SCHEMAS: Readonly<Record<EasSchemaName, EasSchemaDefinition>> =
 };
 
 /**
- * The registration manifest: exactly what the Onchain gate must approve before
- * any irreversible write.
+ * The registration manifest: exactly what the Onchain gate reviewed before any
+ * irreversible write. It was approved on 18 September 2026; nothing has been
+ * broadcast.
  */
 export function registrationManifest(): readonly {
   name: EasSchemaName;

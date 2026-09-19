@@ -163,13 +163,21 @@ work as complete.
   RLS enabled on all 18 tables and 10 deny-by-default, but no committed harness
   exercises row visibility: enforcement is Postgres's, configured through
   Supabase.
-- **Credential metadata surviving reload.** Passkey metadata persistence is still
-  a seam with an in-memory implementation; it is not yet written to the database.
+- **Credential metadata surviving reload against a live session.** Enrolment
+  writes the credential id, public key, transports and user-verification flag to
+  `passkey_credentials`, and `/account` reloads them server-side; the path is
+  unit-tested. No signed-in end-to-end run has exercised the live write. The
+  derived `signer_address` is server-written and needs
+  `SUPABASE_SERVICE_ROLE_KEY`; without that key the credential still persists,
+  the signer stays NULL, and the panel says so rather than faking it.
 - **A test signature through the direct Safe WebAuthn signer.** The signer
   address is now derived from the passkey, but signing requires a deployed Safe
   and a real assertion, and nothing is deployed.
-- **Any on-chain write.** KadeLock is not deployed and the EAS schemas are not
-  registered. Both are gated on human approval; registration is irreversible.
+- **Any on-chain write.** KadeLock is not deployed, and the EAS schemas are
+  approved but not registered: the Onchain gate approved the exact encodings on
+  18 September 2026 and the ready-to-send calldata is committed, but this
+  repository broadcasts nothing. Registration is irreversible and is executed by
+  the project owner.
 
 ## Human approval gates
 

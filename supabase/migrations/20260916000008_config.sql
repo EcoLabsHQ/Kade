@@ -58,8 +58,9 @@ comment on table public.fee_schedule is
   'client (contract section 2.1, ADR 0005).';
 comment on column public.fee_schedule.amount is
   'Base fee for the key in the given mode. The pre-approval per-member increment '
-  'is applied by preapprovalFeeUsdc() in @kade/shared, the single implementation '
-  'used to seed this table (ADR 0005). [documented] worked examples: demo '
+  'is applied at runtime by public.preapproval_fee_usdc() (20260916000010); the '
+  'same arithmetic in @kade/shared (preapprovalFeeUsdc) is the reference that '
+  'seeds and verifies this table (ADR 0005). [documented] worked examples: demo '
   'household-of-3 = 1.75 USDC; production household-of-3 = 447 USDC.';
 comment on column public.fee_schedule.currency is
   '[documented] USDC (contract section 2.1).';

@@ -47,10 +47,13 @@ TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', cre
   executable check.
 - Passkey enrolment requires user verification and is reachable only from an
   authenticated session.
-- Credential metadata (credential id, public key, derived signer address,
-  transports) is held server-side. The store is still in-memory in this build, so
-  it does not yet survive a reload. The private key never leaves the
-  authenticator.
+- Credential metadata (credential id, public key, transports, whether user
+  verification was required, and the derived signer address) is held
+  server-side. The credential id, public key, transports and user-verification
+  flag are written to `passkey_credentials` and survive a reload; the derived
+  `signer_address` is written only when `SUPABASE_SERVICE_ROLE_KEY` is
+  configured, and otherwise stays NULL with the panel saying so. The private
+  key never leaves the authenticator.
 
 ## Consequences
 

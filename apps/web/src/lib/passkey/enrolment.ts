@@ -24,7 +24,10 @@ import { assertPermittedSignIn } from '@/lib/auth/provider';
  *   - the record carries a sentinel signer address, because deriving the real one
  *     needs a chain call; the enrolling caller derives it separately and shows
  *     the result;
- *   - persistence is the in-memory seam in ./store.
+ *   - the browser record is not persisted here: the account panel hands the
+ *     credential id, public key, transports and user-verification flag to the
+ *     server action, which writes `passkey_credentials` in ./store and derives
+ *     the signer address.
  */
 
 /**

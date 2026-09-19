@@ -1,5 +1,5 @@
 {
-  "$comment": "Proposal only. Generated from @kade/shared. Nothing here is registered; registration is irreversible and blocked behind the Onchain gate.",
+  "$comment": "Approved at the Onchain gate on 2026-09-18. Generated from @kade/shared. Nothing here is registered; registration is irreversible and this repository broadcasts nothing.",
   "source": "@kade/shared registrationManifest()",
   "targetChainId": 11155111,
   "targetChainName": "Ethereum Sepolia",

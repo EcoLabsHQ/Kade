@@ -1,20 +1,16 @@
-import {
-  FEE_KEYS,
-  preapprovalFeeUsdc,
-  residencyServiceFeeUsdc,
-  type FeeAmount,
-  type FeeMode,
-} from '@kade/shared';
-
 /**
- * Authoritative fee computation.
+ * Client-supplied fee guard.
  *
  * Contract section 2.1: "The fee is calculated server-side from the active
  * `fee_schedule`; the client may display it but cannot override it."
  *
- * The arithmetic lives once, in `@kade/shared`. This module is the only place
- * the app is allowed to call it, and it refuses any input that tries to carry
- * a client-supplied amount.
+ * The runtime authority is now `@/lib/onboarding/fee-server`, which reads the
+ * `fee_schedule` row and calls `public.preapproval_fee_usdc`. The shared
+ * formula in `@kade/shared` only seeds and verifies those rows. What remains
+ * here is the one part still used at the write boundary: a guard that refuses a
+ * request carrying a client-supplied amount. The onboarding persistence seam
+ * calls it before saving, so a smuggled fee fails rather than being displayed
+ * or stored.
  */
 
 /** Keys a browser request must never carry when asking for a fee. */
@@ -25,11 +21,6 @@ export const CLIENT_FORBIDDEN_FEE_KEYS = [
   'value',
   'usdc',
 ] as const;
-
-export interface PreapprovalFeeRequest {
-  readonly mode: FeeMode;
-  readonly householdSize: number;
-}
 
 export function assertNoClientSuppliedAmount(
   input: Readonly<Record<string, unknown>>,
@@ -42,45 +33,4 @@ export function assertNoClientSuppliedAmount(
       );
     }
   }
-}
-
-/** Pre-approval fee in USDC, derived from the frozen shared formula. */
-export function authoritativePreapprovalFee(
-  request: PreapprovalFeeRequest,
-): number {
-  assertNoClientSuppliedAmount(
-    request as unknown as Readonly<Record<string, unknown>>,
-  );
-  return preapprovalFeeUsdc(request.mode, request.householdSize);
-}
-
-export interface AuthoritativeFeeAmounts {
-  readonly mode: FeeMode;
-  readonly preapproval: FeeAmount;
-  readonly service: FeeAmount;
-}
-
-/**
- * The full authoritative fee set. Week 1 charges only the pre-approval fee;
- * the service fee is seeded but not charged (contract section 2.1).
- */
-export function authoritativeFeeAmounts(
-  mode: FeeMode,
-  householdSize: number,
-): AuthoritativeFeeAmounts {
-  return {
-    mode,
-    preapproval: {
-      key: FEE_KEYS.preapproval,
-      mode,
-      currency: 'USDC',
-      amount: authoritativePreapprovalFee({ mode, householdSize }),
-    },
-    service: {
-      key: FEE_KEYS.service,
-      mode,
-      currency: 'USDC',
-      amount: residencyServiceFeeUsdc(mode),
-    },
-  };
 }
