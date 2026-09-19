@@ -145,7 +145,7 @@ work as complete.
 - The committed `supabase/seed.sql` is byte-for-byte reproducible from
   `packages/shared`, so the database and the application cannot disagree.
 - The Supabase schema, RLS and seed are applied to the live project and verified
-  there: 18 tables, RLS on all 18, 10 deny-by-default, and the fee function and
+  there: 20 tables, RLS on all 20, 10 deny-by-default, and the fee function and
   its triggers reproduce the contract's worked examples.
 
 **Verified outside the gate — not by the agent:**
@@ -160,7 +160,7 @@ work as complete.
   enabled and the form is implemented and tested, but no link has completed the
   round trip through a real mailbox.
 - **Database RLS enforcement.** The policies are applied to the live project with
-  RLS enabled on all 18 tables and 10 deny-by-default, but no committed harness
+  RLS enabled on all 20 tables and 10 deny-by-default, but no committed harness
   exercises row visibility: enforcement is Postgres's, configured through
   Supabase.
 - **Credential metadata surviving reload against a live session.** Enrolment
