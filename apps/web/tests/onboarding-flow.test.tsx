@@ -86,13 +86,14 @@ describe('pre-registration flow', () => {
     await screen.findByRole('heading', { name: /show proof of wealth/i });
 
     fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
-    // Labelled in both the wallet row and the summary, so match any.
-    expect(screen.getAllByText(/demo balance/i).length).toBeGreaterThan(0);
+    // The step says outright that the balances are demo data.
+    expect(screen.getByText(/balances shown are demo data/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
     expect(screen.getByText(/does not send a transaction/i)).toBeInTheDocument();
+    expect(screen.getByText(/1\.75 USDC/)).toBeInTheDocument();
   });
 });

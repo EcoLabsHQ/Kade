@@ -5,18 +5,28 @@ export interface StatCardProps {
   readonly value: string;
   readonly sub?: string;
   readonly valueColor?: string;
+  /** The reference outlines the first KPI in the action colour. */
+  readonly highlight?: boolean;
 }
 
 /**
  * The reference's dashboard stat panel: uppercase eyebrow, large value,
  * muted sub-line.
  */
-export function StatCard({ label, value, sub, valueColor }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  sub,
+  valueColor,
+  highlight = false,
+}: StatCardProps) {
   return (
     <div
       style={{
-        background: tokens.surface,
-        border: `1px solid ${tokens.border}`,
+        background: highlight ? '#fff' : tokens.surface,
+        border: highlight
+          ? `1.5px solid ${tokens.action}`
+          : `1px solid ${tokens.border}`,
         borderRadius: 14,
         padding: '18px 20px',
       }}

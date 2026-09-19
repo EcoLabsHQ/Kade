@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEE_KEYS,
+  preapprovalFeeBreakdown,
   feeScheduleFor,
   preapprovalFeeUsdc,
   productionEquivalentUsdc,
@@ -68,5 +69,30 @@ describe('fee schedule', () => {
   it('records the production equivalent for a demo amount', () => {
     expect(productionEquivalentUsdc(3).value).toBe(447);
     expect(productionEquivalentUsdc(3).provenance).toBe('documented');
+  });
+});
+
+describe('pre-approval breakdown', () => {
+  it('splits the demo fee into base and per-member parts', () => {
+    const breakdown = preapprovalFeeBreakdown('demo', 3);
+    expect(breakdown.baseUsdc).toBe(1);
+    expect(breakdown.perMemberUsdc).toBe(0.25);
+    expect(breakdown.extraMembers).toBe(2);
+    expect(breakdown.totalUsdc).toBe(1.75);
+  });
+
+  it('agrees with preapprovalFeeUsdc for every size and mode', () => {
+    // A receipt that disagrees with the charge would be a false statement.
+    for (const mode of ['demo', 'production'] as const) {
+      for (let size = 1; size <= 200; size += 1) {
+        expect(preapprovalFeeBreakdown(mode, size).totalUsdc).toBe(
+          preapprovalFeeUsdc(mode, size),
+        );
+      }
+    }
+  });
+
+  it('rejects a household size below 1', () => {
+    expect(() => preapprovalFeeBreakdown('demo', 0)).toThrow(RangeError);
   });
 });

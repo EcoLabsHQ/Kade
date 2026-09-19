@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { preapprovalFeeUsdc, type FeeMode } from '@kade/shared';
+import { preapprovalFeeBreakdown, type FeeMode } from '@kade/shared';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { SiteFooter } from '@/components/shell/SiteFooter';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
@@ -72,7 +72,7 @@ export function OnboardingFlow({
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
 
   const householdSize = snapshot ? 1 + snapshot.members.length : 1;
-  const feeUsdc = preapprovalFeeUsdc(mode, householdSize);
+  const breakdown = preapprovalFeeBreakdown(mode, householdSize);
 
   const tierName = snapshot
     ? (['3-year', '5-year', 'Indefinite'][snapshot.tier] ?? '3-year')
@@ -169,16 +169,18 @@ export function OnboardingFlow({
               )
             }
             onContinue={() => setStep(4)}
+            onBack={() => setStep(2)}
             tierName={tierName}
             tierMinimum={tierMinimum}
           />
         ) : (
           <FeeStep
             rows={fileRows}
-            feeUsdc={feeUsdc}
+            breakdown={breakdown}
             mode={mode}
             paid={paid}
             onPay={() => setPaid(true)}
+            onBack={() => setStep(3)}
             onEnter={() => {
               router.push('/');
               router.refresh();
