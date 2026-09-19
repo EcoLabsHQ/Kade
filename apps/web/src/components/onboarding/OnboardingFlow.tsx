@@ -14,8 +14,10 @@ import type {
 import { OnboardingWizard } from './OnboardingWizard';
 import { FeeStep, type FileRow } from './FeeStep';
 import { MOCK_WALLETS, WealthStep } from './WealthStep';
+import { AccountSetupStep } from './AccountSetupStep';
 
-type Step = 2 | 3 | 4;
+/** The account phase creates the passkey; 2-4 are the pre-registration steps. */
+type Step = 'account' | 2 | 3 | 4;
 
 export interface OnboardingFlowProps {
   readonly userId: string;
@@ -25,19 +27,25 @@ export interface OnboardingFlowProps {
   readonly network: string;
   readonly accountState: AccountState;
   readonly currentYear?: number;
+  /** A credential that already exists, so a returning resident skips step 1. */
+  readonly initialCredentialId?: string | null;
   readonly store?: OnboardingStore;
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
-  const done = (index: Step) => current > index || (index === 4 && paid);
-  const state = (index: Step): StepperItem['state'] => {
-    if (done(index)) return 'done';
-    if (current === index) return 'active';
+  const position = current === 'account' ? 1 : current;
+  const reached = (index: number) => position > index;
+  const state = (index: number): StepperItem['state'] => {
+    if (reached(index) || (index === 4 && paid)) return 'done';
+    if (position === index) return 'active';
     return 'locked';
   };
   return [
-    { title: 'Create account', state: 'done' },
-    { title: 'Profile & household', state: current === 2 ? 'active' : 'done' },
+    {
+      title: 'Create account',
+      state: current === 'account' ? 'active' : 'done',
+    },
+    { title: 'Profile & household', state: state(2), lockReason: 'Create your passkey first.' },
     { title: 'Proof of wealth', state: state(3), lockReason: 'Save your profile first.' },
     { title: 'Pay pre-approval fee', state: state(4), lockReason: 'Connect a wallet first.' },
   ];
@@ -63,10 +71,18 @@ export function OnboardingFlow({
   network,
   accountState,
   currentYear,
+  initialCredentialId = null,
   store,
 }: OnboardingFlowProps) {
   const router = useRouter();
-  const [step, setStep] = useState<Step>(2);
+  // The passkey is created before the pre-registration steps, as the reference's
+  // Step 1 does in the background.
+  const [credentialId, setCredentialId] = useState<string | null>(
+    initialCredentialId,
+  );
+  const [step, setStep] = useState<Step>(
+    initialCredentialId ? 2 : 'account',
+  );
   const [connected, setConnected] = useState<readonly string[]>([]);
   const [paid, setPaid] = useState(false);
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
@@ -147,7 +163,16 @@ export function OnboardingFlow({
           padding: '36px 40px 64px',
         }}
       >
-        {step === 2 ? (
+        {step === 'account' ? (
+          <AccountSetupStep
+            rpId={typeof window === 'undefined' ? 'localhost' : window.location.hostname}
+            userId={userId}
+            userName={userId}
+            credentialId={credentialId}
+            onEnrolled={setCredentialId}
+            onContinue={() => setStep(2)}
+          />
+        ) : step === 2 ? (
           <OnboardingWizard
             mode={mode}
             userId={userId}
@@ -159,6 +184,7 @@ export function OnboardingFlow({
               setSnapshot(saved);
               setStep(3);
             }}
+            /* Back from step 2 returns to the account phase. */
           />
         ) : step === 3 ? (
           <WealthStep
