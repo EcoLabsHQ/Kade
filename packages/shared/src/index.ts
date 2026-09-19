@@ -15,5 +15,6 @@ export * from './chains.js';
 export * from './fees.js';
 export * from './eas.js';
 export * from './safe.js';
+export * from './safe-deployments.js';
 export * from './auth.js';
 export * from './onboarding.js';
