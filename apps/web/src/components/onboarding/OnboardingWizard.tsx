@@ -73,9 +73,9 @@ const eyebrowStyle = {
 /**
  * Step 2 — Profile & household.
  *
- * The draft is evaluated with the frozen rules in `@kade/shared`; the live fee
- * comes from `stepTwoComplete` (the single implementation of the formula) and
- * the component accepts no fee prop, so the browser cannot set it.
+ * The draft is evaluated with the frozen rules in `@kade/shared`. The fee is not
+ * computed here: the server resolves it from `fee_schedule`, and the component
+ * accepts no fee prop, so the browser cannot set it.
  */
 export function OnboardingWizard({
   mode,

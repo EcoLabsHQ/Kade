@@ -75,7 +75,8 @@ comment on column public.household_members.citizenship is
   '[arbitrary] encoding: ISO 3166-1 alpha-2, consistent with the other country '
   'columns. The DOCX names the field but not its encoding.';
 
--- The DOCX notes "DB function recomputes the pre-approval fee". The formula is
--- not implemented in this migration: preapprovalFeeUsdc() in @kade/shared is the
--- reference used to seed and verify fee_schedule (ADR 0005), and the recompute
--- function follows in 20260916000010_fee_function.sql, reading the seeded row.
+-- The DOCX notes "DB function recomputes the pre-approval fee". That formula is
+-- intentionally NOT reimplemented in SQL here: ADR 0005 makes
+-- preapprovalFeeUsdc() in @kade/shared the single implementation, used to seed
+-- fee_schedule and to verify, so a second copy in PL/pgSQL could drift from the
+-- one the contracts enforce. The server recomputes from the seeded schedule.

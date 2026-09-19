@@ -45,7 +45,7 @@ of scope for Week 1.
 | Live Google sign-in | **Completed end to end by the project owner**: the session was established and restored. The redirect boundary was verified directly by the agent | Reported by the project owner, not independently reproduced by the agent | Done |
 | Email magic link | Provider enabled and the form is live, and the agent's tests cover the send path, but no link has been delivered and followed | Depends on the project's SMTP and on a mailbox | First delivered link |
 | Google OAuth provider | Enabled. The app also detects a disabled provider and says so instead of failing into raw JSON | — | Done |
-| Supabase project | **Provisioned.** All 14 migrations and the seed are applied; 18 tables, RLS on every one, 10 deny-by-default, the fee function and its triggers verified live (`preapproval_fee_usdc('demo', 3)` = 1.75, `('production', 3)` = 447) | Project-supplied dependency | Applied 17 Sep |
+| Supabase project | **Provisioned.** All 15 migrations and the seed are applied; 18 tables, RLS on every one, 10 deny-by-default, the fee function and its triggers verified live (`preapproval_fee_usdc('demo', 3)` = 1.75, `('production', 3)` = 447) | Project-supplied dependency | Applied 17 Sep |
 | CI | Present. GitHub Actions runs `./scripts/verify.sh` on push and pull request against `main` (`.github/workflows/ci.yml`) | The canonical gate now runs without a human remembering; no secrets are configured or required | Add `verify-full.sh` when its extra checks are wired |
 | Design system | Design tokens ported as inline styles on primitives | Fast, and faithful to the vendored handoff at `reference/design-handoff/` | When the real UI lands |
 
