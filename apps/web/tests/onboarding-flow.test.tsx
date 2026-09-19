@@ -7,15 +7,23 @@ import type {
   OnboardingStore,
 } from '@/lib/onboarding/persistence';
 
-const hoisted = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+const hoisted = vi.hoisted(() => ({
+  push: vi.fn(),
+  refresh: vi.fn(),
+  enrolPasskey: vi.fn(),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
+}));
+vi.mock('@/lib/passkey/enrolment', () => ({
+  enrolPasskey: hoisted.enrolPasskey,
 }));
 
 afterEach(() => {
   cleanup();
   hoisted.push.mockReset();
   hoisted.refresh.mockReset();
+  hoisted.enrolPasskey.mockReset();
 });
 
 function makeStore() {
@@ -37,10 +45,63 @@ function renderFlow(store: OnboardingStore) {
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
+      // A resident who already has a passkey starts at step 2.
+      initialCredentialId="cred-existing"
       store={store}
     />,
   );
 }
+
+function renderFlowFromStart(store: OnboardingStore) {
+  return render(
+    <OnboardingFlow
+      userId="user-1"
+      mode="demo"
+      persistence="supabase"
+      initial={null}
+      network="Ethereum Sepolia"
+      accountState={{ kind: 'pending' }}
+      currentYear={2026}
+      store={store}
+    />,
+  );
+}
+
+describe('step 1, the transaction passkey', () => {
+  it('gates Continue until the passkey exists, then reveals it', async () => {
+    hoisted.enrolPasskey.mockResolvedValue({
+      credentialId: 'cred-new',
+      publicKey: 'pk',
+      signerAddress: '0x0000000000000000000000000000000000000000',
+      transports: ['internal'],
+      userVerification: true,
+      createdAt: '2026-09-18T00:00:00Z',
+      lastUsedAt: null,
+      signerAddressStatus: 'unresolved',
+    });
+    const { store } = makeStore();
+    renderFlowFromStart(store);
+
+    expect(screen.getByText(/step 1 of 4/i)).toBeInTheDocument();
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+
+    expect(
+      await screen.findByText(/transaction passkey created with user verification/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it('does not show a Safe address, and says why', () => {
+    const { store } = makeStore();
+    renderFlowFromStart(store);
+
+    expect(screen.getByText(/your safe address is not shown yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/0x[0-9a-fA-F]{6}/)).toBeNull();
+  });
+});
 
 describe('pre-registration flow', () => {
   it('walks from the saved profile through proof of wealth to the fee', async () => {
