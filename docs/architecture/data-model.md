@@ -39,8 +39,9 @@ Also created: trigger/helper functions (`apply_review_event`,
 `init_preapproval_fee`), the `save_onboarding` and `reset_demo_data` RPCs, and
 foreign-key lookup indexes. The original table migrations create structure only;
 `…_rls.sql` is the single place RLS is declared for them. The later
-`passkey_credentials` migration (13) carries its own RLS and policies with the
-table, so those two files are the complete policy set.
+`passkey_credentials` migration (13) and `safe_deployments` migration (16) carry
+their own RLS and policies with their tables, so migrations 9, 13 and 16 are the
+complete policy set.
 
 ## Columns
 
@@ -55,6 +56,8 @@ list are flagged in the migrations, and are marked `[added]` here.
 | `applications` | `id`, `ref`, `profile_id`, `tier`, `status`, `preapproval_usdc`, `service_usdc`, `fee_tx`, `fee_uid`, `app_uid`, `review_uid`, `service_uid` |
 | `household_members` | `[added] id`, `application_id`, `name`, `relation`, `dob`, `citizenship` |
 | `passkey_credentials` | `[added] id`, `profile_id`, `credential_id`, `public_key`, `signer_address`, `transports`, `user_verification`, `created_at`, `last_used_at` |
+| `safe_deployments` | `[added] id`, `profile_id`, `safe_address`, `status`, `deployment_tx_hash`, `deployment_chain_id`, `predicted_l2_addresses`, `safe_version`, `factory`, `singleton`, `initializer`, `handler`, `owner`, `threshold`, `salt`, `creation_code_assumptions`, `provenance`, `failure_reason`, `predicted_at`, `queued_at`, `deployed_at`, `failed_at`, `updated_at` |
+| `safe_pre_deposits` | `[added] id`, `profile_id`, `safe_address`, `chain_id`, `token_address`, `token_symbol`, `amount_usdc`, `tx_hash`, `verification_status`, `verified_at`, `created_at` |
 | `wallets` | `[added] id`, `profile_id`, `address`, `chain`, `provider`, `siwe_sig`, `verified_at` |
 | `wealth_snapshots` | `[added] id`, `wallet_id`, `chain`, `taken_at`, `assets`, `usd_value`, `provenance` |
 | `container_balances` | `[added] id`, `application_id`, `safe_address`, `chain`, `taken_at`, `assets`, `usd_value` |
@@ -74,6 +77,9 @@ their natural fields are not unique. `chains.env` and
 and D6 (schema registry address) but are absent from the DOCX §9 column list.
 `passkey_credentials` is an added *table*, not an added column: DOCX §9 has no
 home for a WebAuthn credential, so contract v1.5 adds one to meet D3.
+`safe_deployments` and `safe_pre_deposits` are likewise added tables: D4 requires
+the resident Safe's deployment inputs and any pre-deposits to be recoverable, and
+DOCX §9 has no home for them.
 
 `fee_schedule` keeps the four DOCX columns and adds three. `amount` is retained
 as the household-size-1 fee (pre-approval) or flat fee (service), in
@@ -135,6 +141,8 @@ Legend: **RW** = read/write own rows; **R** = read; **R(rev)** = reviewer read;
 | `applications` | — | R own; insert own; update `tier` | R(rev) | all |
 | `household_members` | — | RW via application | — | all |
 | `passkey_credentials` | — | read own; insert own; update `last_used_at` (`signer_address` excluded) | — | all |
+| `safe_deployments` | — | read own; insert own (`profile_id` only; the manifest columns are server-written) | — | all |
+| `safe_pre_deposits` | — | read own; insert own (`verification_status` and `verified_at` excluded) | — | all |
 | `chains` | — | read | read | all |
 | `fee_schedule` | — | read | read | all |
 | `wallets` | — | — | — | all |

@@ -25,7 +25,7 @@ All Week 1 decisions are frozen. This contract covers an **all-testnet iteration
 6. The resident Safe has one operational signer, the passkey, and threshold 1. No user EOA is an owner.
 7. Iteration 1 runs entirely on testnet: the resident Safe is deployed on **Ethereum Sepolia**; the **Base Sepolia** address is counterfactually predicted and persisted. Arbitrum is deferred (section 8.6). No mainnet deployment in Week 1.
 8. The five EAS schemas are `kade.kyc.v1`, `kade.fee.v1`, `kade.application.v1`, `kade.review.v1`, and `kade.permit.v1`.
-9. The five schemas are approved for registration on **Sepolia** with an authorized Sepolia EAS registration account; the Onchain gate approved the exact encodings on 18 September 2026, and this repository broadcasts nothing.
+9. The five schemas are registered on **Sepolia**, sent from the authorized Sepolia EAS registration account `0x9907Edd6D403AC420cF1A84b10f0d134b13baa84`. The Onchain gate approved the exact encodings on 18 September 2026 and the registrations were executed the same day; the repository's EAS tooling generates and verifies the plan and does not broadcast.
 10. Supabase uses the full DOCX schema (every table in the DOCX data model) with RLS enabled or deny-by-default for unused tables.
 11. The KadeLock Week 1 enforcement model is the **minimum Safe Guard/Module** (section 6.2).
 12. Recovery is **excluded from Week 1**. The accepted product trust model is the Safe RecoveryHub, but it is not implemented in this contract.
@@ -447,7 +447,7 @@ Freeze status at v1.0:
 - [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Base Sepolia. Arbitrum deferred (section 8.6).
 - [x] Safe deployment parameters — frozen per section 4, D4.
 - [x] exact Step 1–2 fields and fee formula — section 2.1.
-- [x] five EAS schema encodings and registration authority — DOCX fields, approved at the Onchain gate 18 September 2026; not yet sent.
+- [x] five EAS schema encodings and registration authority — DOCX fields, approved at the Onchain gate 18 September 2026 and registered on Ethereum Sepolia the same day (UIDs in `packages/contracts/eas/registered-uids.json`).
 - [x] KadeLock enforcement model — frozen as A (minimum Guard/Module), confirmed at the Onchain gate 18 September 2026 (section 6.2).
 - [x] Recovery option — excluded from Week 1 (section 6.3).
 - [ ] shared HTTPS preview requirement — pending explicit approval.
