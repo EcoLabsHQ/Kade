@@ -3,13 +3,16 @@
 Onchain core for the Kade Week 1 build: the **KadeLock** Safe Guard and the
 **EAS schema manifest** tooling.
 
-> **Warning:** Nothing in this package is deployed or registered.
+> **Status:** KadeLock is not deployed; the five EAS schemas are registered.
 >
 > - KadeLock is compiled and Foundry-tested only. It is **not** deployed in
 >   Week 1 (`docs/week-1-frozen-delivery-contract.md` sections 6.2 and 9).
-> - The five EAS schemas are **not** registered yet. The Onchain gate
->   (section 7, checkpoint 3) is approved; the exact, ready-to-send calldata is
->   in `eas/registration-calldata.json`. Registration is irreversible.
+> - The five EAS schemas **are registered** on Ethereum Sepolia. The Onchain
+>   gate (section 7, checkpoint 3) approved the encodings on 2026-09-18 and the
+>   project owner executed the registration outside this repository. The
+>   registrar, UIDs, transactions and block numbers are in
+>   `eas/registered-uids.json`; the committed calldata that was executed is in
+>   `eas/registration-calldata.json`. Registration is irreversible.
 
 ## Quick start
 
@@ -78,7 +81,8 @@ npm run eas:manifest --workspace @kade/contracts
 # Print the exact register(...) calldata. Never signs or sends.
 npm run eas:register --workspace @kade/contracts
 
-# Write the exact register(...) calldata and expected UIDs to a plan file.
+# Write the exact register(...) calldata, expected UIDs and current
+# registration state to the committed calldata record.
 npm run eas:calldata --workspace @kade/contracts
 
 # Read the SchemaRegistry and compare it with the manifest. Read-only.
@@ -96,8 +100,8 @@ of "approved".
 | `eas/approval.example.json` | Template; fails closed because approval stays false. |
 | `eas/eas-schema-manifest.json` | Generated review artifact. |
 | `eas/REVIEW.md` | Generated Onchain-gate review pack (same generator). |
-| `eas/registration-calldata.json` | Generated plan: exact `register(...)` calldata and expected UIDs. No transaction sent. |
-| `eas/registered-uids.json` | Populated only after a human registers the schemas. |
+| `eas/registration-calldata.json` | Generated record: the exact `register(...)` calldata and expected UIDs, plus the registration state read from `registered-uids.json`. The plan was executed outside this repository. |
+| `eas/registered-uids.json` | Record of the executed registrations: UID, transaction, block and registrar per schema. |
 
 > **Note:** the EAS scripts need Node >= 22.6 for native TypeScript stripping.
 > The Foundry build and tests have no extra requirement beyond the repository
@@ -105,12 +109,13 @@ of "approved".
 
 The committed approval record already sets `onchainGateApproved` to `true` with
 the approver and date. To use a different record, point `KADE_EAS_APPROVAL_FILE`
-at it. The verification script needs `SEPOLIA_RPC_URL` only when there are
-recorded registrations to compare.
+at it. The verification script needs `SEPOLIA_RPC_URL` to re-read the registry;
+the five recorded registrations are all compared.
 
-> **Note:** There is no broadcast mode. The planner rejects every argument and
-> prints calldata for a human to execute with the authorised registration
-> account.
+> **Note:** The EAS tooling has no broadcast mode. The planner rejects every
+> argument and prints calldata for a human to execute with the authorised
+> registration account; the five registrations were executed that way, outside
+> this repository.
 
 ## Safe address machinery (D4)
 
@@ -162,6 +167,6 @@ placeholder example is `safe/safe-deployment-manifest.example.json`.
 
 ## What is not here
 
-Deployment scripts, broadcast tooling, EAS registration execution, compliance
-co-signing, cure-event evaluation and bypass tests are out of the Week 1 minimum
-model. See the threat model for the full exclusion list.
+Deployment scripts, EAS broadcast tooling, compliance co-signing, cure-event
+evaluation and bypass tests are out of the Week 1 minimum model. See the threat
+model for the full exclusion list.

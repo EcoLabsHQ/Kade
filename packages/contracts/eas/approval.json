@@ -1,5 +1,5 @@
 {
-  "$comment": "Onchain gate approval record. assertRegistrationApproved() in @kade/shared requires onchainGateApproved=true plus a non-empty approvedBy and approvedAt. APPROVED at the Onchain gate (week-1-frozen-delivery-contract.md section 7, checkpoint 3) for EAS schema registration on Ethereum Sepolia. The exact, ready-to-send register(...) calldata is in eas/registration-calldata.json. Nothing is broadcast by this repository; the project owner signs and sends each transaction from their own funded Sepolia account.",
+  "$comment": "Onchain gate approval record. assertRegistrationApproved() in @kade/shared requires onchainGateApproved=true plus a non-empty approvedBy and approvedAt. APPROVED at the Onchain gate (week-1-frozen-delivery-contract.md section 7, checkpoint 3) for EAS schema registration on Ethereum Sepolia. The exact register(...) calldata approved here is committed at eas/registration-calldata.json; the executed result is recorded in eas/registered-uids.json. The EAS tooling broadcasts nothing; the project owner signed and sent each transaction from their own funded Sepolia account outside this repository.",
   "onchainGateApproved": true,
   "approvedBy": "project owner",
   "approvedAt": "2026-09-18"

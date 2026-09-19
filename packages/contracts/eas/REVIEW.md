@@ -3,18 +3,19 @@
 <!-- GENERATED FILE. Do not edit by hand. Regenerate with
      npm run eas:manifest --workspace @kade/contracts -->
 
-This is the review pack the human approves at the **Onchain gate**
-(week-1-frozen-delivery-contract.md section 7, checkpoint 3) before any
-irreversible EAS registration. It is generated from `@kade/shared`; the schema
-strings below are never hand-copied.
+This is the review pack for the **Onchain gate**
+(week-1-frozen-delivery-contract.md section 7, checkpoint 3), which approves the
+exact EAS schema encodings before the irreversible registration. It is generated
+from `@kade/shared`; the schema strings below are never hand-copied.
 
-> **Warning:** Nothing is registered. Generating, committing or reading this
-> file performs no on-chain action. Registration is irreversible.
+> **Registered.** All 5 schemas are registered on Ethereum Sepolia.
+> Generating, committing or reading this file performs no on-chain action.
 
 - Source of truth: `@kade/shared registrationManifest()`
 - Target chain: Ethereum Sepolia (chain 11155111)
 - Schema registry: `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0`
 - Registration order: `kade.kyc.v1`, `kade.fee.v1`, `kade.application.v1`, `kade.review.v1`, `kade.permit.v1`
+- Registration record: 5/5 in eas/registered-uids.json, registered by 0x9907Edd6D403AC420cF1A84b10f0d134b13baa84
 - Approval record: approved by project owner at 2026-09-18
 
 ## 1. The irreversible action approval authorises
@@ -32,8 +33,9 @@ npm run eas:register --workspace @kade/contracts
 
 It **never signs or sends a transaction**. It prints the exact
 `register(string,address,bool)` calldata for each schema, which the authorised
-account then executes manually. No script in this repository has a broadcast
+account then executes manually. No EAS script in this repository has a broadcast
 mode. Registration takes effect only when that manual transaction is mined.
+It has since been mined; the result is recorded in `eas/registered-uids.json`.
 
 Before running it, the human must record the approval in `eas/approval.json`
 (or set `KADE_EAS_APPROVAL_FILE`): the planner refuses to run unless the record

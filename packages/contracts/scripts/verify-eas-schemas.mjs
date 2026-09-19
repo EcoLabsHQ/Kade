@@ -11,33 +11,8 @@ import { readFileSync } from 'node:fs';
 import { createPublicClient, http, zeroAddress } from 'viem';
 import { loadApprovalRecord } from './eas-approval.mjs';
 import { MANIFEST_PATH, buildManifest, loadRegistrations, serializeManifest } from './eas-manifest.mjs';
+import { SCHEMA_REGISTRY_ABI } from './eas-schema-registry-abi.ts';
 
-const SCHEMA_REGISTRY_ABI = [
-  {
-    type: 'function',
-    name: 'getSchema',
-    stateMutability: 'view',
-    inputs: [{ name: 'uid', type: 'bytes32' }],
-    /**
-     * `getSchema` returns one `SchemaRecord` struct, not four loose values.
-     * Declared flat, viem mis-decodes the trailing string and throws
-     * `PositionOutOfBoundsError` — which went unnoticed while no schemas were
-     * registered, because the loop below was never entered.
-     */
-    outputs: [
-      {
-        name: 'record',
-        type: 'tuple',
-        components: [
-          { name: 'uid', type: 'bytes32' },
-          { name: 'resolver', type: 'address' },
-          { name: 'revocable', type: 'bool' },
-          { name: 'schema', type: 'string' },
-        ],
-      },
-    ],
-  },
-];
 function rejectArguments(argv) {
   const args = argv.slice(2);
   if (args.length > 0) {

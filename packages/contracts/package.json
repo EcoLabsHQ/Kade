@@ -2,6 +2,7 @@
   "name": "@kade/contracts",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "KadeLock and EAS schema tooling. Built and tested with Foundry; verify.sh invokes forge directly.",
   "scripts": {
     "typecheck": "node -e \"process.exit(0)\"",
