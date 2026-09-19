@@ -609,9 +609,7 @@ export function readPayerPrivateKey(
  * `not-configured`; it never falls back to a fabricated account and never
  * throws an opaque error for absent configuration.
  *
- * Note: the repository's `.env.example` currently names the payer key
- * `DEPLOYER_PRIVATE_KEY`. This module follows the task's contract and reads
- * `SEPOLIA_DEPLOYER_PRIVATE_KEY`; the two should be reconciled.
+ * `.env.example` declares the same name, so there is no divergence to track.
  */
 export async function deployResidentSafeFromEnv(
   request: SafeDeployRequest,
