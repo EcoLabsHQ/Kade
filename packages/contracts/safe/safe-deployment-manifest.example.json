@@ -1,12 +1,16 @@
 {
-  "$comment": "Shape example only. EVERY concrete value below is [arbitrary] and awaits the Account gate (week-1-frozen-delivery-contract.md sections 5 and 7, checkpoint 2). The zero addresses are placeholders, not configuration. Nothing is deployed.",
+  "$comment": "Shape example only. The zero addresses and remaining [arbitrary] markers are placeholders, not configuration: nothing is deployed, so no resident address exists yet. The Safe version, factory, singleton, handler and the signer derivation are recorded in @kade/shared, and the account address is derived per resident.",
   "deploymentTxHash": null,
   "deploymentChainId": 11155111,
   "safeAddress": "0x0000000000000000000000000000000000000000",
   "predictedL2Addresses": [
-    { "chainId": 84532, "name": "Base Sepolia", "address": "0x0000000000000000000000000000000000000000" }
+    {
+      "chainId": 84532,
+      "name": "Base Sepolia",
+      "address": "0x0000000000000000000000000000000000000000"
+    }
   ],
-  "safeVersion": "[arbitrary]",
+  "safeVersion": "1.5.0",
   "factory": "0x0000000000000000000000000000000000000000",
   "singleton": "0x0000000000000000000000000000000000000000",
   "initializer": "0x",
@@ -14,7 +18,7 @@
   "owner": "0x0000000000000000000000000000000000000000",
   "threshold": 1,
   "salt": {
-    "saltNonce": "[arbitrary]",
+    "saltNonce": "[derived per resident]",
     "initializerHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "salt": "0x0000000000000000000000000000000000000000000000000000000000000000"
   },

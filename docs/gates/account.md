@@ -28,7 +28,7 @@ Two things:
 | The Safe address is derivable and deterministic | `packages/contracts/src/SafeAddress.sol`, 12 Foundry tests including a pinned vector cross-checked three ways |
 | Changing any input changes the address | `test_Changing*ChangesAddress` (factory, singleton, initializer hash, salt, creation code) |
 | The address does not depend on the chain id | `test_AddressIsIndependentOfChainId` — D4 requires one address on every active chain |
-| The D4 record shape exists | `packages/contracts/safe/SafeDeploymentManifest.schema.json`, with an all-`[arbitrary]` example carrying `provenance: unapproved` |
+| The D4 record shape exists | `packages/contracts/safe/SafeDeploymentManifest.schema.json`, with a placeholder example carrying `provenance: unapproved` |
 
 ## What I need from you
 
@@ -54,7 +54,7 @@ open is below.
 ## What is not proven
 
 - **Any deployment.** No Safe exists on any chain. `chain.kadelock_address` and
-  the manifest examples are `null` / `[arbitrary]`.
+  the manifest examples carry placeholders.
 - **A signature validating through the signer.** Requires the signer address,
   which requires the deployment above.
 - **Passkey metadata persisting across a reload.** Still an in-memory seam; it is

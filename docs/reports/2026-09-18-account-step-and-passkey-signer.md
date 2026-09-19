@@ -1,15 +1,16 @@
 # Account step, and the account address derived from the passkey
 
 Seventh iteration report for the Kade Week 1 build. Covers the work from
-`08819b8` (the current `known-good`) to `eb4cd4e` (the last code commit).
+`08819b8` (the current `known-good`) through to the tip of this iteration — the
+commit this report is part of.
 
 | | |
 |:--|:--|
 | `known-good` (unchanged) | `08819b8` |
-| Candidate `HEAD` | `eb4cd4e` |
+| Candidate | the tip of this iteration; this report is part of it |
 | Window (local time) | 18 September 2026 |
-| Commits since `known-good` | 22 |
-| Change size | 73 files, +5,470 / −751 |
+| Commits since `known-good` | 24 |
+| Change size | see `git diff --stat 08819b8...HEAD` |
 | Mechanical gate | `./scripts/verify.sh` — passed: web 132 · shared 67 · acceptance 12 · regressions 4 · Foundry 45 |
 | Adversarial review | **failed, then corrected** — see section 4 |
 

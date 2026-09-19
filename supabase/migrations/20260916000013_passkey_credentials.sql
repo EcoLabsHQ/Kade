@@ -29,7 +29,8 @@ create table public.passkey_credentials (
   public_key        text not null,
   /**
    * The signer contract this credential owns. Derived server-side from the
-   * public key and the Safe inputs; NULL until the Account gate approves them.
+   * public key via the deployed signer factory; NULL until a passkey is
+   * enrolled.
    */
   signer_address    text,
   /** Authenticator transports, for future assertion hints. */
@@ -46,8 +47,8 @@ comment on table public.passkey_credentials is
   'private key and no raw attestation.';
 comment on column public.passkey_credentials.signer_address is
   'SECURITY-CRITICAL: the Safe WebAuthn signer contract this credential owns. '
-  'Derived server-side from the public key plus the frozen Safe inputs, so it '
-  'is not writable by the browser. NULL until the Account gate approves them.';
+  'Derived server-side from the public key via the deployed signer factory, so '
+  'it is not writable by the browser. NULL until a passkey is enrolled.';
 comment on column public.passkey_credentials.public_key is
   'COSE public key. Public by construction; the private key never leaves the '
   'authenticator and is not stored anywhere.';

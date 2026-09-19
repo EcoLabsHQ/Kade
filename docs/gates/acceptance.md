@@ -99,9 +99,9 @@ cd packages/contracts && forge test
 
 ### 9. The transaction passkey ⚠️
 
-Open `/account`. The passkey panel exists and enforces user verification, but
-the credential is not yet persisted to the database and the signer address is
-unresolved until gate 2. "Not enrolled" is the honest current state.
+Open `/account`. The passkey panel exists, enforces user verification, and shows
+the signer address derived from the credential. The credential is still not
+persisted to the database. "Not enrolled" is the honest current state.
 
 ## What a pass looks like
 

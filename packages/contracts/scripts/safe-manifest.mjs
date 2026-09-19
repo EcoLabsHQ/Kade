@@ -18,20 +18,20 @@ export const EXAMPLE_PATH = new URL(
 
 // The D4-required fields, with the gate that confirms each concrete value.
 export const SAFE_DEPLOYMENT_MANIFEST_FIELDS = [
-  { field: 'deploymentTxHash', gate: 'Account gate', provenance: 'arbitrary until deployed' },
+  { field: 'deploymentTxHash', gate: 'deployment', provenance: 'null until deployed' },
   { field: 'deploymentChainId', gate: 'frozen', provenance: 'documented' },
-  { field: 'safeAddress', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'predictedL2Addresses', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'safeVersion', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'factory', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'singleton', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'initializer', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'handler', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'owner', gate: 'Account gate', provenance: 'arbitrary' },
+  { field: 'safeAddress', gate: 'derived', provenance: 'derived per resident' },
+  { field: 'predictedL2Addresses', gate: 'derived', provenance: 'derived per resident' },
+  { field: 'safeVersion', gate: 'decided', provenance: 'documented (v1.5.0)' },
+  { field: 'factory', gate: 'recorded', provenance: 'external' },
+  { field: 'singleton', gate: 'recorded', provenance: 'external' },
+  { field: 'initializer', gate: 'derived', provenance: 'derived per resident' },
+  { field: 'handler', gate: 'recorded', provenance: 'external' },
+  { field: 'owner', gate: 'derived', provenance: 'derived per passkey' },
   { field: 'threshold', gate: 'frozen', provenance: 'documented' },
-  { field: 'salt', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'creationCodeAssumptions', gate: 'Account gate', provenance: 'arbitrary' },
-  { field: 'provenance', gate: 'Account gate', provenance: 'unapproved' },
+  { field: 'salt', gate: 'proposed', provenance: 'proposed: keccak256(resident id)' },
+  { field: 'creationCodeAssumptions', gate: 'chain', provenance: 'read from the factory' },
+  { field: 'provenance', gate: 'Account gate', provenance: 'unapproved until deployed' },
 ];
 
 function matchesType(value, expected) {
@@ -131,7 +131,7 @@ function main() {
     for (const error of errors) console.error(`  ${error}`);
     process.exit(1);
   }
-  console.log('Example conforms to the schema. Nothing is deployed; all values are [arbitrary].');
+  console.log('Example conforms to the schema. Nothing is deployed; the example carries placeholders.');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
