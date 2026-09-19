@@ -3,9 +3,12 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {KadeLock} from "../src/KadeLock.sol";
-import {Enum} from "safe-smart-account/contracts/common/Enum.sol";
+import {Enum} from "safe-smart-account/contracts/libraries/Enum.sol";
 import {IERC165} from "safe-smart-account/contracts/interfaces/IERC165.sol";
-import {Guard} from "safe-smart-account/contracts/base/GuardManager.sol";
+import {
+    BaseTransactionGuard,
+    ITransactionGuard
+} from "safe-smart-account/contracts/base/GuardManager.sol";
 
 contract KadeLockTest is Test {
     KadeLock internal kadeLock;
@@ -276,7 +279,7 @@ contract KadeLockTest is Test {
     // ---------------------------------------------------------------------
 
     function test_SupportsGuardAndErc165Interfaces() public view {
-        assertTrue(kadeLock.supportsInterface(type(Guard).interfaceId));
+        assertTrue(kadeLock.supportsInterface(type(ITransactionGuard).interfaceId));
         assertTrue(kadeLock.supportsInterface(type(IERC165).interfaceId));
         assertFalse(kadeLock.supportsInterface(bytes4(0xdeadbeef)));
     }

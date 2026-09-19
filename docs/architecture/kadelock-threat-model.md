@@ -79,7 +79,8 @@ should also be the Admin is an open Onchain-gate decision.
 ## 4. External interface
 
 Source: `packages/contracts/src/KadeLock.sol`. It inherits the canonical `Guard`
-interface from `safe-smart-account` v1.4.1 and implements ERC-165.
+interface from `safe-smart-account` v1.5.0 (`BaseTransactionGuard`, which
+implements `ITransactionGuard` and ERC-165).
 
 ### Functions
 
@@ -196,7 +197,7 @@ confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 | Single-admin role model | design | No source defines guard roles. | Onchain gate |
 | `solc_version = 0.8.24` | `foundry.toml` | Not specified. | Onchain gate |
 | `forge-std` v1.16.2 | `lib/` | Not specified. | Onchain gate |
-| `safe-smart-account` v1.4.1 | `lib/` | The Safe version is itself `[arbitrary]` in `@kade/shared` (`safe.ts`). | Account gate |
+| `safe-smart-account` v1.5.0 | `lib/` | Chosen by the project owner (contract v1.6); recorded in `@kade/shared` (`safe-deployments.ts`). | Account gate |
 | Safe deployment inputs (factory, singleton, fallback handler, initializer, WebAuthn signer, salt nonce) | `@kade/shared` `safe.ts`; shape in `safe/SafeDeploymentManifest.schema.json` | Project-supplied; all marked `[arbitrary]`. | Account gate |
 | Safe proxy creation code | `src/SafeAddress.sol`; pinned by `test/SafeAddress.t.sol` | Derived from the Safe version and the pinned solc/optimizer settings; any change changes the predicted address. | Account gate |
 | EAS field types / encodings | `@kade/shared`, surfaced in the manifest | `@kade/shared` marks types `arbitrary`. | Onchain gate |

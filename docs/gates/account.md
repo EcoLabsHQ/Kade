@@ -35,7 +35,7 @@ per-version address table, so **I have not guessed them**:
 
 | Input | Note |
 |---|---|
-| Safe version | Our Foundry dependency pins `safe-smart-account` **v1.4.1**. Safe also publishes v1.5.0. Confirm v1.4.1, or name the version. |
+| Safe version | **Decided: v1.5.0** (contract v1.6), pinned in `scripts/setup.sh` and recorded with its code hashes in `@kade/shared`. The addresses are no longer needed from the project. |
 | Proxy factory address | Supply, or approve fetching them from Safe's published deployments |
 | Singleton address | " (SafeL2 if the L2 event variant is wanted) |
 | Compatibility fallback handler address | " |

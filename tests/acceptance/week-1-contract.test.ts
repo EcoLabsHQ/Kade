@@ -13,6 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHAIN_IDS,
+  chainsForEnv,
+  deferredChains,
   EAS_SCHEMAS,
   EAS_SCHEMA_NAMES,
   EXCLUDED_LOGIN_PROVIDERS,
@@ -36,11 +38,15 @@ describe('contract section 2 - frozen product decisions', () => {
     expect(SAFE_THRESHOLD).toBe(1);
   });
 
-  it('item 7: iteration 1 is testnet only, on Ethereum Sepolia plus two L2 testnets', () => {
-    expect(TESTNET_CHAINS.map((c) => c.chainId).sort()).toEqual(
-      [CHAIN_IDS.sepolia, CHAIN_IDS.arbitrumSepolia, CHAIN_IDS.baseSepolia].sort(),
+  it('item 7 (amended v1.6): iteration 1 is testnet only, on Ethereum Sepolia and Base Sepolia', () => {
+    expect(chainsForEnv('testnet').map((c) => c.chainId).sort()).toEqual(
+      [CHAIN_IDS.sepolia, CHAIN_IDS.baseSepolia].sort(),
     );
-    expect(TESTNET_CHAINS.every((c) => c.env === 'testnet')).toBe(true);
+    expect(chainsForEnv('testnet').every((c) => c.env === 'testnet')).toBe(true);
+    // Arbitrum stays defined, just out of scope for iteration 1.
+    expect(deferredChains('testnet').map((c) => c.chainId)).toEqual([
+      CHAIN_IDS.arbitrumSepolia,
+    ]);
   });
 
   it('item 8: exactly five EAS schemas, with the frozen names', () => {

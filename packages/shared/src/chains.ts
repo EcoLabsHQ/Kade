@@ -38,6 +38,15 @@ export type ChainEnv = 'mainnet' | 'testnet';
 export interface ChainConfig {
   /** Kade's product-chain key. Stable across mainnet/testnet pairs. */
   readonly key: ChainFamily;
+  /**
+   * Whether iteration 1 uses this chain.
+   *
+   * [documented] The project owner dropped Arbitrum from the iteration-1 set,
+   * which is what lets the Safe release be v1.5.0: that version has no Arbitrum
+   * Sepolia deployment. The definitions stay in the registry so the chain can be
+   * switched back on by configuration (contract v1.6).
+   */
+  readonly active: boolean;
   readonly env: ChainEnv;
   readonly chainId: ChainId;
   readonly name: string;
@@ -67,6 +76,7 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'ethereum',
     env: 'testnet',
+    active: true,
     chainId: CHAIN_IDS.sepolia,
     name: 'Ethereum Sepolia',
     usdcAddress: sourced(
@@ -91,6 +101,7 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'arbitrum',
     env: 'testnet',
+    active: false,
     chainId: CHAIN_IDS.arbitrumSepolia,
     name: 'Arbitrum Sepolia',
     usdcAddress: sourced(
@@ -115,6 +126,7 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'base',
     env: 'testnet',
+    active: true,
     chainId: CHAIN_IDS.baseSepolia,
     name: 'Base Sepolia',
     usdcAddress: sourced(
@@ -147,6 +159,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'ethereum',
     env: 'mainnet',
+    active: true,
     chainId: CHAIN_IDS.ethereum,
     name: 'Ethereum',
     usdcAddress: sourced(
@@ -163,6 +176,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'arbitrum',
     env: 'mainnet',
+    active: false,
     chainId: CHAIN_IDS.arbitrum,
     name: 'Arbitrum One',
     usdcAddress: sourced(
@@ -179,6 +193,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
   {
     key: 'base',
     env: 'mainnet',
+    active: true,
     chainId: CHAIN_IDS.base,
     name: 'Base',
     usdcAddress: sourced(
@@ -196,8 +211,23 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
 
 export const ALL_CHAINS: readonly ChainConfig[] = [...TESTNET_CHAINS, ...MAINNET_CHAINS];
 
+/** The chains iteration 1 actually uses. */
 export function chainsForEnv(env: ChainEnv): readonly ChainConfig[] {
-  return env === 'testnet' ? TESTNET_CHAINS : MAINNET_CHAINS;
+  return (env === 'testnet' ? TESTNET_CHAINS : MAINNET_CHAINS).filter(
+    (chain) => chain.active,
+  );
+}
+
+/**
+ * Chains defined but switched off for iteration 1.
+ *
+ * Kept rather than deleted so re-enabling Arbitrum is a configuration change,
+ * and so nothing has to pretend the chain does not exist.
+ */
+export function deferredChains(env: ChainEnv): readonly ChainConfig[] {
+  return (env === 'testnet' ? TESTNET_CHAINS : MAINNET_CHAINS).filter(
+    (chain) => !chain.active,
+  );
 }
 
 export function chainByChainId(chainId: number): ChainConfig | undefined {

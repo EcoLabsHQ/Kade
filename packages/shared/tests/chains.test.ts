@@ -3,6 +3,7 @@ import {
   CHAIN_IDS,
   chainByChainId,
   chainsForEnv,
+  deferredChains,
   productChainKeys,
   TESTNET_CHAINS,
 } from '../src/index.js';
@@ -19,10 +20,19 @@ describe('chain registry', () => {
     });
   });
 
-  it('iteration 1 activates exactly the three testnets', () => {
-    expect(chainsForEnv('testnet')).toHaveLength(3);
+  it('iteration 1 activates Ethereum Sepolia and Base Sepolia', () => {
+    // Contract v1.6: Arbitrum was dropped from the iteration-1 set, which is
+    // what makes Safe v1.5.0 usable (it has no Arbitrum Sepolia deployment).
+    expect(chainsForEnv('testnet').map((c) => c.chainId)).toEqual([11155111, 84532]);
+    expect(chainsForEnv('testnet').every((c) => c.active)).toBe(true);
+  });
+
+  it('keeps Arbitrum defined but deferred, so it can be switched back on', () => {
+    const deferred = deferredChains('testnet');
+    expect(deferred.map((c) => c.chainId)).toEqual([421614]);
+    expect(deferred.every((c) => !c.active)).toBe(true);
+    // The definitions are still complete.
     expect(TESTNET_CHAINS.map((c) => c.chainId)).toEqual([11155111, 421614, 84532]);
-    expect(TESTNET_CHAINS.every((c) => c.env === 'testnet')).toBe(true);
   });
 
   it('covers the three product chains', () => {

@@ -6,7 +6,7 @@ pragma solidity 0.8.24;
 // D4 requires the resident Safe to resolve to one address on Ethereum Sepolia,
 // Arbitrum Sepolia and Base Sepolia, derived from frozen deployment inputs.
 // This library is the pure arithmetic behind that promise. It mirrors the
-// canonical Safe v1.4.1 `SafeProxyFactory.createProxyWithNonce`:
+// canonical Safe v1.5.0 `SafeProxyFactory.createProxyWithNonce`:
 //
 //   initCode     = proxyCreationCode ++ uint256(uint160(singleton))   // 32-byte word
 //   initCodeHash = keccak256(initCode)

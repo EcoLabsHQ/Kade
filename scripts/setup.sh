@@ -38,7 +38,7 @@ if command -v forge >/dev/null 2>&1; then
   (
     cd packages/contracts
     forge install foundry-rs/forge-std@v1.16.2 --no-git
-    forge install safe-global/safe-smart-account@v1.4.1 --no-git
+    forge install safe-global/safe-smart-account@v1.5.0 --no-git
   )
 else
   printf '\nforge not found: skipping Solidity dependencies.\n'

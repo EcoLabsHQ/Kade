@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.5 — human decisions recorded 16 September 2026; five
-amendments recorded in sections 8.1-8.5
+**Status:** Frozen v1.6 — human decisions recorded 16 September 2026; six
+amendments recorded in sections 8.1-8.6
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -23,7 +23,7 @@ All Week 1 decisions are frozen. This contract covers an **all-testnet iteration
 4. Google credentials cannot authorize financial transactions.
 5. The signer implementation is the **direct Safe WebAuthn signer**. No managed embedded signer (Privy, Turnkey) in Week 1.
 6. The resident Safe has one operational signer, the passkey, and threshold 1. No user EOA is an owner.
-7. Iteration 1 runs entirely on testnet: the resident Safe is deployed on **Ethereum Sepolia**; the **Arbitrum Sepolia** and **Base Sepolia** addresses are counterfactually predicted and persisted. No mainnet deployment in Week 1.
+7. Iteration 1 runs entirely on testnet: the resident Safe is deployed on **Ethereum Sepolia**; the **Base Sepolia** address is counterfactually predicted and persisted. Arbitrum is deferred (section 8.6). No mainnet deployment in Week 1.
 8. The five EAS schemas are `kade.kyc.v1`, `kade.fee.v1`, `kade.application.v1`, `kade.review.v1`, and `kade.permit.v1`.
 9. The five schemas are registered on **Sepolia** with an authorized Sepolia EAS registration account.
 10. Supabase uses the full DOCX schema (every table in the DOCX data model) with RLS enabled or deny-by-default for unused tables.
@@ -379,6 +379,40 @@ signer factory and P-256 verifier are recorded in
 `packages/shared/src/safe-deployments.ts`, sourced from Safe's own published
 deployments.
 
+### 8.6 Amendment v1.6 — Safe v1.5.0, and Arbitrum deferred
+
+**v1.6 — 18 September 2026. Approved by the project owner.**
+
+Iteration 1 uses **Safe v1.5.0**, and **Arbitrum is dropped from the active
+chain set**. The two decisions are joined: v1.5.0 has no Arbitrum Sepolia
+deployment, so it could not be adopted while Arbitrum Sepolia was in scope.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 2, item 7 | Ethereum Sepolia deployed; Arbitrum Sepolia and Base Sepolia predicted | Ethereum Sepolia deployed; Base Sepolia predicted; Arbitrum deferred |
+| Section 4, D4 | Same address across three testnets | Same address across the two active testnets |
+| Active Safe release | v1.4.1 (the newest deployed on all three testnets) | v1.5.0 (the latest release) |
+
+What does **not** change:
+
+- the Safe still has one owner, the direct WebAuthn signer, at threshold 1, with
+  no EOA owner;
+- the address is still derived with the chain-agnostic `createProxyWithNonce`,
+  so it does not depend on the chain id;
+- Arbitrum remains a target product chain. Its definitions stay in the registry
+  and `deferredChains()` returns them, so re-enabling it is a configuration
+  change and no code has to pretend the chain does not exist.
+
+Evidence for the version choice, from Safe's own published deployments: the
+v1.5.0 `safe_l2` deployment file has no entry for chain 421614, while v1.4.1's
+does. Both are deployed on 11155111 and 84532. The addresses, their code hashes,
+the passkey module's signer factory and P-256 verifier, and the v1.5.0
+`SafeProxy` creation code are recorded in
+`packages/shared/src/safe-deployments.ts`; the creation code's hash is pinned by
+`packages/contracts/test/SafeAddress.t.sol`.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -414,7 +448,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.5** with the open items above tracked under change control.
+This contract is **Frozen v1.6** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
