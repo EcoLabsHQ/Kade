@@ -40,9 +40,11 @@ RLS enabled, or deny-by-default for unused tables. D2 additionally requires:
 
 - RLS policies are reviewed as SQL, not exercised by a committed harness. The
   enforcement mechanism is Postgres, configured through Supabase; the policy set
-  itself is ours and lives in a single auditable migration
-  (`20260916000009_rls.sql`), which makes "who can read and write what" readable
-  in one file. `scripts/verify.sh` and `scripts/verify-full.sh` do not test RLS,
+  itself is ours. It began in a single auditable migration
+  (`20260916000009_rls.sql`) and now spans three: tables added later carry their
+  policies with them — `passkey_credentials` (migration 13) and
+  `safe_deployments` / `safe_pre_deposits` (migration 16). `supabase/README.md`
+  holds the current matrix. `scripts/verify.sh` and `scripts/verify-full.sh` do not test RLS,
   so no green run should be read as an RLS claim.
 - A migration that forgets `enable row level security` is a defect, not a
   detail. The guard loop at the end of the RLS migration raises at apply time, so
