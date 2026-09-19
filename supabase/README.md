@@ -104,8 +104,9 @@ npm run test:acceptance
 ## Security model
 
 Security is enforced in the database, not in the client (ADR 0004). The RLS
-migration declares the policies for the original table set; the later
-`passkey_credentials` migration carries its own RLS and policies with the table.
+migration declares the policies for the original table set; tables added later
+carry their own RLS and policies in their own migration — `passkey_credentials`
+(migration 13) and `safe_deployments` / `safe_pre_deposits` (migration 16).
 
 ### Row ownership
 
@@ -117,6 +118,8 @@ migration declares the policies for the original table set; the later
 | `applications` | none | read own, insert own, update `tier` | read | all |
 | `household_members` | none | read/write own (via application) | none | all |
 | `passkey_credentials` | none | read own, insert own, update `last_used_at` (`signer_address` excluded) | none | all |
+| `safe_deployments` | none | read own. An insert is offered but cannot produce a row: every manifest column is `NOT NULL` and outside the grant, so only the server can write a prediction | none | all |
+| `safe_pre_deposits` | none | read own, insert own (`verification_status`, `verified_at` excluded) | none | all |
 | `chains` | none | read | read | all |
 | `fee_schedule` | none | read | read | all |
 | `wallets`, `wealth_snapshots`, `container_balances`, `allocations`, `gos_transfers`, `card_transactions`, `documents`, `identity_attestations`, `reviewers`, `review_events` | none | **none — deny-by-default** | none | all |
@@ -132,6 +135,12 @@ the owner cannot write them from the browser:
 - `profiles.safe_address`
 - `passkey_credentials.signer_address` (derived from the public key; the
   resident may write the other credential columns)
+- every `safe_deployments` column except `profile_id`: the counterfactual
+  address, the status, the deployment transaction hash and all the manifest
+  inputs. The prediction is derived server-side, so the browser cannot name its
+  own address
+- `safe_pre_deposits.verification_status`, `verified_at`: the resident may
+  propose a deposit, but only a server-side check may mark it verified
 - `applications.status`, `ref`, `preapproval_usdc`, `service_usdc`, `fee_tx`,
   `fee_uid`, `app_uid`, `review_uid`, `service_uid`
 - all `identity_attestations` columns (table is deny-by-default)
