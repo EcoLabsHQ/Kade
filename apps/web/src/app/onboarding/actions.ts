@@ -3,12 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { tierDatabaseValue } from '@kade/shared';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { isAuthConfigured, readAuthEnv } from '@/lib/env';
+import { isAuthConfigured, readAuthEnv, readFeeMode } from '@/lib/env';
 import {
   PersistenceNotConfiguredError,
   type OnboardingSnapshot,
   type PersistedOnboarding,
 } from '@/lib/onboarding/persistence';
+import { resolvePreapprovalFeeBreakdown } from '@/lib/onboarding/fee-server';
+import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 
 /**
  * The Step 2 write, executed on the server.
@@ -83,4 +85,30 @@ export async function saveOnboardingStep2(
         ? Number(feeRow.preapproval_usdc)
         : null,
   };
+}
+
+/**
+ * The pre-approval fee for a household size, resolved by the database.
+ *
+ * The client may call this to preview the fee as the household changes, but the
+ * household size is the only thing it supplies: the mode comes from
+ * `KADE_FEE_MODE` on the server and the amount comes from `fee_schedule` via
+ * `public.preapproval_fee_usdc`. A caller can never supply a fee. Returns null
+ * (rather than throwing) when the database cannot answer, so the screen says
+ * the fee is unavailable instead of inventing one.
+ */
+export async function previewPreapprovalFee(
+  householdSize: number,
+): Promise<PreapprovalFeeBreakdown | null> {
+  if (!Number.isInteger(householdSize) || householdSize < 1) {
+    return null;
+  }
+  try {
+    return await resolvePreapprovalFeeBreakdown(
+      readFeeMode(),
+      householdSize,
+    );
+  } catch {
+    return null;
+  }
 }

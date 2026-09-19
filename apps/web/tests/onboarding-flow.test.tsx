@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { preapprovalFeeUsdc } from '@kade/shared';
+import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import type {
   OnboardingSnapshot,
@@ -12,6 +13,7 @@ const hoisted = vi.hoisted(() => ({
   refresh: vi.fn(),
   enrolPasskey: vi.fn(),
   deriveAccount: vi.fn(),
+  previewPreapprovalFee: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -24,6 +26,30 @@ vi.mock('@/lib/passkey/enrolment', () => ({
 vi.mock('@/app/onboarding/signer-actions', () => ({
   deriveAccount: hoisted.deriveAccount,
 }));
+// The fee preview is a server action. It is mocked here so the test exercises
+// the client against a server answer, not the database client.
+vi.mock('@/app/onboarding/actions', () => ({
+  previewPreapprovalFee: hoisted.previewPreapprovalFee,
+  saveOnboardingStep2: vi.fn(),
+}));
+
+/** The seeded demo row: base 1, 0.25 per member, two decimal places. */
+const DEMO_SCHEDULE = {
+  mode: 'demo',
+  baseUsdc: 1,
+  perMemberUsdc: 0.25,
+  roundingScale: 2,
+} as const;
+
+function demoFee(householdSize: number) {
+  return preapprovalBreakdownFromSchedule(DEMO_SCHEDULE, householdSize);
+}
+
+beforeEach(() => {
+  hoisted.previewPreapprovalFee.mockImplementation(
+    async (householdSize: number) => demoFee(householdSize),
+  );
+});
 
 /**
  * A real P-256 credential public key (SubjectPublicKeyInfo, base64url), so the
@@ -42,6 +68,7 @@ afterEach(() => {
   hoisted.refresh.mockReset();
   hoisted.enrolPasskey.mockReset();
   hoisted.deriveAccount.mockReset();
+  hoisted.previewPreapprovalFee.mockReset();
 });
 
 function makeStore() {
@@ -60,6 +87,7 @@ function renderFlow(store: OnboardingStore) {
       mode="demo"
       persistence="supabase"
       initial={null}
+      initialFee={demoFee(1)}
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -77,6 +105,7 @@ function renderFlowFromStart(store: OnboardingStore) {
       mode="demo"
       persistence="supabase"
       initial={null}
+      initialFee={demoFee(1)}
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -191,7 +220,7 @@ describe('pre-registration flow', () => {
       }),
     ).toBeInTheDocument();
     // Household of three, the contract's worked example.
-    expect(screen.getByText('1.75 USDC')).toBeInTheDocument();
+    expect(await screen.findByText('1.75 USDC')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /pay now/i }));
     expect(
@@ -215,6 +244,71 @@ describe('pre-registration flow', () => {
       name: /pay the pre-approval fee and go live/i,
     });
     expect(screen.getByText(/does not send a transaction/i)).toBeInTheDocument();
-    expect(screen.getByText(/1\.75 USDC/)).toBeInTheDocument();
+    expect(await screen.findByText(/1\.75 USDC/)).toBeInTheDocument();
+  });
+
+  it('shows the fee the server resolved, not the shared formula or the store value', async () => {
+    // The schedule itself changed (per member 0.5, not 0.25): the server's
+    // answer is 2.50 for a household of three. The store claims 999, which the
+    // screen must ignore because the store is not the fee's source.
+    hoisted.previewPreapprovalFee.mockImplementation(
+      async (householdSize: number) =>
+        preapprovalBreakdownFromSchedule(
+          { mode: 'demo', baseUsdc: 1, perMemberUsdc: 0.5, roundingScale: 2 },
+          householdSize,
+        ),
+    );
+    const store: OnboardingStore = {
+      mode: 'supabase',
+      load: async () => null,
+      save: async () => ({ applicationId: 'app-user-1', preapprovalUsdc: 999 }),
+    };
+    renderFlow(store);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', {
+      name: /pay the pre-approval fee and go live/i,
+    });
+
+    expect(await screen.findByText('2.50 USDC')).toBeInTheDocument();
+    expect(screen.queryByText('1.75 USDC')).toBeNull();
+    expect(screen.queryByText('999 USDC')).toBeNull();
+  });
+
+  it('asks the server to resolve the fee for the current household size', async () => {
+    const { store } = makeStore();
+    renderFlow(store);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    // Applicant only at first; then the saved household of three.
+    expect(hoisted.previewPreapprovalFee).toHaveBeenCalledWith(1);
+    await waitFor(() =>
+      expect(hoisted.previewPreapprovalFee).toHaveBeenCalledWith(3),
+    );
+  });
+
+  it('shows no amount and blocks payment when the fee cannot be resolved', async () => {
+    hoisted.previewPreapprovalFee.mockResolvedValue(null);
+    const { store } = makeStore();
+    renderFlow(store);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', {
+      name: /pay the pre-approval fee and go live/i,
+    });
+
+    expect(
+      await screen.findByText(/configured pre-approval fee could not be read/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/USDC/)).toBeNull();
+    expect(screen.getByRole('button', { name: /pay now/i })).toBeDisabled();
   });
 });

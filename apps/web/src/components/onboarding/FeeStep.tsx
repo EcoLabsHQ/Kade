@@ -2,14 +2,18 @@
 
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
+import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 
 /**
  * Step 4 — pay the pre-approval fee.
  *
  * DEMO ONLY. "Paying" flips local state and nothing else: payment execution is
  * excluded from Week 1 (contract section 9), so no transaction is built, signed
- * or sent, and the screen does not claim one was. The amounts come from the
- * active fee schedule as passed in, never from a client constant.
+ * or sent, and the screen does not claim one was.
+ *
+ * The amounts are the server's, resolved from the active `fee_schedule` and
+ * passed down. The screen holds no formula and no constant; when the server
+ * cannot resolve the fee it shows that plainly rather than an amount.
  */
 export interface FileRow {
   readonly label: string;
@@ -18,17 +22,10 @@ export interface FileRow {
   readonly tone: 'success' | 'warning';
 }
 
-export interface FeeBreakdownView {
-  readonly baseUsdc: number;
-  readonly perMemberUsdc: number;
-  readonly householdSize: number;
-  readonly householdUsdc: number;
-  readonly totalUsdc: number;
-}
-
 export interface FeeStepProps {
   readonly rows: readonly FileRow[];
-  readonly breakdown: FeeBreakdownView;
+  /** The server-resolved fee, or null when it could not be read. */
+  readonly breakdown: PreapprovalFeeBreakdown | null;
   readonly mode: string;
   readonly paid: boolean;
   readonly onPay: () => void;
@@ -102,37 +99,53 @@ export function FeeStep({
           </div>
 
           <div style={{ borderTop: `1px solid ${tokens.border}`, marginTop: '6px' }}>
-            <div style={feeLine}>
-              <span>Pre-approval fee · investor permit</span>
-              <span style={feeValue}>{usdc(breakdown.baseUsdc)}</span>
-            </div>
-            <div style={feeLine}>
-              <span>
-                Household · {breakdown.householdSize} member
-                {breakdown.householdSize === 1 ? '' : 's'} at{' '}
-                {breakdown.perMemberUsdc} USDC each
-              </span>
-              <span style={feeValue}>{usdc(breakdown.householdUsdc)}</span>
-            </div>
-            <div
-              style={{
-                ...feeLine,
-                borderTop: `1px solid ${tokens.border}`,
-                marginTop: '6px',
-                paddingTop: '12px',
-                fontSize: '16px',
-                fontWeight: 700,
-              }}
-            >
-              <span>Total due now</span>
-              <span style={{ ...feeValue, fontSize: '16px', fontWeight: 700 }}>
-                {usdc(breakdown.totalUsdc)}
-              </span>
-            </div>
-            <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
-              {mode} pricing, from the shared fee formula. This demo does not
-              send a transaction.
-            </p>
+            {breakdown ? (
+              <>
+                <div style={feeLine}>
+                  <span>Pre-approval fee · investor permit</span>
+                  <span style={feeValue}>{usdc(breakdown.baseUsdc)}</span>
+                </div>
+                <div style={feeLine}>
+                  <span>
+                    Household · {breakdown.householdSize} member
+                    {breakdown.householdSize === 1 ? '' : 's'} at{' '}
+                    {breakdown.perMemberUsdc} USDC each
+                  </span>
+                  <span style={feeValue}>{usdc(breakdown.householdUsdc)}</span>
+                </div>
+                <div
+                  style={{
+                    ...feeLine,
+                    borderTop: `1px solid ${tokens.border}`,
+                    marginTop: '6px',
+                    paddingTop: '12px',
+                    fontSize: '16px',
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>Total due now</span>
+                  <span style={{ ...feeValue, fontSize: '16px', fontWeight: 700 }}>
+                    {usdc(breakdown.totalUsdc)}
+                  </span>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
+                  {mode} pricing, from the configured fee schedule. This demo
+                  does not send a transaction.
+                </p>
+              </>
+            ) : (
+              <p
+                role="status"
+                style={{
+                  margin: '12px 0 0',
+                  fontSize: '13px',
+                  color: tokens.warning,
+                }}
+              >
+                The configured pre-approval fee could not be read, so no amount
+                is shown. Try again once the fee schedule is reachable.
+              </p>
+            )}
           </div>
         </Card>
 
@@ -188,7 +201,22 @@ export function FeeStep({
                 Enter the platform →
               </button>
             ) : (
-              <button type="button" onClick={onPay} style={{ ...primaryButton, width: '100%' }}>
+              <button
+                type="button"
+                onClick={onPay}
+                disabled={breakdown === null}
+                title={
+                  breakdown === null
+                    ? 'The configured pre-approval fee is unavailable.'
+                    : undefined
+                }
+                style={{
+                  ...primaryButton,
+                  width: '100%',
+                  opacity: breakdown === null ? 0.5 : 1,
+                  cursor: breakdown === null ? 'not-allowed' : 'pointer',
+                }}
+              >
                 Pay now to start pre-approval
               </button>
             )}
