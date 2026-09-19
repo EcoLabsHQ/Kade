@@ -111,11 +111,12 @@ export const SAFE_DEPLOYMENTS: Readonly<Record<SafeVersion, SafeDeployment>> = {
 /**
  * The Safe release iteration 1 uses.
  *
- * [documented] v1.4.1 is the newest release deployed on all three testnets D4
- * requires, and the only one whose proxy creation code this repository pins.
- * v1.5.0 is newer but absent from Arbitrum Sepolia.
+ * [documented] The project owner chose v1.5.0 and dropped Arbitrum from the
+ * iteration-1 chain set, so the one gap v1.5.0 had — no Arbitrum Sepolia
+ * deployment — no longer blocks it. v1.5.0 is deployed on Ethereum Sepolia and
+ * Base Sepolia, which are the active testnets (contract v1.6).
  */
-export const ACTIVE_SAFE_VERSION: SafeVersion = '1.4.1';
+export const ACTIVE_SAFE_VERSION: SafeVersion = '1.5.0';
 
 export interface PasskeyModuleDeployment {
   readonly version: string;
@@ -163,14 +164,14 @@ export const SAFE_PASSKEY_MODULE: PasskeyModuleDeployment = {
  * The creation code is part of the CREATE2 digest, so the deployed address
  * changes if the compiler, the optimiser settings or the Safe version change.
  * `packages/contracts/test/SafeAddress.t.sol` pins the same hash
- * (`0x31e47991bd716464184e3ee59819f71d5f5e1fecec59e382e311ca3c9409a7cc`), so a
+ * (`0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf`), so a
  * toolchain change breaks that test rather than silently shifting every
  * resident's address.
  *
- * Solidity 0.8.24, optimiser disabled, `safe-smart-account` v1.4.1.
+ * Solidity 0.8.24, optimiser disabled, `safe-smart-account` v1.5.0.
  */
 export const SAFE_PROXY_CREATION_CODE = (
-  '0x608060405234801561000f575f80fd5b506040516102b53803806102b58339' +
+  '0x608060405234801561000f575f80fd5b506040516102893803806102898339' +
   '8181016040528101906100319190610142565b5f73ffffffffffffffffffffff' +
   'ffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff' +
   '160361009f576040517f08c379a0000000000000000000000000000000000000' +
@@ -186,13 +187,12 @@ export const SAFE_PROXY_CREATION_CODE = (
   '5f8201527f656400000000000000000000000000000000000000000000000000' +
   '0000000000602082015250565b5f6101d760228361016d565b91506101e28261' +
   '017d565b604082019050919050565b5f6020820190508181035f830152610204' +
-  '816101cb565b9050919050565b609e806102175f395ff3fe608060405273ffff' +
-  'ffffffffffffffffffffffffffffffffffff5f54167fa619486e000000000000' +
-  '000000000000000000000000000000000000000000005f3503604b57805f5260' +
-  '205ff35b365f80375f80365f845af43d5f803e5f81036064573d5ffd5b3d5ff3' +
-  'fea2646970667358221220bff45c4a53c99683c199ab07d83df93b8a8c07728c' +
-  '70439c5514c1b18a159bae64736f6c63430008180033') as `0x${string}`;
+  '816101cb565b9050919050565b6072806102175f395ff3fe60806040525f5463' +
+  'a619486e5f3560e01c036021578060601b606c5260206060f35b365f80375f80' +
+  '365f845af43d5f803e806038573d5ffd5b3d5ff3fea26469706673582212200f' +
+  'b743e2524297bda39648625de92a4595300fb36d65f70fd24707b1707f0e0c64' +
+  '736f6c63430008180033') as `0x${string}`;
 
 /** `keccak256(SAFE_PROXY_CREATION_CODE)`, matching the Foundry test. */
 export const SAFE_PROXY_CREATION_CODE_HASH =
-  '0x31e47991bd716464184e3ee59819f71d5f5e1fecec59e382e311ca3c9409a7cc' as const;
+  '0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf' as const;

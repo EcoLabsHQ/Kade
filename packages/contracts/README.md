@@ -62,7 +62,8 @@ The full interface, roles, threat assumptions, invariants and limitations are in
 ### Guard source
 
 KadeLock inherits the canonical `Guard` interface from
-`safe-smart-account` v1.4.1 (`contracts/base/GuardManager.sol`). It also
+`safe-smart-account` v1.5.0 (`contracts/base/GuardManager.sol`,
+`BaseTransactionGuard`). It also
 implements `IERC165` via `supportsInterface`.
 
 ## EAS schema tooling
@@ -135,7 +136,7 @@ The persisted shape is `safe/SafeDeploymentManifest.schema.json`; an all-
 
 - **Solidity:** `0.8.24` (pinned in `foundry.toml`).
 - **forge-std:** v1.16.2 (MIT / Apache-2.0).
-- **safe-smart-account:** v1.4.1 (**LGPL-3.0**).
+- **safe-smart-account:** v1.5.0 (**LGPL-3.0**).
 - Both are installed into `lib/` by `scripts/setup.sh` and are **not committed**.
   `safe-smart-account` is LGPL-3.0 and is deliberately kept out of this
   MIT-licensed repository rather than vendored into it. A clean checkout runs

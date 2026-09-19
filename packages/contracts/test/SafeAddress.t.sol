@@ -49,9 +49,9 @@ contract SafeAddressTest is Test {
     // Expected outputs of the same [arbitrary] vector. Re-derived independently
     // (viem) from the compiled `SafeProxy` creation code by
     // `node scripts/safe-address-vector.mjs`.
-    address internal constant EXPECTED_ADDRESS = 0xb6aA6C78e43A45AEF6dd696b188c600f3280f1F2;
+    address internal constant EXPECTED_ADDRESS = 0x6D2C2fD420Fd7b7AF36b0F001606d2010a02B490;
     bytes32 internal constant PROXY_CREATION_CODE_HASH =
-        0x31e47991bd716464184e3ee59819f71d5f5e1fecec59e382e311ca3c9409a7cc;
+        0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf;
 
     bytes internal proxyCreationCode;
 

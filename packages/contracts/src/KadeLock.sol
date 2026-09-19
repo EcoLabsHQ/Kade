@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {Guard} from "safe-smart-account/contracts/base/GuardManager.sol";
-import {Enum} from "safe-smart-account/contracts/common/Enum.sol";
-import {IERC165} from "safe-smart-account/contracts/interfaces/IERC165.sol";
+import {BaseTransactionGuard} from "safe-smart-account/contracts/base/GuardManager.sol";
+import {Enum} from "safe-smart-account/contracts/libraries/Enum.sol";
 
 // KadeLock — Week 1 MVP Safe Guard.
 //
@@ -19,9 +18,11 @@ import {IERC165} from "safe-smart-account/contracts/interfaces/IERC165.sol";
 // Compiled and Foundry-tested only; NOT deployed in Week 1
 // (week-1 contract sections 6.2 and 9).
 //
-// Guard interface source: safe-smart-account v1.4.1
-// (contracts/base/GuardManager.sol), installed under lib/ by scripts/setup.sh.
-contract KadeLock is Guard {
+// Guard interface source: safe-smart-account v1.5.0
+// (contracts/base/GuardManager.sol: BaseTransactionGuard), installed under lib/
+// by scripts/setup.sh. v1.5.0 renamed the base guard and moved Enum to
+// contracts/libraries.
+contract KadeLock is BaseTransactionGuard {
     event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
     event UnlockAtChanged(uint64 previousUnlockAt, uint64 newUnlockAt);
     event DestinationAllowed(address indexed destination);
@@ -104,7 +105,4 @@ contract KadeLock is Guard {
 
     function checkAfterExecution(bytes32, bool) external override {}
 
-    function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
-        return interfaceId == type(Guard).interfaceId || interfaceId == type(IERC165).interfaceId;
-    }
 }

@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 import {KadeLock} from "../../src/KadeLock.sol";
-import {Enum} from "safe-smart-account/contracts/common/Enum.sol";
+import {Enum} from "safe-smart-account/contracts/libraries/Enum.sol";
 
 // Minimal host that mirrors how a Safe calls its Guard: the guard is consulted
 // before any value leaves the host. It exists only to prove that KadeLock can
