@@ -7,8 +7,9 @@ Onchain core for the Kade Week 1 build: the **KadeLock** Safe Guard and the
 >
 > - KadeLock is compiled and Foundry-tested only. It is **not** deployed in
 >   Week 1 (`docs/week-1-frozen-delivery-contract.md` sections 6.2 and 9).
-> - The five EAS schemas are **not** registered. Registration is irreversible
->   and blocked behind the Onchain gate (section 7, checkpoint 3).
+> - The five EAS schemas are **not** registered yet. The Onchain gate
+>   (section 7, checkpoint 3) is approved; the exact, ready-to-send calldata is
+>   in `eas/registration-calldata.json`. Registration is irreversible.
 
 ## Quick start
 
@@ -77,6 +78,9 @@ npm run eas:manifest --workspace @kade/contracts
 # Print the exact register(...) calldata. Never signs or sends.
 npm run eas:register --workspace @kade/contracts
 
+# Write the exact register(...) calldata and expected UIDs to a plan file.
+npm run eas:calldata --workspace @kade/contracts
+
 # Read the SchemaRegistry and compare it with the manifest. Read-only.
 npm run eas:verify --workspace @kade/contracts
 ```
@@ -88,10 +92,11 @@ of "approved".
 
 | File | Role |
 |---|---|
-| `eas/approval.json` | Approval record. Intentionally unapproved in Week 1. |
+| `eas/approval.json` | Approval record. Approved at the Onchain gate on 2026-09-18. |
 | `eas/approval.example.json` | Template; fails closed because approval stays false. |
 | `eas/eas-schema-manifest.json` | Generated review artifact. |
 | `eas/REVIEW.md` | Generated Onchain-gate review pack (same generator). |
+| `eas/registration-calldata.json` | Generated plan: exact `register(...)` calldata and expected UIDs. No transaction sent. |
 | `eas/registered-uids.json` | Populated only after a human registers the schemas. |
 
 > **Note:** the EAS scripts need Node >= 22.6 for native TypeScript stripping.
