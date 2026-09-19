@@ -8,16 +8,17 @@
  *
  * Version choice matters and is recorded here rather than assumed:
  *
- *   v1.5.0 is the latest Safe release, but `safe_l2` v1.5.0 has NO entry for
- *   Arbitrum Sepolia (421614). D4 requires one address across Ethereum Sepolia,
- *   Arbitrum Sepolia and Base Sepolia, so v1.5.0 cannot satisfy it.
+ *   v1.5.0 is the latest Safe release. It has NO Arbitrum Sepolia deployment,
+ *   so adopting it required dropping Arbitrum from the iteration-1 chain set.
+ *   The owner made both decisions together (contract v1.6).
  *
- *   v1.4.1 covers all three testnets, and its `SafeProxy` creation code is
- *   pinned in this repository by a Foundry test, so the address derivation can
- *   be checked against a fixed vector.
+ *   v1.4.1 covers Arbitrum Sepolia as well, so it is still the right choice for
+ *   anyone who needs that chain; its addresses are recorded below for that
+ *   reason.
  *
- * The active version is therefore a configuration value, and the reason it is
- * what it is is written down here.
+ * The active version is a configuration value, and the reason it is what it is
+ * is written down here. The `SafeProxy` creation code is part of the address
+ * digest, so it must match the active version: the constant below is v1.5.0's.
  */
 
 import { sourced, type Sourced } from './provenance.js';
@@ -44,6 +45,8 @@ export interface SafeDeployment {
 }
 
 export const SAFE_DEPLOYMENTS: Readonly<Record<SafeVersion, SafeDeployment>> = {
+  // Retained because it is the only release deployed on Arbitrum Sepolia.
+  // Not the active version: see ACTIVE_SAFE_VERSION below.
   '1.4.1': {
     version: '1.4.1',
     safeProxyFactory: sourced(

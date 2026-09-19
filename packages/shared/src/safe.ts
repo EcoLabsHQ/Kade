@@ -9,8 +9,8 @@
  *   - The direct Safe WebAuthn signer is the only operational owner.
  *   - Threshold is 1.
  *   - No user EOA is an owner.
- *   - Ethereum Sepolia, Arbitrum Sepolia and Base Sepolia must produce the
- *     same Safe address from frozen deployment inputs.
+ *   - The active chains (Ethereum Sepolia and Base Sepolia, per contract v1.6)
+ *     must produce the same Safe address from frozen deployment inputs.
  *   - The transaction, Safe address, predicted L2 addresses, Safe version,
  *     factory, singleton, initializer, handler, owner, threshold, salt and
  *     creation-code assumptions must all be persisted.

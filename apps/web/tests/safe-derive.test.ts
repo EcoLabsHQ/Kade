@@ -88,8 +88,8 @@ describe('Safe address derivation', () => {
   });
 
   it('does not depend on the chain id', () => {
-    // D4 requires one address on three chains. The derivation must not read a
-    // chain id, so the same inputs give the same address everywhere.
+    // D4 requires one address on every active chain. The derivation must not
+    // read a chain id, so the same inputs give the same address everywhere.
     const inputs = {
       factory: FACTORY,
       singleton: SINGLETON,

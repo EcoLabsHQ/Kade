@@ -3,8 +3,9 @@ pragma solidity 0.8.24;
 
 // Deterministic Safe proxy address derivation (Week 1 contract D4).
 //
-// D4 requires the resident Safe to resolve to one address on Ethereum Sepolia,
-// Arbitrum Sepolia and Base Sepolia, derived from frozen deployment inputs.
+// D4 requires the resident Safe to resolve to one address on every active
+// chain, derived from frozen deployment inputs. Iteration 1 activates Ethereum
+// Sepolia and Base Sepolia; Arbitrum is deferred (contract v1.6).
 // This library is the pure arithmetic behind that promise. It mirrors the
 // canonical Safe v1.5.0 `SafeProxyFactory.createProxyWithNonce`:
 //
