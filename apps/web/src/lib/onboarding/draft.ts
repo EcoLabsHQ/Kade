@@ -20,9 +20,9 @@ import type { OnboardingSnapshot } from './persistence';
  * form can be incomplete while the applicant types; the frozen rules live in
  * `@kade/shared` and are applied by `evaluateDraft`, never re-implemented here.
  *
- * The draft carries no fee field. The pre-approval fee is always derived by
- * `stepTwoComplete` from the shared formula, and the persisted authoritative
- * value is recomputed by the database (contract section 2.1).
+ * The draft carries no fee field and computes no fee. The server resolves the
+ * pre-approval fee from the active `fee_schedule`, and the persisted
+ * authoritative value is recomputed by the database (contract section 2.1).
  */
 
 export interface HouseholdMemberDraft {
@@ -228,16 +228,18 @@ export interface DraftEvaluation {
   readonly stepTwo: StepTwoStatus;
   /** De-duplicated blockers from both halves, in the shared module's wording. */
   readonly blockers: readonly string[];
-  readonly feeUsdc: number;
   readonly householdSize: number;
   readonly canContinue: boolean;
 }
 
 /**
- * Runs the frozen rules for both halves of the handoff's Step 2 screen and
- * returns the live fee. The fee comes from `stepTwoComplete` (which calls the
- * single frozen `preapprovalFeeUsdc` implementation); it is never a constant
- * and is never supplied by the caller.
+ * Runs the frozen rules for both halves of the handoff's Step 2 screen.
+ *
+ * This deliberately reports no fee: the pre-approval fee is not computed here.
+ * The server resolves it from the active `fee_schedule` and the client only
+ * displays that value (contract section 2.1). `stepTwoComplete` still returns
+ * its own copy for validation, but it is discarded so nothing downstream can
+ * mistake the shared formula for the authoritative amount.
  */
 export function evaluateDraft(
   draft: OnboardingDraft,
@@ -262,7 +264,6 @@ export function evaluateDraft(
     stepOne,
     stepTwo,
     blockers,
-    feeUsdc: stepTwo.preapprovalUsdc,
     householdSize: stepTwo.householdSize,
     canContinue: stepOne.complete && stepTwo.complete,
   };
