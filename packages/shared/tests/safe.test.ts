@@ -20,7 +20,7 @@ function records(address = SAFE): SafeDeploymentRecord[] {
 }
 
 describe('deterministic Safe address (D4)', () => {
-  it('accepts the same address on all three chains', () => {
+  it('accepts the same address on every active chain', () => {
     expect(() => assertSameAddressAcrossChains(records())).not.toThrow();
   });
 

@@ -30,17 +30,19 @@ Two things:
 
 ## What I need from you
 
-None of these is in the DOCX, and I could not retrieve Safe's official
-per-version address table, so **I have not guessed them**:
+**Resolved.** The version and every address now come from Safe's own published
+deployments and are recorded in `@kade/shared` (`safe-deployments.ts`) with their
+code hashes, so none of them has to be supplied by hand. What remains genuinely
+open is below.
 
 | Input | Note |
 |---|---|
 | Safe version | **Decided: v1.5.0** (contract v1.6), pinned in `scripts/setup.sh` and recorded with its code hashes in `@kade/shared`. The addresses are no longer needed from the project. |
-| Proxy factory address | Supply, or approve fetching them from Safe's published deployments |
-| Singleton address | " (SafeL2 if the L2 event variant is wanted) |
-| Compatibility fallback handler address | " |
-| WebAuthn signer implementation | The direct Safe WebAuthn signer. Confirm the signer-factory approach, which derives the signer address from the passkey's public key at enrolment. |
-| Salt nonce strategy | What makes each resident's address unique. |
+| ~~Proxy factory address~~ | Recorded from Safe's deployments (v1.5.0: `0x14F2982D601c9458F93bd70B218933A6f8165e7b`). |
+| ~~Singleton address~~ | Recorded (SafeL2 v1.5.0: `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e`). |
+| ~~Compatibility fallback handler~~ | Recorded (v1.5.0: `0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4`). |
+| WebAuthn signer implementation | The direct Safe WebAuthn signer. The factory address is recorded; deriving the **signer address** offline still needs the passkey module's signer-proxy creation code, which this repository does not pin. |
+| Salt nonce strategy | Still open: what makes each resident's address unique. |
 | Sepolia deployment payer | A funded account, or a decision to deploy from your side. |
 
 > **Note:** the signer address itself is **not** an input. With the direct Safe

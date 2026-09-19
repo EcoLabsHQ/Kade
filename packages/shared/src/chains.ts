@@ -9,8 +9,9 @@
  *     chain_id, name, usdc_address, kadelock_address, eas_address,
  *     paymaster_policy_id, explorer_url.
  *   - docs/week-1-frozen-delivery-contract.md section 2, item 7: iteration 1 is
- *     all-testnet. Ethereum Sepolia deploys; Arbitrum Sepolia and Base Sepolia
- *     are predicted only.
+ *     all-testnet. Ethereum Sepolia deploys; Base Sepolia is predicted only.
+ *     Arbitrum was dropped from iteration 1 (contract v1.6) and is marked
+ *     inactive below so it can be switched back on without code changes.
  *
  * USDC addresses are taken from Circle's published USDC contract address list.
  * EAS addresses are taken from the EAS project's published deployments.

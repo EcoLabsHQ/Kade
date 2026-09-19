@@ -5,7 +5,7 @@ amendments recorded in sections 8.1-8.6
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
-**Week goal:** Account and pre-registration foundations on testnet (Ethereum Sepolia; Arbitrum Sepolia and Base Sepolia reserved)
+**Week goal:** Account and pre-registration foundations on testnet (Ethereum Sepolia deploys; Base Sepolia predicted; Arbitrum deferred per section 8.6)
 
 ## 1. Contract interpretation
 
@@ -56,7 +56,7 @@ The fee is calculated server-side from the active `fee_schedule`; the client may
 | EXE-001 | Project setup and Supabase environment | 3 | KAD-001 | Repository (private, reviewer access), README, license/prior-work disclosure, provider configuration, environment-variable contract, Supabase environments, and repeatable local setup are ready. The deployed MVP is the visual baseline; its source has since been supplied (section 6.1, resolved). |
 | EXE-002 | Seed chains and fee schedule | 1 | KAD-002 | Ethereum `1`/Sepolia `11155111`, Arbitrum `42161`/Arbitrum Sepolia `421614`, and Base `8453`/Base Sepolia `84532`, token metadata, contract/config placeholders, and demo/production fee schedules are migration-seeded and readable by the application. Testnet is active for iteration 1. |
 | EXE-003 | Connect shell, login, and passkey signer | 4 | KAD-003 | Sidebar/routes use a real Supabase session; Google login/logout and protected routes work; the independent transaction passkey can be created and restored after reload. |
-| EXE-004 | Create Safe and predict L2 addresses | 3 | KAD-004 | One resident Safe is deployed on Ethereum Sepolia, stored against the resident, and displayed in the UI; deterministic Arbitrum Sepolia and Base Sepolia addresses and all reproducibility inputs are persisted. |
+| EXE-004 | Create Safe and predict L2 addresses | 3 | KAD-004 | One resident Safe is deployed on Ethereum Sepolia, stored against the resident, and displayed in the UI; the deterministic Base Sepolia address and all reproducibility inputs are persisted. Arbitrum is deferred (section 8.6). |
 | EXE-005 | Connect profile, household, and fee calculation | 5 | KAD-005, KAD-006 | Steps 1–2 persist and restore applicant, citizenship, five-year residence, tier, and household data; the server-controlled configured fee (section 2.1) is recalculated and displayed. |
 | EXE-006 | Register EAS schemas and establish KadeLock baseline | 4 | KAD-007, KAD-008 | Five reviewed schemas are registered on Sepolia and their UIDs are versioned; the frozen minimum KadeLock implementation compiles and its critical rules pass Foundry tests. |
 |  | **Total** | **20** | **KAD-001–KAD-008** |  |
@@ -112,7 +112,7 @@ Accepted when:
 - a resident Safe is deployed on **Ethereum Sepolia**;
 - the direct Safe WebAuthn signer is the only operational owner and threshold is 1;
 - no user EOA is an owner;
-- Sepolia, Arbitrum Sepolia, and Base Sepolia calculations produce the same Safe address using frozen deployment inputs;
+- Ethereum Sepolia and Base Sepolia calculations produce the same Safe address using frozen deployment inputs (Arbitrum deferred, section 8.6);
 - the Sepolia transaction, Safe address, predicted L2 addresses, Safe version, factory, singleton, initializer, handler, owner, threshold, salt, and creation-code assumptions are stored;
 - an automated deterministic-address test passes.
 
@@ -154,7 +154,7 @@ From a clean browser and clean test resident, the reviewer can:
 1. sign in with Google;
 2. create the transaction passkey;
 3. create or retrieve the Ethereum Sepolia Safe;
-4. verify matching Ethereum Sepolia, Arbitrum Sepolia, and Base Sepolia addresses;
+4. verify matching Ethereum Sepolia and Base Sepolia addresses;
 5. complete Steps 1–2;
 6. observe the correct fee;
 7. reload and recover application state;
@@ -169,7 +169,7 @@ The delivery clock assumes Day 1 access to:
 
 - a Supabase project and service configuration;
 - Google OAuth credentials and an approved HTTPS callback domain;
-- Sepolia, Arbitrum Sepolia, and Base Sepolia RPC access;
+- Sepolia and Base Sepolia RPC access (Arbitrum deferred, section 8.6);
 - a funded Sepolia deployment account;
 - final Safe deployment version/configuration and the direct Safe WebAuthn signer;
 - an authorized Sepolia EAS registration account;
@@ -365,7 +365,9 @@ may read their own credential and propose one, while `signer_address` is
 server-written because it is derived from the public key and the frozen Safe
 inputs.
 
-**2. The active Safe release is v1.4.1, not the latest v1.5.0.** Safe v1.5.0 is
+**2. The active Safe release is v1.4.1, not the latest v1.5.0.** *(Superseded by
+v1.6: the owner then chose v1.5.0 and dropped Arbitrum, which is what made
+v1.5.0 usable. Kept as the record of the decision taken at v1.5.)* Safe v1.5.0 is
 not deployed on Arbitrum Sepolia (chain 421614): its published deployment file
 carries no entry for that chain, while v1.4.1's does. D4 requires one address
 across Ethereum Sepolia, Arbitrum Sepolia and Base Sepolia, so v1.5.0 cannot
@@ -438,7 +440,7 @@ Freeze status at v1.0:
 - [x] Login methods — Google OAuth and email magic link. Password and wallet excluded. (Amended v1.2; originally Google-only.)
 - [x] direct Safe WebAuthn versus managed embedded signer — direct Safe WebAuthn signer.
 - [x] full versus partial Supabase schema scope — full DOCX schema, RLS/deny-by-default.
-- [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Arbitrum Sepolia and Base Sepolia.
+- [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Base Sepolia. Arbitrum deferred (section 8.6).
 - [x] Safe deployment parameters — frozen per section 4, D4.
 - [x] exact Step 1–2 fields and fee formula — section 2.1.
 - [x] five EAS schema encodings and registration authority — DOCX fields, registered on Sepolia.
