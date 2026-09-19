@@ -5,13 +5,12 @@ import type { StoredPasskeyCredential } from './credential';
 /**
  * Passkey credential persistence seam.
  *
- * D3 requires credential metadata to survive reload. Three implementations sit
+ * D3 requires credential metadata to survive reload. Two implementations sit
  * behind this interface:
  *
  * - `createDatabasePasskeyStore` is the real one: `public.passkey_credentials`.
  * - `inMemoryPasskeyStore` is honest about its limits: it does NOT survive a
  *   reload and must not be presented as satisfying D3.
- * - `unsupportedPasskeyStore` fails loudly.
  *
  * `signer_address` is deliberately not writable by the `authenticated` role
  * (migration 20260916000013): it is server-written from the public key. The
@@ -21,7 +20,7 @@ import type { StoredPasskeyCredential } from './credential';
  * absent the signer stays NULL and the outcome says so; it is never faked.
  */
 
-export type PasskeyStoreKind = 'in-memory' | 'unsupported' | 'database';
+export type PasskeyStoreKind = 'in-memory' | 'database';
 
 /** The columns a credential save may carry, with the derived signer. */
 export interface PasskeyCredentialWrite {
@@ -71,19 +70,6 @@ export const inMemoryPasskeyStore: PasskeyStore = {
   },
   async getByUser(userId) {
     return memory.get(userId) ?? null;
-  },
-};
-
-export const unsupportedPasskeyStore: PasskeyStore = {
-  kind: 'unsupported',
-  async save() {
-    throw new Error(
-      'No passkey persistence backend is configured. Credential metadata ' +
-        'cannot be stored, so D3 "survives reload" is not satisfied.',
-    );
-  },
-  async getByUser() {
-    return null;
   },
 };
 

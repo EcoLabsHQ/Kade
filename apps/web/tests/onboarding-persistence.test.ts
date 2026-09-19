@@ -8,12 +8,12 @@ import {
 } from '@/lib/onboarding/persistence';
 
 /**
- * Persistence seam tests.
+ * Restore-seam tests.
  *
- * There is no reachable Supabase in this repository's test environment, so the
- * write path is exercised against a recording fake. The assertions are about
- * the contract: the client writes only the columns it is allowed to, never the
- * fee, and a missing backend can never report a successful save.
+ * The live Step 2 write is `save_onboarding_step2` in
+ * `@/app/onboarding/actions`, covered by the guard tests in
+ * `onboarding-actions.test.ts`. Here we cover the read side that repopulates
+ * the form, and pin that the read store cannot be mistaken for a writer.
  */
 
 interface RecordedCall {
@@ -173,74 +173,12 @@ describe('not-configured store', () => {
 });
 
 describe('supabase store', () => {
-  it('writes only the client-allowed columns and never the fee', async () => {
-    const { client, ops } = createFakeSupabase({
-      fee: 1.75,
-      applicationId: 'app-1',
-    });
-    const store = createSupabaseOnboardingStore(() => client);
-    const result = await store.save('user-1', snapshot);
-
-    expect(result).toEqual({ applicationId: 'app-1', preapprovalUsdc: 1.75 });
-
-    const profileUpsert = ops.find(
-      (op) => op.table === 'profiles' && op.method === 'upsert',
-    );
-    expect(profileUpsert?.args[0]).toEqual({
-      id: 'user-1',
-      first_name: 'Ada',
-      last_name: 'Lovelace',
-      dob: '1990-01-01',
-    });
-
-    const appInsert = ops.find(
-      (op) => op.table === 'applications' && op.method === 'insert',
-    );
-    expect(appInsert?.args[0]).toEqual({
-      profile_id: 'user-1',
-      tier: 'indefinite',
-    });
-    expect(appInsert?.args[0]).not.toHaveProperty('preapproval_usdc');
-    expect(appInsert?.args[0]).not.toHaveProperty('amount');
-  });
-
-  it('maps the "present" sentinel to a NULL to_year', async () => {
-    const { client, ops } = createFakeSupabase();
-    const store = createSupabaseOnboardingStore(() => client);
-    await store.save('user-1', snapshot);
-
-    const residenceInsert = ops.find(
-      (op) => op.table === 'profile_residences' && op.method === 'insert',
-    );
-    expect(residenceInsert?.args[0]).toEqual([
-      { profile_id: 'user-1', country_code: 'NL', from_year: 2000, to_year: null },
-    ]);
-  });
-
-  it('updates the tier only, when an application already exists', async () => {
-    const { client, ops } = createFakeSupabase({ hasApplication: true });
-    const store = createSupabaseOnboardingStore(() => client);
-    await store.save('user-1', snapshot);
-
-    expect(
-      ops.some((op) => op.table === 'applications' && op.method === 'insert'),
-    ).toBe(false);
-    const appUpdate = ops.find(
-      (op) => op.table === 'applications' && op.method === 'update',
-    );
-    expect(appUpdate?.args[0]).toEqual({ tier: 'indefinite' });
-  });
-
-  it('rejects a snapshot that carries a client-supplied amount', async () => {
+  it('is not the write boundary: save is unreachable by design', async () => {
     const { client } = createFakeSupabase();
     const store = createSupabaseOnboardingStore(() => client);
-    const tampered = {
-      ...snapshot,
-      amount: 0.01,
-    } as unknown as OnboardingSnapshot;
 
-    await expect(store.save('user-1', tampered)).rejects.toThrow(
-      /client may not supply the fee/i,
+    await expect(store.save('user-1', snapshot)).rejects.toThrow(
+      /save_onboarding_step2/,
     );
   });
 

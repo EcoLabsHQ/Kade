@@ -33,10 +33,16 @@ import {
  * reports that explicitly instead of pretending the signer was stored.
  */
 
-const SERVICE_ROLE_MISSING_REASON =
-  'The credential metadata was saved, but the derived signer address was not ' +
-  'stored because SUPABASE_SERVICE_ROLE_KEY is not configured in this ' +
-  'environment.';
+/**
+ * The technical reason a derived signer was not stored. This is a server-side
+ * explanation and must never reach the resident's screen: it names an
+ * environment variable. `PasskeyEnrolmentPanel` renders the product-language
+ * `SIGNER_NOT_STORED_REASON` from `@/lib/passkey/credential` instead, and the
+ * full detail is available here in the server log.
+ */
+const SERVICE_ROLE_MISSING_DETAIL =
+  'SUPABASE_SERVICE_ROLE_KEY is not configured, so the derived signer address ' +
+  'was not written to passkey_credentials.signer_address.';
 
 const NO_PUBLIC_KEY_REASON =
   'The credential did not include a public key, so the signer address could ' +
@@ -55,7 +61,7 @@ async function resolveSignerAddress(
   canPersist: boolean,
 ): Promise<ResolvedSigner> {
   if (!canPersist) {
-    return { address: null, reason: SERVICE_ROLE_MISSING_REASON };
+    return { address: null, reason: SERVICE_ROLE_MISSING_DETAIL };
   }
   if (!publicKey) {
     return { address: null, reason: NO_PUBLIC_KEY_REASON };
@@ -137,29 +143,53 @@ export async function savePasskeyCredential(
           reason: resolved.reason ?? SIGNER_NOT_STORED_REASON,
         };
 
+  // The reason string may name server configuration, so it is logged here
+  // rather than shown. Callers render the product-language explanation.
+  if (signer.status === 'not-persisted') {
+    console.warn('[kade] Passkey signer not persisted:', signer.reason);
+  }
+
   return { credential: stored, signer };
 }
 
 /**
  * Read the signed-in resident's stored credential, or null when none exists.
  *
- * Returns null (rather than throwing) when there is no session or no Supabase
- * configuration, so the account page can render the ordinary "create" state.
+ * Returns null (rather than throwing) when there is no session, no Supabase
+ * configuration, or the read itself fails. The account page and the onboarding
+ * page both render an ordinary "create" state from null, so a database outage
+ * degrades to a usable screen instead of a 500 or a blocked flow.
+ *
+ * `passkey_credentials` has no unique constraint on `profile_id`, so a
+ * `.maybeSingle()` read errors when more than one row exists. That is treated
+ * exactly like any other read failure: the read is not authoritative, so the
+ * caller is told "none known" rather than a false "no credential".
  */
 export async function loadPasskeyCredential(): Promise<StoredPasskeyCredential | null> {
   const env = readAuthEnv();
   if (!isAuthConfigured(env)) {
     return null;
   }
-  const client = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
-  if (!user) {
+  try {
+    const client = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await client.auth.getUser();
+    if (!user) {
+      return null;
+    }
+    // SELECT is granted to the authenticated role, so the session client
+    // suffices to read the resident's own row.
+    const store = passkeyStore({ client, serviceClient: null });
+    return await store.getByUser(user.id);
+  } catch (cause) {
+    // The detailed reason belongs in the server log, not on the screen. A
+    // failed read is not evidence that no credential exists, but the caller
+    // cannot act on it, so degrade to the create state rather than error.
+    console.warn(
+      '[kade] Could not load the stored passkey credential:',
+      cause instanceof Error ? cause.message : cause,
+    );
     return null;
   }
-  // SELECT is granted to the authenticated role, so the session client
-  // suffices to read the resident's own row.
-  const store = passkeyStore({ client, serviceClient: null });
-  return store.getByUser(user.id);
 }
