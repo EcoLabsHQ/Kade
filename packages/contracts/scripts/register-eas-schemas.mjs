@@ -6,23 +6,9 @@
 // run unless the Onchain gate approval record exists
 // (docs/week-1-frozen-delivery-contract.md section 7, checkpoint 3).
 import { readFileSync } from 'node:fs';
-import { encodeFunctionData, encodePacked, keccak256, zeroAddress } from 'viem';
 import { loadApprovalRecord } from './eas-approval.mjs';
 import { MANIFEST_PATH, buildManifest, serializeManifest } from './eas-manifest.mjs';
-
-const REGISTER_ABI = [
-  {
-    type: 'function',
-    name: 'register',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'schema', type: 'string' },
-      { name: 'resolver', type: 'address' },
-      { name: 'revocable', type: 'bool' },
-    ],
-    outputs: [{ name: 'uid', type: 'bytes32' }],
-  },
-];
+import { buildRegistrationPlan } from './eas-registration-plan.mjs';
 
 function rejectArguments(argv) {
   const args = argv.slice(2);
@@ -58,25 +44,17 @@ console.log(
 );
 console.log('');
 
-for (const schema of manifest.schemas) {
-  const resolver = schema.resolver ?? zeroAddress;
-  const calldata = encodeFunctionData({
-    abi: REGISTER_ABI,
-    functionName: 'register',
-    args: [schema.schema, resolver, schema.revocable],
-  });
-  const predictedUid = keccak256(
-    encodePacked(['string', 'address', 'bool'], [schema.schema, resolver, schema.revocable]),
-  );
+const plan = buildRegistrationPlan(manifest);
 
-  console.log(`name:        ${schema.name}`);
-  console.log(`schema:      ${schema.schema}`);
-  console.log(`resolver:    ${resolver}`);
-  console.log(`revocable:   ${schema.revocable}`);
-  console.log(`attester:    ${schema.attester}`);
-  console.log(`recipient:   ${schema.recipient}`);
-  console.log(`predictedUid: ${predictedUid}`);
-  console.log(`calldata:    ${calldata}`);
+for (const entry of plan) {
+  console.log(`name:        ${entry.name}`);
+  console.log(`schema:      ${entry.schema}`);
+  console.log(`resolver:    ${entry.resolver}`);
+  console.log(`revocable:   ${entry.revocable}`);
+  console.log(`attester:    ${entry.attester}`);
+  console.log(`recipient:   ${entry.recipient}`);
+  console.log(`predictedUid: ${entry.expectedUid}`);
+  console.log(`calldata:    ${entry.calldata}`);
   console.log('');
 }
 
