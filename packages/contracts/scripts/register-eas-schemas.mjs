@@ -1,14 +1,17 @@
 // EAS schema registration planner.
 //
 // SAFETY: this script NEVER signs or sends a transaction. It has no broadcast
-// mode and rejects every argument. It produces the exact SchemaRegistry
+// mode and rejects every argument. It prints the exact SchemaRegistry
 // `register` calldata for human review and manual execution, and it refuses to
 // run unless the Onchain gate approval record exists
-// (docs/week-1-frozen-delivery-contract.md section 7, checkpoint 3).
+// (docs/week-1-frozen-delivery-contract.md section 7, checkpoint 3). Whether
+// the schemas are registered is read from eas/registered-uids.json, never
+// asserted by hand.
 import { readFileSync } from 'node:fs';
 import { loadApprovalRecord } from './eas-approval.mjs';
 import { MANIFEST_PATH, buildManifest, serializeManifest } from './eas-manifest.mjs';
 import { buildRegistrationPlan } from './eas-registration-plan.mjs';
+import { readRegistrationRecord, registrationStatus } from './eas-registration-state.mjs';
 
 function rejectArguments(argv) {
   const args = argv.slice(2);
@@ -35,16 +38,28 @@ if (committed !== serializeManifest(manifest)) {
   );
 }
 
+const plan = buildRegistrationPlan(manifest);
+const status = registrationStatus(manifest.schemas, readRegistrationRecord());
+
 console.log('EAS schema registration plan');
-console.log('Registered? NO — this is a plan. Nothing is signed or sent.');
+if (status.allRegistered) {
+  console.log(
+    `Registered? YES — all ${status.totalSchemas} schemas are recorded in eas/registered-uids.json.`,
+  );
+  console.log('This planner still never signs or sends; it prints the calldata that was executed.');
+} else if (status.noneRegistered) {
+  console.log('Registered? NO — this is a plan. Nothing is signed or sent.');
+} else {
+  console.log(
+    `Registered? PARTIAL — ${status.registeredCount} of ${status.totalSchemas} schemas are recorded in eas/registered-uids.json.`,
+  );
+}
 console.log(`Onchain gate approval: ${approval.approvedBy} at ${approval.approvedAt}`);
 console.log(
   `Target: ${manifest.targetChainName} (chain ${manifest.targetChainId}), ` +
     `SchemaRegistry ${manifest.schemaRegistry}`,
 );
 console.log('');
-
-const plan = buildRegistrationPlan(manifest);
 
 for (const entry of plan) {
   console.log(`name:        ${entry.name}`);
@@ -58,7 +73,12 @@ for (const entry of plan) {
   console.log('');
 }
 
-console.log('Next steps (human, after Onchain gate approval):');
-console.log('  1. Execute the calldata above from the authorised registration account.');
-console.log('  2. Record each resulting UID and transaction hash in eas/registered-uids.json.');
-console.log('  3. Run the verification script to compare the registry with this manifest.');
+if (status.allRegistered) {
+  console.log('Next steps (human):');
+  console.log('  1. Run the verification script to compare the registry with this manifest.');
+} else {
+  console.log('Next steps (human, after Onchain gate approval):');
+  console.log('  1. Execute the calldata above from the authorised registration account.');
+  console.log('  2. Record each resulting UID and transaction hash in eas/registered-uids.json.');
+  console.log('  3. Run the verification script to compare the registry with this manifest.');
+}

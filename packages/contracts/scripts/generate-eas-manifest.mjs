@@ -17,3 +17,7 @@ writeFileSync(REVIEW_PATH, review);
 console.log(`Wrote ${MANIFEST_PATH.pathname}`);
 console.log(`Wrote ${REVIEW_PATH.pathname}`);
 console.log(`Schemas (${manifest.schemas.length}): ${manifest.schemas.map((s) => s.name).join(', ')}`);
+console.log(
+  `Registration: ${manifest.registration.registeredCount}/${manifest.registration.totalSchemas} ` +
+    'recorded in eas/registered-uids.json.',
+);

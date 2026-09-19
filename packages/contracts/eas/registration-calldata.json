@@ -1,5 +1,5 @@
 {
-  "$comment": "PLAN ONLY — NO TRANSACTION HAS BEEN SENT. Exact SchemaRegistry.register calldata for the five Kade EAS schemas on Ethereum Sepolia. The project owner signs and broadcasts each call from their own funded Sepolia account; no script in this repository has a broadcast mode. The attester and recipient rules recorded in the Onchain gate review pack are off-chain and are NOT part of register(...).",
+  "$comment": "EXECUTED — NOT A PENDING PLAN. Exact SchemaRegistry.register calldata for the five Kade EAS schemas on Ethereum Sepolia. The attester and recipient rules recorded in the Onchain gate review pack are off-chain and are NOT part of register(...). All 5 calls were signed and sent by the project owner from their own funded Sepolia account; the resulting UIDs and transactions are recorded in eas/registered-uids.json. No EAS script in this repository has a broadcast mode; this file preserves the committed calldata.",
   "targetChainId": 11155111,
   "targetChainName": "Ethereum Sepolia",
   "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
@@ -16,6 +16,20 @@
     "onchainGateApproved": true,
     "approvedBy": "project owner",
     "approvedAt": "2026-09-18"
+  },
+  "registration": {
+    "registered": true,
+    "registeredCount": 5,
+    "totalSchemas": 5,
+    "chainId": 11155111,
+    "registrar": "0x9907Edd6D403AC420cF1A84b10f0d134b13baa84",
+    "uids": {
+      "kade.kyc.v1": "0xeb5d6cfe8e91ca85f091bee9521cd611f2779b224499bb0b2f0b9ef584eb9c7b",
+      "kade.fee.v1": "0x1b173af4c9740b087df5f00f7c9c6bed9ee60880fe87b0b3ede6b7cc7059f3d3",
+      "kade.application.v1": "0xb62efa605d2ebb777977c5a1f6efc74fff2d6739fa9ab693c1bc79fb2a961a5c",
+      "kade.review.v1": "0xae51d8fdc55e065858eba289b43aa679190cf4190fffe4c7728c1e25042d5fce",
+      "kade.permit.v1": "0x30be014defdd34f04f9f756f8f94f40476cdf97735dc54cac7a98a4e58a9181e"
+    }
   },
   "registrations": [
     {

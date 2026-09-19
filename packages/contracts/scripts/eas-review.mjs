@@ -175,26 +175,59 @@ function arbitrarySection(manifest) {
   ].join('\n');
 }
 
+function registrationLine(manifest) {
+  const registration = manifest.registration;
+  if (!registration) {
+    return 'unknown (no registration record read)';
+  }
+  const recorded = `${registration.registeredCount}/${registration.totalSchemas} in eas/registered-uids.json`;
+  if (registration.registeredCount === 0) {
+    return `none (${recorded})`;
+  }
+  const by = registration.registrar ? `, registered by ${registration.registrar}` : '';
+  return `${recorded}${by}`;
+}
+
+function registrationWarning(manifest) {
+  const registration = manifest.registration;
+  if (registration?.registered) {
+    return [
+      `> **Registered.** All ${registration.totalSchemas} schemas are registered on ${manifest.targetChainName}.`,
+      '> Generating, committing or reading this file performs no on-chain action.',
+    ].join('\n');
+  }
+  return [
+    '> **Warning:** Nothing is registered. Generating, committing or reading this',
+    '> file performs no on-chain action. Registration is irreversible.',
+  ].join('\n');
+}
+
 export function buildReviewMarkdown(manifest, approvalPath = DEFAULT_APPROVAL_PATH) {
   const approval = readApproval(approvalPath);
+  const registration = manifest.registration ?? {
+    registered: false,
+    registeredCount: 0,
+    totalSchemas: manifest.schemas.length,
+  };
+  const registrationExecuted = registration.registered === true;
 
   return `# Onchain gate review — EAS schema registration
 
 <!-- GENERATED FILE. Do not edit by hand. Regenerate with
      npm run eas:manifest --workspace @kade/contracts -->
 
-This is the review pack the human approves at the **Onchain gate**
-(week-1-frozen-delivery-contract.md section 7, checkpoint 3) before any
-irreversible EAS registration. It is generated from \`@kade/shared\`; the schema
-strings below are never hand-copied.
+This is the review pack for the **Onchain gate**
+(week-1-frozen-delivery-contract.md section 7, checkpoint 3), which approves the
+exact EAS schema encodings before the irreversible registration. It is generated
+from \`@kade/shared\`; the schema strings below are never hand-copied.
 
-> **Warning:** Nothing is registered. Generating, committing or reading this
-> file performs no on-chain action. Registration is irreversible.
+${registrationWarning(manifest)}
 
 - Source of truth: \`@kade/shared registrationManifest()\`
 - Target chain: ${manifest.targetChainName} (chain ${manifest.targetChainId})
 - Schema registry: \`${manifest.schemaRegistry}\`
 - Registration order: ${manifest.schemas.map((s) => `\`${s.name}\``).join(', ')}
+- Registration record: ${registrationLine(manifest)}
 - Approval record: ${approvalLine(approval)}
 
 ## 1. The irreversible action approval authorises
@@ -212,8 +245,12 @@ npm run eas:register --workspace @kade/contracts
 
 It **never signs or sends a transaction**. It prints the exact
 \`register(string,address,bool)\` calldata for each schema, which the authorised
-account then executes manually. No script in this repository has a broadcast
-mode. Registration takes effect only when that manual transaction is mined.
+account then executes manually. No EAS script in this repository has a broadcast
+mode. Registration takes effect only when that manual transaction is mined.${
+    registrationExecuted
+      ? '\nIt has since been mined; the result is recorded in `eas/registered-uids.json`.'
+      : ''
+  }
 
 Before running it, the human must record the approval in \`eas/approval.json\`
 (or set \`KADE_EAS_APPROVAL_FILE\`): the planner refuses to run unless the record
