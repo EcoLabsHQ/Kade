@@ -14,12 +14,18 @@ const hoisted = vi.hoisted(() => ({
   enrolPasskey: vi.fn(),
   deriveAccount: vi.fn(),
   previewPreapprovalFee: vi.fn(),
+  savePasskeyCredential: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
 }));
 vi.mock('@/lib/passkey/enrolment', () => ({
   enrolPasskey: hoisted.enrolPasskey,
+}));
+// Persistence is a server action. It is mocked so enrolment is exercised
+// against a recorded server outcome rather than a real database.
+vi.mock('@/app/account/passkey-actions', () => ({
+  savePasskeyCredential: hoisted.savePasskeyCredential,
 }));
 // Only the chain round trip is mocked. The public-key parser is the real
 // implementation, so the coordinates handed to the action are real.
@@ -49,6 +55,25 @@ beforeEach(() => {
   hoisted.previewPreapprovalFee.mockImplementation(
     async (householdSize: number) => demoFee(householdSize),
   );
+  hoisted.savePasskeyCredential.mockImplementation(
+    async (input: {
+      credentialId: string;
+      publicKey: string;
+      transports: readonly string[];
+      userVerification: boolean;
+    }) => ({
+      credential: {
+        credentialId: input.credentialId,
+        publicKey: input.publicKey,
+        signerAddress: SIGNER_ADDRESS,
+        transports: input.transports,
+        userVerification: input.userVerification,
+        createdAt: '2026-09-18T00:00:00Z',
+        lastUsedAt: null,
+      },
+      signer: { status: 'persisted', address: SIGNER_ADDRESS },
+    }),
+  );
 });
 
 /**
@@ -69,6 +94,7 @@ afterEach(() => {
   hoisted.enrolPasskey.mockReset();
   hoisted.deriveAccount.mockReset();
   hoisted.previewPreapprovalFee.mockReset();
+  hoisted.savePasskeyCredential.mockReset();
 });
 
 function makeStore() {
@@ -189,6 +215,133 @@ describe('step 1, the transaction passkey', () => {
     expect(
       screen.queryByText(/account gate|pending approval|not shown yet|project-supplied/i),
     ).toBeNull();
+  });
+
+  it('persists the created credential through the action, with its own fields', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveAccount.mockResolvedValue({
+      signerAddress: SIGNER_ADDRESS,
+      safeAddress: ACCOUNT_ADDRESS,
+    });
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    await screen.findByText(/passkey created/i);
+
+    // The browser names no signer: it sends only what the credential carries.
+    expect(hoisted.savePasskeyCredential).toHaveBeenCalledTimes(1);
+    expect(hoisted.savePasskeyCredential).toHaveBeenCalledWith({
+      credentialId: 'cred-new',
+      publicKey: CREDENTIAL_PUBLIC_KEY,
+      transports: ['internal'],
+      userVerification: true,
+    });
+  });
+
+  it('derives the account address from the credential that was persisted', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveAccount.mockResolvedValue({
+      signerAddress: SIGNER_ADDRESS,
+      safeAddress: ACCOUNT_ADDRESS,
+    });
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    await screen.findByText(ACCOUNT_ADDRESS);
+
+    // One credential, one derived signal: the address is derived only after the
+    // credential is persisted, from the persisted credential's public key.
+    const saveOrder =
+      hoisted.savePasskeyCredential.mock.invocationCallOrder[0];
+    const deriveOrder = hoisted.deriveAccount.mock.invocationCallOrder[0];
+    expect(saveOrder as number).toBeLessThan(deriveOrder as number);
+  });
+
+  it('does not persist a credential that failed user verification', async () => {
+    hoisted.enrolPasskey.mockResolvedValue({
+      ...enrolResponse(),
+      userVerification: false,
+    });
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(hoisted.savePasskeyCredential).not.toHaveBeenCalled();
+    // A rejected ceremony is not a created passkey either.
+    expect(screen.queryByText(/passkey created/i)).toBeNull();
+  });
+
+  it('does not persist when the authenticator ceremony itself fails', async () => {
+    hoisted.enrolPasskey.mockRejectedValue(new Error('the user cancelled'));
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cancelled/i);
+    expect(hoisted.savePasskeyCredential).not.toHaveBeenCalled();
+  });
+
+  it('recognises a resident with a stored credential instead of enrolling again', () => {
+    // `renderFlow` supplies `initialCredentialId`, as the page does when the
+    // resident already has a persisted credential.
+    renderFlow(makeStore().store);
+
+    expect(screen.getByText(/step 2 of 4/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /create passkey/i }),
+    ).toBeNull();
+    expect(hoisted.enrolPasskey).not.toHaveBeenCalled();
+    expect(hoisted.savePasskeyCredential).not.toHaveBeenCalled();
+  });
+
+  it('never claims the credential is stored when the action did not persist it', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveAccount.mockResolvedValue({
+      signerAddress: SIGNER_ADDRESS,
+      safeAddress: ACCOUNT_ADDRESS,
+    });
+    hoisted.savePasskeyCredential.mockResolvedValue({
+      credential: {
+        ...enrolResponse(),
+        signerAddress: null,
+      },
+      signer: {
+        status: 'not-persisted',
+        reason: 'SUPABASE_SERVICE_ROLE_KEY is not configured in this environment.',
+      },
+    });
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    await screen.findByText(/passkey created/i);
+
+    // Ordinary-path tone: no claim that the account is stored, and no raw
+    // configuration jargon leaked to the resident.
+    expect(screen.queryByText(/your account is ready/i)).toBeNull();
+    expect(
+      screen.getByText(/link it to your account shortly/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SUPABASE_SERVICE_ROLE_KEY/i)).toBeNull();
+
+    // The flow does not break: the passkey is real, so the resident continues.
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it('does not block the resident when persistence itself fails', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveAccount.mockResolvedValue({
+      signerAddress: SIGNER_ADDRESS,
+      safeAddress: ACCOUNT_ADDRESS,
+    });
+    hoisted.savePasskeyCredential.mockRejectedValue(new Error('database down'));
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+
+    expect(await screen.findByText(/passkey created/i)).toBeInTheDocument();
+    expect(screen.queryByText(/your account is ready/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
   });
 });
 

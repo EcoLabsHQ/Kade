@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { savePasskeyCredential } from '@/app/account/passkey-actions';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
+import type { SignerPersistence } from '@/lib/passkey/credential';
 
 /**
  * Step 1 — create the transaction passkey, and derive the account from it.
@@ -56,6 +58,7 @@ export function AccountSetupStep({
     credentialId ? 'done' : 'idle',
   );
   const [account, setAccount] = useState<AccountAddress>({ state: 'idle' });
+  const [signer, setSigner] = useState<SignerPersistence | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function resolveAccount(publicKey: string) {
@@ -80,6 +83,7 @@ export function AccountSetupStep({
   async function createPasskey() {
     setStatus('creating');
     setError(null);
+    setSigner(null);
     try {
       const { enrolPasskey } = await import('@/lib/passkey/enrolment');
       const record = await enrolPasskey(
@@ -97,9 +101,48 @@ export function AccountSetupStep({
           challenge: randomChallenge(),
         },
       );
-      onEnrolled(record.credentialId);
+
+      // D3: only a user-verified credential may be persisted. The real
+      // enrolment asserts this too, but keeping the guard here makes the
+      // call-site invariant explicit and testable.
+      if (record.userVerification !== true) {
+        throw new Error(
+          'The passkey did not require user verification, so it was not saved.',
+        );
+      }
+
+      // Persist through the existing server action so the credential survives
+      // reload. The action derives the signer from the public key; the browser
+      // names none. The address shown below is derived from the same persisted
+      // public key, so one credential yields one signal.
+      let credentialIdToReport = record.credentialId;
+      let publicKeyToDerive = record.publicKey;
+      try {
+        const saved = await savePasskeyCredential({
+          credentialId: record.credentialId,
+          publicKey: record.publicKey,
+          transports: record.transports,
+          userVerification: record.userVerification,
+        });
+        setSigner(saved.signer);
+        credentialIdToReport = saved.credential.credentialId;
+        publicKeyToDerive = saved.credential.publicKey;
+      } catch (cause) {
+        // The passkey exists on the device even when the server write fails,
+        // so the resident is not blocked. The screen simply must not claim the
+        // credential was stored.
+        setSigner({
+          status: 'not-persisted',
+          reason:
+            cause instanceof Error
+              ? cause.message
+              : 'The passkey could not be saved.',
+        });
+      }
+
+      onEnrolled(credentialIdToReport);
       setStatus('done');
-      await resolveAccount(record.publicKey);
+      await resolveAccount(publicKeyToDerive);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -130,7 +173,9 @@ export function AccountSetupStep({
                 Passkey created
               </div>
               <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '2px' }}>
-                Your account is ready.
+                {signer?.status === 'not-persisted'
+                  ? "Your passkey is on this device. We'll link it to your account shortly."
+                  : 'Your account is ready.'}
               </div>
             </div>
           </div>
