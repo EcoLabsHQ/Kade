@@ -41,8 +41,8 @@ open is below.
 | ~~Proxy factory address~~ | Recorded from Safe's deployments (v1.5.0: `0x14F2982D601c9458F93bd70B218933A6f8165e7b`). |
 | ~~Singleton address~~ | Recorded (SafeL2 v1.5.0: `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e`). |
 | ~~Compatibility fallback handler~~ | Recorded (v1.5.0: `0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4`). |
-| WebAuthn signer implementation | The direct Safe WebAuthn signer. The factory address is recorded; deriving the **signer address** offline still needs the passkey module's signer-proxy creation code, which this repository does not pin. |
-| Salt nonce strategy | Still open: what makes each resident's address unique. |
+| WebAuthn signer implementation | The direct Safe WebAuthn signer. **Resolved:** the factory address is confirmed (not `[arbitrary]`), and the signer address is derived by calling its `getSigner(uint256,uint256,uint176)` view through a server action. The repository no longer reproduces the module's arithmetic locally. |
+| Salt nonce strategy | **Proposed for approval:** `keccak256(resident id)`, so each resident's address is stable and distinct without a server-side counter. Implemented in `apps/web/src/lib/safe/account.ts`; confirm before the first deployment, since it fixes every resident's address. |
 | Sepolia deployment payer | A funded account, or a decision to deploy from your side. |
 
 > **Note:** the signer address itself is **not** an input. With the direct Safe

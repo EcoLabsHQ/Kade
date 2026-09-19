@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => ({
   push: vi.fn(),
   refresh: vi.fn(),
   enrolPasskey: vi.fn(),
+  deriveSignerAddress: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -18,12 +19,29 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/passkey/enrolment', () => ({
   enrolPasskey: hoisted.enrolPasskey,
 }));
+// Only the chain call is mocked. The public-key parser and the Safe derivation
+// under test are the real implementations.
+vi.mock('@/app/onboarding/signer-actions', () => ({
+  deriveSignerAddress: hoisted.deriveSignerAddress,
+}));
+
+/**
+ * A real P-256 credential public key (SubjectPublicKeyInfo, base64url), so the
+ * parser is exercised rather than stubbed.
+ */
+const CREDENTIAL_PUBLIC_KEY =
+  'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhKtMrf9_4pL52N0vu32ITXObg_aKHBEmUhtHBc8emoPeHcxCgv3XReybe6LiIVB-gpgt05_d49LeIZCWRbXVWA';
+/** What the signer factory returns for that key. */
+const SIGNER_ADDRESS = '0x8d36E6FF7e49e1b665c0b83B5394606bEed804A9';
+/** The Safe that signer owns for `user-1`, under the frozen deployment inputs. */
+const ACCOUNT_ADDRESS = '0x72c779286Aa40095C30364fd902A84fC036Ba83f';
 
 afterEach(() => {
   cleanup();
   hoisted.push.mockReset();
   hoisted.refresh.mockReset();
   hoisted.enrolPasskey.mockReset();
+  hoisted.deriveSignerAddress.mockReset();
 });
 
 function makeStore() {
@@ -68,23 +86,54 @@ function renderFlowFromStart(store: OnboardingStore) {
 }
 
 describe('step 1, the transaction passkey', () => {
-  it('gates Continue until the passkey exists, then reveals it', async () => {
-    hoisted.enrolPasskey.mockResolvedValue({
+  function enrolResponse() {
+    return {
       credentialId: 'cred-new',
-      publicKey: 'pk',
+      publicKey: CREDENTIAL_PUBLIC_KEY,
       signerAddress: '0x0000000000000000000000000000000000000000',
       transports: ['internal'],
       userVerification: true,
       createdAt: '2026-09-18T00:00:00Z',
       lastUsedAt: null,
       signerAddressStatus: 'unresolved',
-    });
+    };
+  }
+
+  it('gates Continue until the passkey exists, then derives the account', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveSignerAddress.mockResolvedValue(SIGNER_ADDRESS);
     const { store } = makeStore();
     renderFlowFromStart(store);
 
     expect(screen.getByText(/step 1 of 4/i)).toBeInTheDocument();
-    const continueButton = screen.getByRole('button', { name: /^continue$/i });
-    expect(continueButton).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+
+    expect(await screen.findByText(/passkey created/i)).toBeInTheDocument();
+    expect(await screen.findByText(ACCOUNT_ADDRESS)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it('asks the factory for the signer, using the passkey coordinates', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveSignerAddress.mockResolvedValue(SIGNER_ADDRESS);
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    await screen.findByText(ACCOUNT_ADDRESS);
+
+    // The (x, y) actually parsed out of the credential's public key.
+    expect(hoisted.deriveSignerAddress).toHaveBeenCalledWith(
+      '60007956084768639721304183014925048035643211105580041179157164810671935625859',
+      '100466100699769958682154873776127380612531326340629437721014042449018296325464',
+    );
+  });
+
+  it('survives the chain being unreachable, since the passkey still exists', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveSignerAddress.mockRejectedValue(new Error('rpc down'));
+    renderFlowFromStart(makeStore().store);
 
     fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
 
@@ -92,14 +141,14 @@ describe('step 1, the transaction passkey', () => {
     expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
   });
 
-  it('does not fabricate a Safe address, and does not warn about it', () => {
+  it('shows no address, and no internal gate language, before enrolment', () => {
     const { store } = makeStore();
     renderFlowFromStart(store);
 
-    // The account does not exist yet, so nothing address-shaped is shown.
+    // Nothing address-shaped exists yet, and nothing is invented to fill the gap.
     expect(screen.queryByText(/0x[0-9a-fA-F]{6}/)).toBeNull();
     // Creating a passkey is the ordinary path, so the step carries no internal
-    // gate language and no caveat about what it withholds.
+    // gate vocabulary and no caveat about what it withholds.
     expect(
       screen.queryByText(/account gate|pending approval|not shown yet|project-supplied/i),
     ).toBeNull();
