@@ -71,3 +71,41 @@ Judgement to apply:
 - Undeclared gaps, stale claims, or a gate that passes while proving nothing →
   findings.
 - Mock data rendered as if real → finding, always.
+
+## Declared limitations of the `known-good` promotion
+
+This section exists because `known-good` was moved to a commit that did **not**
+pass adversarial review. It is written down so the tag cannot silently acquire a
+meaning it does not have.
+
+- **The promotion was an owner decision, not a passed gate.** The development
+  contract requires *both* gates before `known-good` moves. Mechanical
+  verification passed (`./scripts/verify.sh`, nine gates). The adversarial review
+  did not: it failed ten times in this iteration, and at the tenth it still
+  reported one blocking finding and three warnings. The owner chose to promote
+  with the limitation declared rather than continue correcting. **The tag
+  therefore means "mechanically verified, promoted by owner decision, review
+  outstanding" — not the usual "both gates passed".** The contract has not been
+  amended, so this deviation is recorded here rather than resolved.
+
+- **The documentation sweep is manual, and it is not complete.** All ten failures
+  were one semantic class: statements in live files contradicted by facts this
+  iteration changed — Safe v1.5.0 decided, the deployment addresses recorded, the
+  signer derived from the passkey, the proxy creation code read from the
+  deploying factory. The reviews converged but never reached zero. **No
+  mechanical check enforces this class.** That is the root cause: enumerating by
+  keyword cannot catch a claim that is expressed without any of the keywords, and
+  the ninth review found exactly such an instance. A regression guard was
+  proposed for this and was not authorised, so the exposure remains.
+
+- **Four instances are known to remain**, reported by the tenth review and left
+  uncorrected by the owner's decision:
+  | Location | Claim |
+  |---|---|
+  | `docs/architecture/kadelock-threat-model.md:201` | The row's *label* still lists `signer` among the "Safe deployment inputs", though the row's explanation says it is derived |
+  | `packages/shared/src/safe.ts:35-44` | `SafeDeploymentInputs.signer` is typed as a `Sourced` input, which cannot describe a value derived per resident. Unused, but a public export |
+  | `docs/week-1-frozen-delivery-contract.md:414` | §8.6 can be read as saying the Foundry test pins the *deployed* creation code's hash; it pins this repository's build |
+  | `packages/shared/src/auth.ts:17` | "Credential metadata … survives reload" in the present tense; the store is still in memory |
+
+  These are declared, so they are not review findings under this register's own
+  rules. They are recorded because a reader deserves to know they are there.
