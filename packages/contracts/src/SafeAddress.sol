@@ -14,10 +14,15 @@ pragma solidity 0.8.24;
 //   salt         = keccak256(initCodeHash(initializer) ++ saltNonce)  // 32-byte word
 //   address      = keccak256(0xff ++ factory ++ salt ++ initCodeHash)[12:]
 //
-// The factory, singleton, initializer, salt nonce and proxy creation code are
-// **not supplied by the project yet**; every concrete value is [arbitrary] and
-// awaits the Account gate (week-1 contract sections 5 and 7). This library
-// derives addresses only. It deploys nothing and is not a deployment path.
+// The factory, singleton, handler and salt strategy are recorded in
+// `@kade/shared` (see `SAFE_DEPLOYMENTS`, `SAFE_PASSKEY_MODULE`,
+// `residentSaltNonce`). The **proxy creation code is not a constant**: this
+// repository's build of `SafeProxy` differs from the one the deployed v1.5.0
+// factory uses, and because the creation code is part of the CREATE2 digest, a
+// locally built copy yields an address that factory would never deploy. Callers
+// must supply `proxyCreationCode` as read from the deploying factory. This
+// library derives addresses only. It deploys nothing and is not a deployment
+// path.
 //
 // No chain id is used, because D4 uses the chain-agnostic
 // `createProxyWithNonce`. `createChainSpecificProxyWithNonce`, which folds the

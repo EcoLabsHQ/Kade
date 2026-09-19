@@ -166,16 +166,26 @@ export const SAFE_PASSKEY_MODULE: PasskeyModuleDeployment = {
 };
 
 /**
- * `SafeProxy` creation code, pinned to this repository's Foundry build.
+ * `SafeProxy` creation code **as built by this repository**.
  *
- * The creation code is part of the CREATE2 digest, so the deployed address
- * changes if the compiler, the optimiser settings or the Safe version change.
- * `packages/contracts/test/SafeAddress.t.sol` pins the same hash
- * (`0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf`), so a
- * toolchain change breaks that test rather than silently shifting every
- * resident's address.
+ * This is *not* the code the deployed factory uses, and must not be used to
+ * derive an address. It is here because `SafeAddress.t.sol` pins this
+ * repository's own artifact, so a toolchain change breaks that test rather than
+ * silently altering what our own build produces.
  *
- * Solidity 0.8.24, optimiser disabled, `safe-smart-account` v1.5.0.
+ * The two differ, and the difference is not cosmetic:
+ *
+ *   - this local build: 649 bytes, `keccak256 = 0xa547798e…adc906cf`
+ *     (Solidity 0.8.24, optimiser disabled, `safe-smart-account` v1.5.0);
+ *   - the deployed v1.5.0 factory at
+ *     `0x14F2982D601c9458F93bd70B218933A6f8165e7b`, read from its
+ *     `proxyCreationCode()` view: 438 bytes,
+ *     `keccak256 = 0x941b3e88811b2f33b8e26783c7407d2e978404581a21c9f07abf2cad9cb87e12`.
+ *
+ * Because the creation code is part of the CREATE2 digest, deriving from the
+ * local copy yields an address the deployed factory will never deploy. The
+ * address derivation therefore reads `proxyCreationCode()` from the factory at
+ * runtime; see `apps/web/src/app/onboarding/signer-actions.ts`.
  */
 export const SAFE_PROXY_CREATION_CODE = (
   '0x608060405234801561000f575f80fd5b506040516102893803806102898339' +
@@ -203,3 +213,40 @@ export const SAFE_PROXY_CREATION_CODE = (
 /** `keccak256(SAFE_PROXY_CREATION_CODE)`, matching the Foundry test. */
 export const SAFE_PROXY_CREATION_CODE_HASH =
   '0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf' as const;
+
+/**
+ * The `SafeProxy` creation code the deployed v1.5.0 factory uses, read from its
+ * `proxyCreationCode()` view on Ethereum Sepolia.
+ *
+ * Recorded rather than used as an input: `deriveAccount` reads the factory at
+ * runtime, because a factory on another chain could carry different bytes. It is
+ * here so the bytes that decide every resident's address can be reviewed and
+ * tested instead of only being observable against a live node.
+ */
+export const DEPLOYED_SAFE_PROXY_CREATION_CODE = (
+  '0x608060405234801561001057600080fd5b506040516101b63803806101b68339' +
+  '818101604052602081101561003357600080fd5b810190808051906020019092' +
+  '9190505050600073ffffffffffffffffffffffffffffffffffffffff168173ff' +
+  'ffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c3' +
+  '79a0000000000000000000000000000000000000000000000000000000008152' +
+  '6004018080602001828103825260228152602001806101946022913960400191' +
+  '505060405180910390fd5b806000806101000a81548173ffffffffffffffffff' +
+  'ffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffff' +
+  'ffffffffff16021790555050607b806101196000396000f3fe60806040526000' +
+  '5463a619486e60003560e01c14156024578060601b606c5260206060f35b3660' +
+  '008037600080366000845af43d6000803e806040573d6000fd5b3d6000f3fea2' +
+  '646970667358221220e61834ebd2d8cd909d362bf67c47ef58fd665df38e6dd0' +
+  '36ce65611101d072e964736f6c63430007060033496e76616c69642073696e67' +
+  '6c65746f6e20616464726573732070726f7669646564') as `0x${string}`;
+
+/**
+ * `keccak256` of the `SafeProxy` creation code the deployed v1.5.0 factory
+ * actually uses, read from its `proxyCreationCode()` view on Ethereum Sepolia.
+ *
+ * Recorded so the mismatch with `SAFE_PROXY_CREATION_CODE_HASH` is visible and
+ * checkable rather than rediscovered. It is an expected value, not an input: the
+ * derivation reads the code itself at runtime, because a factory on another
+ * chain could carry different bytes.
+ */
+export const DEPLOYED_SAFE_PROXY_CREATION_CODE_HASH =
+  '0x941b3e88811b2f33b8e26783c7407d2e978404581a21c9f07abf2cad9cb87e12' as const;

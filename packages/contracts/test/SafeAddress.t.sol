@@ -29,13 +29,15 @@ contract SafeAddressHarness {
 // D4 deterministic-address machinery.
 //
 // These tests pin the arithmetic in src/SafeAddress.sol against:
-//   1. a fixed known vector (all inputs [arbitrary], awaiting the Account gate);
+//   1. a fixed known vector whose inputs are deliberately [arbitrary] — it tests
+//      the arithmetic, not the deployment;
 //   2. Foundry's own `vm.computeCreate2Address` oracle; and
-//   3. the creation-code assumption itself (`keccak256(type(SafeProxy).creationCode)`).
+//   3. the creation-code assumption itself (`keccak256(type(SafeProxy).creationCode)`),
+//      which pins *this repository's* artifact so a toolchain change is loud.
 //
-// How the known vector was constructed is recorded in the header of
-// scripts/safe-address-vector.mjs and can be re-derived with
-// `node scripts/safe-address-vector.mjs` after `forge build`.
+// The vector's inputs and outputs were computed independently (viem) from this
+// repository's compiled `SafeProxy` after `forge build`; it is reproducible by
+// construction from the constants below and needs no external script.
 contract SafeAddressTest is Test {
     // --- Known vector: every input is [arbitrary] and awaits the Account gate.
     address internal constant FACTORY = address(0x1111111111111111111111111111111111111111);
@@ -46,9 +48,12 @@ contract SafeAddressTest is Test {
         0x9a780d80c645a85c08e4b8239cdf4144595d63891e554e6791844c0a7802ce49;
     uint256 internal constant SALT_NONCE = 0;
 
-    // Expected outputs of the same [arbitrary] vector. Re-derived independently
-    // (viem) from the compiled `SafeProxy` creation code by
-    // `node scripts/safe-address-vector.mjs`.
+    // Expected outputs of the same [arbitrary] vector, re-derived independently
+    // (viem) from this repository's compiled `SafeProxy` creation code.
+    //
+    // NOTE: this hash pins our own build. It is deliberately NOT the code the
+    // deployed factory uses (438 bytes, 0x941b3e88…), so it must not be used to
+    // derive a real account address.
     address internal constant EXPECTED_ADDRESS = 0x6D2C2fD420Fd7b7AF36b0F001606d2010a02B490;
     bytes32 internal constant PROXY_CREATION_CODE_HASH =
         0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf;

@@ -58,20 +58,18 @@ export function AccountSetupStep({
   const [account, setAccount] = useState<AccountAddress>({ state: 'idle' });
   const [error, setError] = useState<string | null>(null);
 
-  async function deriveAccount(publicKey: string) {
+  async function resolveAccount(publicKey: string) {
     setAccount({ state: 'deriving' });
     try {
-      const [{ parseP256PublicKey }, { deriveSignerAddress }, { predictedSafeAddress }] =
-        await Promise.all([
-          import('@/lib/passkey/public-key'),
-          import('@/app/onboarding/signer-actions'),
-          import('@/lib/safe/account'),
-        ]);
+      const [{ parseP256PublicKey }, { deriveAccount }] = await Promise.all([
+        import('@/lib/passkey/public-key'),
+        import('@/app/onboarding/signer-actions'),
+      ]);
       const { x, y } = parseP256PublicKey(publicKey);
-      // The factory is the authority on the signer address; the Safe address is
-      // then pure arithmetic over frozen inputs.
-      const signer = await deriveSignerAddress(x.toString(), y.toString());
-      setAccount({ state: 'ready', value: predictedSafeAddress(userId, signer) });
+      // The chain is asked for the signer address and for the factory's own
+      // proxy creation code; the rest of the derivation is frozen on our side.
+      const derived = await deriveAccount(x.toString(), y.toString(), userId);
+      setAccount({ state: 'ready', value: derived.safeAddress });
     } catch {
       // The passkey is created and usable either way, so a failure to reach the
       // chain does not block the resident.
@@ -101,7 +99,7 @@ export function AccountSetupStep({
       );
       onEnrolled(record.credentialId);
       setStatus('done');
-      await deriveAccount(record.publicKey);
+      await resolveAccount(record.publicKey);
     } catch (cause) {
       setError(
         cause instanceof Error
