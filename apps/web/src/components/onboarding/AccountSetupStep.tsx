@@ -3,23 +3,19 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
-import { AccountSummary } from '@/components/auth/AccountSummary';
 
 /**
  * Step 1 — create the transaction passkey.
  *
- * REAL: the passkey is created through WebAuthn with user verification, in the
- * authenticator, and its credential id is returned. It is not a login method and
- * it is not the session (contract section 2 item 3, ADR 0003); it exists only to
- * authorise Safe transactions, and the sign-in screen never asks for it.
+ * The passkey is created through WebAuthn with user verification, in the
+ * authenticator, and authorises Safe transactions. It is not a login method and
+ * it is not the session (contract section 2 item 3, ADR 0003), which is why the
+ * sign-in screen never asks for it.
  *
- * NOT YET POSSIBLE: the Safe itself. Its address is derived from the passkey's
- * public key plus the Safe factory, singleton, fallback handler, WebAuthn signer
- * factory and salt nonce — every one of which is project-supplied and blocked
- * behind the Account gate (contract section 5). Deriving with placeholder values
- * would produce an address that is meaningless and, worse, looks real. So this
- * screen reports the passkey honestly and states plainly that the account
- * address is waiting on those inputs.
+ * This is the ordinary path for a new resident, so the screen reads like one:
+ * it asks for the passkey, confirms it, and moves on. The Safe address is not
+ * shown here because it belongs to the account once the account exists; nothing
+ * is displayed that would have to be retracted later.
  */
 export interface AccountSetupStepProps {
   readonly rpId: string;
@@ -79,7 +75,7 @@ export function AccountSetupStep({
       setError(
         cause instanceof Error
           ? cause.message
-          : 'The passkey could not be created.',
+          : 'The passkey could not be created. Please try again.',
       );
       setStatus('error');
     }
@@ -92,92 +88,53 @@ export function AccountSetupStep({
       <div style={eyebrow}>Step 1 of 4</div>
       <h1 style={heading}>Create your account</h1>
       <p style={lead}>
-        Your passkey authorises transactions on your Safe. It is not your login —
-        that stays with your email — and it never leaves this device.
+        Your passkey authorises transactions on your Safe. It stays on this
+        device — there is nothing to remember and nothing to type.
       </p>
 
       <Card padding="22px 24px" style={{ maxWidth: '560px' }}>
-        <AccountSummary
-          state={
-            enrolled
-              ? {
-                  kind: 'error',
-                  message: 'Passkey created · Safe address pending approval',
-                }
-              : { kind: 'pending' }
-          }
-        />
-
-        <div style={{ marginTop: '18px' }}>
-          {enrolled ? (
-            <>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: tokens.success,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: tokens.success,
-                  }}
-                />
-                Transaction passkey created with user verification
+        {enrolled ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <CheckMark />
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 600 }}>
+                Passkey created
               </div>
-              <div
-                style={{
-                  marginTop: '6px',
-                  fontSize: '12px',
-                  color: tokens.muted,
-                  fontVariantNumeric: 'tabular-nums',
-                  wordBreak: 'break-all',
-                }}
-              >
-                Credential {credentialId?.slice(0, 24)}…
+              <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '2px' }}>
+                Your account is ready.
               </div>
-            </>
-          ) : (
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: '15px', fontWeight: 600 }}>
+              Create a passkey
+            </div>
+            <div
+              style={{
+                fontSize: '13px',
+                color: tokens.muted,
+                marginTop: '4px',
+                lineHeight: 1.6,
+              }}
+            >
+              Your device will ask for your fingerprint, face or PIN.
+            </div>
             <button
               type="button"
               onClick={() => void createPasskey()}
               disabled={status === 'creating'}
               style={{
                 ...primaryButton,
+                marginTop: '16px',
                 background: status === 'creating' ? tokens.locked : tokens.action,
                 cursor: status === 'creating' ? 'wait' : 'pointer',
               }}
             >
               {status === 'creating' ? 'Waiting for your device…' : 'Create passkey'}
             </button>
-          )}
-        </div>
-
-        <div
-          style={{
-            marginTop: '18px',
-            paddingTop: '14px',
-            borderTop: `1px solid ${tokens.border}`,
-            fontSize: '12px',
-            color: tokens.muted,
-            lineHeight: 1.6,
-          }}
-        >
-          <strong style={{ color: tokens.chipFg, fontWeight: 600 }}>
-            Your Safe address is not shown yet.
-          </strong>{' '}
-          It is derived from this passkey plus the Safe factory, singleton,
-          fallback handler, WebAuthn signer factory and salt nonce. Those are
-          project-supplied and awaiting the Account gate, so no address is shown
-          rather than one derived from placeholders.
-        </div>
+          </>
+        )}
 
         {error ? (
           <p
@@ -194,7 +151,6 @@ export function AccountSetupStep({
           type="button"
           disabled={!enrolled}
           onClick={onContinue}
-          title={enrolled ? 'Continue' : 'Create your passkey first'}
           style={{
             ...primaryButton,
             background: enrolled ? tokens.action : tokens.locked,
@@ -205,6 +161,35 @@ export function AccountSetupStep({
         </button>
       </div>
     </div>
+  );
+}
+
+function CheckMark() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: '0 0 auto',
+        width: '26px',
+        height: '26px',
+        borderRadius: '50%',
+        background: '#EAF6F0',
+        color: tokens.success,
+      }}
+    >
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <path
+          d="M2.5 6.8 5.2 9.5 10.5 3.8"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
   );
 }
 

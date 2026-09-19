@@ -88,18 +88,21 @@ describe('step 1, the transaction passkey', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
 
-    expect(
-      await screen.findByText(/transaction passkey created with user verification/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/passkey created/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
   });
 
-  it('does not show a Safe address, and says why', () => {
+  it('does not fabricate a Safe address, and does not warn about it', () => {
     const { store } = makeStore();
     renderFlowFromStart(store);
 
-    expect(screen.getByText(/your safe address is not shown yet/i)).toBeInTheDocument();
+    // The account does not exist yet, so nothing address-shaped is shown.
     expect(screen.queryByText(/0x[0-9a-fA-F]{6}/)).toBeNull();
+    // Creating a passkey is the ordinary path, so the step carries no internal
+    // gate language and no caveat about what it withholds.
+    expect(
+      screen.queryByText(/account gate|pending approval|not shown yet|project-supplied/i),
+    ).toBeNull();
   });
 });
 
