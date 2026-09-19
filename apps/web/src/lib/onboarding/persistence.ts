@@ -2,29 +2,27 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   COUNTRY_CODES,
   TIER_DATABASE_VALUES,
-  tierDatabaseValue,
   type ApplicantProfile,
   type CountryCode,
   type HouseholdMember,
   type Residence,
   type TierIndex,
 } from '@kade/shared';
-import { assertNoClientSuppliedAmount } from '@/server/fee-authority';
 
 /**
- * The persistence seam for Step 2.
+ * The read side of the persistence seam for Step 2.
  *
- * The write path is deliberately kept behind this small interface so the UI can
- * be tested with a fake store and so the "Supabase is absent" behaviour is
- * explicit rather than an implicit successful no-op.
+ * The live write path is `save_onboarding_step2`, invoked from
+ * `@/app/onboarding/actions` and consumed by `OnboardingWizard`. That RPC is
+ * the only writer: `applications.preapproval_usdc` is never sent from the
+ * client, the RLS column grant withholds it, and the database recomputes it
+ * from `fee_schedule` (contract section 2.1). The snapshot type has no fee
+ * field at all, so there is nothing for a client-supplied fee guard to protect
+ * on this path.
  *
- * Tables written (see supabase/migrations):
- *   profiles, profile_citizenships, profile_residences, applications,
- *   household_members.
- *
- * `applications.preapproval_usdc` is never included in a write: the RLS column
- * grant withholds it, and the database recomputes it from `fee_schedule`
- * (contract section 2.1). The snapshot type has no fee field at all.
+ * What remains here is the server-side restore: `load` reads the tables the
+ * form repopulates from. `save_onboarding_step2` owns the write transaction
+ * (profile, citizenships, residences, application, household members).
  */
 
 export type PersistenceMode = 'supabase' | 'not-configured';
@@ -43,6 +41,11 @@ export interface PersistedOnboarding {
   readonly preapprovalUsdc: number | null;
 }
 
+/**
+ * The seam the UI consumes. `save` is a real write for the configured store
+ * (the server action) and always rejects for the unconfigured one, so the UI
+ * can never mistake a missing backend for a persisted row.
+ */
 export interface OnboardingStore {
   readonly mode: PersistenceMode;
   load(userId: string): Promise<OnboardingSnapshot | null>;
@@ -104,14 +107,25 @@ export function createNotConfiguredOnboardingStore(): OnboardingStore {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The real write path. `getClient` is called lazily so merely rendering the
- * form never constructs a client.
+ * The server-side restore reader. `getClient` is called lazily so merely
+ * rendering the form never constructs a client.
+ *
+ * The returned store's `save` rejects: writes do not live here. The live write
+ * path is the `save_onboarding_step2` RPC in `@/app/onboarding/actions`, which
+ * the wizard invokes directly. Keeping a second, unreachable writer here would
+ * mean the write boundary the app actually uses is not the one under test.
  */
 export function createSupabaseOnboardingStore(
   getClient: () => SupabaseClient,
 ): OnboardingStore {
   return {
     mode: 'supabase',
+
+    async save(): Promise<PersistedOnboarding> {
+      throw new Error(
+        'Writes go through save_onboarding_step2, not this read store.',
+      );
+    },
 
     async load(userId: string): Promise<OnboardingSnapshot | null> {
       const client = getClient();
@@ -237,172 +251,6 @@ export function createSupabaseOnboardingStore(
         residences,
         tier,
         members,
-      };
-    },
-
-    async save(
-      userId: string,
-      snapshot: OnboardingSnapshot,
-    ): Promise<PersistedOnboarding> {
-      // A browser request may never carry a fee. This throws if a caller
-      // smuggled one onto the snapshot (contract section 2.1).
-      assertNoClientSuppliedAmount(
-        snapshot as unknown as Readonly<Record<string, unknown>>,
-      );
-
-      const client = getClient();
-
-      const profileResult = await client.from('profiles').upsert(
-        {
-          id: userId,
-          first_name: snapshot.profile.firstName,
-          last_name: snapshot.profile.lastName,
-          dob: snapshot.profile.dob,
-        },
-        { onConflict: 'id' },
-      );
-      if (profileResult.error) {
-        throw new Error(`Saving the profile failed: ${profileResult.error.message}`);
-      }
-
-      const deleteCitizenships = await client
-        .from('profile_citizenships')
-        .delete()
-        .eq('profile_id', userId);
-      if (deleteCitizenships.error) {
-        throw new Error(
-          `Clearing citizenships failed: ${deleteCitizenships.error.message}`,
-        );
-      }
-      if (snapshot.citizenships.length > 0) {
-        const insertCitizenships = await client
-          .from('profile_citizenships')
-          .insert(
-            snapshot.citizenships.map((countryCode) => ({
-              profile_id: userId,
-              country_code: countryCode,
-            })),
-          );
-        if (insertCitizenships.error) {
-          throw new Error(
-            `Saving citizenships failed: ${insertCitizenships.error.message}`,
-          );
-        }
-      }
-
-      const deleteResidences = await client
-        .from('profile_residences')
-        .delete()
-        .eq('profile_id', userId);
-      if (deleteResidences.error) {
-        throw new Error(
-          `Clearing residences failed: ${deleteResidences.error.message}`,
-        );
-      }
-      if (snapshot.residences.length > 0) {
-        const insertResidences = await client
-          .from('profile_residences')
-          .insert(
-            snapshot.residences.map((residence) => ({
-              profile_id: userId,
-              country_code: residence.countryCode,
-              from_year: residence.fromYear,
-              // A NULL to_year means "current" (20260916000001_profiles.sql).
-              to_year: residence.toYear === 'present' ? null : residence.toYear,
-            })),
-          );
-        if (insertResidences.error) {
-          throw new Error(
-            `Saving residences failed: ${insertResidences.error.message}`,
-          );
-        }
-      }
-
-      // applications: only `tier` (and profile_id on insert) is client-writable.
-      const existingResult = await client
-        .from('applications')
-        .select('id')
-        .eq('profile_id', userId)
-        .maybeSingle();
-      if (existingResult.error) {
-        throw new Error(
-          `Looking up the application failed: ${existingResult.error.message}`,
-        );
-      }
-
-      let applicationId: string;
-      const existing = existingResult.data as { id: string } | null;
-      if (existing) {
-        applicationId = existing.id;
-        const updateResult = await client
-          .from('applications')
-          .update({ tier: tierDatabaseValue(snapshot.tier) })
-          .eq('id', applicationId);
-        if (updateResult.error) {
-          throw new Error(
-            `Saving the tier failed: ${updateResult.error.message}`,
-          );
-        }
-      } else {
-        const insertResult = await client
-          .from('applications')
-          .insert({
-            profile_id: userId,
-            tier: tierDatabaseValue(snapshot.tier),
-          })
-          .select('id')
-          .single();
-        if (insertResult.error) {
-          throw new Error(
-            `Creating the application failed: ${insertResult.error.message}`,
-          );
-        }
-        applicationId = (insertResult.data as { id: string }).id;
-      }
-
-      const deleteMembers = await client
-        .from('household_members')
-        .delete()
-        .eq('application_id', applicationId);
-      if (deleteMembers.error) {
-        throw new Error(
-          `Clearing household members failed: ${deleteMembers.error.message}`,
-        );
-      }
-      if (snapshot.members.length > 0) {
-        const insertMembers = await client.from('household_members').insert(
-          snapshot.members.map((member) => ({
-            application_id: applicationId,
-            name: member.name,
-            relation: member.relation,
-            dob: member.dob,
-            citizenship: member.citizenship,
-          })),
-        );
-        if (insertMembers.error) {
-          throw new Error(
-            `Saving household members failed: ${insertMembers.error.message}`,
-          );
-        }
-      }
-
-      // Read the server-recomputed fee back. This is display-only; the client
-      // never writes it.
-      const feeResult = await client
-        .from('applications')
-        .select('preapproval_usdc')
-        .eq('id', applicationId)
-        .maybeSingle();
-      const feeRow = feeResult.error
-        ? null
-        : (feeResult.data as { preapproval_usdc: number | null } | null);
-
-      return {
-        applicationId,
-        preapprovalUsdc:
-          feeRow && feeRow.preapproval_usdc !== null
-            ? Number(feeRow.preapproval_usdc)
-            : null,
       };
     },
   };

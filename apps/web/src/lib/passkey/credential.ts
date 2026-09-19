@@ -41,6 +41,17 @@ export type SignerPersistence =
   | { readonly status: 'persisted'; readonly address: string }
   | { readonly status: 'not-persisted'; readonly reason: string };
 
+/**
+ * The resident-facing explanation for a signer address that was not stored.
+ *
+ * Honest about the outcome — the passkey is real but is not yet fully linked to
+ * the account — without naming an environment variable. The server-side
+ * technical reason stays in the action's `reason` for logging.
+ */
+export const SIGNER_NOT_STORED_REASON =
+  'Your passkey is saved on this device, but we could not finish linking it ' +
+  'to your account yet. We will link it shortly — you can continue.';
+
 export interface SavePasskeyCredentialResult {
   readonly credential: StoredPasskeyCredential;
   readonly signer: SignerPersistence;

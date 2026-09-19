@@ -10,6 +10,7 @@ import type {
   SignerPersistence,
   StoredPasskeyCredential,
 } from '@/lib/passkey/credential';
+import { SIGNER_NOT_STORED_REASON } from '@/lib/passkey/credential';
 import { enrolPasskey } from '@/lib/passkey/enrolment';
 
 export interface PasskeyEnrolmentPanelProps {
@@ -205,7 +206,12 @@ export function PasskeyEnrolmentPanel({
             lineHeight: 1.6,
           }}
         >
-          {signerStatus.reason}
+          {/*
+            Never render `signerStatus.reason` here: the server's reason can
+            name a configuration variable. The resident gets the product
+            language; the technical detail is logged server-side.
+          */}
+          {SIGNER_NOT_STORED_REASON}
         </p>
       ) : null}
 
