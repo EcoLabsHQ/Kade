@@ -48,8 +48,9 @@ TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', cre
 - Passkey enrolment requires user verification and is reachable only from an
   authenticated session.
 - Credential metadata (credential id, public key, derived signer address,
-  transports) is stored server-side and re-read on reload. The private key never
-  leaves the authenticator.
+  transports) is held server-side. The store is still in-memory in this build, so
+  it does not yet survive a reload. The private key never leaves the
+  authenticator.
 
 ## Consequences
 
@@ -57,8 +58,10 @@ TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', cre
   either provider reach the signing path, fails a test rather than shipping.
 - The Supabase session is an *application* credential. It grants access to
   rows the RLS policy allows; it grants no on-chain authority.
-- Because there is no managed signer, the WebAuthn signer address is a
-  deployment input and is frozen with the rest of D4's inputs.
+- Because there is no managed signer, the WebAuthn signer is a contract derived
+  from the resident's own passkey. Its address is computed from the credential,
+  not configured, so it arrives with the resident rather than with the
+  deployment.
 
 ## Alternatives considered
 

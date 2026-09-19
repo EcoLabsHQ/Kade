@@ -55,8 +55,9 @@ open is below.
 
 - **Any deployment.** No Safe exists on any chain. `chain.kadelock_address` and
   the manifest examples carry placeholders.
-- **A signature validating through the signer.** Requires the signer address,
-  which requires the deployment above.
+- **A signature validating through the signer.** The signer address is derived
+  from the passkey, but validating one needs a deployed Safe and a real
+  assertion.
 - **Passkey metadata persisting across a reload.** Still an in-memory seam; it is
   not written to the database.
 
