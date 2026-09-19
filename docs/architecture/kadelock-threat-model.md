@@ -11,9 +11,11 @@ the human gate that confirms it.
 > section 6.2), and the Onchain gate approved the interface, this threat model
 > and the exact EAS encodings.
 >
-> **Not deployed, not registered.** KadeLock is compiled and Foundry-tested
-> only. The EAS schemas are approved but not registered: the exact calldata is
-> committed, and this repository broadcasts nothing (sections 6.2 and 9).
+> **KadeLock not deployed; EAS registered.** KadeLock is compiled and
+> Foundry-tested only. The five EAS schemas are registered on Ethereum Sepolia:
+> the UIDs, transactions and block numbers are in
+> `packages/contracts/eas/registered-uids.json`, and the Onchain gate was
+> approved and executed on 18 September 2026 (sections 6.2 and 9).
 
 ## 1. Purpose and scope
 
@@ -168,7 +170,7 @@ section 9). They are **not** implemented and **not** tested:
 - Token/ERC-20 value enforcement and arbitrary call-data inspection.
 - Delegatecall value extraction and other guard bypass analysis.
 - Guard installation (`setGuard`), guard removal, and Safe recovery.
-- KadeLock deployment, EAS registration, and the off-chain indexer.
+- KadeLock deployment and the off-chain indexer.
 - Upgradability or a timelock on admin actions.
 
 ## 7. Known limitations and residual risks
@@ -204,7 +206,7 @@ confirmed at the matching human gate. The Onchain gate is checkpoint 3 in
 | EAS `revocable` and `resolver` | `@kade/shared`, surfaced in the manifest | `arbitrary`. | Onchain gate |
 | EAS `attester = 'kade-authorized'` | `@kade/shared`, surfaced in the manifest | Not resolved to an on-chain address. | Onchain gate |
 | EAS `recipient` | `@kade/shared`, surfaced in the manifest | Partly `documented`, partly `arbitrary`. | Onchain gate |
-| Predicted schema UIDs | registration planner output | Derived from the unregistered encodings; informational only. | Onchain gate |
+| EAS schema UIDs | `packages/contracts/eas/registered-uids.json` | Fixed by the approved encodings and registered on Sepolia; `npm run eas:verify` re-reads `getSchema()` and confirms them against the manifest. | Onchain gate |
 | `SEPOLIA_RPC_URL` | environment | Provider not specified; read-only use. | Foundation / ops |
 
 Documented (not arbitrary): chain id `11155111`, the five schema names, the fee
@@ -227,5 +229,5 @@ confirmed when the value is first used.
 - [x] Approve the exact EAS encodings, revocability, resolver, attester and
       recipient surfaced in `eas/eas-schema-manifest.json`.
 - [x] Approve the pinned Solidity and dependency versions.
-- [x] Re-affirm that KadeLock is not deployed and EAS is not registered in
-      Week 1.
+- [x] Re-affirm that KadeLock is not deployed in Week 1 and that the EAS
+      schemas are registered on Sepolia (executed 18 September 2026).
