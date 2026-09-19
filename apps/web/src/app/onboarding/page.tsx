@@ -3,6 +3,7 @@ import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { chainsForEnv } from '@kade/shared';
 import { getSessionUser } from '@/lib/supabase/server';
 import { isAuthConfigured, readAuthEnv, readChainEnv, readFeeMode } from '@/lib/env';
+import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { loadOnboardingSnapshot } from '@/lib/onboarding/server';
 import { resolvePreapprovalFeeBreakdown } from '@/lib/onboarding/fee-server';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
@@ -39,6 +40,22 @@ export default async function OnboardingPage() {
     }
   }
 
+  // D3: a resident who already created a passkey must be recognised from what
+  // was persisted, not asked to create a second one. A failed read is treated
+  // as "none known" so it degrades to the create state rather than blocking.
+  let initialCredentialId: string | null = null;
+  if (configured) {
+    try {
+      const stored = await loadPasskeyCredential();
+      initialCredentialId = stored?.credentialId ?? null;
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not load the stored passkey credential:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }
+
   // The fee is the database's, resolved from the active `fee_schedule` for the
   // restored household (or the applicant alone when nothing is saved yet). A
   // failed read yields null, so the screen says the fee is unavailable rather
@@ -66,6 +83,7 @@ export default async function OnboardingPage() {
       persistence={configured ? 'supabase' : 'not-configured'}
       initial={initial}
       initialFee={initialFee}
+      initialCredentialId={initialCredentialId}
       network={activeNetworkLabel()}
       accountState={{ kind: 'pending' }}
     />
