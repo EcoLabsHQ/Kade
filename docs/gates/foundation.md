@@ -21,7 +21,7 @@ written against. No irreversible action is involved.
 | RLS applied live | 18/18 tables with RLS enabled; 10 deny-by-default with zero policies; owner policies on `profiles`, `applications`, `citizenships`, `residences`, `household_members`, `chains`, `fee_schedule` |
 | Seeds | `supabase/seed.sql` generated from `@kade/shared`, byte-for-byte drift guard in `tests/acceptance/seed-drift.test.ts` |
 | Fee model | live `preapproval_fee_usdc('demo', 3) = 1.75`, `('production', 3) = 447`; recompute triggers verified |
-| Shared types | `packages/shared/src/*` with 67 unit tests |
+| Shared types | `packages/shared/src/*` with 68 unit tests |
 | Decisions | six ADRs in `docs/architecture/adr/` |
 
 Commands: `./scripts/verify.sh` (all gates), `docs/architecture/data-model.md`

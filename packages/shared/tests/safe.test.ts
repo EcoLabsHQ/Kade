@@ -11,10 +11,14 @@ import {
 const SAFE = '0x5Af1000000000000000000000000000000000c09D' as const;
 const OTHER = '0x1111111111111111111111111111111111111111' as const;
 
+/**
+ * The active iteration-1 set (contract v1.6): Ethereum Sepolia is deployed,
+ * Base Sepolia is predicted. Arbitrum is deferred, so it is deliberately not
+ * part of this default fixture — see the chain-identity test below.
+ */
 function records(address = SAFE): SafeDeploymentRecord[] {
   return [
     { chainId: 11155111, safeAddress: address, deploymentTxHash: '0xabc' as const, predicted: false },
-    { chainId: 421614, safeAddress: address, deploymentTxHash: null, predicted: true },
     { chainId: 84532, safeAddress: address, deploymentTxHash: null, predicted: true },
   ];
 }
@@ -22,6 +26,17 @@ function records(address = SAFE): SafeDeploymentRecord[] {
 describe('deterministic Safe address (D4)', () => {
   it('accepts the same address on every active chain', () => {
     expect(() => assertSameAddressAcrossChains(records())).not.toThrow();
+  });
+
+  it('ignores chain identity, so a deferred chain resolves identically', () => {
+    // The check must not read the chain id. D4 relies on the chain-agnostic
+    // salt, so probing with a chain that is *not* in the active set is a
+    // stronger assertion than probing with another active one.
+    const withDeferred: SafeDeploymentRecord[] = [
+      ...records(),
+      { chainId: 421614, safeAddress: SAFE, deploymentTxHash: null, predicted: true },
+    ];
+    expect(() => assertSameAddressAcrossChains(withDeferred)).not.toThrow();
   });
 
   it('rejects an address mismatch across chains', () => {
