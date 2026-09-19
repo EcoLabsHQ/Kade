@@ -68,9 +68,22 @@ The registry is `0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0`, confirmed against
 EAS's published deployments and by reading `getSchemaRegistry()` from the EAS
 core contract on Sepolia.
 
-This repository broadcasts nothing. The owner signs and sends each transaction
-from their own funded Sepolia account, and the resulting UIDs are recorded in
-`packages/contracts/eas/registered-uids.json`.
+**Executed 18 September 2026.** All five schemas are registered on Ethereum
+Sepolia. The UIDs, transactions and block numbers are recorded in
+`packages/contracts/eas/registered-uids.json`, and the schemas are bound to the
+chain: `npm run eas:verify` re-reads `getSchema()` from the registry and confirms
+the schema string, resolver and revocable flag against the manifest.
+
+| Schema | UID |
+|---|---|
+| `kade.kyc.v1` | `0xeb5d6cfe8e91ca85f091bee9521cd611f2779b224499bb0b2f0b9ef584eb9c7b` |
+| `kade.fee.v1` | `0x1b173af4c9740b087df5f00f7c9c6bed9ee60880fe87b0b3ede6b7cc7059f3d3` |
+| `kade.application.v1` | `0xb62efa605d2ebb777977c5a1f6efc74fff2d6739fa9ab693c1bc79fb2a961a5c` |
+| `kade.review.v1` | `0xae51d8fdc55e065858eba289b43aa679190cf4190fffe4c7728c1e25042d5fce` |
+| `kade.permit.v1` | `0x30be014defdd34f04f9f756f8f94f40476cdf97735dc54cac7a98a4e58a9181e` |
+
+This repository still broadcasts nothing: the plan is generated and verified
+here, and the transactions were sent outside it.
 
 > **Note:** `approvedBy` is the literal string "project owner". Replace it with a
 > named person if the gate record needs one.

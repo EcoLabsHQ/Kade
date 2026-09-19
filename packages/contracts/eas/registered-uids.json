@@ -1,5 +1,58 @@
 {
-  "$comment": "Record of executed EAS schema registrations. Populated only after the Onchain gate approves and a human executes the registration plan. Empty in Week 1: nothing is registered.",
+  "$comment": "Record of executed EAS schema registrations. Populated after the Onchain gate approved and the registration plan was executed. Each entry records the transaction, the block, and the registrar. The UIDs were verified on chain by reading getSchema() from the registry and comparing the schema string, resolver and revocable flag against eas-schema-manifest.json.",
   "chainId": 11155111,
-  "registrations": []
+  "schemaRegistry": "0x0a7E2Ff54e76B8E6659aedc9103FB21c038050D0",
+  "registrar": "0x9907Edd6D403AC420cF1A84b10f0d134b13baa84",
+  "registrations": [
+    {
+      "name": "kade.kyc.v1",
+      "uid": "0xeb5d6cfe8e91ca85f091bee9521cd611f2779b224499bb0b2f0b9ef584eb9c7b",
+      "chainId": 11155111,
+      "txHash": "0x37b96cfb3a892ea20634e1383e4fc52cb49b149bf053c7b466dfdb64780f9b20",
+      "blockNumber": 11739563,
+      "schema": "string nationality,bool over18,bool notSanctioned,bytes32 selfNullifier,uint64 expiresAt",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true
+    },
+    {
+      "name": "kade.fee.v1",
+      "uid": "0x1b173af4c9740b087df5f00f7c9c6bed9ee60880fe87b0b3ede6b7cc7059f3d3",
+      "chainId": 11155111,
+      "txHash": "0x92b2ca66eb624eee8eba59315bdc570d35ab0480663b5940cdf17720cbb439a3",
+      "blockNumber": 11739564,
+      "schema": "string applicationRef,uint256 amountUSDC,bytes32 txHash,string feeType",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": false
+    },
+    {
+      "name": "kade.application.v1",
+      "uid": "0xb62efa605d2ebb777977c5a1f6efc74fff2d6739fa9ab693c1bc79fb2a961a5c",
+      "chainId": 11155111,
+      "txHash": "0x026e1fd2e0c8f865c432592a6f021b970ab4f04c0cac09482d8a13087600eeae",
+      "blockNumber": 11739565,
+      "schema": "string applicationRef,string tier,bytes32 docsRoot,uint256 qualifyingBalance",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true
+    },
+    {
+      "name": "kade.review.v1",
+      "uid": "0xae51d8fdc55e065858eba289b43aa679190cf4190fffe4c7728c1e25042d5fce",
+      "chainId": 11155111,
+      "txHash": "0xee798cc019965f0da82c8490ad472ecf9403c2ef2bb7e67f67f1f7b785b92c1f",
+      "blockNumber": 11739566,
+      "schema": "string applicationRef,bool cleared,string note",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true
+    },
+    {
+      "name": "kade.permit.v1",
+      "uid": "0x30be014defdd34f04f9f756f8f94f40476cdf97735dc54cac7a98a4e58a9181e",
+      "chainId": 11155111,
+      "txHash": "0x24b7fe192228330cc3fc39dde90dd71f2d145457f7b7e68614e9796873ad5a6a",
+      "blockNumber": 11739567,
+      "schema": "string applicationRef,string tier,uint64 validUntil",
+      "resolver": "0x0000000000000000000000000000000000000000",
+      "revocable": true
+    }
+  ]
 }

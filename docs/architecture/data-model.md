@@ -31,6 +31,7 @@ and how each was resolved.
 | `20260916000013_passkey_credentials.sql` | `passkey_credentials`, its RLS policies and column grants |
 | `20260916000014_passkey_public_key_comment.sql` | no tables; comment-only correction of the public-key description |
 | `20260916000015_fee_authority_comment.sql` | no tables; comment-only correction of who computes the pre-approval fee |
+| `20260916000016_safe_deployments.sql` | `safe_deployments` (the D4 manifest as explicit columns) and `safe_pre_deposits`; RLS on both, server-written columns withheld from `authenticated` |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
