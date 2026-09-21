@@ -295,3 +295,13 @@ textarea {
     transform: none;
   }
 }
+
+/* DatePicker popover affordances. Inline styles cannot express :hover, so the
+   two interactive states live here. */
+.kade-datepicker-nav:hover {
+  background: var(--kade-chip-bg);
+}
+
+.kade-datepicker-day:hover:not(:disabled) {
+  background: var(--kade-active-nav-bg);
+}
