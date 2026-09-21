@@ -44,7 +44,7 @@ open is below.
 | ~~Singleton address~~ | Recorded (SafeL2 v1.5.0: `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e`). |
 | ~~Compatibility fallback handler~~ | Recorded (v1.5.0: `0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4`). |
 | WebAuthn signer implementation | The direct Safe WebAuthn signer. **Resolved:** the factory address is confirmed (not `[arbitrary]`), and the signer address is derived by calling its `getSigner(uint256,uint256,uint176)` view through a server action. The repository no longer reproduces the module's arithmetic locally. |
-| Salt nonce strategy | **Proposed for approval:** `keccak256(resident id)`, so each resident's address is stable and distinct without a server-side counter. Implemented in `apps/web/src/lib/safe/account.ts`; confirm before the first deployment, since it fixes every resident's address. |
+| Salt nonce strategy | **Proposed for approval:** `keccak256(resident id)`, so each resident's address is stable and distinct without a server-side counter. Implemented in `apps/web/src/lib/safe/account.ts`; confirm before any further deployment, since it fixes every resident's address. |
 | Sepolia deployment payer | A funded account, or a decision to deploy from your side. |
 
 > **Note:** the signer address itself is **not** an input. With the direct Safe
