@@ -1,6 +1,10 @@
 /**
- * A simplified WalletConnect-style mark (two joined arcs), used on the
- * WalletConnect row badge. Demo asset: it is not the official logo.
+ * The WalletConnect mark.
+ *
+ * This is WalletConnect's trademark, used here only as a brand reference on the
+ * demo WalletConnect row. The geometry is the official single-path shape from
+ * Simple Icons (https://simpleicons.org), which covers a wide arc with two
+ * joined feet.
  */
 export function WalletConnectGlyph({ size = 22 }: { size?: number }) {
   return (
@@ -12,7 +16,7 @@ export function WalletConnectGlyph({ size = 22 }: { size?: number }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M4.9 9.4c3.92-3.9 10.28-3.9 14.2 0l.72.7a.85.85 0 0 1 0 1.22l-1.62 1.6a.47.47 0 0 1-.65 0l-.99-.98a4.83 4.83 0 0 0-6.72 0l-1.06 1.05a.47.47 0 0 1-.65 0l-1.56-1.55a.85.85 0 0 1 0-1.22l.98-.97Zm-1.9 3.6 1.5 1.49a.7.7 0 0 0 .98 0l1.06-1.05a2.4 2.4 0 0 1 3.34 0l1.06 1.05a.7.7 0 0 0 .98 0l1.06-1.05a2.4 2.4 0 0 1 3.34 0l1.06 1.05a.7.7 0 0 0 .98 0l1.5-1.49-1.5-1.48a4.5 4.5 0 0 0-6.28 0l-.52.52-.52-.52a4.5 4.5 0 0 0-6.28 0l-1.5 1.48Z" />
+      <path d="M4.913 7.519c3.915-3.831 10.26-3.831 14.174 0l.471.461a.483.483 0 0 1 0 .694l-1.611 1.577a.252.252 0 0 1-.354 0l-.649-.634c-2.73-2.673-7.157-2.673-9.887 0l-.694.68a.255.255 0 0 1-.355 0L4.397 8.719a.482.482 0 0 1 0-.693l.516-.507Zm17.506 3.263 1.434 1.404a.483.483 0 0 1 0 .694l-6.466 6.331a.508.508 0 0 1-.709 0l-4.588-4.493a.126.126 0 0 0-.178 0l-4.589 4.493a.508.508 0 0 1-.709 0L.147 12.88a.483.483 0 0 1 0-.694l1.434-1.404a.508.508 0 0 1 .709 0l4.589 4.493c.05.048.129.048.178 0l4.589-4.493a.508.508 0 0 1 .709 0l4.589 4.493c.05.048.128.048.178 0l4.589-4.493a.507.507 0 0 1 .708 0Z" />
     </svg>
   );
 }
