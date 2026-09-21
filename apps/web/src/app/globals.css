@@ -123,6 +123,40 @@ textarea {
   align-items: start;
 }
 
+/*
+ * The onboarding flow's own multi-column grids.
+ *
+ * They live here for the same reason as the shell grids above: an inline
+ * `gridTemplateColumns` cannot carry a media query, so a step laid out as two
+ * columns stayed two columns on a phone and squeezed each card into half a
+ * viewport. The desktop values are exactly the ones the inline styles carried,
+ * so the frozen reference rendering is unchanged.
+ */
+.kade-grid-profile {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.kade-grid-wealth {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+}
+
+.kade-grid-fee {
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
+}
+
+.kade-grid-tiers {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.kade-grid-file-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+}
+
 .kade-dashboard-header {
   display: flex;
   justify-content: space-between;
@@ -231,7 +265,12 @@ textarea {
 
   .kade-grid-2,
   .kade-grid-4,
-  .kade-grid-dashboard {
+  .kade-grid-dashboard,
+  .kade-grid-profile,
+  .kade-grid-wealth,
+  .kade-grid-fee,
+  .kade-grid-tiers,
+  .kade-grid-file-row {
     grid-template-columns: 1fr;
   }
 

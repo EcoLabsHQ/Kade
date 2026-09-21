@@ -225,9 +225,8 @@ export function OnboardingWizard({
       ) : null}
 
       <div
+        className="kade-grid-profile"
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1.4fr 1fr',
           gap: '16px',
           maxWidth: '920px',
           alignItems: 'start',
