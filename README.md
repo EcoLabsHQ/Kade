@@ -161,6 +161,13 @@ work as complete.
   transactions and block numbers are in
   `packages/contracts/eas/registered-uids.json`.
 
+**Verified by a signed-in run:** credential metadata and its derived signer
+survive a reload. Enrolment writes the credential id, public key, transports and
+user-verification flag to `passkey_credentials`, and the derived `signer_address`
+is written by `public.save_passkey_signer` — a SECURITY DEFINER function scoped
+to the caller's own credential, so no service-role key is needed. `/account`
+reloads both.
+
 **Not yet verified:**
 
 - **Email magic link has not been delivered and followed.** The provider is
@@ -170,19 +177,11 @@ work as complete.
   RLS enabled on all 20 tables and 10 deny-by-default, but no committed harness
   exercises row visibility: enforcement is Postgres's, configured through
   Supabase.
-- **Credential metadata surviving reload against a live session.** Enrolment
-  writes the credential id, public key, transports and user-verification flag to
-  `passkey_credentials`, and `/account` reloads them server-side; the path is
-  unit-tested, and exercised end to end by a signed-in run. The
-  derived `signer_address` is server-written and needs
-  `public.save_passkey_signer`, a SECURITY DEFINER function scoped to the
-  caller's own credential, so no service-role key is needed. Exercised end to
-  end: the credential and its signer are written and reloaded. Without it the credential still persists,
-  the signer stays NULL, and the panel says so rather than faking it.
 - **A test signature through the direct Safe WebAuthn signer.** The signer
-  address is now derived from the passkey, but signing requires a deployed Safe
-  and a real assertion. A Safe **is** deployed on Sepolia; signing has not been
-  exercised end to end.
+  address is derived from the passkey and the Safe is deployed on Sepolia, but
+  the signer contract itself is not: nothing calls `createSigner`, so the owner
+  exists as an address without code and a signature cannot validate. Declared in
+  the register.
 - **Attestations and KadeLock.** No attestation has been issued, and KadeLock is
   not deployed. The resident Safe **is** deployed on Sepolia (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`), through
   the deployment engine wired into onboarding. The EAS tooling only generates,
