@@ -40,11 +40,23 @@ export const MAX_BITCOIN_ADDRESSES = 5;
  * `amount` is the formatted native amount (18 decimals, fixed), so it is
  * displayed without floating-point rounding drifting the figure.
  */
+/** A token balance read for one address on one chain. */
+export interface EvmTokenBalance {
+  readonly symbol: string; // 'USDC'
+  readonly amount: string; // formatted with the token's decimals, e.g. '150000.000000'
+  readonly usd: number | null;
+}
+
+/** The native coin and USDC balances of one address on one chain. */
 export interface EvmChainBalance {
   readonly chainId: number;
   readonly name: string; // 'Ethereum' | 'Base'
-  readonly symbol: string; // 'ETH'
-  readonly amount: string; // formatted native amount, 18 decimals, e.g. '0.512300'
+  readonly nativeSymbol: string; // 'ETH'
+  readonly nativeAmount: string; // formatted native amount, 18 decimals, e.g. '0.512300'
+  readonly nativeUsd: number | null;
+  /** Null when the USDC read failed for this chain, so nothing is fabricated. */
+  readonly usdc: EvmTokenBalance | null;
+  /** Native + USDC in USD, or null when neither could be valued. */
   readonly usd: number | null;
 }
 

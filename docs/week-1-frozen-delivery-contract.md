@@ -497,15 +497,17 @@ control onto the frozen Week 1 contract.**
 
 Pasted EVM addresses are in scope, read-only and unverified. A signed-in
 resident may paste up to **5** EVM (`0x…`) addresses. The server validates the
-address format, reads each address's **native coin balance** on the product
-chains' **mainnets** (Ethereum and Base) from a public Blockscout-compatible
-explorer API, and returns the balance and its USD value (from the explorer's
-native-coin price). There is **no signature, no wallet connection, and no
-ownership proof**; the UI states the balance was read from a public source and
-is not evidence of control. Rationale, for the record: proof-of-wealth is about
-real assets, so the read-only balance query targets mainnet even though
-iteration 1 deploys only on testnets — a read moves nothing and is not a
-deployment.
+address format and reads, on the product chains' **mainnets** (Ethereum and
+Base) from a public Blockscout-compatible explorer API, both the **native coin
+balance** and the address's **USDC balance** (USDC taken at its 1:1 dollar peg,
+the native coin valued at the explorer's published price). There is **no
+signature, no wallet connection, and no ownership proof**; the UI states the
+balances were read from a public source and are not evidence of control.
+Rationale, for the record: proof-of-wealth is about real assets, so the
+read-only balance query targets mainnet even though iteration 1 deploys only on
+testnets — a read moves nothing and is not a deployment. The USDC read is
+scoped to the chain's known contract from `@kade/shared`, so it is a single
+deterministic call rather than a scan of every token the address holds.
 
 Persistence. Rows live in the existing `public.wallets` table, **one row per
 (address, chain)** — the table's documented "one row per chain the EOA is read
@@ -522,8 +524,8 @@ no real wallet connection is implemented (project-owner decision, 21 September
 2026): the browser-extension and WalletConnect rows stay demo and are labelled
 demo. Only pasted addresses (Bitcoin and EVM) are read.
 
-Multi-token and other chains stay out. ERC-20/token balances (including USDC),
-and balances on Arbitrum, Optimism and Celo, are not read in this iteration; the
+Other tokens and other chains stay out. ERC-20 balances **other than USDC**, and
+balances on Arbitrum, Optimism and Celo, are not read in this iteration; the
 chain list is data, so they can be added by configuration later.
 
 Row layout parity. The Bitcoin and wallet-address rows present the same
@@ -558,8 +560,8 @@ What this does **not** change:
 - `public.wallets` keeps its existing shape — no table and no column is added;
 - no wallet-connection package is added and no real wallet connection is
   implemented;
-- ERC-20/token balances, other chains, payment execution, the EVM multi-chain
-  block, DeBank, hardware wallets, and the indexer remain excluded.
+- ERC-20 balances other than USDC, other chains, payment execution, the EVM
+  multi-chain block, DeBank, hardware wallets, and the indexer remain excluded.
 
 Evidence: the migration file and the extended 5-address cap; the server-side
 provider client and its unit tests; the server actions; the persisted rows; and

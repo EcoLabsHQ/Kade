@@ -1,16 +1,24 @@
+import { chainByChainId } from '@kade/shared';
 import { getAddress } from 'viem';
 import { readEvmExplorerApiBase } from '@/lib/env';
 import type { EvmChainBalance } from './types';
 
 /**
- * Read-only native-coin balances for a pasted EVM address.
+ * Read-only balances (native coin and USDC) for a pasted EVM address.
  *
- * Server-side only: the browser never calls the provider. Balances come from the
- * Blockscout v2 REST API (`/api/v2/addresses/{address}`), which returns
- * `coin_balance` as a decimal string of wei and `exchange_rate` as the native
- * coin's USD price. There is no API key, so the read works against the public
- * instances; the chain list and `fetchImpl` are injectable so tests never touch
- * the network.
+ * Server-side only: the browser never calls the provider. Two Blockscout
+ * endpoints are used per chain, both public and keyless:
+ *
+ *   - `GET /api/v2/addresses/{address}` returns `coin_balance` (a decimal string
+ *     of wei) and `exchange_rate`, the native coin's USD price. One call gives
+ *     both the native amount and its USD value.
+ *   - `GET /api?module=account&action=tokenbalance&contractaddress={usdc}
+ *          &address={address}&tag=latest` returns the raw USDC balance for one
+ *     known contract, so the ERC-20 read is deterministic instead of paging
+ *     through every token the address holds.
+ *
+ * There is no API key, so the read works against the public instances. The chain
+ * list and `fetchImpl` are injectable, so tests never touch the network.
  */
 
 /** Raised for an invalid address, a non-2xx provider response or a bad body. */
@@ -27,13 +35,32 @@ export interface EvmReadChain {
   readonly name: string;
   readonly symbol: string;
   readonly baseUrl: string;
+  /** USDC contract on this chain, from `@kade/shared` (Circle's deployments). */
+  readonly usdcAddress: string;
+}
+
+/**
+ * [external] USDC uses 6 decimals on every chain Circle deploys it to; the
+ * contract is the authority, not this constant.
+ */
+export const USDC_DECIMALS = 6;
+
+/** Resolve the configured USDC contract for a chain from the shared registry. */
+function mainnetUsdc(chainId: number): string {
+  const chain = chainByChainId(chainId);
+  const address = chain?.usdcAddress.value;
+  if (!address) {
+    throw new Error(`No USDC address is configured for chain ${chainId}.`);
+  }
+  return address;
 }
 
 /**
  * [arbitrary] The product chains' **mainnets**, because wealth tracks real
  * assets: a resident wants the balance that actually exists, not a testnet
  * figure. This is a read-only call that moves nothing, and the chain list is
- * plain data, so it can be extended without touching the read logic.
+ * plain data, so it can be extended without touching the read logic. The USDC
+ * addresses are not restated here: they come from `@kade/shared`.
  */
 export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
   {
@@ -41,12 +68,14 @@ export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
     name: 'Ethereum',
     symbol: 'ETH',
     baseUrl: 'https://eth.blockscout.com',
+    usdcAddress: mainnetUsdc(1),
   },
   {
     chainId: 8453,
     name: 'Base',
     symbol: 'ETH',
     baseUrl: 'https://base.blockscout.com',
+    usdcAddress: mainnetUsdc(8453),
   },
 ];
 
@@ -80,14 +109,28 @@ export function normalizeEvmAddress(value: string): string {
   }
 }
 
-/** Format a wei amount as a fixed 18-decimal native string. */
-export function formatNative(wei: bigint): string {
-  const negative = wei < 0n;
-  const absolute = negative ? -wei : wei;
-  const base = 10n ** 18n;
+/** Format a raw integer amount as a fixed `decimals`-place decimal string. */
+export function formatUnits(raw: bigint, decimals: number): string {
+  const negative = raw < 0n;
+  const absolute = negative ? -raw : raw;
+  const base = 10n ** BigInt(decimals);
   const whole = absolute / base;
   const fraction = absolute % base;
-  return `${negative ? '-' : ''}${whole}.${fraction.toString().padStart(18, '0')}`;
+  return `${negative ? '-' : ''}${whole}.${fraction
+    .toString()
+    .padStart(decimals, '0')}`;
+}
+
+/** Format a wei amount as a fixed 18-decimal native string. */
+export function formatNative(wei: bigint): string {
+  return formatUnits(wei, 18);
+}
+
+function toUsd(amount: string, rate: unknown): number | null {
+  if (rate === null || rate === undefined) return null;
+  const value = Number(rate);
+  if (!Number.isFinite(value)) return null;
+  return Number(amount) * value;
 }
 
 export interface EvmReadOptions {
@@ -106,11 +149,43 @@ function resolveChains(
 }
 
 /**
- * Read one chain, or null when it fails.
+ * Read the USDC balance for the chain's known contract, or null when the read
+ * fails. A missing token balance is not fabricated as zero.
+ */
+async function readUsdcBalance(
+  chain: EvmReadChain,
+  address: string,
+  fetchImpl: typeof fetch,
+): Promise<{ readonly symbol: string; readonly amount: string; readonly usd: number } | null> {
+  const base = chain.baseUrl.replace(/\/+$/, '');
+  try {
+    const url =
+      `${base}/api?module=account&action=tokenbalance` +
+      `&contractaddress=${chain.usdcAddress}&address=${address}&tag=latest`;
+    const response = await fetchImpl(url);
+    if (!response.ok) return null;
+
+    const body = (await response.json()) as { result?: unknown } | null;
+    const raw = body?.result;
+    if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+
+    const amount = formatUnits(BigInt(raw), USDC_DECIMALS);
+    // USDC is a dollar: its USD value is its amount. The contract is not the
+    // price source, but the peg is what the product relies on and the DOCX
+    // treats USDC as 1:1 with USD.
+    return { symbol: 'USDC', amount, usd: Number(amount) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read one chain, or null when the native read fails.
  *
  * A chain failure (non-2xx, malformed JSON, a missing or unparseable balance) is
  * **skipped** rather than fabricated as a zero balance: the caller sees the
- * chain missing from the result and can say so honestly.
+ * chain missing from the result and can say so honestly. A failed USDC read
+ * keeps the chain and reports `usdc: null`.
  */
 async function readChainBalance(
   chain: EvmReadChain,
@@ -137,21 +212,22 @@ async function readChainBalance(
       return null;
     }
 
-    const amount = formatNative(wei);
-    const rate = body?.exchange_rate;
-    const rateValue =
-      rate === null || rate === undefined ? null : Number(rate);
-    const usd =
-      rateValue !== null && Number.isFinite(rateValue)
-        ? Number(amount) * rateValue
-        : null;
+    const nativeAmount = formatNative(wei);
+    const nativeUsd = toUsd(nativeAmount, body?.exchange_rate);
+    const usdc = await readUsdcBalance(chain, address, fetchImpl);
+
+    const parts = [nativeUsd, usdc?.usd].filter(
+      (value): value is number => value !== null && value !== undefined,
+    );
 
     return {
       chainId: chain.chainId,
       name: chain.name,
-      symbol: chain.symbol,
-      amount,
-      usd,
+      nativeSymbol: chain.symbol,
+      nativeAmount,
+      nativeUsd,
+      usdc,
+      usd: parts.length === 0 ? null : parts.reduce((sum, value) => sum + value, 0),
     };
   } catch {
     return null;
@@ -159,7 +235,7 @@ async function readChainBalance(
 }
 
 /**
- * Read the native-coin balance of `address` on each target chain.
+ * Read the native-coin and USDC balances of `address` on each target chain.
  *
  * @throws {EvmReadError} when the address is invalid, before any fetch. A
  * per-chain provider failure does not throw: that chain is skipped.
