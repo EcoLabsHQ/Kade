@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
   resolvePreapprovalFeeBreakdown: vi.fn(),
   loadPasskeyCredential: vi.fn(),
   listBitcoinAddresses: vi.fn(),
+  listWalletAddresses: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
@@ -43,6 +44,11 @@ vi.mock('@/app/onboarding/wealth-actions', () => ({
   addBitcoinAddress: vi.fn(),
   removeBitcoinAddress: vi.fn(),
 }));
+vi.mock('@/app/onboarding/wallet-actions', () => ({
+  listWalletAddresses: hoisted.listWalletAddresses,
+  addWalletAddress: vi.fn(),
+  removeWalletAddress: vi.fn(),
+}));
 vi.mock('@/lib/env', () => ({
   isAuthConfigured: () => true,
   readAuthEnv: () => ({
@@ -64,6 +70,10 @@ interface FlowProps {
     readonly id: number;
     readonly address: string;
   }[];
+  readonly initialEvmAddresses?: readonly {
+    readonly address: string;
+    readonly readError: string | null;
+  }[];
 }
 
 async function flowProps(): Promise<FlowProps> {
@@ -81,6 +91,7 @@ beforeEach(() => {
   hoisted.resolvePreapprovalFeeBreakdown.mockResolvedValue(null);
   hoisted.loadPasskeyCredential.mockResolvedValue(null);
   hoisted.listBitcoinAddresses.mockResolvedValue([]);
+  hoisted.listWalletAddresses.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -133,6 +144,36 @@ describe('onboarding page credential restore', () => {
     hoisted.listBitcoinAddresses.mockRejectedValue(new Error('provider down'));
 
     expect((await flowProps()).initialBitcoinAddresses).toEqual([]);
+  });
+
+  it('hands the restored EVM addresses to the flow', async () => {
+    hoisted.listWalletAddresses.mockResolvedValue([
+      {
+        address: '0x1111111111111111111111111111111111111111',
+        chains: [
+          {
+            chainId: 1,
+            name: 'Ethereum',
+            symbol: 'ETH',
+            amount: '1.000000000000000000',
+            usd: 3000,
+          },
+        ],
+        usd: 3000,
+        readAt: '2026-09-21T00:00:00Z',
+        readError: null,
+      },
+    ]);
+
+    const props = await flowProps();
+    expect(props.initialEvmAddresses).toHaveLength(1);
+    expect(props.initialEvmAddresses?.[0]?.address).toMatch(/^0x/);
+  });
+
+  it('degrades to no addresses when the EVM read fails', async () => {
+    hoisted.listWalletAddresses.mockRejectedValue(new Error('provider down'));
+
+    expect((await flowProps()).initialEvmAddresses).toEqual([]);
   });
 
   it('redirects to login when there is no session', async () => {

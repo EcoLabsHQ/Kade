@@ -5,11 +5,12 @@ import { getSessionUser } from '@/lib/supabase/server';
 import { isAuthConfigured, readAuthEnv, readChainEnv, readFeeMode } from '@/lib/env';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { listBitcoinAddresses } from '@/app/onboarding/wealth-actions';
+import { listWalletAddresses } from '@/app/onboarding/wallet-actions';
 import { loadOnboardingSnapshot } from '@/lib/onboarding/server';
 import { resolvePreapprovalFeeBreakdown } from '@/lib/onboarding/fee-server';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 import type { OnboardingSnapshot } from '@/lib/onboarding/persistence';
-import type { BitcoinAddressRecord } from '@/lib/wealth/types';
+import type { BitcoinAddressRecord, EvmAddressRecord } from '@/lib/wealth/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,21 @@ export default async function OnboardingPage() {
     }
   }
 
+  // Pasted EVM addresses, read server-side for the same reason. A failed,
+  // unconfigured or unauthenticated read degrades to none rather than
+  // fabricating an address.
+  let initialEvmAddresses: readonly EvmAddressRecord[] = [];
+  if (configured) {
+    try {
+      initialEvmAddresses = await listWalletAddresses();
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not load the saved EVM addresses:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }
+
   // The fee is the database's, resolved from the active `fee_schedule` for the
   // restored household (or the applicant alone when nothing is saved yet). A
   // failed read yields null, so the screen says the fee is unavailable rather
@@ -102,6 +118,7 @@ export default async function OnboardingPage() {
       initialFee={initialFee}
       initialCredentialId={initialCredentialId}
       initialBitcoinAddresses={initialBitcoinAddresses}
+      initialEvmAddresses={initialEvmAddresses}
       network={activeNetworkLabel()}
       accountState={{ kind: 'pending' }}
     />
