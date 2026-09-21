@@ -950,13 +950,19 @@ describe('the pasted wallet address is read for real, not demoed', () => {
     await waitFor(() =>
       expect(hoisted.addWalletAddress).toHaveBeenCalledWith(EVM_RECORD.address),
     );
+    // The asset breakdown appears twice per chain: in the expanded row and in
+    // the summary card, which now lists what was read for the address.
     expect(
-      await screen.findByText(/Ethereum · 0\.512300 ETH/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Base · 0\.250000 ETH/)).toBeInTheDocument();
+      (await screen.findAllByText(/Ethereum · 0\.512300 ETH/)).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/Base · 0\.250000 ETH/).length).toBeGreaterThanOrEqual(2);
     // USDC is read too, on both chains, not just the native coin.
-    expect(screen.getByText(/Ethereum · .* · 183\.500000 USDC/)).toBeInTheDocument();
-    expect(screen.getByText(/Base · .* · 89\.100000 USDC/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Ethereum · .* · 183\.500000 USDC/).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getAllByText(/Base · .* · 89\.100000 USDC/).length,
+    ).toBeGreaterThanOrEqual(2);
     // A confirmed source flips the row's right side to the Read state.
     expect(screen.getByText('Read')).toBeInTheDocument();
   });

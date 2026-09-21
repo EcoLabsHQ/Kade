@@ -871,15 +871,60 @@ export function WealthStep({
                   {record.usd === null ? '—' : usd(record.usd)}
                 </span>
               </div>
+
+              {record.chains.map((chain) => (
+                <div
+                  key={chain.chainId}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '6px',
+                    fontSize: '13px',
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '2px',
+                      background: CHAIN_COLORS[chain.name] ?? tokens.muted,
+                      flex: '0 0 auto',
+                    }}
+                  />
+                  <span style={{ color: tokens.muted }}>
+                    {chain.name} · {chain.nativeAmount} {chain.nativeSymbol}
+                    {chain.usdc
+                      ? ` · ${chain.usdc.amount} ${chain.usdc.symbol}`
+                      : ''}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: tokens.muted,
+                    }}
+                  >
+                    {chain.usd === null ? '—' : usd(chain.usd)}
+                  </span>
+                </div>
+              ))}
+
               <div
                 style={{
                   fontSize: '12.5px',
                   color: tokens.muted,
-                  marginTop: '2px',
+                  marginTop: '6px',
                 }}
               >
                 Read from a public source · not proof of ownership
               </div>
+              {record.readError ? (
+                <div role="alert" style={{ ...errorText, marginTop: '4px' }}>
+                  {record.readError}
+                </div>
+              ) : null}
             </div>
           ))}
 
