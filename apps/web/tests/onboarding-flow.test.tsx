@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { preapprovalFeeUsdc } from '@kade/shared';
 import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import type { BitcoinAddressRecord } from '@/lib/wealth/types';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
@@ -15,6 +16,8 @@ const hoisted = vi.hoisted(() => ({
   deriveAccount: vi.fn(),
   previewPreapprovalFee: vi.fn(),
   savePasskeyCredential: vi.fn(),
+  addBitcoinAddress: vi.fn(),
+  removeBitcoinAddress: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -37,6 +40,12 @@ vi.mock('@/app/onboarding/signer-actions', () => ({
 vi.mock('@/app/onboarding/actions', () => ({
   previewPreapprovalFee: hoisted.previewPreapprovalFee,
   saveOnboardingStep2: vi.fn(),
+}));
+// The Bitcoin actions are server actions: they read the chain server-side. They
+// are mocked so the client is exercised against a recorded server outcome.
+vi.mock('@/app/onboarding/wealth-actions', () => ({
+  addBitcoinAddress: hoisted.addBitcoinAddress,
+  removeBitcoinAddress: hoisted.removeBitcoinAddress,
 }));
 
 /** The seeded demo row: base 1, 0.25 per member, two decimal places. */
@@ -95,6 +104,8 @@ afterEach(() => {
   hoisted.deriveAccount.mockReset();
   hoisted.previewPreapprovalFee.mockReset();
   hoisted.savePasskeyCredential.mockReset();
+  hoisted.addBitcoinAddress.mockReset();
+  hoisted.removeBitcoinAddress.mockReset();
 });
 
 function makeStore() {
@@ -138,6 +149,72 @@ function renderFlowFromStart(store: OnboardingStore) {
       store={store}
     />,
   );
+}
+
+function setField(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** The applicant's date of birth is a calendar trigger, not a native input. */
+function pickApplicantDob() {
+  fireEvent.click(screen.getByLabelText('Date of birth'));
+  const now = new Date();
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15`;
+  fireEvent.click(screen.getByRole('button', { name: iso }));
+}
+
+function addHouseholdMember(
+  name: string,
+  relation: string,
+  dob: string,
+  citizenship: string,
+) {
+  fireEvent.click(screen.getByRole('button', { name: /add member/i }));
+  const index = screen.getAllByLabelText(/household member \d+ name/i).length;
+  setField(`Household member ${index} name`, name);
+  setField(`Household member ${index} relation`, relation);
+  setField(`Household member ${index} date of birth`, dob);
+  fireEvent.change(screen.getByLabelText(`Household member ${index} citizenship`), {
+    target: { value: citizenship },
+  });
+}
+
+/**
+ * Fills Step 2 with the contract's worked example (a household of three, aiming
+ * at the 3-year tier) so the flow can advance. Step 2 starts empty, so nothing
+ * here may rely on a prefill; the few "clear first" steps also keep it correct
+ * on a build that still carried an example.
+ */
+function fillStep2Wizard() {
+  let memberToRemove = screen.queryAllByRole('button', {
+    name: /remove household member/i,
+  })[0];
+  while (memberToRemove) {
+    fireEvent.click(memberToRemove);
+    memberToRemove = screen.queryAllByRole('button', {
+      name: /remove household member/i,
+    })[0];
+  }
+
+  setField('First name', 'Marcus');
+  setField('Last name', 'Feldt');
+  pickApplicantDob();
+
+  if (screen.queryByRole('button', { name: /remove germany citizenship/i }) === null) {
+    fireEvent.change(screen.getByLabelText('Add citizenship'), {
+      target: { value: 'DE' },
+    });
+  }
+  if (screen.queryByRole('button', { name: /remove germany residence/i }) === null) {
+    fireEvent.change(screen.getByLabelText('Add residence country'), {
+      target: { value: 'DE' },
+    });
+  }
+
+  fireEvent.click(screen.getByRole('radio', { name: /3-year/ }));
+
+  addHouseholdMember('Lena Feldt', 'Spouse', '1985-07-22', 'NL');
+  addHouseholdMember('Emil Feldt', 'Son', '2015-05-03', 'DE');
 }
 
 describe('step 1, the transaction passkey', () => {
@@ -350,8 +427,13 @@ describe('pre-registration flow', () => {
     const { store, save } = makeStore();
     renderFlow(store);
 
-    // Step 2, populated with the demo defaults.
+    // Step 2 starts empty now that the example prefill is gone: no demo
+    // defaults are present, so the flow must be filled before it can advance.
     expect(screen.getByText(/step 2 of 4/i)).toBeInTheDocument();
+    expect(
+      (screen.getByLabelText('First name') as HTMLInputElement).value,
+    ).toBe('');
+    fillStep2Wizard();
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
 
@@ -384,6 +466,7 @@ describe('pre-registration flow', () => {
   it('labels the mocked steps so they are not mistaken for real operations', async () => {
     const { store } = makeStore();
     renderFlow(store);
+    fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
@@ -417,6 +500,7 @@ describe('pre-registration flow', () => {
       save: async () => ({ applicationId: 'app-user-1', preapprovalUsdc: 999 }),
     };
     renderFlow(store);
+    fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
@@ -434,6 +518,7 @@ describe('pre-registration flow', () => {
   it('asks the server to resolve the fee for the current household size', async () => {
     const { store } = makeStore();
     renderFlow(store);
+    fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
@@ -449,6 +534,7 @@ describe('pre-registration flow', () => {
     hoisted.previewPreapprovalFee.mockResolvedValue(null);
     const { store } = makeStore();
     renderFlow(store);
+    fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
@@ -517,7 +603,10 @@ const RESTORED_SNAPSHOT: OnboardingSnapshot = {
   ],
 };
 
-function renderRestoredFlow(store: OnboardingStore) {
+function renderRestoredFlow(
+  store: OnboardingStore,
+  initialBitcoinAddresses?: readonly BitcoinAddressRecord[],
+) {
   return render(
     <OnboardingFlow
       userId="user-1"
@@ -530,6 +619,7 @@ function renderRestoredFlow(store: OnboardingStore) {
       currentYear={2026}
       initialCredentialId="cred-existing"
       store={store}
+      initialBitcoinAddresses={initialBitcoinAddresses}
     />,
   );
 }
@@ -579,6 +669,7 @@ describe('what is the resident\u2019s and what is demo', () => {
   it('labels the mocked values and leaves the real ones unlabelled', async () => {
     const { store } = makeStore();
     renderFlow(store);
+    fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
@@ -605,5 +696,142 @@ describe('what is the resident\u2019s and what is demo', () => {
       screen.getByText(/configured pre-approval fee for your household/i),
     ).toBeInTheDocument();
     expectNoInternalVocabulary();
+  });
+});
+
+/** One confirmed Bitcoin address, as the server action returns it. */
+const BITCOIN_RECORD: BitcoinAddressRecord = {
+  id: 7,
+  address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+  btc: '0.01234567',
+  usd: 812.34,
+  readAt: '2026-09-21T00:00:00Z',
+  readError: null,
+};
+
+describe('the Bitcoin address is read for real, not demoed', () => {
+  async function goToWealth(store: OnboardingStore) {
+    renderRestoredFlow(store);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+  }
+
+  it('calls the action on Confirm and shows the returned BTC and USD', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+    hoisted.addBitcoinAddress.mockResolvedValue(BITCOIN_RECORD);
+
+    fireEvent.change(screen.getByLabelText('Bitcoin address'), {
+      target: { value: BITCOIN_RECORD.address },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+    await waitFor(() =>
+      expect(hoisted.addBitcoinAddress).toHaveBeenCalledWith(
+        BITCOIN_RECORD.address,
+      ),
+    );
+    expect(await screen.findByText(BITCOIN_RECORD.address)).toBeInTheDocument();
+    expect(screen.getByText('0.01234567 BTC')).toBeInTheDocument();
+    expect(screen.getAllByText('$812').length).toBeGreaterThan(0);
+  });
+
+  it('labels the read values as read from the network, not demo', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+    hoisted.addBitcoinAddress.mockResolvedValue(BITCOIN_RECORD);
+
+    fireEvent.change(screen.getByLabelText('Bitcoin address'), {
+      target: { value: BITCOIN_RECORD.address },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+    await screen.findByText(BITCOIN_RECORD.address);
+
+    expect(screen.getByText('Read from the network')).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/not proof of ownership/i).length,
+    ).toBeGreaterThan(0);
+    // The Bitcoin read is real, so the all-demo chip is gone.
+    expect(screen.queryByText('Demo balances')).toBeNull();
+    // The demo rows still say they are demo.
+    expect(screen.getAllByText('Demo').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps the row and shows the error when the read fails', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+    hoisted.addBitcoinAddress.mockResolvedValue({
+      ...BITCOIN_RECORD,
+      btc: null,
+      usd: null,
+      readError: 'Address not found on the network.',
+    });
+
+    fireEvent.change(screen.getByLabelText('Bitcoin address'), {
+      target: { value: BITCOIN_RECORD.address },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+
+    expect(
+      await screen.findByText(/address not found on the network/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(BITCOIN_RECORD.address)).toBeInTheDocument();
+  });
+
+  it('removes an address through the action', async () => {
+    const { store } = makeStore();
+    renderRestoredFlow(store, [BITCOIN_RECORD]);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    hoisted.removeBitcoinAddress.mockResolvedValue(undefined);
+
+    fireEvent.click(screen.getByRole('button', { name: /remove address/i }));
+
+    await waitFor(() =>
+      expect(hoisted.removeBitcoinAddress).toHaveBeenCalledWith(
+        BITCOIN_RECORD.id,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(BITCOIN_RECORD.address)).toBeNull(),
+    );
+  });
+
+  it('gates Continue on a wallet or a Bitcoin address', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+
+    // Nothing connected yet: the gate is honest about both ways forward.
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeDisabled();
+    expect(continueButton.getAttribute('title')).toMatch(/wallet or a bitcoin/i);
+  });
+
+  it('allows Continue once a Bitcoin address is present', async () => {
+    const { store } = makeStore();
+    renderRestoredFlow(store, [BITCOIN_RECORD]);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    expect(
+      screen.getByRole('button', { name: /^continue$/i }),
+    ).toBeEnabled();
+  });
+
+  it('caps the number of addresses at five', async () => {
+    const { store } = makeStore();
+    const five = Array.from({ length: 5 }, (_, index) => ({
+      ...BITCOIN_RECORD,
+      id: index + 1,
+      address: `bc1qaddress${index + 1}0000000000000000000000000000000`,
+    }));
+    renderRestoredFlow(store, five);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    expect(screen.getByRole('button', { name: /confirm/i })).toBeDisabled();
+    expect(
+      screen.getByText(/maximum of 5 addresses reached/i),
+    ).toBeInTheDocument();
   });
 });

@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TIERS, type FeeMode } from '@kade/shared';
 import { previewPreapprovalFee } from '@/app/onboarding/actions';
+import {
+  addBitcoinAddress,
+  removeBitcoinAddress,
+} from '@/app/onboarding/wealth-actions';
+import type { BitcoinAddressRecord } from '@/lib/wealth/types';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { SiteFooter } from '@/components/shell/SiteFooter';
@@ -42,6 +47,11 @@ export interface OnboardingFlowProps {
   /** A credential that already exists, so a returning resident skips step 1. */
   readonly initialCredentialId?: string | null;
   readonly store?: OnboardingStore;
+  /**
+   * Bitcoin addresses already confirmed for this resident, restored server-side.
+   * Read-only every time the flow mounts; the balances are re-read by the action.
+   */
+  readonly initialBitcoinAddresses?: readonly BitcoinAddressRecord[];
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
@@ -59,7 +69,7 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
     },
     { title: 'Profile & household', state: state(2), lockReason: 'Create your passkey first.' },
     { title: 'Proof of wealth', state: state(3), lockReason: 'Save your profile first.' },
-    { title: 'Pay pre-approval fee', state: state(4), lockReason: 'Connect a wallet first.' },
+    { title: 'Pay pre-approval fee', state: state(4), lockReason: 'Add a wallet or a Bitcoin address first.' },
   ];
 }
 
@@ -70,10 +80,13 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
  * progress; this keeps that shape. Step state lives here rather than in the URL
  * so the walkthrough survives moving between steps.
  *
- * Steps 3 and 4 are demo-only: connecting a wallet attaches the reference's seed
- * balances, and paying flips local state. Neither touches a chain — payment
- * execution and wallet connection are excluded from Week 1 — and both screens say
- * so rather than implying a transaction happened.
+ * Step 3 holds two different things. The browser-extension and WalletConnect
+ * rows are demo: connecting attaches the reference's seed balances and the rows
+ * are labelled demo. Bitcoin is real but read-only: the resident pastes an
+ * address and the server reads its balance from a public source, with no
+ * ownership proof, so the screen says so rather than implying control. Step 4's
+ * payment still flips local state only. Real wallet connection and payment
+ * execution remain excluded (contract section 9 as narrowed by v1.7).
  */
 export function OnboardingFlow({
   userId,
@@ -86,6 +99,7 @@ export function OnboardingFlow({
   currentYear,
   initialCredentialId = null,
   store,
+  initialBitcoinAddresses = [],
 }: OnboardingFlowProps) {
   const router = useRouter();
   // The passkey is created before the pre-registration steps, as the reference's
@@ -97,6 +111,9 @@ export function OnboardingFlow({
     initialCredentialId ? 2 : 'account',
   );
   const [connected, setConnected] = useState<readonly string[]>([]);
+  const [bitcoinAddresses, setBitcoinAddresses] = useState<
+    readonly BitcoinAddressRecord[]
+  >(initialBitcoinAddresses);
   const [paid, setPaid] = useState(false);
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
   // The server's fee for a household size, tagged with the size it belongs to
@@ -137,7 +154,34 @@ export function OnboardingFlow({
   const tierMinimum = tier?.minUsdc ?? 280000;
 
   const linked = MOCK_WALLETS.filter((w) => connected.includes(w.key));
-  const wealthTotal = linked.reduce((sum, w) => sum + w.value, 0);
+  const demoTotal = linked.reduce((sum, w) => sum + w.value, 0);
+  const bitcoinTotal = bitcoinAddresses.reduce(
+    (sum, record) => sum + (record.usd ?? 0),
+    0,
+  );
+  const wealthTotal = demoTotal + bitcoinTotal;
+
+  // The Bitcoin actions both read and write on the server. The browser only
+  // shows the record the server returns, so a read that failed is presented as
+  // such rather than as a balance.
+  async function handleAddBitcoin(address: string) {
+    const record = await addBitcoinAddress(address);
+    // Re-adding an address the resident already saved is idempotent on the
+    // server and returns the existing row, so replace rather than append: the
+    // same address must never render twice.
+    setBitcoinAddresses((current) =>
+      current.some((existing) => existing.id === record.id)
+        ? current.map((existing) => (existing.id === record.id ? record : existing))
+        : [...current, record],
+    );
+  }
+
+  async function handleRemoveBitcoin(id: number) {
+    await removeBitcoinAddress(id);
+    setBitcoinAddresses((current) =>
+      current.filter((record) => record.id !== id),
+    );
+  }
 
   const fileRows = useMemo<readonly FileRow[]>(() => {
     const cits = snapshot?.citizenships.join(' / ') ?? '—';
@@ -145,6 +189,17 @@ export function OnboardingFlow({
       .map((r) => `${r.countryCode} ${r.fromYear}–${r.toYear === 'present' ? 'now' : r.toYear}`)
       .join(' · ') ?? '—';
     const names = snapshot?.members.map((m) => m.name.split(' ')[0]).join(', ') ?? '';
+    const sources: string[] = [];
+    if (linked.length > 0) {
+      sources.push(`${linked.length} wallet${linked.length === 1 ? '' : 's'}`);
+    }
+    if (bitcoinAddresses.length > 0) {
+      sources.push(
+        `${bitcoinAddresses.length} bitcoin address${
+          bitcoinAddresses.length === 1 ? '' : 'es'
+        }`,
+      );
+    }
     return [
       {
         label: 'Applicant',
@@ -174,13 +229,24 @@ export function OnboardingFlow({
       },
       {
         label: 'Proof of wealth',
-        value: `${linked.length} wallet${linked.length === 1 ? '' : 's'} · $${wealthTotal.toLocaleString('en-US')}`,
+        value: `${sources.length > 0 ? sources.join(' · ') : 'No sources'} · $${wealthTotal.toLocaleString('en-US')}`,
         status: wealthTotal >= tierMinimum ? 'Meets tier' : 'Below tier',
         tone: wealthTotal >= tierMinimum ? 'success' : 'warning',
-        demo: true,
+        // All-demo only when every counted source is a demo wallet. Once a real
+        // bitcoin read is in the total, the row drops the blanket Demo chip and
+        // names its sources instead.
+        demo: bitcoinAddresses.length === 0 && linked.length > 0,
       },
     ];
-  }, [snapshot, householdSize, tierName, tierMinimum, linked.length, wealthTotal]);
+  }, [
+    snapshot,
+    householdSize,
+    tierName,
+    tierMinimum,
+    linked.length,
+    wealthTotal,
+    bitcoinAddresses.length,
+  ]);
 
   return (
     <div
@@ -238,6 +304,9 @@ export function OnboardingFlow({
             onBack={() => setStep(2)}
             tierName={tierName}
             tierMinimum={tierMinimum}
+            bitcoinAddresses={bitcoinAddresses}
+            onAddBitcoin={handleAddBitcoin}
+            onRemoveBitcoin={handleRemoveBitcoin}
           />
         ) : (
           <FeeStep
