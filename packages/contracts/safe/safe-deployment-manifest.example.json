@@ -1,5 +1,5 @@
 {
-  "$comment": "Shape example only. The zero addresses and remaining [arbitrary] markers are placeholders, not configuration: nothing is deployed, so no resident address exists yet. The Safe version, factory, singleton, handler and the signer derivation are recorded in @kade/shared, and the account address is derived per resident.",
+  "$comment": "Shape example only. The zero addresses and remaining [arbitrary] markers are placeholders, not configuration: this is a shape example, so no resident address is filled in. The Safe version, factory, singleton, handler and the signer derivation are recorded in @kade/shared, and the account address is derived per resident.",
   "deploymentTxHash": null,
   "deploymentChainId": 11155111,
   "safeAddress": "0x0000000000000000000000000000000000000000",

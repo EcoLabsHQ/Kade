@@ -84,13 +84,11 @@ export function LoginScreen({
         background: '#fff',
         display: 'flex',
         alignItems: 'stretch',
-        animation: 'fadeUp .2s ease-out',
       }}
     >
       <SetupSidebar steps={STEPS} network={network} accountState={accountState} />
 
       <main
-        className="kade-content"
         style={{
           flex: 1,
           minWidth: 0,

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kade.local/schemas/SafeDeploymentManifest.schema.json",
   "title": "SafeDeploymentManifest",
-  "description": "Exactly the fields D4 requires to be persisted for the resident Safe (week-1-frozen-delivery-contract.md section 4, D4). Shape only: the example carries placeholders because nothing is deployed. The Safe version, factory, singleton, handler and signer derivation are recorded in @kade/shared. The input fields mirror @kade/shared SafeDeploymentInputs; the persisted fields mirror its SafeDeploymentRecord. No deployment, registration or broadcast is implied by this file.",
+  "description": "Exactly the fields D4 requires to be persisted for the resident Safe (week-1-frozen-delivery-contract.md section 4, D4). Shape only: the example carries placeholders because it is a shape example. The Safe version, factory, singleton, handler and signer derivation are recorded in @kade/shared. The input fields mirror @kade/shared SafeDeploymentInputs; the persisted fields mirror its SafeDeploymentRecord. No deployment, registration or broadcast is implied by this file.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -184,6 +184,7 @@ export function OnboardingFlow({
 
   return (
     <div
+      className="kade-shell"
       style={{
         minHeight: '100vh',
         background: '#fff',
@@ -194,7 +195,6 @@ export function OnboardingFlow({
       <SetupSidebar steps={steps(step, paid)} network={network} accountState={accountState} />
 
       <main
-        className="kade-content"
         style={{
           flex: 1,
           minWidth: 0,

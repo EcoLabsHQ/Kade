@@ -16,7 +16,7 @@ import { initializerHash, predictSafeAddress } from './derive';
  * the factory is asked for its creation code rather than a local copy being
  * trusted.
  *
- * Nothing is deployed. The Safe address is counterfactual, which is the normal
+ * The address is counterfactual until the Safe is deployed, which is the normal
  * state of a Safe before its first transaction — not a shortcoming of this
  * derivation.
  */

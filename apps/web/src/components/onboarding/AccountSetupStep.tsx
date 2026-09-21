@@ -17,7 +17,7 @@ import type { SignerPersistence } from '@/lib/passkey/credential';
  * The address shown afterwards is the resident's account: the Safe the passkey
  * will own. It is derived from the credential's public key plus inputs frozen in
  * `@kade/shared`, so it is the same address every time and different for every
- * resident. It is counterfactual — nothing is deployed — which is the ordinary
+ * resident. It is counterfactual until the Safe is deployed, which is the ordinary
  * state of a Safe before its first transaction.
  */
 export interface AccountSetupStepProps {

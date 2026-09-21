@@ -139,7 +139,8 @@ address.
 > will never deploy, so the application reads the code from the factory at
 > runtime. See `DEPLOYED_SAFE_PROXY_CREATION_CODE` in `@kade/shared`.
 >
-> Nothing is deployed, so no real account address exists yet on chain.
+> A resident Safe is deployed on Sepolia; the example below still carries
+> placeholders because it is a shape example, not a record.
 
 ```bash
 # Validate the D4 manifest shape against its JSON Schema (read-only).
