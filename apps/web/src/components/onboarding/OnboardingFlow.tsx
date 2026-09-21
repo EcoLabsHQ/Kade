@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { TIERS, type FeeMode } from '@kade/shared';
 import { previewPreapprovalFee } from '@/app/onboarding/actions';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
+import { ContentContainer } from '@/components/shell/ContentContainer';
 import { SiteFooter } from '@/components/shell/SiteFooter';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { AccountState } from '@/components/auth/AccountSummary';
@@ -193,17 +194,15 @@ export function OnboardingFlow({
       <SetupSidebar steps={steps(step, paid)} network={network} accountState={accountState} />
 
       <main
+        className="kade-content"
         style={{
           flex: 1,
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: '1160px',
-          width: '100%',
-          margin: '0 auto',
-          padding: '36px 40px 64px',
         }}
       >
+        <ContentContainer footer={<SiteFooter />}>
         {step === 'account' ? (
           <AccountSetupStep
             rpId={typeof window === 'undefined' ? 'localhost' : window.location.hostname}
@@ -253,8 +252,7 @@ export function OnboardingFlow({
             }}
           />
         )}
-
-        <SiteFooter />
+        </ContentContainer>
       </main>
     </div>
   );
