@@ -322,16 +322,18 @@ export class SafeDeploymentNotPredictedError extends Error {
   }
 }
 
-/** Raised when the manifest cannot be written without the service role. */
-export class SafeDeploymentServiceRoleError extends Error {
-  constructor() {
-    super(
-      'Recording the Safe address and its manifest inputs requires ' +
-        'SUPABASE_SERVICE_ROLE_KEY: those columns are not writable by the ' +
-        'authenticated role. Set it in the server environment (see ' +
-        '.env.example).',
-    );
-    this.name = 'SafeDeploymentServiceRoleError';
+/**
+ * Raised when the record could not be written.
+ *
+ * The write goes through `record_safe_prediction` / `record_safe_deployment_outcome`,
+ * which are SECURITY DEFINER functions scoped to the caller's own row, so no
+ * service-role key is involved. This error means the function call itself
+ * failed — a missing migration, or a database problem — not a missing key.
+ */
+export class SafeDeploymentWriteError extends Error {
+  constructor(detail: string) {
+    super(`Recording the Safe deployment record failed: ${detail}`);
+    this.name = 'SafeDeploymentWriteError';
   }
 }
 
@@ -390,60 +392,36 @@ export interface SafeDeploymentStore {
 }
 
 export interface SafeDeploymentStoreClients {
-  /** Session-scoped client; row level security applies as the resident. */
+  /**
+   * Session-scoped client. Row level security applies as the resident, and the
+   * writes go through SECURITY DEFINER functions, so no elevated client is
+   * needed anywhere in this store.
+   */
   readonly getClient: () => Promise<SupabaseClient>;
-  /** Elevated client, or null when the service-role key is absent. */
-  readonly getServiceClient: () => Promise<SupabaseClient | null>;
 }
 
-function predictionRow(
-  profileId: string,
-  manifest: SafeDeploymentManifest,
-): Record<string, unknown> {
-  return {
-    profile_id: profileId,
-    safe_address: manifest.safeAddress,
-    status: 'predicted',
-    deployment_tx_hash: null,
-    deployment_chain_id: manifest.deploymentChainId,
-    predicted_l2_addresses: manifest.predictedL2Addresses,
-    safe_version: manifest.safeVersion,
-    factory: manifest.factory,
-    singleton: manifest.singleton,
-    initializer: manifest.initializer,
-    handler: manifest.handler,
-    owner: manifest.owner,
-    threshold: manifest.threshold,
-    salt: manifest.salt,
-    creation_code_assumptions: manifest.creationCodeAssumptions,
-    provenance: manifest.provenance,
-  };
-}
 
 export function createSafeDeploymentStore(
   clients: SafeDeploymentStoreClients,
 ): SafeDeploymentStore {
-  async function requireServiceClient(): Promise<SupabaseClient> {
-    const serviceClient = await clients.getServiceClient();
-    if (serviceClient === null) throw new SafeDeploymentServiceRoleError();
-    return serviceClient;
-  }
-
-  /** Run an update on the service client; null means no row matched. */
-  async function updateOutcome(
-    build: (client: SupabaseClient) => PromiseLike<{
-      data: unknown;
-      error: { message: string } | null;
-    }>,
-  ): Promise<PersistedSafeDeployment | null> {
-    const client = await requireServiceClient();
-    const result = await build(client);
-    if (result.error) {
-      throw new Error(
-        `Recording the Safe deployment outcome failed: ${result.error.message}`,
-      );
+  /**
+   * Call a SECURITY DEFINER writer and return the row it wrote.
+   *
+   * The functions are scoped to `profile_id = auth.uid()` and are the only way
+   * these columns can be written, so the session client is enough — there is no
+   * elevated client anywhere in this store.
+   */
+  async function callWriter(
+    fn: string,
+    args: Record<string, unknown>,
+  ): Promise<PersistedSafeDeployment> {
+    const client = await clients.getClient();
+    const { data, error } = await client.rpc(fn, args);
+    if (error) throw new SafeDeploymentWriteError(error.message);
+    if (!data) {
+      throw new SafeDeploymentWriteError(`${fn} returned no row`);
     }
-    return result.data ? toPersisted(result.data as SafeDeploymentRow) : null;
+    return toPersisted(data as SafeDeploymentRow);
   }
 
   /** Read through the resident-scoped client, so RLS proves ownership. */
@@ -466,38 +444,23 @@ export function createSafeDeploymentStore(
   return {
     async recordPrediction(input) {
       const manifest = buildSafeDeploymentManifest(input);
-      const serviceClient = await requireServiceClient();
 
-      // `ignoreDuplicates` maps to ON CONFLICT DO NOTHING against the UNIQUE
-      // safe_address, so a repeat prediction is the same row, not a duplicate,
-      // and cannot move the address's inputs.
-      const upsert = await serviceClient
-        .from('safe_deployments')
-        .upsert(predictionRow(input.profileId, manifest), {
-          onConflict: 'safe_address',
-          ignoreDuplicates: true,
-        });
-      if (upsert.error) {
-        throw new Error(
-          `Storing the Safe prediction failed: ${upsert.error.message}`,
-        );
-      }
-
-      const saved = await read((client) =>
-        client
-          .from('safe_deployments')
-          .select('*')
-          .eq('profile_id', input.profileId)
-          .eq('safe_address', manifest.safeAddress)
-          .maybeSingle(),
-      );
-      if (saved === null) {
-        throw new Error(
-          'The Safe prediction was written but could not be read back; the ' +
-            'record cannot be confirmed.',
-        );
-      }
-      return saved;
+      // `record_safe_prediction` inserts ON CONFLICT (safe_address) DO NOTHING,
+      // so a repeat prediction is the same row, not a duplicate, and cannot
+      // move the address's inputs. It returns the row it wrote, so there is no
+      // separate read-back to race against.
+      return callWriter('record_safe_prediction', {
+        p_safe_address: manifest.safeAddress,
+        p_predicted_l2_addresses: manifest.predictedL2Addresses,
+        p_safe_version: manifest.safeVersion,
+        p_factory: manifest.factory,
+        p_singleton: manifest.singleton,
+        p_initializer: manifest.initializer,
+        p_handler: manifest.handler,
+        p_owner: manifest.owner,
+        p_salt: manifest.salt,
+        p_creation_code_assumptions: manifest.creationCodeAssumptions,
+      });
     },
 
     async recordDeployment(input) {
@@ -508,59 +471,41 @@ export function createSafeDeploymentStore(
           : assertBytes32(input.deploymentTxHash, 'deploymentTxHash');
       const now = new Date().toISOString();
 
-      const update: Record<string, unknown> = {
-        status: 'deployed',
-        provenance: 'approved',
-        failure_reason: null,
-        deployed_at: now,
-        updated_at: now,
-      };
-      // A hash we do not have must not overwrite one we already recorded: a
-      // retry that finds the contract already present records the deployed
-      // state, not a regression to "no transaction".
-      if (deploymentTxHash !== null) {
-        update.deployment_tx_hash = deploymentTxHash;
+      // The function has no insert path: an outcome can only move a row that was
+      // already predicted, and a null hash never clears one already recorded.
+      try {
+        return await callWriter('record_safe_deployment_outcome', {
+          p_safe_address: safeAddress,
+          p_status: 'deployed',
+          p_deployment_tx_hash: deploymentTxHash,
+          p_failure_reason: null,
+        });
+      } catch (cause) {
+        // The function raises P0002 when no prediction belongs to this resident.
+        if (cause instanceof SafeDeploymentWriteError && /no Safe prediction/i.test(cause.message)) {
+          throw new SafeDeploymentNotPredictedError(safeAddress);
+        }
+        throw cause;
       }
-
-      const saved = await updateOutcome((client) =>
-        client
-          .from('safe_deployments')
-          .update(update)
-          .eq('profile_id', input.profileId)
-          .eq('safe_address', safeAddress)
-          .select('*')
-          .maybeSingle(),
-      );
-      // An update that matched no row means the address was never predicted:
-      // there is no insert path for an outcome.
-      if (saved === null) {
-        throw new SafeDeploymentNotPredictedError(safeAddress);
-      }
-      return saved;
     },
 
     async recordDeploymentFailure(input) {
       const safeAddress = assertAddress(input.safeAddress, 'safeAddress');
       const now = new Date().toISOString();
 
-      const saved = await updateOutcome((client) =>
-        client
-          .from('safe_deployments')
-          .update({
-            status: 'failed',
-            failure_reason: input.reason,
-            failed_at: now,
-            updated_at: now,
-          })
-          .eq('profile_id', input.profileId)
-          .eq('safe_address', safeAddress)
-          .select('*')
-          .maybeSingle(),
-      );
-      if (saved === null) {
-        throw new SafeDeploymentNotPredictedError(safeAddress);
+      try {
+        return await callWriter('record_safe_deployment_outcome', {
+          p_safe_address: safeAddress,
+          p_status: 'failed',
+          p_deployment_tx_hash: null,
+          p_failure_reason: input.reason,
+        });
+      } catch (cause) {
+        if (cause instanceof SafeDeploymentWriteError && /no Safe prediction/i.test(cause.message)) {
+          throw new SafeDeploymentNotPredictedError(safeAddress);
+        }
+        throw cause;
       }
-      return saved;
     },
 
     async getByAddress(profileId, safeAddress) {
@@ -596,10 +541,9 @@ export function createSafeDeploymentStore(
  * The store backed by the real Supabase clients.
  *
  * Throws `SafeDeploymentNotConfiguredError` when the database is not
- * configured, rather than silently returning a store that cannot persist. The
- * service client is resolved lazily and may be null; a write then raises
- * `SafeDeploymentServiceRoleError`, which is explicit rather than a partial
- * success.
+ * configured, rather than silently returning a store that cannot persist.
+ * Writes go through SECURITY DEFINER functions scoped to the caller's own row,
+ * so no service-role key is required.
  */
 export function safeDeploymentStore(): SafeDeploymentStore {
   if (!isAuthConfigured(readAuthEnv())) {
@@ -611,12 +555,6 @@ export function safeDeploymentStore(): SafeDeploymentStore {
         '@/lib/supabase/server'
       );
       return createSupabaseServerClient();
-    },
-    getServiceClient: async () => {
-      const { createSupabaseServiceClient, isServiceRoleConfigured } =
-        await import('@/lib/supabase/server');
-      if (!isServiceRoleConfigured()) return null;
-      return createSupabaseServiceClient();
     },
   });
 }
