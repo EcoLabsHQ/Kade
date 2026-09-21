@@ -9,6 +9,8 @@ export interface AppShellProps {
   readonly children: ReactNode;
   readonly email: string | null;
   readonly safeAddress?: string | null;
+  readonly safeDeployed?: boolean;
+  readonly explorerUrl?: string | null;
   readonly network?: string;
   readonly nav?: readonly NavGroupConfig[];
   /** When present, the sidebar shows the pre-registration stepper instead of nav. */
@@ -36,6 +38,8 @@ export function AppShell({
   children,
   email,
   safeAddress = null,
+  safeDeployed = false,
+  explorerUrl = null,
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
   stepper,
@@ -54,6 +58,8 @@ export function AppShell({
         stepper={stepper}
         network={network}
         safeAddress={safeAddress}
+        safeDeployed={safeDeployed}
+        explorerUrl={explorerUrl}
         email={email}
       />
       <main

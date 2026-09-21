@@ -7,6 +7,7 @@ import { PasskeyEnrolmentPanel } from '@/components/passkey/PasskeyEnrolmentPane
 import { providerLabel } from '@/lib/auth/provider-label';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 import { getSessionUser } from '@/lib/supabase/server';
+import { loadShellSafe } from '@/lib/safe/shell';
 import { loadPasskeyCredential } from './passkey-actions';
 
 export const dynamic = 'force-dynamic';
@@ -17,10 +18,16 @@ export default async function AccountPage() {
     redirect('/login');
   }
   const configured = isAuthConfigured(readAuthEnv());
+  const shellSafe = await loadShellSafe(session.userId);
   const storedCredential = await loadPasskeyCredential();
 
   return (
-    <AppShell email={session.email}>
+    <AppShell
+      email={session.email}
+      safeAddress={shellSafe.address}
+      safeDeployed={shellSafe.deployed}
+      explorerUrl={shellSafe.explorerUrl}
+    >
       <ContentContainer>
         <h1
           style={{
