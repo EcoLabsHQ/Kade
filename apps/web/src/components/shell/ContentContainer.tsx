@@ -4,11 +4,11 @@ import type { ReactNode } from 'react';
 export function ContentContainer({ children }: { children: ReactNode }) {
   return (
     <div
+      className="kade-content"
       style={{
         maxWidth: '1160px',
         width: '100%',
         margin: '0 auto',
-        padding: '36px 40px 64px',
         animation: 'fadeUp .2s ease-out',
       }}
     >

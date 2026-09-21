@@ -49,11 +49,10 @@ export function AppShell({
 }: AppShellProps) {
   return (
     <div
+      className="kade-shell"
       style={{
         minHeight: '100vh',
         background: '#fff',
-        display: 'flex',
-        alignItems: 'stretch',
       }}
     >
       <Sidebar

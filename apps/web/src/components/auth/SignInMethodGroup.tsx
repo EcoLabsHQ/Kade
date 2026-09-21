@@ -67,7 +67,8 @@ export function SignInMethodGroup({
     <div
       role="radiogroup"
       aria-label="Sign-in method"
-      style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}
+      className="kade-grid-2"
+      style={{ gap: '10px' }}
     >
       {OPTIONS.map((option) => {
         const selected = value === option.key;

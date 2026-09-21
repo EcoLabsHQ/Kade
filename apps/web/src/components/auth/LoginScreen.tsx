@@ -77,17 +77,17 @@ export function LoginScreen({
 
   return (
     <div
+      className="kade-shell"
       style={{
         minHeight: '100vh',
         background: '#fff',
-        display: 'flex',
-        alignItems: 'stretch',
         animation: 'fadeUp .2s ease-out',
       }}
     >
       <SetupSidebar steps={STEPS} network={network} accountState={accountState} />
 
       <main
+        className="kade-content"
         style={{
           flex: 1,
           minWidth: 0,
@@ -96,7 +96,6 @@ export function LoginScreen({
           maxWidth: '1160px',
           width: '100%',
           margin: '0 auto',
-          padding: '36px 40px 64px',
         }}
       >
         <div
