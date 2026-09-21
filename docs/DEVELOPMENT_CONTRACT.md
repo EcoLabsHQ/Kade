@@ -593,11 +593,12 @@ reviewer/adversarial gate
   |   move known-good
   |
   v
-next corrective iteration
+review session: fix batch -> recheck -> resume
 ```
 
-The reviewer runs once per completed development iteration. It does not run
-after every granular commit.
+The reviewer runs as one incremental review session per completed development
+iteration. It runs in several modes within that session, but not after every
+granular commit.
 
 The iteration is a state machine, not a linear script:
 
@@ -620,11 +621,12 @@ The iteration is a state machine, not a linear script:
 
 - **VERIFY FAIL** returns to IMPLEMENT after the failure protocol in section 13.
   The reviewer is not invoked.
-- **REVIEW FAIL** begins a **new corrective iteration**: fix root causes, run
-  VERIFY again, and invoke a fresh reviewer only after VERIFY passes. Findings
-  are evidence, not implementation instructions.
+- **REVIEW FAIL** pauses the review session on a batch of at most three blocking
+  findings. The batch is corrected, verified, and rechecked; the session then
+  resumes instead of starting over. Findings are evidence, not implementation
+  instructions.
 - The `known-good` tag stays fixed for the entire iteration. It must not move
-  during IMPLEMENT, VERIFY failure recovery, or REVIEW failure recovery.
+  during IMPLEMENT, VERIFY failure recovery, or review recovery.
 
 The reviewer always evaluates:
 
@@ -632,23 +634,53 @@ The reviewer always evaluates:
 git diff known-good...HEAD
 ```
 
-even across corrective iterations, so all corrective work remains visible
-relative to the last trusted baseline.
+even across corrective work, so all corrective work remains visible relative to
+the last trusted baseline.
 
-### 11.1 Circuit breaker
+### 11.1 Review Session
+
+Review is incremental. A **review session** spans one iteration and may run the
+reviewer in several modes:
+
+```text
+DISCOVERY  find at most three blocking findings, then pause
+RECHECK    confirm the batch fixes; no unrelated discovery
+RESUME     continue discovery from the recorded state
+```
+
+The session is complete only when every scope has been reviewed, no blocking
+finding is open, and no scope was invalidated by later corrective work. A fresh
+full review is not required after each corrective batch; that would discard the
+session's work and re-audit already-closed scopes.
+
+Session state is persisted per `docs/review-state.md`.
+
+### 11.2 Circuit Breakers
 
 An unbounded `while not reviewer_passes: fix()` loop is forbidden; it produces
 exactly the patch-on-patch behavior this contract prohibits. The orchestrator
-drives the cycle and runs root-cause recovery plus VERIFY between every
-corrective iteration.
+drives the cycle and runs root-cause recovery plus focused tests between every
+batch.
 
-Operational limit (tunable by evals):
+Operational limits (tunable by evals):
 
 ```text
-MAX_CORRECTIVE_ITERATIONS = 3
+MAX_BLOCKERS_PER_BATCH           = 3
+MAX_RECHECK_ATTEMPTS_PER_FINDING = 2
+MAX_FULL_REVIEW_RESTARTS         = 1
 ```
 
-When the limit is exceeded:
+There is deliberately no limit on the number of healthy batches. A sequence such
+as `3 blockers -> fix -> 2 blockers -> fix -> 0 blockers` is a healthy session.
+
+A full `DISCOVERY` restart is permitted at most once, and only when corrective
+work materially invalidates the session: the architecture or public interfaces
+change, the schema changes substantially, a security boundary changes, earlier
+reviewed assumptions no longer hold, or large unrelated implementation changes
+are introduced. Otherwise the existing session continues with `RECHECK` then
+`RESUME`.
+
+When a limit is exceeded:
 
 1. STOP;
 2. report the repeated failure with evidence;
@@ -656,13 +688,14 @@ When the limit is exceeded:
 
 Do not keep patching.
 
-## 12. Reviewer / Adversarial Gate
+## 12. Reviewer / Risk-Based Adversarial Gate
 
 After the implementation loop is complete and mechanical verification passes,
 the `reviewer` subagent must independently inspect the complete change from the
 last known-good baseline to the current candidate state.
 
-The reviewer runs once per completed development iteration, not once per commit.
+The reviewer runs as a single incremental review session per completed
+development iteration, not once per commit.
 
 The reviewer must initially operate read-only. Its job is not to modify the
 implementation but to determine whether the candidate state can safely be
@@ -739,6 +772,10 @@ The reviewer must consider:
 - unrelated changes;
 - cases where tests pass but behavior may still be incorrect.
 
+This list is assessed as risk dictates. The reviewer is not required to
+exhaustively check every item for every change; it prioritizes what the diff
+could plausibly affect.
+
 The reviewer should actively challenge assumptions made by the implementation.
 However, it must distinguish:
 
@@ -797,29 +834,31 @@ The reviewer must finish with exactly one verdict:
 
 ```text
 REVIEW PASSED
-```
-
-or:
-
-```text
 REVIEW FAILED
+REVIEW INCOMPLETE
 ```
 
-`REVIEW PASSED` means no concrete blocking correctness or regression problem was
-found.
+`REVIEW PASSED` means the review session is complete: every scope has been
+reviewed, no blocking finding is open, and no scope was invalidated by later
+corrective work. This is the only verdict that permits promotion.
 
-`REVIEW FAILED` means at least one issue prevents the candidate from safely
-becoming known-good.
+`REVIEW FAILED` means at least one blocking finding is open, or a recheck failed.
+Discovery pauses on the reported batch.
 
-If review fails:
+`REVIEW INCOMPLETE` means the current batch is resolved but scopes remain
+un-reviewed. Review resumes from the recorded state.
+
+Warnings never by themselves produce `REVIEW FAILED`.
+
+If review fails or is incomplete:
 
 1. do not move `known-good`;
 2. treat findings as evidence, not implementation instructions;
 3. validate blocking findings before acting on them;
-4. begin a new corrective iteration and correct root causes rather than blindly
-   satisfying reviewer wording;
+4. correct root causes rather than blindly satisfying reviewer wording;
 5. rerun mechanical verification;
-6. run a fresh reviewer only after the corrective iteration is complete.
+6. recheck the batch, then resume the session — do not start a fresh full review
+   unless section 11.2 permits a restart.
 
 Correcting a review means fixing the underlying defect, not producing the
 smallest patch that makes the reviewer stop objecting.
@@ -827,12 +866,72 @@ smallest patch that makes the reviewer stop objecting.
 Only after:
 
 ```text
-mechanical verification PASS
+mechanical verification PASS on the exact promoted HEAD
     AND
-reviewer/adversarial verification PASS
+review session COMPLETE (REVIEW PASSED)
 ```
 
 may the candidate be promoted to known-good.
+
+### 12.6 Risk-Based Review
+
+Review is **risk-based adversarial**, not exhaustive. The reviewer's mission is
+to find material regressions introduced by the candidate, prioritizing effort
+according to risk. It is not required to inspect every file, and a clean review
+is a valid outcome.
+
+Review effort scales with the change, not with the repository. Trivial changes
+(docs, comments, an isolated fix) are reviewed with targeted reads. Cross-cutting
+or security-critical changes may justify additional depth or delegation. A
+one-line fix must not be escalated into a multi-agent review.
+
+### 12.7 Materiality Threshold
+
+A finding may block promotion only when it has all of:
+
+- concrete evidence (a path and line, and/or a diff hunk);
+- a plausible, specific failure mode;
+- a violated contract, invariant, or material regression;
+- introduction or exposure by this candidate.
+
+Stale wording, formatting, naming preference, speculative concerns, and
+pre-existing issues are not blocking findings. A factually false claim is
+material only when it misstates behavior in a way that would mislead an operator
+or reviewer; pure phrasing is not.
+
+### 12.8 Review Session State
+
+Incremental review requires persisted state. Each iteration keeps its session
+state under `.review/<iteration>/`, with the schema defined in
+`docs/review-state.md`.
+
+The state records reviewed scopes, open and resolved findings with stable ids
+(`F1`, `F2`, …), and the last verdict. The orchestrator owns and writes it; the
+reviewer is read-only and returns updated state, which the orchestrator persists.
+Because the completed session is the evidence justifying promotion, it is
+committed with the promotion.
+
+A `complete` scope remains valid until later corrective work touches its files,
+at which point it is invalidated back to `partial` and revisited on resume.
+
+### 12.9 Delegated Scoped Review
+
+The reviewer may act as a review lead and delegate a single domain to the
+`subreviewer` agent when a change is cross-cutting or security-critical.
+
+A delegated subreviewer:
+
+- is read-only;
+- receives exactly one narrow scope;
+- returns evidence-backed findings or `NO_FINDINGS_IN_SCOPE`;
+- never issues a verdict.
+
+The reviewer, not the delegate, deduplicates findings, rejects speculative ones,
+requires evidence, classifies severity, selects the batch of at most three
+blockers, and issues the verdict.
+
+Delegation must reduce effort, not multiply it. When a scope is not affected by
+the diff, it is marked `not_applicable` and no subreviewer is launched.
 
 ## 13. Failure Protocol
 
@@ -919,12 +1018,20 @@ Required state:
 ```text
 requested behavior implemented
         +
-mechanical verification PASS
+mechanical verification PASS on the exact promoted HEAD
         +
-reviewer/adversarial verification PASS
+review session COMPLETE (REVIEW PASSED)
         +
-no unresolved blocking findings
+no unresolved blocking finding
+        +
+no reviewed scope invalidated by later corrective work
+        +
+no unresolved material regression known
 ```
+
+This preserves the strength of known-good without requiring a fresh full review
+after every corrective batch. The session's incremental coverage, not a repeated
+full audit, is what establishes that the candidate was reviewed.
 
 Then:
 
@@ -962,6 +1069,8 @@ A task is DONE only when:
 - the diff contains no unexplained unrelated changes;
 - reviewer/adversarial gate passes;
 - reviewer findings contain no unresolved blocking issues;
+- the review session is complete, with its state persisted under `.review/`;
+- no reviewed scope remains invalidated by later corrective work;
 - commits are logically structured and granular;
 - no unexplained patch-on-patch chain remains;
 - recovery strategy was explicitly considered when historical regression
