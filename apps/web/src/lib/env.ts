@@ -147,3 +147,15 @@ export function readBitcoinApiBase(): string {
     process.env.KADE_BITCOIN_API_BASE?.trim() || DEFAULT_BITCOIN_API_BASE
   );
 }
+
+/**
+ * Optional server-only override for the EVM balance explorer base.
+ *
+ * Server-only, and deliberately **not** `NEXT_PUBLIC_`. When set
+ * (`KADE_EVM_EXPLORER_API_BASE`), every chain is read from this self-hosted
+ * Blockscout instance; when null the per-chain defaults in `EVM_READ_CHAINS`
+ * are used. There is no API key either way.
+ */
+export function readEvmExplorerApiBase(): string | null {
+  return process.env.KADE_EVM_EXPLORER_API_BASE?.trim() || null;
+}
