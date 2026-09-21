@@ -33,9 +33,10 @@ import { isAuthConfigured, readAuthEnv } from '@/lib/env';
  * `SafeDeploymentNotPredictedError`.
  *
  * Everything the browser could not be trusted to name — the address, the
- * deployment transaction hash and the manifest inputs — is written through the
- * service role with the elevated client; the `authenticated` role has no
- * column privilege on any of them (migration 20260916000016).
+ * deployment transaction hash and the manifest inputs — is written through
+ * SECURITY DEFINER functions on the session client (migration 20260916000018);
+ * the `authenticated` role has no column privilege on any of them, and no
+ * service-role key is involved.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -469,8 +470,6 @@ export function createSafeDeploymentStore(
         input.deploymentTxHash === null
           ? null
           : assertBytes32(input.deploymentTxHash, 'deploymentTxHash');
-      const now = new Date().toISOString();
-
       // The function has no insert path: an outcome can only move a row that was
       // already predicted, and a null hash never clears one already recorded.
       try {
@@ -491,8 +490,6 @@ export function createSafeDeploymentStore(
 
     async recordDeploymentFailure(input) {
       const safeAddress = assertAddress(input.safeAddress, 'safeAddress');
-      const now = new Date().toISOString();
-
       try {
         return await callWriter('record_safe_deployment_outcome', {
           p_safe_address: safeAddress,

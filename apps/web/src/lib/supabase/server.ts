@@ -75,9 +75,15 @@ export async function createSupabaseServerClient(): Promise<SupabaseClient> {
  *
  * The service-role key bypasses row level security, so this client must never
  * reach the browser and every query made with it must still be scoped to the
- * signed-in resident explicitly. It is used only for columns the
- * `authenticated` role cannot write — currently
- * `passkey_credentials.signer_address`.
+ * signed-in resident explicitly.
+ *
+ * **Currently unused.** The two writes that once needed it — the passkey's
+ * `signer_address` and the Safe deployment record — now go through SECURITY
+ * DEFINER functions scoped to the caller's own row (migrations 17 and 18), so no
+ * service-role key is required anywhere in the application. It is kept because
+ * the capability is legitimate and the alternative to reaching for it is a
+ * migration; if nothing needs it by the next iteration, remove it rather than
+ * leave a bypass lying around.
  *
  * Sessions are disabled: the service client acts as the server, not as a user,
  * so it must not read or refresh the request's cookies.

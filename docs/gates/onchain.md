@@ -86,8 +86,8 @@ the schema string, resolver and revocable flag against the manifest.
 The EAS plan is generated and verified here and does not broadcast; these five
 transactions were sent from outside the repository. The repository's only send
 path is the resident-Safe deployment engine in
-`apps/web/src/lib/safe/deploy.ts`, which is wired into onboarding and has sent,
-so it has never sent a transaction.
+`apps/web/src/lib/safe/deploy.ts`, which is wired into onboarding and has sent
+the resident Safe deployment recorded above.
 
 > **Note:** `approvedBy` is the literal string "project owner". Replace it with a
 > named person if the gate record needs one.
