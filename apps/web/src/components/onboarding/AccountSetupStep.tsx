@@ -36,6 +36,15 @@ type AccountAddress =
   | { readonly state: 'ready'; readonly value: string }
   | { readonly state: 'unavailable' };
 
+/** Whether the account itself exists on chain yet. */
+type DeployState =
+  | { readonly state: 'idle' }
+  | { readonly state: 'deploying' }
+  /** Deployed, or already there. */
+  | { readonly state: 'ready' }
+  /** The passkey is real but the account is not on chain yet. */
+  | { readonly state: 'pending' };
+
 /** A 32-byte challenge. [arbitrary] client-side: a production flow issues it server-side. */
 function randomChallenge(): string {
   const bytes = new Uint8Array(32);
@@ -59,7 +68,32 @@ export function AccountSetupStep({
   );
   const [account, setAccount] = useState<AccountAddress>({ state: 'idle' });
   const [signer, setSigner] = useState<SignerPersistence | null>(null);
+  const [deploy, setDeploy] = useState<DeployState>({ state: 'idle' });
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Create the resident's account on chain.
+   *
+   * Runs after the passkey is persisted, because the deployment is derived from
+   * the stored credential rather than from anything the browser hands over. Not
+   * being able to deploy does not block the resident: the passkey is real and
+   * the address is already theirs, so the screen reports the account as not set
+   * up yet rather than as failed.
+   */
+  async function setUpAccount() {
+    setDeploy({ state: 'deploying' });
+    try {
+      const { deployAccount } = await import('@/app/onboarding/deploy-actions');
+      const result = await deployAccount();
+      setDeploy(
+        result.status === 'deployed' || result.status === 'already-deployed'
+          ? { state: 'ready' }
+          : { state: 'pending' },
+      );
+    } catch {
+      setDeploy({ state: 'pending' });
+    }
+  }
 
   async function resolveAccount(publicKey: string) {
     setAccount({ state: 'deriving' });
@@ -143,6 +177,7 @@ export function AccountSetupStep({
       onEnrolled(credentialIdToReport);
       setStatus('done');
       await resolveAccount(publicKeyToDerive);
+      await setUpAccount();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -232,6 +267,15 @@ export function AccountSetupStep({
             >
               <AccountAddressLine account={account} />
             </div>
+            <div
+              style={{
+                marginTop: '6px',
+                fontSize: '12px',
+                color: tokens.muted,
+              }}
+            >
+              <DeployLine deploy={deploy} />
+            </div>
           </div>
         ) : null}
 
@@ -276,6 +320,19 @@ function AccountAddressLine({ account }: { readonly account: AccountAddress }) {
     );
   }
   return <span style={{ color: tokens.muted, fontWeight: 500 }}>—</span>;
+}
+
+function DeployLine({ deploy }: { readonly deploy: DeployState }) {
+  if (deploy.state === 'deploying') return <>Setting up your account…</>;
+  if (deploy.state === 'ready') {
+    return <>Your account is live on Sepolia.</>;
+  }
+  if (deploy.state === 'pending') {
+    // Honest: the passkey is theirs and the address is theirs, but the contract
+    // is not on chain yet. Never claim otherwise.
+    return <>We&rsquo;ll finish setting up your account shortly.</>;
+  }
+  return null;
 }
 
 function CheckMark() {
