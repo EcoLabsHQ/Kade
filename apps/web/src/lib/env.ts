@@ -129,3 +129,21 @@ export function readFeeMode(): FeeMode {
 export function readSepoliaRpcUrl(): string | null {
   return process.env.SEPOLIA_RPC_URL?.trim() || null;
 }
+
+/** [arbitrary] the public mempool.space Esplora endpoint. */
+const DEFAULT_BITCOIN_API_BASE = 'https://mempool.space';
+
+/**
+ * Base URL of the Bitcoin balance provider.
+ *
+ * Server-only, and deliberately **not** `NEXT_PUBLIC_`: the browser must never
+ * call the provider, so the resolved base is read in a server action and the
+ * balance is passed down as a value. There is no API key; the override exists so
+ * a self-hosted Esplora instance can be used (`KADE_BITCOIN_API_BASE`). Defaults
+ * to the public mempool.space endpoint.
+ */
+export function readBitcoinApiBase(): string {
+  return (
+    process.env.KADE_BITCOIN_API_BASE?.trim() || DEFAULT_BITCOIN_API_BASE
+  );
+}
