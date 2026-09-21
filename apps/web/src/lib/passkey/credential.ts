@@ -9,9 +9,10 @@
 /**
  * A credential as it is actually stored.
  *
- * `signerAddress` is nullable because the column is written with the service
- * role: when that capability is absent the credential still persists but the
- * derived signer address stays NULL rather than being faked.
+ * `signerAddress` is nullable because the column is written by a server-side
+ * derivation through a `SECURITY DEFINER` function: when that write fails the
+ * credential still persists but the derived signer address stays NULL rather
+ * than being faked.
  */
 export interface StoredPasskeyCredential {
   readonly credentialId: string;

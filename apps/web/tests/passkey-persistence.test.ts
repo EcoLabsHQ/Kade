@@ -17,8 +17,11 @@ import type { SavePasskeyCredentialInput } from '@/lib/passkey/credential';
  *   - only the columns the `authenticated` role is granted are inserted, and
  *     never `signer_address`;
  *   - the profile row is created before the credential's foreign key needs it;
- *   - the derived signer is written only through the service client, and its
- *     absence is reported rather than faked;
+ *   - the derived signer is written through the SECURITY DEFINER
+ *     `save_passkey_signer` function with the session client, keyed by the
+ *     credential id, and never through a service-role client;
+ *   - a failed signer write does not throw away the saved credential; it is
+ *     reported as `not-persisted`;
  *   - the signer comes from the public key, never from the caller's input.
  */
 
@@ -26,8 +29,6 @@ const hoisted = vi.hoisted(() => ({
   deriveAccount: vi.fn(),
   parseP256PublicKey: vi.fn(),
   createSupabaseServerClient: vi.fn(),
-  createSupabaseServiceClient: vi.fn(),
-  isServiceRoleConfigured: vi.fn(),
 }));
 
 vi.mock('@/app/onboarding/signer-actions', () => ({
@@ -40,8 +41,6 @@ vi.mock('@/lib/passkey/public-key', () => ({
 
 vi.mock('@/lib/supabase/server', () => ({
   createSupabaseServerClient: hoisted.createSupabaseServerClient,
-  createSupabaseServiceClient: hoisted.createSupabaseServiceClient,
-  isServiceRoleConfigured: hoisted.isServiceRoleConfigured,
 }));
 
 vi.mock('@/lib/env', () => ({
@@ -64,9 +63,16 @@ interface RecordedCall {
   readonly args: readonly unknown[];
 }
 
+interface RpcCall {
+  readonly fn: string;
+  readonly args: unknown;
+}
+
 interface FakeOptions {
   readonly credentialRow?: Record<string, unknown> | null;
   readonly user?: { id: string } | null;
+  /** Error the `save_passkey_signer` RPC should return, if any. */
+  readonly rpcError?: { message: string } | null;
 }
 
 class FakeQuery {
@@ -91,11 +97,6 @@ class FakeQuery {
 
   upsert(...args: unknown[]): this {
     this.record('upsert', args);
-    return this;
-  }
-
-  update(...args: unknown[]): this {
-    this.record('update', args);
     return this;
   }
 
@@ -134,11 +135,20 @@ class FakeQuery {
 function createFakeSupabase(options: FakeOptions = {}): {
   readonly client: SupabaseClient;
   readonly ops: RecordedCall[];
+  readonly rpcCalls: RpcCall[];
 } {
   const ops: RecordedCall[] = [];
+  const rpcCalls: RpcCall[] = [];
   const client = {
     from(table: string) {
       return new FakeQuery(table, ops, options);
+    },
+    rpc(fn: string, args: unknown) {
+      rpcCalls.push({ fn, args });
+      return Promise.resolve({
+        data: null,
+        error: options.rpcError ?? null,
+      });
     },
     auth: {
       async getUser() {
@@ -148,10 +158,15 @@ function createFakeSupabase(options: FakeOptions = {}): {
       },
     },
   };
-  return { client: client as unknown as SupabaseClient, ops };
+  return {
+    client: client as unknown as SupabaseClient,
+    ops,
+    rpcCalls,
+  };
 }
 
 const DERIVED_SIGNER = '0x00000000000000000000000000000000000000AA';
+const TAMPERED_SIGNER = '0x00000000000000000000000000000000000000FF';
 const STORED_ROW = {
   credential_id: 'cred-1',
   public_key: 'pk-1',
@@ -172,7 +187,6 @@ const WRITE: PasskeyCredentialWrite = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  hoisted.isServiceRoleConfigured.mockReturnValue(true);
   hoisted.parseP256PublicKey.mockReturnValue({ x: 11n, y: 22n });
   hoisted.deriveAccount.mockResolvedValue({
     signerAddress: DERIVED_SIGNER,
@@ -186,11 +200,8 @@ beforeEach(() => {
 
 describe('database passkey store', () => {
   it('writes only the resident-granted columns, never signer_address', async () => {
-    const { client, ops } = createFakeSupabase();
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-      getServiceClient: async () => null,
-    });
+    const { client, ops, rpcCalls } = createFakeSupabase();
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
 
     await store.save('user-1', WRITE);
 
@@ -205,14 +216,12 @@ describe('database passkey store', () => {
       user_verification: true,
     });
     expect(insert?.args[0]).not.toHaveProperty('signer_address');
+    expect(rpcCalls).toHaveLength(0);
   });
 
   it('creates the profile row before inserting the credential', async () => {
     const { client, ops } = createFakeSupabase();
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-      getServiceClient: async () => null,
-    });
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
 
     await store.save('user-1', WRITE);
 
@@ -230,29 +239,9 @@ describe('database passkey store', () => {
     expect(profileIndex).toBeLessThan(credentialIndex);
   });
 
-  it('leaves the signer NULL and reports it when no service client is configured', async () => {
-    const { client, ops } = createFakeSupabase();
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-      getServiceClient: async () => null,
-    });
-
-    const outcome = await store.save('user-1', {
-      ...WRITE,
-      signerAddress: DERIVED_SIGNER,
-    });
-
-    expect(outcome.signerAddressPersisted).toBe(false);
-    expect(ops.some((op) => op.method === 'update')).toBe(false);
-  });
-
-  it('writes the derived signer through the service client, scoped to the owner', async () => {
-    const { client, ops } = createFakeSupabase();
-    const { client: serviceClient, ops: serviceOps } = createFakeSupabase();
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-      getServiceClient: async () => serviceClient,
-    });
+  it('writes the derived signer through the definer function, keyed by credential id', async () => {
+    const { client, rpcCalls } = createFakeSupabase();
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
 
     const outcome = await store.save('user-1', {
       ...WRITE,
@@ -260,16 +249,32 @@ describe('database passkey store', () => {
     });
 
     expect(outcome.signerAddressPersisted).toBe(true);
-    const update = serviceOps.find(
-      (op) => op.table === 'passkey_credentials' && op.method === 'update',
-    );
-    expect(update?.args[0]).toEqual({ signer_address: DERIVED_SIGNER });
-    const eqs = serviceOps
-      .filter((op) => op.method === 'eq')
-      .map((op) => op.args);
-    expect(eqs).toContainEqual(['profile_id', 'user-1']);
-    expect(eqs).toContainEqual(['credential_id', 'cred-1']);
-    // The credential insert itself stays on the resident-scoped client.
+    expect(rpcCalls).toEqual([
+      {
+        fn: 'save_passkey_signer',
+        args: {
+          p_credential_id: 'cred-1',
+          p_signer_address: DERIVED_SIGNER,
+        },
+      },
+    ]);
+  });
+
+  it('keeps the credential and reports the signer unwritten when the function fails', async () => {
+    const { client, ops, rpcCalls } = createFakeSupabase({
+      rpcError: { message: 'permission denied for function save_passkey_signer' },
+    });
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
+
+    const outcome = await store.save('user-1', {
+      ...WRITE,
+      signerAddress: DERIVED_SIGNER,
+    });
+
+    expect(outcome.signerAddressPersisted).toBe(false);
+    expect(outcome.signerError).toMatch(/save_passkey_signer/);
+    expect(rpcCalls).toHaveLength(1);
+    // The credential insert still happened; the failure is not thrown away.
     expect(
       ops.some(
         (op) => op.table === 'passkey_credentials' && op.method === 'insert',
@@ -277,11 +282,19 @@ describe('database passkey store', () => {
     ).toBe(true);
   });
 
+  it('does not call the function when there is no derived signer', async () => {
+    const { client, rpcCalls } = createFakeSupabase();
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
+
+    const outcome = await store.save('user-1', WRITE);
+
+    expect(outcome).toEqual({ signerAddressPersisted: false });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
   it('loads the stored credential', async () => {
     const { client } = createFakeSupabase({ credentialRow: STORED_ROW });
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-    });
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
 
     expect(await store.getByUser('user-1')).toEqual({
       credentialId: 'cred-1',
@@ -296,9 +309,7 @@ describe('database passkey store', () => {
 
   it('returns null when the resident has no stored credential', async () => {
     const { client } = createFakeSupabase({ credentialRow: null });
-    const store = createDatabasePasskeyStore({
-      getClient: async () => client,
-    });
+    const store = createDatabasePasskeyStore({ getClient: async () => client });
 
     expect(await store.getByUser('user-1')).toBeNull();
   });
@@ -318,14 +329,12 @@ const ACTION_INPUT: SavePasskeyCredentialInput = {
 describe('savePasskeyCredential', () => {
   it('derives the signer from the public key and ignores a client-supplied address', async () => {
     const session = createFakeSupabase({ credentialRow: STORED_ROW });
-    const service = createFakeSupabase();
     hoisted.createSupabaseServerClient.mockResolvedValue(session.client);
-    hoisted.createSupabaseServiceClient.mockResolvedValue(service.client);
 
-    // A hostile caller smuggle a signer address; it must be ignored.
+    // A hostile caller smuggles a signer address; it must be ignored.
     const tampered = {
       ...ACTION_INPUT,
-      signerAddress: '0x00000000000000000000000000000000000000FF',
+      signerAddress: TAMPERED_SIGNER,
     } as unknown as SavePasskeyCredentialInput;
 
     const result = await savePasskeyCredential(tampered);
@@ -333,13 +342,17 @@ describe('savePasskeyCredential', () => {
     expect(hoisted.parseP256PublicKey).toHaveBeenCalledWith('pk-1');
     expect(hoisted.deriveAccount).toHaveBeenCalledWith('11', '22', 'user-1');
 
-    const update = service.ops.find((op) => op.method === 'update');
-    expect(update?.args[0]).toEqual({ signer_address: DERIVED_SIGNER });
-    expect(JSON.stringify(service.ops)).not.toContain(
-      '0x00000000000000000000000000000000000000FF',
-    );
+    expect(session.rpcCalls).toEqual([
+      {
+        fn: 'save_passkey_signer',
+        args: {
+          p_credential_id: 'cred-1',
+          p_signer_address: DERIVED_SIGNER,
+        },
+      },
+    ]);
+    expect(JSON.stringify(session.rpcCalls)).not.toContain(TAMPERED_SIGNER);
 
-    expect(session.ops.some((op) => op.method === 'update')).toBe(false);
     expect(result.credential.signerAddress).toBe(DERIVED_SIGNER);
     expect(result.signer).toEqual({
       status: 'persisted',
@@ -347,17 +360,14 @@ describe('savePasskeyCredential', () => {
     });
   });
 
-  it('saves without the signer and reports the missing capability when no service key is configured', async () => {
-    hoisted.isServiceRoleConfigured.mockReturnValue(false);
+  it('saves the credential and reports not-persisted when the signer write fails', async () => {
     const session = createFakeSupabase({
       credentialRow: { ...STORED_ROW, signer_address: null },
+      rpcError: { message: 'permission denied for function save_passkey_signer' },
     });
     hoisted.createSupabaseServerClient.mockResolvedValue(session.client);
 
     const result = await savePasskeyCredential(ACTION_INPUT);
-
-    expect(hoisted.deriveAccount).not.toHaveBeenCalled();
-    expect(hoisted.createSupabaseServiceClient).not.toHaveBeenCalled();
 
     // The resident's own columns are still written.
     expect(
@@ -365,13 +375,33 @@ describe('savePasskeyCredential', () => {
         (op) => op.table === 'passkey_credentials' && op.method === 'insert',
       ),
     ).toBe(true);
-    expect(session.ops.some((op) => op.method === 'update')).toBe(false);
+    expect(session.rpcCalls).toHaveLength(1);
 
     expect(result.credential.signerAddress).toBeNull();
     expect(result.signer.status).toBe('not-persisted');
     if (result.signer.status === 'not-persisted') {
-      expect(result.signer.reason).toMatch(/SUPABASE_SERVICE_ROLE_KEY/);
+      expect(result.signer.reason).toMatch(/save_passkey_signer/);
     }
+  });
+
+  it('saves without a signer and reports it when the public key is absent', async () => {
+    const session = createFakeSupabase({
+      credentialRow: { ...STORED_ROW, signer_address: null },
+    });
+    hoisted.createSupabaseServerClient.mockResolvedValue(session.client);
+
+    const result = await savePasskeyCredential({ ...ACTION_INPUT, publicKey: '' });
+
+    expect(hoisted.deriveAccount).not.toHaveBeenCalled();
+    expect(session.rpcCalls).toHaveLength(0);
+    expect(
+      session.ops.some(
+        (op) => op.table === 'passkey_credentials' && op.method === 'insert',
+      ),
+    ).toBe(true);
+
+    expect(result.credential.signerAddress).toBeNull();
+    expect(result.signer.status).toBe('not-persisted');
   });
 
   it('refuses a credential that did not require user verification', async () => {

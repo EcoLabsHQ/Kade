@@ -6,10 +6,11 @@ import { SIGNER_NOT_STORED_REASON } from '@/lib/passkey/credential';
 /**
  * The account panel must never render a server configuration detail.
  *
- * `savePasskeyCredential` returns a `not-persisted` reason that names
- * `SUPABASE_SERVICE_ROLE_KEY`. The onboarding surface hides exactly that, and
- * this pins the account surface to the same rule: honest about the outcome,
- * but in the product's language.
+ * `savePasskeyCredential` returns a `not-persisted` reason that may name
+ * database or server configuration. The onboarding surface hides that, and this
+ * pins the account surface to the same rule: honest about the outcome, but in
+ * the product's language. The mock reason below stands in for any such
+ * server-side detail.
  */
 
 const hoisted = vi.hoisted(() => ({
