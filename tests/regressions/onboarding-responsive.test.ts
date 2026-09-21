@@ -82,6 +82,23 @@ describe('onboarding flow collapses below the shell breakpoint', () => {
     for (const { file, className } of FLOW_GRIDS) {
       const source = readFileSync(`${ROOT}${file}`, 'utf8');
       expect(source, `${file} must use .${className}`).toContain(className);
+
+      // Presence of the class is not enough: an inline `gridTemplateColumns`
+      // on the same element would outrank the media query and the grid would
+      // stop collapsing while this test still passed. Assert the inline style
+      // that accompanies the class does not carry a column list.
+      const element = new RegExp(
+        `className="${className}"[\\s\\S]{0,200}?style=\\{\\{([\\s\\S]*?)\\}\\}`,
+      );
+      const match = source.match(element);
+      expect(
+        match,
+        `${file} must render ${className} with an inline style block`,
+      ).not.toBeNull();
+      expect(
+        match?.[1] ?? '',
+        `${className} must not pin gridTemplateColumns inline`,
+      ).not.toMatch(/gridTemplateColumns/);
     }
   });
 });
