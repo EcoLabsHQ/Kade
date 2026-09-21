@@ -12,6 +12,7 @@ export interface HouseholdEditorProps {
     index: number,
     patch: Partial<HouseholdMemberDraft>,
   ) => void;
+  readonly invalid?: boolean;
 }
 
 const labelStyle = {
@@ -49,12 +50,13 @@ export function HouseholdEditor({
   onAdd,
   onRemove,
   onUpdate,
+  invalid,
 }: HouseholdEditorProps) {
   return (
     <div
       style={{
         background: tokens.surface,
-        border: `1px solid ${tokens.border}`,
+        border: `1px solid ${invalid ? tokens.danger : tokens.border}`,
         borderRadius: '16px',
         padding: '22px 24px',
       }}

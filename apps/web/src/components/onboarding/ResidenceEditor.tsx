@@ -16,6 +16,7 @@ export interface ResidenceEditorProps {
     patch: Partial<Pick<Residence, 'fromYear' | 'toYear'>>,
   ) => void;
   readonly getCountryName: (code: CountryCode) => string;
+  readonly invalid?: boolean;
 }
 
 function yearRange(residence: Residence): string {
@@ -40,6 +41,7 @@ export function ResidenceEditor({
   onRemove,
   onUpdate,
   getCountryName,
+  invalid,
 }: ResidenceEditorProps) {
   const years: number[] = [];
   for (let year = currentYear; year >= currentYear - RESIDENCE_YEARS_BACK; year -= 1) {
@@ -63,7 +65,7 @@ export function ResidenceEditor({
       <div
         style={{
           minHeight: '44px',
-          border: `1px solid ${tokens.border}`,
+          border: `1px solid ${invalid ? tokens.danger : tokens.border}`,
           borderRadius: '10px',
           padding: '6px 8px',
           background: '#fff',

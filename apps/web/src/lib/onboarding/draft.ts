@@ -1,8 +1,13 @@
 import {
   COUNTRIES,
   RESIDENCE_COVERAGE_YEARS,
+  applicantProfile,
+  citizenshipList,
+  householdMemberList,
+  residenceList,
   stepOneComplete,
   stepTwoComplete,
+  tierIndex,
   type CountryCode,
   type FeeMode,
   type HouseholdMember,
@@ -53,47 +58,6 @@ export function emptyDraft(): OnboardingDraft {
     residences: [],
     tier: null,
     members: [],
-  };
-}
-
-/**
- * Demo defaults for the setup screens.
- *
- * This is a demo build and the reference pre-fills its forms, so Step 2 starts
- * populated instead of empty. The values reproduce the contract's worked
- * example: a household of three, which is the documented 1.75 USDC demo
- * pre-approval fee (section 2.1). Clearly demo data, not a real filing.
- */
-export function demoDraft(
-  currentYear: number = new Date().getFullYear(),
-): OnboardingDraft {
-  return {
-    firstName: 'Marcus',
-    lastName: 'Feldt',
-    dob: '1982-03-14',
-    citizenships: ['DE'],
-    residences: [
-      {
-        countryCode: 'DE',
-        fromYear: currentYear - RESIDENCE_COVERAGE_YEARS,
-        toYear: 'present',
-      },
-    ],
-    tier: 0,
-    members: [
-      {
-        name: 'Lena Feldt',
-        relation: 'Spouse',
-        dob: '1985-07-22',
-        citizenship: 'NL',
-      },
-      {
-        name: 'Emil Feldt',
-        relation: 'Son',
-        dob: '2015-05-03',
-        citizenship: 'DE',
-      },
-    ],
   };
 }
 
@@ -267,6 +231,87 @@ export function evaluateDraft(
     householdSize: stepTwo.householdSize,
     canContinue: stepOne.complete && stepTwo.complete,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Field-level errors                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** Inline messages for the groups the form marks after a failed Continue. */
+export interface DraftFieldErrors {
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly dob?: string;
+  readonly citizenships?: string;
+  readonly residences?: string;
+  readonly tier?: string;
+  readonly members?: string;
+}
+
+/**
+ * Field-level messages for the wizard's inline marking.
+ *
+ * This reads the frozen zod schemas in `@kade/shared` rather than restating
+ * their rules: each schema is `safeParse`-d, its issues are grouped onto the
+ * form group they belong to, and the first message for each group is kept.
+ * `mode` is accepted so the signature is stable for callers; it does not
+ * influence the result because no rule here is fee-dependent.
+ */
+export function draftFieldErrors(
+  draft: OnboardingDraft,
+  mode: FeeMode,
+): DraftFieldErrors {
+  void mode;
+
+  const errors: {
+    firstName?: string;
+    lastName?: string;
+    dob?: string;
+    citizenships?: string;
+    residences?: string;
+    tier?: string;
+    members?: string;
+  } = {};
+
+  const profile = applicantProfile.safeParse({
+    firstName: draft.firstName,
+    lastName: draft.lastName,
+    dob: draft.dob,
+  });
+  if (!profile.success) {
+    for (const issue of profile.error.issues) {
+      const field = issue.path[0];
+      if (field === 'firstName' && errors.firstName === undefined) {
+        errors.firstName = issue.message;
+      } else if (field === 'lastName' && errors.lastName === undefined) {
+        errors.lastName = issue.message;
+      } else if (field === 'dob' && errors.dob === undefined) {
+        errors.dob = issue.message;
+      }
+    }
+  }
+
+  const citizenships = citizenshipList.safeParse(draft.citizenships);
+  if (!citizenships.success) {
+    errors.citizenships = citizenships.error.issues[0]?.message;
+  }
+
+  const residences = residenceList.safeParse(draft.residences);
+  if (!residences.success) {
+    errors.residences = residences.error.issues[0]?.message;
+  }
+
+  const tier = tierIndex.safeParse(draft.tier);
+  if (!tier.success) {
+    errors.tier = tier.error.issues[0]?.message;
+  }
+
+  const members = householdMemberList.safeParse(draft.members);
+  if (!members.success) {
+    errors.members = members.error.issues[0]?.message;
+  }
+
+  return errors;
 }
 
 /** Only valid for a draft that has passed `evaluateDraft`. */

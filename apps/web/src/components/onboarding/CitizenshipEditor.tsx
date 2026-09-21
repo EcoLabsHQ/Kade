@@ -12,6 +12,7 @@ export interface CitizenshipEditorProps {
   /** False when removing would leave no citizenship (frozen rule). */
   readonly removable: boolean;
   readonly getCountryName: (code: CountryCode) => string;
+  readonly invalid?: boolean;
 }
 
 /** The reference's blue citizenship chips plus the "+ Add country" select. */
@@ -23,6 +24,7 @@ export function CitizenshipEditor({
   onRemove,
   removable,
   getCountryName,
+  invalid,
 }: CitizenshipEditorProps) {
   const removeTitle = removable
     ? 'Remove this citizenship'
@@ -45,7 +47,7 @@ export function CitizenshipEditor({
       <div
         style={{
           minHeight: '44px',
-          border: `1px solid ${tokens.border}`,
+          border: `1px solid ${invalid ? tokens.danger : tokens.border}`,
           borderRadius: '10px',
           padding: '6px 8px',
           background: '#fff',

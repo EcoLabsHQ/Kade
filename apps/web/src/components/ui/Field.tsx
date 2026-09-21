@@ -10,6 +10,8 @@ export interface FieldProps {
   readonly type?: 'text' | 'date' | 'email';
   readonly onChange?: (value: string) => void;
   readonly hint?: string;
+  readonly invalid?: boolean;
+  readonly error?: string;
 }
 
 /** Labelled text field, matching the reference's 44px input style. */
@@ -22,6 +24,8 @@ export function Field({
   type = 'text',
   onChange,
   hint,
+  invalid,
+  error,
 }: FieldProps) {
   return (
     <div>
@@ -43,6 +47,7 @@ export function Field({
         value={value ?? ''}
         placeholder={placeholder}
         readOnly={readOnly}
+        aria-invalid={invalid || undefined}
         onChange={
           onChange
             ? (event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)
@@ -51,7 +56,7 @@ export function Field({
         style={{
           width: '100%',
           height: '44px',
-          border: `1px solid ${tokens.border}`,
+          border: `1px solid ${invalid ? tokens.danger : tokens.border}`,
           borderRadius: '10px',
           padding: '0 14px',
           fontSize: '14.5px',
@@ -60,7 +65,11 @@ export function Field({
           outline: 'none',
         }}
       />
-      {hint ? (
+      {error ? (
+        <div style={{ fontSize: '11.5px', color: tokens.danger, marginTop: '6px' }}>
+          {error}
+        </div>
+      ) : hint ? (
         <div style={{ fontSize: '11.5px', color: tokens.muted, marginTop: '6px' }}>
           {hint}
         </div>

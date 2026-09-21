@@ -10,6 +10,7 @@ import {
   addMember,
   addResidence,
   canRemoveCitizenship,
+  draftFieldErrors,
   draftToSnapshot,
   emptyDraft,
   evaluateDraft,
@@ -136,6 +137,40 @@ describe('citizenships', () => {
   it('does not add the same country twice', () => {
     const draft = addCitizenship(validDraft(), 'NL');
     expect(draft.citizenships).toEqual(['NL']);
+  });
+});
+
+describe('field-level errors', () => {
+  it('flags every mandatory group on an empty draft', () => {
+    const errors = draftFieldErrors(emptyDraft(), 'demo');
+    expect(errors.firstName).toBeTruthy();
+    expect(errors.lastName).toBeTruthy();
+    expect(errors.dob).toBeTruthy();
+    expect(errors.citizenships).toBeTruthy();
+    expect(errors.residences).toBeTruthy();
+    expect(errors.tier).toBeTruthy();
+    // A household with no members is valid: the applicant alone is the household.
+    expect(errors.members).toBeUndefined();
+  });
+
+  it('reports nothing for a draft that satisfies every frozen rule', () => {
+    expect(draftFieldErrors(validDraft(), 'demo')).toEqual({});
+  });
+
+  it('groups residence coverage and household issues onto their form groups', () => {
+    const gapped: OnboardingDraft = {
+      ...validDraft(),
+      residences: [
+        { countryCode: 'NL', fromYear: YEAR - 5, toYear: YEAR - 3 },
+        { countryCode: 'DE', fromYear: YEAR - 1, toYear: 'present' },
+      ],
+    };
+    const residencesErrors = draftFieldErrors(gapped, 'demo');
+    expect(residencesErrors.residences).toBeTruthy();
+    expect(residencesErrors.firstName).toBeUndefined();
+
+    const withIncompleteMember = addMember(validDraft());
+    expect(draftFieldErrors(withIncompleteMember, 'demo').members).toBeTruthy();
   });
 });
 
