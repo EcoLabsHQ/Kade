@@ -1,4 +1,6 @@
 import { tokens } from '@/components/ui/tokens';
+import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
+import { SafeRetryButton } from './SafeRetryButton';
 
 export interface SafeAddressCardProps {
   /**
@@ -9,6 +11,8 @@ export interface SafeAddressCardProps {
   readonly network?: string;
   /** True once the Safe contract exists on chain. */
   readonly deployed?: boolean;
+  /** The record's status, so a failure reads differently from "still pending". */
+  readonly status?: SafeDeploymentStatus | null;
   /** Block explorer base, e.g. `https://sepolia.etherscan.io`. */
   readonly explorerUrl?: string | null;
 }
@@ -22,17 +26,28 @@ export interface SafeAddressCardProps {
  * yet, and the card says which of the two it is.
  *
  * When an explorer base is supplied the address links out, so the state can be
- * checked against the chain rather than taken on trust.
+ * checked against the chain rather than taken on trust. When the Safe is not
+ * deployed the card offers a retry, which is the resident's route back from a
+ * failed setup without creating a second passkey.
  */
 export function SafeAddressCard({
   address,
   network = 'Ethereum Sepolia',
   deployed = false,
+  status = null,
   explorerUrl = null,
 }: SafeAddressCardProps) {
   const hasAddress = address !== null && address.length > 0;
   const href =
     hasAddress && explorerUrl ? `${explorerUrl}/address/${address}` : null;
+
+  const stateLabel = !hasAddress
+    ? 'no account yet'
+    : deployed
+      ? 'deployed'
+      : status === 'failed'
+        ? 'setup needs another try'
+        : 'not deployed';
 
   const addressStyle = {
     fontSize: '12.5px',
@@ -94,9 +109,10 @@ export function SafeAddressCard({
         </div>
         <div style={{ fontSize: '11px', color: tokens.muted }}>
           {hasAddress
-            ? `Safe · ${deployed ? 'deployed' : 'not deployed'} · ${network}`
+            ? `Safe · ${stateLabel} · ${network}`
             : `Safe · no account yet · ${network}`}
         </div>
+        {hasAddress && !deployed ? <SafeRetryButton /> : null}
       </div>
     </div>
   );

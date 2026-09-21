@@ -4,12 +4,14 @@ import { Sidebar } from './Sidebar';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import { readChainEnv } from '@/lib/env';
+import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
 export interface AppShellProps {
   readonly children: ReactNode;
   readonly email: string | null;
   readonly safeAddress?: string | null;
   readonly safeDeployed?: boolean;
+  readonly safeStatus?: SafeDeploymentStatus | null;
   readonly explorerUrl?: string | null;
   readonly network?: string;
   readonly nav?: readonly NavGroupConfig[];
@@ -39,6 +41,7 @@ export function AppShell({
   email,
   safeAddress = null,
   safeDeployed = false,
+  safeStatus = null,
   explorerUrl = null,
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
@@ -59,6 +62,7 @@ export function AppShell({
         network={network}
         safeAddress={safeAddress}
         safeDeployed={safeDeployed}
+        safeStatus={safeStatus}
         explorerUrl={explorerUrl}
         email={email}
       />

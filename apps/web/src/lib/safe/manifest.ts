@@ -354,7 +354,13 @@ export class SafeDeploymentNotConfiguredError extends Error {
 export interface RecordSafeDeploymentInput {
   readonly profileId: string;
   readonly safeAddress: Address;
-  readonly deploymentTxHash: Hex;
+  /**
+   * The deployment transaction, or `null` when the Safe already existed on chain
+   * and this repository has no hash for it (a retry that found the contract
+   * present). A `null` marks the row deployed without clearing a hash that was
+   * already recorded.
+   */
+  readonly deploymentTxHash: Hex | null;
 }
 
 export interface RecordSafeDeploymentFailureInput {
@@ -496,23 +502,30 @@ export function createSafeDeploymentStore(
 
     async recordDeployment(input) {
       const safeAddress = assertAddress(input.safeAddress, 'safeAddress');
-      const deploymentTxHash = assertBytes32(
-        input.deploymentTxHash,
-        'deploymentTxHash',
-      );
+      const deploymentTxHash =
+        input.deploymentTxHash === null
+          ? null
+          : assertBytes32(input.deploymentTxHash, 'deploymentTxHash');
       const now = new Date().toISOString();
+
+      const update: Record<string, unknown> = {
+        status: 'deployed',
+        provenance: 'approved',
+        failure_reason: null,
+        deployed_at: now,
+        updated_at: now,
+      };
+      // A hash we do not have must not overwrite one we already recorded: a
+      // retry that finds the contract already present records the deployed
+      // state, not a regression to "no transaction".
+      if (deploymentTxHash !== null) {
+        update.deployment_tx_hash = deploymentTxHash;
+      }
 
       const saved = await updateOutcome((client) =>
         client
           .from('safe_deployments')
-          .update({
-            status: 'deployed',
-            deployment_tx_hash: deploymentTxHash,
-            provenance: 'approved',
-            failure_reason: null,
-            deployed_at: now,
-            updated_at: now,
-          })
+          .update(update)
           .eq('profile_id', input.profileId)
           .eq('safe_address', safeAddress)
           .select('*')

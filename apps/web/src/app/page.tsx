@@ -96,6 +96,7 @@ export default async function OverviewPage() {
       email={session.email}
       safeAddress={shellSafe.address}
       safeDeployed={shellSafe.deployed}
+      safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
     >
       <div
