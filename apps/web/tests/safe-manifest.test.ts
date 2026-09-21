@@ -8,7 +8,7 @@ import {
 import {
   SafeDeploymentNotConfiguredError,
   SafeDeploymentNotPredictedError,
-  SafeDeploymentServiceRoleError,
+  SafeDeploymentWriteError,
   buildSafeDeploymentManifest,
   createSafeDeploymentStore,
   safeDeploymentStore,
@@ -28,7 +28,8 @@ import {
  *     recorded inputs;
  *   - a deployment outcome (success or failure) can only update an existing
  *     prediction, never create one;
- *   - reads are scoped to the owning resident, and writes use the service role.
+ *   - reads and writes are scoped to the owning resident; the writes go through
+ *     SECURITY DEFINER functions, so no service-role key is involved.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -200,6 +201,14 @@ class FakeQuery {
   }
 }
 
+/**
+ * Emulates the two SECURITY DEFINER writers the store now calls.
+ *
+ * They are the only way `safe_deployments` can be written, and they are scoped
+ * to the caller's own row, so the fake enforces the same two properties the SQL
+ * does: a prediction is idempotent on `safe_address`, and an outcome can only
+ * move a row that already exists.
+ */
 function createFakeClient(backend: FakeBackend): {
   readonly client: SupabaseClient;
   readonly ops: RecordedCall[];
@@ -208,6 +217,62 @@ function createFakeClient(backend: FakeBackend): {
   const client = {
     from(table: string) {
       return new FakeQuery(table, backend, ops);
+    },
+    rpc(fn: string, args: Row) {
+      ops.push({ table: 'rpc', method: fn, args: [args] });
+      const rows = backend.rows('safe_deployments');
+      const address = args.p_safe_address as string;
+
+      if (fn === 'record_safe_prediction') {
+        let row = rows.find((r) => r.safe_address === address);
+        if (!row) {
+          row = withDefaults('safe_deployments', {
+            profile_id: 'user-1',
+            safe_address: address,
+            status: 'predicted',
+            deployment_tx_hash: null,
+            deployment_chain_id: 11155111,
+            predicted_l2_addresses: args.p_predicted_l2_addresses,
+            safe_version: args.p_safe_version,
+            factory: args.p_factory,
+            singleton: args.p_singleton,
+            initializer: args.p_initializer,
+            handler: args.p_handler,
+            owner: args.p_owner,
+            threshold: 1,
+            salt: args.p_salt,
+            creation_code_assumptions: args.p_creation_code_assumptions,
+            provenance: 'unapproved',
+          });
+          rows.push(row);
+        }
+        return Promise.resolve({ data: row, error: null });
+      }
+
+      if (fn === 'record_safe_deployment_outcome') {
+        const row = rows.find((r) => r.safe_address === address);
+        if (!row) {
+          return Promise.resolve({
+            data: null,
+            error: { message: `no Safe prediction for ${address} belongs to the current resident` },
+          });
+        }
+        const status = args.p_status as string;
+        row.status = status;
+        if (status === 'deployed') {
+          row.provenance = 'approved';
+          row.failure_reason = null;
+          row.deployed_at = NOW;
+          if (args.p_deployment_tx_hash) row.deployment_tx_hash = args.p_deployment_tx_hash;
+        } else {
+          row.failure_reason = args.p_failure_reason;
+          row.failed_at = NOW;
+        }
+        row.updated_at = NOW;
+        return Promise.resolve({ data: row, error: null });
+      }
+
+      return Promise.resolve({ data: null, error: { message: `unknown function ${fn}` } });
     },
   };
   return { client: client as unknown as SupabaseClient, ops };
@@ -240,19 +305,10 @@ const PREDICTION: SafePredictionInput = {
 
 function storeOver(
   backend: FakeBackend,
-  options: { service?: boolean } = {},
 ): ReturnType<typeof createSafeDeploymentStore> {
   const session = createFakeClient(backend);
-  if (options.service === false) {
-    return createSafeDeploymentStore({
-      getClient: async () => session.client,
-      getServiceClient: async () => null,
-    });
-  }
-  const service = createFakeClient(backend);
   return createSafeDeploymentStore({
     getClient: async () => session.client,
-    getServiceClient: async () => service.client,
   });
 }
 
@@ -308,33 +364,26 @@ describe('recordPrediction', () => {
   it('persists the prediction complete, with every manifest input', async () => {
     const backend = new FakeBackend();
     const session = createFakeClient(backend);
-    const service = createFakeClient(backend);
     const store = createSafeDeploymentStore({
       getClient: async () => session.client,
-      getServiceClient: async () => service.client,
     });
 
     const saved = await store.recordPrediction(PREDICTION);
 
-    const upsert = service.ops.find(
-      (op) => op.table === 'safe_deployments' && op.method === 'upsert',
+    const call = session.ops.find(
+      (op) => op.method === 'record_safe_prediction',
     );
-    const row = upsert?.args[0] as Row;
+    const row = call?.args[0] as Row;
     expect(row).toMatchObject({
-      profile_id: 'user-1',
-      safe_address: SAFE,
-      status: 'predicted',
-      deployment_tx_hash: null,
-      deployment_chain_id: 11155111,
-      safe_version: ACTIVE_SAFE_VERSION,
-      factory: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].safeProxyFactory.value,
-      singleton: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].safeL2.value,
-      initializer: INITIALIZER,
-      handler: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].compatibilityFallbackHandler.value,
-      owner: OWNER,
-      threshold: 1,
-      salt: { saltNonce: '42', initializerHash: INIT_HASH, salt: SALT },
-      creation_code_assumptions: {
+      p_safe_address: SAFE,
+      p_safe_version: ACTIVE_SAFE_VERSION,
+      p_factory: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].safeProxyFactory.value,
+      p_singleton: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].safeL2.value,
+      p_initializer: INITIALIZER,
+      p_handler: SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION].compatibilityFallbackHandler.value,
+      p_owner: OWNER,
+      p_salt: { saltNonce: '42', initializerHash: INIT_HASH, salt: SALT },
+      p_creation_code_assumptions: {
         proxyCreationCodeHash: DEPLOYED_SAFE_PROXY_CREATION_CODE_HASH,
         initCodeHash: INIT_CODE_HASH,
         initCodeFormula: 'proxyCreationCode ++ uint256(uint160(singleton))',
@@ -342,11 +391,6 @@ describe('recordPrediction', () => {
         create2Formula: 'keccak256(0xff ++ factory ++ salt ++ initCodeHash)[12:]',
         chainSpecific: false,
       },
-      provenance: 'unapproved',
-    });
-    expect(upsert?.args[1]).toEqual({
-      onConflict: 'safe_address',
-      ignoreDuplicates: true,
     });
 
     expect(saved.status).toBe('predicted');
@@ -372,34 +416,37 @@ describe('recordPrediction', () => {
     expect(second.predictedAt).toBe(first.predictedAt);
   });
 
-  it('writes through the service role and reads back through the resident client', async () => {
+  it('writes through the resident client, with no elevated client involved', async () => {
     const backend = new FakeBackend();
     const session = createFakeClient(backend);
-    const service = createFakeClient(backend);
     const store = createSafeDeploymentStore({
       getClient: async () => session.client,
-      getServiceClient: async () => service.client,
     });
 
     await store.recordPrediction(PREDICTION);
 
+    // The write is a SECURITY DEFINER call on the session client. There is no
+    // service-role client anywhere in the store, so nothing to assert about one.
     expect(
-      service.ops.some((op) => op.method === 'upsert'),
+      session.ops.some((op) => op.method === 'record_safe_prediction'),
     ).toBe(true);
     expect(session.ops.some((op) => op.method === 'upsert')).toBe(false);
-    expect(
-      session.ops.some(
-        (op) => op.method === 'eq' && op.args[0] === 'profile_id',
-      ),
-    ).toBe(true);
   });
 
-  it('fails explicitly rather than partially when the service role is absent', async () => {
+  it('surfaces a write failure rather than reporting a partial success', async () => {
     const backend = new FakeBackend();
-    const store = storeOver(backend, { service: false });
+    const failing = {
+      rpc: () => Promise.resolve({ data: null, error: { message: 'boom' } }),
+      from: () => {
+        throw new Error('unexpected table access');
+      },
+    };
+    const store = createSafeDeploymentStore({
+      getClient: async () => failing as unknown as SupabaseClient,
+    });
 
     await expect(store.recordPrediction(PREDICTION)).rejects.toBeInstanceOf(
-      SafeDeploymentServiceRoleError,
+      SafeDeploymentWriteError,
     );
     expect(backend.rows('safe_deployments')).toHaveLength(0);
   });
@@ -565,7 +612,6 @@ describe('reads', () => {
     const session = createFakeClient(backend);
     const store = createSafeDeploymentStore({
       getClient: async () => session.client,
-      getServiceClient: async () => null,
     });
 
     const found = await store.getByAddress('user-1', SAFE);
