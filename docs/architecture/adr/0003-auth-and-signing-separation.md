@@ -53,9 +53,8 @@ TransactionAuthorisation { domain: 'transaction-signing', method: 'passkey', cre
   flag are written to `passkey_credentials` and survive a reload; the derived
   `signer_address` is written by `public.save_passkey_signer`, a SECURITY
   DEFINER function scoped to the caller's own credential, so no service-role key
-  is involved. (Earlier it was written only when `SUPABASE_SERVICE_ROLE_KEY` was
-  configured, and otherwise stays NULL with the panel saying so. The private
-  key never leaves the authenticator.
+  is involved. It was previously written only when `SUPABASE_SERVICE_ROLE_KEY`
+  was configured. The private key never leaves the authenticator.
 
 ## Consequences
 

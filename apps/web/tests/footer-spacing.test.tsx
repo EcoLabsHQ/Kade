@@ -64,7 +64,10 @@ describe('footer bottom spacing', () => {
     // The gap below the footer is the footer's own fixed value.
     expect(footer.style.paddingBottom).toBe('18px');
     // And the outer column must NOT also be padded, or the two would compound.
-    expect(column.className).toContain('kade-content');
+    // Assert the exact class list, not a substring: `kade-content
+    // kade-content-padding` would pass a `toContain` check while applying the
+    // padding twice, which is the bug this test exists to catch.
+    expect(column.className.trim()).toBe('kade-content');
     expect(column.style.padding).toBe('');
   });
 

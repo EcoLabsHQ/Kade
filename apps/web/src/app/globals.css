@@ -157,8 +157,8 @@ textarea {
 }
 
 @media (max-width: 768px) {
-  /* Clear the fixed burger. Onboarding's own column is out of this scope, so
-     its inline 36px top padding is left untouched (see responsive report). */
+  /* Clear the fixed burger. Every shell root carries `.kade-shell`, so the
+     content starts below it rather than under it. */
   .kade-shell {
     padding-top: 56px;
   }

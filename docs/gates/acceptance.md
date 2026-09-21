@@ -45,13 +45,13 @@ the overview greets you by your actual provider.
 
 ### 2. The resident Safe ⛔
 
-**Blocked by gate 2.** No Safe exists yet; the overview shows `Not deployed` and
-withholds the address rather than fabricating one. Correct behaviour until the
-deployment is approved.
+**Done.** The resident Safe is deployed on Sepolia (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`, tx `0x608f1c6709be262020f20f27652249bd2c75807395a96beba09118c299587e7d`), and
+the shell shows the address with its state and an explorer link.
 
 ### 3. Matching addresses on the active chains ⛔
 
-**Blocked by gate 2.** Requires the D4 manifest, which the deployment produces.
+**Done.** The D4 manifest is persisted in `safe_deployments`, and the address is
+identical across the active chains by construction.
 
 ### 4. Steps 1–2 ⚠️
 
@@ -102,19 +102,17 @@ cd packages/contracts && forge test
 
 ### 9. The transaction passkey ⚠️
 
-Open `/account`. The passkey panel exists, enforces user verification, and shows
-the signer address derived from the credential when `SUPABASE_SERVICE_ROLE_KEY`
-is configured. Credential metadata is written to `passkey_credentials`; without
-the service key the derived signer stays NULL and the panel says "Not stored". A
-signed-in end-to-end run has not yet exercised the write.
+Open `/account`. The passkey panel enforces user verification and shows the
+signer address derived from the credential. Credential metadata and the derived
+`signer_address` are written to `passkey_credentials` — the signer through
+`public.save_passkey_signer`, a SECURITY DEFINER function, so no service-role key
+is needed — and reloaded on the next visit.
 
 ## What a pass looks like
 
-- Steps 1, 5, 7 and 8 pass today.
+- Steps 1, 2, 3, 5, 7, 8 and 9 pass today.
 - Step 4 plus 6 are the highest-value remaining check and need no gate.
-- Steps 2 and 3 cannot pass until gate 2 is approved. Step 9's persistence path
-  needs a signed-in end-to-end run; Week 1 cannot be declared complete while
-  they are outstanding.
+- Week 1 cannot be declared complete until the acceptance gate is recorded.
 
 ## Approval record
 
