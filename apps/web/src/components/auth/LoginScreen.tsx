@@ -1,5 +1,6 @@
 import { tokens } from '@/components/ui/tokens';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
+import { ContentContainer } from '@/components/shell/ContentContainer';
 import { SiteFooter } from '@/components/shell/SiteFooter';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { AccountState } from './AccountSummary';
@@ -82,7 +83,6 @@ export function LoginScreen({
         background: '#fff',
         display: 'flex',
         alignItems: 'stretch',
-        animation: 'fadeUp .2s ease-out',
       }}
     >
       <SetupSidebar steps={STEPS} network={network} accountState={accountState} />
@@ -93,111 +93,107 @@ export function LoginScreen({
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: '1160px',
-          width: '100%',
-          margin: '0 auto',
-          padding: '36px 40px 64px',
         }}
       >
-        <div
-          style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            letterSpacing: '.08em',
-            textTransform: 'uppercase',
-            color: tokens.muted,
-          }}
-        >
-          Step 1 of 4
-        </div>
-
-        <h1
-          style={{
-            margin: '8px 0 6px',
-            fontSize: '30px',
-            fontWeight: 700,
-            letterSpacing: '-.02em',
-          }}
-        >
-          {returning ? 'Welcome back' : 'Create your account'}
-        </h1>
-
-        <p
-          style={{
-            margin: '0 0 24px',
-            color: tokens.muted,
-            maxWidth: '62ch',
-            textWrap: 'pretty',
-          }}
-        >
-          {returning
-            ? 'Sign in to continue your application.'
-            : 'Sign in with Google or a one-time email link. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'}
-        </p>
-
-        {noMethodEnabled ? (
+        <ContentContainer footer={<SiteFooter />}>
           <div
-            role="status"
             style={{
-              margin: '0 0 16px',
-              background: '#FDF6E7',
-              border: `1px solid ${tokens.warning}`,
-              borderRadius: '12px',
-              padding: '14px 16px',
-              maxWidth: '560px',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '.08em',
+              textTransform: 'uppercase',
+              color: tokens.muted,
             }}
           >
+            Step 1 of 4
+          </div>
+
+          <h1
+            style={{
+              margin: '8px 0 6px',
+              fontSize: '30px',
+              fontWeight: 700,
+              letterSpacing: '-.02em',
+            }}
+          >
+            {returning ? 'Welcome back' : 'Create your account'}
+          </h1>
+
+          <p
+            style={{
+              margin: '0 0 24px',
+              color: tokens.muted,
+              maxWidth: '62ch',
+              textWrap: 'pretty',
+            }}
+          >
+            {returning
+              ? 'Sign in to continue your application.'
+              : 'Sign in with Google or a one-time email link. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'}
+          </p>
+
+          {noMethodEnabled ? (
             <div
+              role="status"
               style={{
-                fontSize: '12px',
-                fontWeight: 700,
-                letterSpacing: '.04em',
-                textTransform: 'uppercase',
-                color: tokens.warning,
+                margin: '0 0 16px',
+                background: '#FDF6E7',
+                border: `1px solid ${tokens.warning}`,
+                borderRadius: '12px',
+                padding: '14px 16px',
+                maxWidth: '560px',
               }}
             >
-              No sign-in method is enabled
+              <div
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  letterSpacing: '.04em',
+                  textTransform: 'uppercase',
+                  color: tokens.warning,
+                }}
+              >
+                No sign-in method is enabled
+              </div>
+              <p
+                style={{
+                  margin: '6px 0 0',
+                  fontSize: '13px',
+                  color: tokens.chipFg,
+                  lineHeight: 1.55,
+                }}
+              >
+                This project is connected, but neither Google nor email sign-in is
+                enabled on it yet.
+              </p>
             </div>
+          ) : null}
+
+          {message ? (
             <p
+              role="status"
               style={{
-                margin: '6px 0 0',
+                margin: '0 0 16px',
                 fontSize: '13px',
                 color: tokens.chipFg,
-                lineHeight: 1.55,
+                background: tokens.surface,
+                border: `1px solid ${tokens.border}`,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                maxWidth: '560px',
               }}
             >
-              This project is connected, but neither Google nor email sign-in is
-              enabled on it yet.
+              {message}
             </p>
-          </div>
-        ) : null}
+          ) : null}
 
-        {message ? (
-          <p
-            role="status"
-            style={{
-              margin: '0 0 16px',
-              fontSize: '13px',
-              color: tokens.chipFg,
-              background: tokens.surface,
-              border: `1px solid ${tokens.border}`,
-              borderRadius: '10px',
-              padding: '10px 12px',
-              maxWidth: '560px',
-            }}
-          >
-            {message}
-          </p>
-        ) : null}
-
-        <AuthPanel
-          configured={configured}
-          available={available}
-          callbackUrl={callbackUrl}
-          accountState={accountState}
-        />
-
-        <SiteFooter />
+          <AuthPanel
+            configured={configured}
+            available={available}
+            callbackUrl={callbackUrl}
+            accountState={accountState}
+          />
+        </ContentContainer>
       </main>
     </div>
   );
