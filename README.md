@@ -173,10 +173,11 @@ work as complete.
 - **Credential metadata surviving reload against a live session.** Enrolment
   writes the credential id, public key, transports and user-verification flag to
   `passkey_credentials`, and `/account` reloads them server-side; the path is
-  unit-tested. No signed-in end-to-end run has exercised the live write. The
+  unit-tested, and exercised end to end by a signed-in run. The
   derived `signer_address` is server-written and needs
   `public.save_passkey_signer`, a SECURITY DEFINER function scoped to the
-  caller's own credential, so no service-role key is needed; without it the credential still persists,
+  caller's own credential, so no service-role key is needed. Exercised end to
+  end: the credential and its signer are written and reloaded. Without it the credential still persists,
   the signer stays NULL, and the panel says so rather than faking it.
 - **A test signature through the direct Safe WebAuthn signer.** The signer
   address is now derived from the passkey, but signing requires a deployed Safe
