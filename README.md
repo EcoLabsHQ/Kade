@@ -146,7 +146,9 @@ work as complete.
   `packages/shared`, so the database and the application cannot disagree.
 - The Supabase schema, RLS and seed are applied to the live project and verified
   there: 20 tables, RLS on all 20, 10 deny-by-default, and the fee function and
-  its triggers reproduce the contract's worked examples.
+  its triggers reproduce the contract's worked examples. A 20th migration (the
+  `wallets` owner policy and Bitcoin-address RPCs, contract v1.7) is committed
+  and pending apply — see `docs/known-gaps.md`.
 
 **Verified outside the gate — not by the agent:**
 

@@ -13,7 +13,7 @@ unrun.
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 19 applied in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 20 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
 | Fee function + recompute triggers (pgTAP) | **Verified** — `supabase/tests/0001_fee_recompute.test.sql` runs 19 assertions green on a `postgres:16` container; a deliberately failing assertion makes `psql` exit 3 |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
@@ -43,6 +43,7 @@ supabase/
     20260916000017_passkey_signer.sql         SECURITY DEFINER signer writer
     20260916000018_safe_deployment_writes.sql SECURITY DEFINER Safe-record writers
     20260916000019_safe_address_comment.sql     comment-only correction
+    20260921000001_bitcoin_wallet_addresses.sql  wallets owner policy + Bitcoin address RPCs
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
@@ -109,7 +110,8 @@ npm run test:acceptance
 Security is enforced in the database, not in the client (ADR 0004). The RLS
 migration declares the policies for the original table set; tables added later
 carry their own RLS and policies in their own migration — `passkey_credentials`
-(migration 13) and `safe_deployments` / `safe_pre_deposits` (migration 16).
+(migration 13), `safe_deployments` / `safe_pre_deposits` (migration 16) and the
+owner-scoped `wallets` policy for pasted Bitcoin addresses (migration 20).
 
 ### Row ownership
 
@@ -125,7 +127,8 @@ carry their own RLS and policies in their own migration — `passkey_credentials
 | `safe_pre_deposits` | none | read own, insert own (`verification_status`, `verified_at` excluded) | none | all |
 | `chains` | none | read | read | all |
 | `fee_schedule` | none | read | read | all |
-| `wallets`, `wealth_snapshots`, `container_balances`, `allocations`, `gos_transfers`, `card_transactions`, `documents`, `identity_attestations`, `reviewers`, `review_events` | none | **none — deny-by-default** | none | all |
+| `wallets` | none | read own; insert own (`siwe_sig`, `verified_at` excluded); delete own. The 5-address Bitcoin cap is a `BEFORE INSERT` trigger, enforced regardless of write path | none | all |
+| `wealth_snapshots`, `container_balances`, `allocations`, `gos_transfers`, `card_transactions`, `documents`, `identity_attestations`, `reviewers`, `review_events` | none | **none — deny-by-default** | none | all |
 
 "own" means the row's `profile_id` (or its parent application's `profile_id`)
 equals `auth.uid()`. A second resident sees zero rows and can change zero rows.
@@ -150,6 +153,17 @@ they can set their own signer or record their own prediction. What is closed is
 naming another resident's row, moving an existing prediction's inputs, and
 changing a signer once set.
 
+### The resident-written Bitcoin address path (migration 20)
+
+`record_wallet_address` and `delete_wallet_address` are **SECURITY INVOKER**, the
+opposite trade-off to the writers above: row level security still applies as the
+resident, so `wallets_all_own` (`profile_id = auth.uid()`) is the only thing
+deciding which row may be touched, and the column grant is what withholds
+`siwe_sig` and `verified_at`. A pasted Bitcoin address is therefore never claimed
+to be verified; `verified_at` staying NULL is the meaning "pasted, not proven".
+The five-address cap from contract v1.7 is a `BEFORE INSERT` trigger so it holds
+for a direct PostgREST insert as well as the RPC.
+
 ### Server-written columns (a direct write is refused)
 
 These columns are removed from the `authenticated` column privileges, so a
@@ -167,6 +181,9 @@ described there:
   touch another resident's
 - `safe_pre_deposits.verification_status`, `verified_at`: the resident may
   propose a deposit, but only a server-side check may mark it verified
+- `wallets.siwe_sig`, `wallets.verified_at`: the resident may add and remove
+  their own pasted Bitcoin addresses, but withholding these columns is what stops
+  a resident declaring an address verified (contract v1.7)
 - `applications.status`, `ref`, `preapproval_usdc`, `service_usdc`, `fee_tx`,
   `fee_uid`, `app_uid`, `review_uid`, `service_uid`
 - all `identity_attestations` columns (table is deny-by-default)

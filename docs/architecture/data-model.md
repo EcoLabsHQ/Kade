@@ -35,16 +35,18 @@ and how each was resolved.
 | `20260916000017_passkey_signer.sql` | no tables; `save_passkey_signer`, a SECURITY DEFINER writer for `passkey_credentials.signer_address` |
 | `20260916000018_safe_deployment_writes.sql` | no tables; `record_safe_prediction` and `record_safe_deployment_outcome`, SECURITY DEFINER writers for the Safe record |
 | `20260916000019_safe_address_comment.sql` | no tables; comment-only correction of the Safe address description |
+| `20260921000001_bitcoin_wallet_addresses.sql` | no tables; owner RLS policy and column grants for `wallets`, the `record_wallet_address` / `delete_wallet_address` RPCs, and the 5-address cap trigger (contract v1.7) |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
 `recompute_application_preapproval_fee`, `recompute_preapproval_fee`,
-`init_preapproval_fee`), the `save_onboarding` and `reset_demo_data` RPCs, and
+`init_preapproval_fee`, `enforce_wallet_address_cap`), the `save_onboarding`,
+`record_wallet_address`, `delete_wallet_address` and `reset_demo_data` RPCs, and
 foreign-key lookup indexes. The original table migrations create structure only;
 `…_rls.sql` is the single place RLS is declared for them. The later
-`passkey_credentials` migration (13) and `safe_deployments` migration (16) carry
-their own RLS and policies with their tables, so migrations 9, 13 and 16 are the
-complete policy set.
+`passkey_credentials` migration (13), `safe_deployments` migration (16) and
+`bitcoin_wallet_addresses` migration (20) carry their own RLS and policies with
+their tables, so migrations 9, 13, 16 and 20 are the complete policy set.
 
 ## Columns
 
@@ -148,7 +150,7 @@ Legend: **RW** = read/write own rows; **R** = read; **R(rev)** = reviewer read;
 | `safe_pre_deposits` | — | read own; insert own (`verification_status` and `verified_at` excluded) | — | all |
 | `chains` | — | read | read | all |
 | `fee_schedule` | — | read | read | all |
-| `wallets` | — | — | — | all |
+| `wallets` | — | read own; insert own (`siwe_sig`, `verified_at` excluded); delete own | — | all |
 | `wealth_snapshots` | — | — | — | all |
 | `container_balances` | — | — | — | all |
 | `allocations` | — | — | — | all |
@@ -222,7 +224,9 @@ and the generated seed. These are the notable ones:
 | `applications.tier` set | `3-year`, `5-year`, `indefinite` | the DOCX uses "Indefinite"; the encoding is chosen |
 | `gos_transfers.direction`, `.currency`, `.status` | unconstrained text | DOCX names the columns, not the values |
 | `documents.kind`, `.owner`, `.status` | unconstrained text | DOCX names the columns, not the values |
-| `wallets.provider`, `wealth_snapshots.provenance` | unconstrained text | DOCX names the columns, not the values |
+| `wallets.provider` | `'bitcoin-address'` for a pasted watch-only address (contract v1.7); otherwise unconstrained text | DOCX names the column, not the values |
+| `wallets.chain` = `0` for Bitcoin | `0` | Bitcoin has no EVM chain id; the DOCX describes `chain` as an EVM chain id |
+| `wealth_snapshots.provenance` | unconstrained text | DOCX names the column, not the values |
 | surrogate `id` columns | `bigint identity` | not in the DOCX column list; required keys |
 | numeric precision | `numeric(20, 6)` | not stated; covers USDC's 6 decimals |
 | `chains.env`, `chains.schema_registry_address` | added columns | required by ADR 0005 / D6, absent from DOCX §9 |
