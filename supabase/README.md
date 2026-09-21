@@ -40,6 +40,8 @@ supabase/
     20260916000014_passkey_public_key_comment.sql  comment-only correction
     20260916000015_fee_authority_comment.sql  comment-only correction
     20260916000016_safe_deployments.sql       safe_deployments + safe_pre_deposits
+    20260916000017_passkey_signer.sql         SECURITY DEFINER signer writer
+    20260916000018_safe_deployment_writes.sql SECURITY DEFINER Safe-record writers
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
@@ -118,7 +120,7 @@ carry their own RLS and policies in their own migration — `passkey_credentials
 | `applications` | none | read own, insert own, update `tier` | read | all |
 | `household_members` | none | read/write own (via application) | none | all |
 | `passkey_credentials` | none | read own, insert own, update `last_used_at` (`signer_address` excluded) | none | all |
-| `safe_deployments` | none | read own. An insert is offered but cannot produce a row: every manifest column is `NOT NULL` and outside the grant, so only the server can write a prediction | none | all |
+| `safe_deployments` | none | read own. A direct insert cannot produce a row — every manifest column is `NOT NULL` and outside the grant — but the resident **can** call `record_safe_prediction`, a SECURITY DEFINER function scoped to their own row, which is how the prediction is written. See the note below | none | all |
 | `safe_pre_deposits` | none | read own, insert own (`verification_status`, `verified_at` excluded) | none | all |
 | `chains` | none | read | read | all |
 | `fee_schedule` | none | read | read | all |
@@ -126,6 +128,26 @@ carry their own RLS and policies in their own migration — `passkey_credentials
 
 "own" means the row's `profile_id` (or its parent application's `profile_id`)
 equals `auth.uid()`. A second resident sees zero rows and can change zero rows.
+
+### The SECURITY DEFINER writers
+
+Three functions write columns the `authenticated` role has no privilege on, each
+scoped to the caller's own row by an explicit `profile_id = auth.uid()` predicate
+(RLS is bypassed by the definition, so that predicate is the only thing deciding
+which row may be touched):
+
+| Function | Writes | Migration |
+|---|---|---|
+| `save_passkey_signer` | `passkey_credentials.signer_address` | 17 |
+| `record_safe_prediction` | the `safe_deployments` manifest columns | 18 |
+| `record_safe_deployment_outcome` | `safe_deployments` status, tx hash, timestamps | 18 |
+
+They exist because the alternative was a service-role key in the deployed
+environment, which is the most powerful credential in the project. The trade-off
+is deliberate and declared: a resident **can** call these for their own row, so
+they can set their own signer or record their own prediction. What is closed is
+naming another resident's row, moving an existing prediction's inputs, and
+changing a signer once set.
 
 ### Server-written ("the resident proposes, the server decides")
 
