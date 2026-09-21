@@ -48,7 +48,8 @@ comment on table public.passkey_credentials is
 comment on column public.passkey_credentials.signer_address is
   'SECURITY-CRITICAL: the Safe WebAuthn signer contract this credential owns. '
   'Derived server-side from the public key via the deployed signer factory, so '
-  'it is not writable by the browser. NULL until a passkey is enrolled.';
+  'a direct write is refused; migration 17 adds save_passkey_signer, which can '
+  'write it for the caller''s own credential. NULL until a passkey is enrolled.';
 comment on column public.passkey_credentials.public_key is
   'COSE public key. Public by construction; the private key never leaves the '
   'authenticator and is not stored anywhere.';
@@ -63,7 +64,8 @@ alter table public.passkey_credentials enable row level security;
 
 revoke all on table public.passkey_credentials from anon, authenticated;
 grant select on table public.passkey_credentials to authenticated;
--- signer_address is absent from both grants: server-written only.
+-- signer_address is absent from both grants: a direct write is refused.
+-- Migration 17 adds save_passkey_signer, scoped to the caller's own credential.
 grant insert (profile_id, credential_id, public_key, transports, user_verification)
   on table public.passkey_credentials to authenticated;
 grant update (last_used_at)

@@ -13,7 +13,7 @@ unrun.
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 18 applied in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 19 applied in order with `ON_ERROR_STOP=1` |
 | Seed applies | **Verified** |
 | Fee function + recompute triggers (pgTAP) | **Verified** — `supabase/tests/0001_fee_recompute.test.sql` runs 19 assertions green on a `postgres:16` container; a deliberately failing assertion makes `psql` exit 3 |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
@@ -42,6 +42,7 @@ supabase/
     20260916000016_safe_deployments.sql       safe_deployments + safe_pre_deposits
     20260916000017_passkey_signer.sql         SECURITY DEFINER signer writer
     20260916000018_safe_deployment_writes.sql SECURITY DEFINER Safe-record writers
+    20260916000019_safe_address_comment.sql     comment-only correction
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL

@@ -34,6 +34,7 @@ and how each was resolved.
 | `20260916000016_safe_deployments.sql` | `safe_deployments` (the D4 manifest as explicit columns) and `safe_pre_deposits`; RLS on both, server-written columns withheld from `authenticated` |
 | `20260916000017_passkey_signer.sql` | no tables; `save_passkey_signer`, a SECURITY DEFINER writer for `passkey_credentials.signer_address` |
 | `20260916000018_safe_deployment_writes.sql` | no tables; `record_safe_prediction` and `record_safe_deployment_outcome`, SECURITY DEFINER writers for the Safe record |
+| `20260916000019_safe_address_comment.sql` | no tables; comment-only correction of the Safe address description |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
@@ -143,7 +144,7 @@ Legend: **RW** = read/write own rows; **R** = read; **R(rev)** = reviewer read;
 | `applications` | — | R own; insert own; update `tier` | R(rev) | all |
 | `household_members` | — | RW via application | — | all |
 | `passkey_credentials` | — | read own; insert own; update `last_used_at` (`signer_address` excluded) | — | all |
-| `safe_deployments` | — | read own; insert own (`profile_id` only; the manifest columns are server-written) | — | all |
+| `safe_deployments` | — | read own; insert own (`profile_id` only; the manifest columns are written by `record_safe_prediction`) | — | all |
 | `safe_pre_deposits` | — | read own; insert own (`verification_status` and `verified_at` excluded) | — | all |
 | `chains` | — | read | read | all |
 | `fee_schedule` | — | read | read | all |

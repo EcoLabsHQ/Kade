@@ -93,7 +93,8 @@ comment on column public.safe_deployments.profile_id is
   'Owning resident. The prediction is derived from this resident''s passkey.';
 comment on column public.safe_deployments.safe_address is
   'SECURITY-CRITICAL: the counterfactual Safe address. Server-derived from the '
-  'passkey and frozen deployment inputs, so it is not writable by the browser. '
+  'passkey and frozen deployment inputs. A direct write is refused; migration 18 '
+  'adds record_safe_prediction, which can write it for the caller''s own row. '
   'UNIQUE: idempotency and the pre-deposit foreign key both rest on it.';
 comment on column public.safe_deployments.status is
   'predicted | queued | deployed | failed. Server-written. A deployment outcome '
@@ -161,7 +162,8 @@ grant select on table public.safe_deployments to authenticated;
 -- The narrow INSERT grant: only the owner key is offered, and every manifest
 -- column is NOT NULL and outside the grant, so an authenticated insert cannot
 -- produce a row. The address, the inputs and the transaction hash are absent
--- from both grants: server-written only.
+-- from both grants: a direct write is refused. Migration 18 adds SECURITY
+-- DEFINER writers scoped to the caller's own row.
 grant insert (profile_id)
   on table public.safe_deployments to authenticated;
 

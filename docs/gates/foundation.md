@@ -16,7 +16,7 @@ written against. No irreversible action is involved.
 |---|---|
 | Repository shape | `README.md` layout; three npm workspaces plus `supabase/`; `./scripts/setup.sh` reproduces a clean checkout |
 | Environment contract | `.env.example`, every variable grouped by concern and marked `documented` / `external` / `arbitrary` |
-| Schema scope | 18 migrations creating all 20 tables (the DOCX section 9 set plus `passkey_credentials`, contract v1.5, and the Safe deployment/pre-deposit pair); applied to the live project |
+| Schema scope | 19 migrations creating all 20 tables (the DOCX section 9 set plus `passkey_credentials`, contract v1.5, and the Safe deployment/pre-deposit pair); applied to the live project |
 | RLS matrix | `docs/architecture/data-model.md`; policies live in `supabase/migrations/20260916000009_rls.sql`, `20260916000013_passkey_credentials.sql` and `20260916000016_safe_deployments.sql` |
 | RLS applied live | 20/20 tables with RLS enabled; 10 deny-by-default with zero policies; owner policies on `profiles`, `applications`, `profile_citizenships`, `profile_residences`, `household_members`, `passkey_credentials`, `safe_deployments`, `safe_pre_deposits`, `chains`, `fee_schedule` |
 | Seeds | `supabase/seed.sql` generated from `@kade/shared`, byte-for-byte drift guard in `tests/acceptance/seed-drift.test.ts` |
