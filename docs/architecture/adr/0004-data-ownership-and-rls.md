@@ -25,10 +25,13 @@ RLS enabled, or deny-by-default for unused tables. D2 additionally requires:
   balance or an attestation; those are read from chain and cached.
 - **Every table has RLS enabled.** Tables not used in Week 1 are enabled with no
   permissive policy, which is deny-by-default, rather than left unprotected.
-- **Security-critical columns are server-written.** `safe_address`, credential
-  metadata, `fee_*`, `*_uid` and status transitions are not writable by the
-  `authenticated` role through RLS; the client proposes, the server decides.
-  Status changes flow through `review_events` rather than direct updates.
+- **Security-critical columns are server-written.** `fee_*`, `*_uid` and status
+  transitions are not writable by the `authenticated` role through RLS, and
+  status changes flow through `review_events` rather than direct updates.
+  `safe_address` and the credential's `signer_address` are also refused a direct
+  write, but they are reachable through SECURITY DEFINER functions scoped to the
+  caller's own row (migrations 17 and 18): a resident supplies the value for
+  their own record and cannot reach another's.
 - **Ownership is by `profile_id` tied to the Supabase user**, and the resident
   Safe address is the cross-chain identity used on-chain.
 - **The `self_nullifier` is unique and indexed** (build guide section 9): it is
