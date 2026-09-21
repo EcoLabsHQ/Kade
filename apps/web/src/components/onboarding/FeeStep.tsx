@@ -1,6 +1,7 @@
 'use client';
 
 import { Card } from '@/components/ui/Card';
+import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 
@@ -20,13 +21,14 @@ export interface FileRow {
   readonly value: string;
   readonly status: string;
   readonly tone: 'success' | 'warning';
+  /** True for a row whose value is demo state, never the resident's record. */
+  readonly demo?: boolean;
 }
 
 export interface FeeStepProps {
   readonly rows: readonly FileRow[];
   /** The server-resolved fee, or null when it could not be read. */
   readonly breakdown: PreapprovalFeeBreakdown | null;
-  readonly mode: string;
   readonly paid: boolean;
   readonly onPay: () => void;
   readonly onEnter: () => void;
@@ -41,7 +43,6 @@ function usdc(value: number): string {
 export function FeeStep({
   rows,
   breakdown,
-  mode,
   paid,
   onPay,
   onEnter,
@@ -82,7 +83,18 @@ export function FeeStep({
                 }}
               >
                 <span style={{ color: tokens.muted }}>{row.label}</span>
-                <span style={{ fontWeight: 500 }}>{row.value}</span>
+                <span
+                  style={{
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {row.value}
+                  {row.demo ? <Chip tone="muted">Demo</Chip> : null}
+                </span>
                 <span
                   style={{
                     fontSize: '12px',
@@ -129,8 +141,9 @@ export function FeeStep({
                   </span>
                 </div>
                 <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
-                  {mode} pricing, from the configured fee schedule. This demo
-                  does not send a transaction.
+                  This is the configured pre-approval fee for your household.
+                  Paying is simulated in this demo and does not send a
+                  transaction.
                 </p>
               </>
             ) : (
@@ -159,7 +172,17 @@ export function FeeStep({
             flexDirection: 'column',
           }}
         >
-          <div style={darkEyebrow}>Your pre-approval</div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div style={darkEyebrow}>Your pre-approval</div>
+            <span style={demoTagDark}>Demo payment</span>
+          </div>
           <p
             style={{
               margin: '10px 0 16px',
@@ -244,6 +267,18 @@ const eyebrow: React.CSSProperties = {
 const darkEyebrow: React.CSSProperties = {
   ...eyebrow,
   color: '#98A2B3',
+};
+
+const demoTagDark: React.CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '.06em',
+  textTransform: 'uppercase',
+  color: '#D0D5DD',
+  border: '1px solid #667085',
+  borderRadius: '999px',
+  padding: '3px 8px',
+  whiteSpace: 'nowrap',
 };
 
 const heading: React.CSSProperties = {
