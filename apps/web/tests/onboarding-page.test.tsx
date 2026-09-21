@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
   loadOnboardingSnapshot: vi.fn(),
   resolvePreapprovalFeeBreakdown: vi.fn(),
   loadPasskeyCredential: vi.fn(),
+  listBitcoinAddresses: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
@@ -37,6 +38,11 @@ vi.mock('@/app/onboarding/actions', () => ({
   previewPreapprovalFee: vi.fn(),
   saveOnboardingStep2: vi.fn(),
 }));
+vi.mock('@/app/onboarding/wealth-actions', () => ({
+  listBitcoinAddresses: hoisted.listBitcoinAddresses,
+  addBitcoinAddress: vi.fn(),
+  removeBitcoinAddress: vi.fn(),
+}));
 vi.mock('@/lib/env', () => ({
   isAuthConfigured: () => true,
   readAuthEnv: () => ({
@@ -54,6 +60,10 @@ import OnboardingPage from '@/app/onboarding/page';
 interface FlowProps {
   readonly initialCredentialId?: string | null;
   readonly initial?: OnboardingSnapshot | null;
+  readonly initialBitcoinAddresses?: readonly {
+    readonly id: number;
+    readonly address: string;
+  }[];
 }
 
 async function flowProps(): Promise<FlowProps> {
@@ -70,6 +80,7 @@ beforeEach(() => {
   hoisted.loadOnboardingSnapshot.mockResolvedValue(null);
   hoisted.resolvePreapprovalFeeBreakdown.mockResolvedValue(null);
   hoisted.loadPasskeyCredential.mockResolvedValue(null);
+  hoisted.listBitcoinAddresses.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -99,6 +110,29 @@ describe('onboarding page credential restore', () => {
     hoisted.loadPasskeyCredential.mockRejectedValue(new Error('database down'));
 
     expect((await flowProps()).initialCredentialId).toBeNull();
+  });
+
+  it('hands the restored Bitcoin addresses to the flow', async () => {
+    hoisted.listBitcoinAddresses.mockResolvedValue([
+      {
+        id: 7,
+        address: 'bc1qexampleexampleexampleexampleexampleexample0',
+        btc: '0.50000000',
+        usd: 25000,
+        readAt: '2026-09-21T00:00:00Z',
+        readError: null,
+      },
+    ]);
+
+    const props = await flowProps();
+    expect(props.initialBitcoinAddresses).toHaveLength(1);
+    expect(props.initialBitcoinAddresses?.[0]?.address).toMatch(/^bc1q/);
+  });
+
+  it('degrades to no addresses when the Bitcoin read fails', async () => {
+    hoisted.listBitcoinAddresses.mockRejectedValue(new Error('provider down'));
+
+    expect((await flowProps()).initialBitcoinAddresses).toEqual([]);
   });
 
   it('redirects to login when there is no session', async () => {
