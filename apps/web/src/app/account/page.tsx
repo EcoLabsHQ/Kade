@@ -26,6 +26,7 @@ export default async function AccountPage() {
       email={session.email}
       safeAddress={shellSafe.address}
       safeDeployed={shellSafe.deployed}
+      safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
     >
       <ContentContainer>

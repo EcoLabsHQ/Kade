@@ -12,6 +12,7 @@ import {
   PreRegistrationStepper,
   type StepperItem,
 } from '@/components/onboarding/PreRegistrationStepper';
+import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
 export interface SidebarProps {
   readonly nav: readonly NavGroupConfig[];
@@ -20,6 +21,8 @@ export interface SidebarProps {
   readonly safeAddress: string | null;
   /** True once the Safe contract exists on chain. */
   readonly safeDeployed?: boolean;
+  /** The record's status, so a failure reads differently from "still pending". */
+  readonly safeStatus?: SafeDeploymentStatus | null;
   readonly explorerUrl?: string | null;
   readonly email: string | null;
 }
@@ -34,6 +37,7 @@ export function Sidebar({
   network,
   safeAddress,
   safeDeployed = false,
+  safeStatus = null,
   explorerUrl = null,
   email,
 }: SidebarProps) {
@@ -100,6 +104,7 @@ export function Sidebar({
           address={safeAddress}
           network={network}
           deployed={safeDeployed}
+          status={safeStatus}
           explorerUrl={explorerUrl}
         />
       </div>

@@ -36,14 +36,28 @@ type AccountAddress =
   | { readonly state: 'ready'; readonly value: string }
   | { readonly state: 'unavailable' };
 
-/** Whether the account itself exists on chain yet. */
+/**
+ * Whether the account itself exists on chain yet.
+ *
+ * The failure case keeps the specific status rather than collapsing every
+ * non-success into one state, so the screen can say something true and offer a
+ * retry. The status is product language at this boundary; the technical reason
+ * stays in the server log.
+ */
+type DeployFailureStatus =
+  | 'not-configured'
+  | 'insufficient-funds'
+  | 'address-mismatch'
+  | 'failed'
+  | 'unavailable';
+
 type DeployState =
   | { readonly state: 'idle' }
   | { readonly state: 'deploying' }
   /** Deployed, or already there. */
   | { readonly state: 'ready' }
   /** The passkey is real but the account is not on chain yet. */
-  | { readonly state: 'pending' };
+  | { readonly state: 'failed'; readonly status: DeployFailureStatus };
 
 /** A 32-byte challenge. [arbitrary] client-side: a production flow issues it server-side. */
 function randomChallenge(): string {
@@ -88,10 +102,12 @@ export function AccountSetupStep({
       setDeploy(
         result.status === 'deployed' || result.status === 'already-deployed'
           ? { state: 'ready' }
-          : { state: 'pending' },
+          : { state: 'failed', status: result.status },
       );
     } catch {
-      setDeploy({ state: 'pending' });
+      // The action itself could not be reached. That is a failure, not a silent
+      // "we'll finish shortly": the resident can retry.
+      setDeploy({ state: 'failed', status: 'failed' });
     }
   }
 
@@ -210,7 +226,11 @@ export function AccountSetupStep({
               <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '2px' }}>
                 {signer?.status === 'not-persisted'
                   ? "Your passkey is on this device. We'll link it to your account shortly."
-                  : 'Your account is ready.'}
+                  : deploy.state === 'ready'
+                    ? 'Your account is ready.'
+                    : deploy.state === 'failed'
+                      ? 'Your passkey is ready. We still need to finish your account.'
+                      : 'Your passkey is ready.'}
               </div>
             </div>
           </div>
@@ -274,7 +294,7 @@ export function AccountSetupStep({
                 color: tokens.muted,
               }}
             >
-              <DeployLine deploy={deploy} />
+              <DeployLine deploy={deploy} onRetry={() => void setUpAccount()} />
             </div>
           </div>
         ) : null}
@@ -322,15 +342,43 @@ function AccountAddressLine({ account }: { readonly account: AccountAddress }) {
   return <span style={{ color: tokens.muted, fontWeight: 500 }}>—</span>;
 }
 
-function DeployLine({ deploy }: { readonly deploy: DeployState }) {
+/**
+ * The resident-facing explanation for a deployment that did not complete.
+ *
+ * Each mode is distinct so the resident is not told "shortly" when the truth is
+ * "the network fee could not be covered". None of these name configuration.
+ */
+const DEPLOY_FAILURE_MESSAGE: Readonly<Record<DeployFailureStatus, string>> = {
+  'not-configured': 'We are still preparing account setup. Please try again.',
+  'insufficient-funds': 'We could not cover the network fee for setup. Please try again.',
+  'address-mismatch': 'We paused for a safety check. Please try again.',
+  failed: 'We could not finish setting up your account. Please try again.',
+  unavailable: 'We could not reach the network to finish setup. Please try again.',
+};
+
+function DeployLine({
+  deploy,
+  onRetry,
+}: {
+  readonly deploy: DeployState;
+  readonly onRetry: () => void;
+}) {
   if (deploy.state === 'deploying') return <>Setting up your account…</>;
   if (deploy.state === 'ready') {
     return <>Your account is live on Sepolia.</>;
   }
-  if (deploy.state === 'pending') {
+  if (deploy.state === 'failed') {
     // Honest: the passkey is theirs and the address is theirs, but the contract
-    // is not on chain yet. Never claim otherwise.
-    return <>We&rsquo;ll finish setting up your account shortly.</>;
+    // is not on chain. Say which failure it was and let them try again — the
+    // address is deterministic, so a retry cannot create a second account.
+    return (
+      <span>
+        {DEPLOY_FAILURE_MESSAGE[deploy.status]}{' '}
+        <button type="button" onClick={onRetry} style={retryButton}>
+          Try again
+        </button>
+      </span>
+    );
   }
   return null;
 }
@@ -395,4 +443,16 @@ const primaryButton: React.CSSProperties = {
   fontFamily: 'inherit',
   fontSize: '15px',
   fontWeight: 600,
+};
+
+const retryButton: React.CSSProperties = {
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '999px',
+  background: '#fff',
+  color: tokens.ink,
+  fontFamily: 'inherit',
+  fontSize: '12px',
+  fontWeight: 600,
+  padding: '3px 10px',
+  cursor: 'pointer',
 };
