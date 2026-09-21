@@ -1,0 +1,38 @@
+iteration: iteration-2
+known_good: 74db1d046a1885305093e48377199a6182b75b05
+candidate: 3227db1f14ae92449c4cf88c438cc56586969c1c
+mode: recheck
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 3227db1f14ae92449c4cf88c438cc56586969c1c
+scope:
+  unit_a: step-2 empty-first profile entry
+  unit_b: step-3 icons, hardware removal, Bitcoin address rows
+  unit_c: Bitcoin provider client, server actions, wallets RLS migration, page wiring
+  unit_d: contract amendment v1.7 and known-gaps
+reviewed_scopes:
+  unit_a: complete
+  unit_b: complete
+  unit_c: complete
+  unit_d: complete
+active_findings: []
+resolved_findings: [F1, F2, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+review_complete: true
+verdict: review_passed
+headline: >-
+  Week 2 change-control iteration: contract v1.7 (read-only Bitcoin
+  proof-of-wealth), Step 2 empty-first entry with a styled date picker, and the
+  Step 3 Bitcoin address read path. Discovery raised one blocker (stale
+  schema/RLS docs) and two warnings (cap enforced only in the action; no address
+  normalisation); all three were fixed at the class/boundary level and rechecked
+  to RESOLVED.
+evidence:
+  - .review/iteration-2/findings.yaml
+  - clean-database apply of 20 migrations + seed on postgres:16 (ON_ERROR_STOP=1)
+  - live RLS boundary run (cap, verified_at, normalisation, cross-resident isolation, anon)
