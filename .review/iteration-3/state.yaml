@@ -1,0 +1,38 @@
+iteration: iteration-3
+known_good: 05382f9656366a6a62af32dae95c7ca01821d32d
+candidate: 51a903d65e9f0acae6ba63465bfd36284c56616b
+mode: discovery
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 51a903d65e9f0acae6ba63465bfd36284c56616b
+scope:
+  docs: record migration 20 as applied to the live Supabase project
+notes: >-
+  Operational follow-on to iteration-2. The project owner approved applying
+  migration 20; the demo was flushed with public.reset_demo_data() first, then
+  the migration was applied and verified live. Four documents that stated the
+  migration was "committed but not yet applied" were corrected to the applied
+  state (20 migrations, 9 deny-by-default); supabase/README.md and
+  docs/architecture/data-model.md were already consistent.
+reviewed_scopes:
+  docs: complete
+  review-evidence: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+warn_notes:
+  - >-
+    W1 (no action): docs/reports/2026-09-17-live-supabase-and-login-methods.md
+    is a dated point-in-time report and still shows the old 10 deny-by-default
+    count; amending it would falsify history.
+  - >-
+    W2 (no action): the migration 03 `wallets` table comment "Deny-by-default in
+    Week 1" is immutable applied text, explicitly superseded by migration 20 and
+    already covered by the declared comment-divergence class in known-gaps.
+evidence:
+  - .review/iteration-3/evidence/live-apply.txt
+  - reviewer verdict REVIEW PASSED on candidate 51a903d (docs-only diff)
