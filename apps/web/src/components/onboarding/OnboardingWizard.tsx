@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { COUNTRIES, type CountryCode, type FeeMode, type TierIndex } from '@kade/shared';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { Field } from '@/components/ui/Field';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { Notice } from '@/components/ui/Notice';
@@ -16,15 +17,17 @@ import {
   addResidence,
   canRemoveCitizenship,
   countryName,
+  draftFieldErrors,
   draftFromSnapshot,
   draftToSnapshot,
-  demoDraft,
+  emptyDraft,
   evaluateDraft,
   removeCitizenship,
   removeMember,
   removeResidence,
   updateMember,
   updateResidence,
+  type DraftFieldErrors,
   type OnboardingDraft,
 } from '@/lib/onboarding/draft';
 import { saveOnboardingStep2 } from '@/app/onboarding/actions';
@@ -89,9 +92,10 @@ export function OnboardingWizard({
   const router = useRouter();
   const currentYear = currentYearProp ?? new Date().getFullYear();
   const [draft, setDraft] = useState<OnboardingDraft>(() =>
-    initial ? draftFromSnapshot(initial) : demoDraft(currentYear),
+    initial ? draftFromSnapshot(initial) : emptyDraft(),
   );
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
+  const [showErrors, setShowErrors] = useState(false);
 
   const defaultStore = useMemo<OnboardingStore>(
     () =>
@@ -109,11 +113,10 @@ export function OnboardingWizard({
   const store = storeProp ?? defaultStore;
 
   const evaluation = useMemo(() => evaluateDraft(draft, mode), [draft, mode]);
-
-  // Nothing restored means the form opened on the example values, not on
-  // anything the resident entered. Say so, so the example is never mistaken for
-  // their own record.
-  const showingExample = initial === null;
+  const fieldErrors = useMemo<DraftFieldErrors>(
+    () => (showErrors ? draftFieldErrors(draft, mode) : {}),
+    [showErrors, draft, mode],
+  );
 
   const citizenshipOptions = useMemo(
     () =>
@@ -133,14 +136,13 @@ export function OnboardingWizard({
     [draft.residences],
   );
 
-  const savingDisabled = !evaluation.canContinue || store.mode !== 'supabase';
-  const disabledReason = !evaluation.canContinue
-    ? evaluation.blockers[0] ?? 'Complete the required fields to continue.'
-    : NOT_CONFIGURED_PERSISTENCE_REASON;
-
   async function handleContinue() {
-    if (!evaluation.canContinue) return;
+    if (!evaluation.canContinue) {
+      setShowErrors(true);
+      return;
+    }
     if (store.mode !== 'supabase') {
+      setShowErrors(true);
       setStatus({ kind: 'error', message: NOT_CONFIGURED_PERSISTENCE_REASON });
       return;
     }
@@ -193,14 +195,13 @@ export function OnboardingWizard({
         pre-approval — here we only need enough to open your file.
       </p>
 
-      {showingExample ? (
+      {showErrors && !evaluation.canContinue ? (
         <Notice
-          tone="neutral"
-          title="Example details"
+          tone="error"
+          title="Check the form"
           style={{ maxWidth: '920px', marginBottom: '16px' }}
         >
-          These start as an example so you can see the form. Change anything that
-          is not right for you.
+          Please complete all required fields to continue.
         </Notice>
       ) : null}
 
@@ -251,20 +252,27 @@ export function OnboardingWizard({
             <Field
               id="first-name"
               label="First name"
+              placeholder="First name"
               value={draft.firstName}
+              invalid={Boolean(fieldErrors.firstName)}
+              error={fieldErrors.firstName}
               onChange={(value) => setDraft((d) => ({ ...d, firstName: value }))}
             />
             <Field
               id="last-name"
               label="Last name"
+              placeholder="Last name"
               value={draft.lastName}
+              invalid={Boolean(fieldErrors.lastName)}
+              error={fieldErrors.lastName}
               onChange={(value) => setDraft((d) => ({ ...d, lastName: value }))}
             />
-            <Field
+            <DatePicker
               id="date-of-birth"
               label="Date of birth"
-              type="date"
               value={draft.dob}
+              invalid={Boolean(fieldErrors.dob)}
+              error={fieldErrors.dob}
               onChange={(value) => setDraft((d) => ({ ...d, dob: value }))}
             />
             <CitizenshipEditor
@@ -273,6 +281,7 @@ export function OnboardingWizard({
               options={citizenshipOptions}
               removable={canRemoveCitizenship(draft)}
               getCountryName={countryName}
+              invalid={Boolean(fieldErrors.citizenships)}
               onAdd={(code: CountryCode) =>
                 setDraft((d) => addCitizenship(d, code))
               }
@@ -286,6 +295,7 @@ export function OnboardingWizard({
               options={residenceOptions}
               currentYear={currentYear}
               getCountryName={countryName}
+              invalid={Boolean(fieldErrors.residences)}
               onAdd={(code: CountryCode) =>
                 setDraft((d) => addResidence(d, code, currentYear))
               }
@@ -308,6 +318,7 @@ export function OnboardingWizard({
           </div>
           <TierSelector
             value={draft.tier}
+            invalid={Boolean(fieldErrors.tier)}
             onSelect={(index: TierIndex) =>
               setDraft((d) => ({ ...d, tier: index }))
             }
@@ -317,6 +328,7 @@ export function OnboardingWizard({
         <HouseholdEditor
           members={draft.members}
           options={COUNTRIES}
+          invalid={Boolean(fieldErrors.members)}
           onAdd={() => setDraft((d) => addMember(d))}
           onRemove={(index) => setDraft((d) => removeMember(d, index))}
           onUpdate={(index, patch) =>
@@ -329,25 +341,23 @@ export function OnboardingWizard({
       <div
         style={{
           display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           gap: '10px',
           marginTop: '22px',
+          width: '100%',
           maxWidth: '920px',
         }}
       >
-        <Button
-          variant={savingDisabled ? 'locked' : 'primary'}
-          disabled={savingDisabled}
-          title={savingDisabled ? disabledReason : 'Save and continue'}
-          onClick={handleContinue}
-        >
-          Continue
-        </Button>
         <LockedAction
           reason="You are already signed in — account creation is Step 1 (contract section 2, item 2)."
           style={{ padding: '0 22px', fontSize: '15px', cursor: 'not-allowed' }}
         >
           Back
         </LockedAction>
+        <Button variant="primary" title="Continue" onClick={handleContinue}>
+          Continue
+        </Button>
       </div>
     </div>
   );

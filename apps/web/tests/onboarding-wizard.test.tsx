@@ -29,9 +29,21 @@ function makeStore() {
   return { store, save };
 }
 
+const YEAR = new Date().getFullYear();
+
+/** A restored, fully valid snapshot; the applicant alone is a household of one. */
+const validSnapshot: OnboardingSnapshot = {
+  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  citizenships: ['NL'],
+  residences: [{ countryCode: 'NL', fromYear: YEAR - 5, toYear: 'present' }],
+  tier: 1,
+  members: [],
+};
+
 function renderWizard(
   store: OnboardingStore,
   persistence: 'supabase' | 'not-configured' = 'supabase',
+  initial: OnboardingSnapshot | null = null,
 ) {
   return render(
     <OnboardingWizard
@@ -39,71 +51,121 @@ function renderWizard(
       userId="user-1"
       persistence={persistence}
       currentYear={2026}
+      initial={initial}
       store={store}
     />,
   );
 }
 
 describe('Step 2 wizard', () => {
-  it('starts populated with demo defaults, so the demo can be clicked through', () => {
-    const { store } = makeStore();
+  it('starts empty: no names, no citizenship, no tier, no household', () => {
+    renderWizard(makeStore().store);
+
+    expect(screen.getByLabelText('First name')).toHaveValue('');
+    expect(screen.getByLabelText('Last name')).toHaveValue('');
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).toHaveAttribute('aria-checked', 'false');
+    }
+    expect(screen.getByText(/no household members yet/i)).toBeInTheDocument();
+    // The empty citizenship editor still offers the "+ Add country" select.
+    expect(screen.getByLabelText('Add citizenship')).toBeInTheDocument();
+  });
+
+  it('keeps Continue clickable while the form is empty', () => {
+    renderWizard(makeStore().store);
+
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+  });
+
+  it('does not pre-fill example values', () => {
+    renderWizard(makeStore().store);
+
+    expect(screen.getByLabelText('First name')).toHaveValue('');
+    expect(screen.queryByDisplayValue('Marcus')).toBeNull();
+    expect(screen.queryByDisplayValue('Feldt')).toBeNull();
+    expect(screen.queryByText('Example details')).toBeNull();
+  });
+
+  it('marks the form and does not save when Continue is clicked on an empty form', () => {
+    const { store, save } = makeStore();
     renderWizard(store);
 
-    expect(screen.getByLabelText('First name')).toHaveValue('Marcus');
-    expect(screen.getByLabelText('Last name')).toHaveValue('Feldt');
-    // Household of three, the contract's worked example.
-    expect(screen.getByRole('radio', { name: /3-year/ })).toHaveAttribute(
-      'aria-checked',
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(save).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Please complete all required fields to continue.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('First name')).toHaveAttribute(
+      'aria-invalid',
       'true',
     );
   });
 
-  it('enables Continue with the populated draft', () => {
-    const { store } = makeStore();
-    renderWizard(store);
+  it('renders the date of birth as a dd/mm/yyyy trigger, not a native date input', () => {
+    renderWizard(makeStore().store);
 
-    expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
+    const dob = screen.getByLabelText('Date of birth');
+    expect(dob).toHaveTextContent('dd/mm/yyyy');
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it('keeps the draft ISO while the chosen date shows dd/mm/yyyy', () => {
+    renderWizard(makeStore().store);
+
+    fireEvent.click(screen.getByLabelText('Date of birth'));
+    expect(
+      screen.getByRole('dialog', { name: 'Date of birth' }),
+    ).toBeInTheDocument();
+
+    const year = new Date().getFullYear();
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('Date of birth')).toHaveTextContent(
+      `15/${month}/${year}`,
+    );
   });
 
   it('does not mention the pre-approval fee: it belongs to step 4', () => {
-    const { store } = makeStore();
-    renderWizard(store);
+    renderWizard(makeStore().store);
 
     expect(screen.queryByText(/pre-approval fee/i)).toBeNull();
     expect(screen.queryByText(/USDC/)).toBeNull();
   });
 
-  it('does not list validation blockers above the form', () => {
-    const { store } = makeStore();
-    renderWizard(store);
-
-    // The blocker list was developer-facing copy at the top of the screen; the
-    // fields themselves say what is missing.
-    expect(screen.queryByText(/before you can continue/i)).toBeNull();
-  });
-
-  it('saves the populated draft through the seam', async () => {
+  it('saves a restored, valid draft through the seam', async () => {
     const { store, save } = makeStore();
-    renderWizard(store);
+    renderWizard(store, 'supabase', validSnapshot);
 
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(screen.getByLabelText('First name')).toHaveValue('Ada');
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     const [userId, snapshot] = save.mock.calls[0] ?? [];
     expect(userId).toBe('user-1');
     expect(snapshot).not.toHaveProperty('amount');
     expect(snapshot?.profile).toEqual({
-      firstName: 'Marcus',
-      lastName: 'Feldt',
-      dob: '1982-03-14',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dob: '1990-01-01',
     });
-    expect(snapshot?.members).toHaveLength(2);
+    expect(snapshot?.members).toHaveLength(0);
 
     // Saving moves the resident on: the button does something visible.
     await waitFor(() => expect(hoisted.push).toHaveBeenCalledWith('/'));
   });
 
-  it('renders a not-configured state and never fakes a save', () => {
+  it('restores the resident\u2019s saved details instead of starting empty', () => {
+    renderWizard(makeStore().store, 'supabase', validSnapshot);
+
+    expect(screen.getByLabelText('First name')).toHaveValue('Ada');
+    expect(screen.queryByText('Example details')).toBeNull();
+  });
+
+  it('validates before it ever fakes a save when persistence is not configured', () => {
     const save = vi.fn();
     const store: OnboardingStore = {
       mode: 'not-configured',
@@ -113,46 +175,37 @@ describe('Step 2 wizard', () => {
     renderWizard(store, 'not-configured');
 
     expect(screen.getByText('Saving not configured')).toBeInTheDocument();
-    const continueButton = screen.getByRole('button', { name: /continue/i });
-    expect(continueButton).toBeDisabled();
-    expect(continueButton.getAttribute('title')).toMatch(/not configured/i);
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeEnabled();
 
     fireEvent.click(continueButton);
     expect(save).not.toHaveBeenCalled();
-    expect(screen.queryByText(/^Saved$/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Please complete all required fields to continue.'),
+    ).toBeInTheDocument();
   });
 
-  it('labels the prefilled details as an example, so they are not the resident\u2019s record', () => {
+  it('surfaces the not-configured reason instead of saving a valid draft', async () => {
+    const save = vi.fn();
+    const store: OnboardingStore = {
+      mode: 'not-configured',
+      load: async () => null,
+      save,
+    };
+    renderWizard(store, 'not-configured', validSnapshot);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(save).not.toHaveBeenCalled();
+    expect(await screen.findByText('Save failed')).toBeInTheDocument();
+  });
+
+  it('keeps build vocabulary out of the rendered text', () => {
     renderWizard(makeStore().store);
 
-    expect(screen.getByText('Example details')).toBeInTheDocument();
-    // The label is plain product copy, with no build vocabulary in it.
     const text = document.body.textContent ?? '';
     for (const pattern of [/SUPABASE/i, /SERVICE_ROLE/i, /environment/i]) {
       expect(text).not.toMatch(pattern);
     }
-  });
-
-  it('drops the example label when the resident\u2019s saved details were restored', () => {
-    const restored: OnboardingSnapshot = {
-      profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
-      citizenships: ['NL'],
-      residences: [{ countryCode: 'NL', fromYear: 2021, toYear: 'present' }],
-      tier: 1,
-      members: [],
-    };
-    render(
-      <OnboardingWizard
-        mode="demo"
-        userId="user-1"
-        persistence="supabase"
-        currentYear={2026}
-        initial={restored}
-        store={makeStore().store}
-      />,
-    );
-
-    expect(screen.getByLabelText('First name')).toHaveValue('Ada');
-    expect(screen.queryByText('Example details')).toBeNull();
   });
 });

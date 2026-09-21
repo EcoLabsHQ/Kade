@@ -4,6 +4,7 @@ import { tokens } from '@/components/ui/tokens';
 export interface TierSelectorProps {
   readonly value: TierIndex | null;
   readonly onSelect: (index: TierIndex) => void;
+  readonly invalid?: boolean;
 }
 
 function usd(amount: number): string {
@@ -11,11 +12,12 @@ function usd(amount: number): string {
 }
 
 /** The reference's three tier cards, `$280,000 / $425,000 / $850,000`. */
-export function TierSelector({ value, onSelect }: TierSelectorProps) {
+export function TierSelector({ value, onSelect, invalid }: TierSelectorProps) {
   return (
     <div
       role="radiogroup"
       aria-label="Permit tier you are aiming for"
+      aria-invalid={invalid || undefined}
       className="kade-grid-tiers"
       style={{ gap: '8px' }}
     >
@@ -31,7 +33,13 @@ export function TierSelector({ value, onSelect }: TierSelectorProps) {
             style={{
               textAlign: 'left',
               background: '#fff',
-              border: `1.5px solid ${selected ? tokens.action : tokens.border}`,
+              border: `1.5px solid ${
+                selected
+                  ? tokens.action
+                  : invalid
+                    ? tokens.danger
+                    : tokens.border
+              }`,
               borderRadius: '12px',
               padding: '12px 14px',
               fontFamily: 'inherit',
