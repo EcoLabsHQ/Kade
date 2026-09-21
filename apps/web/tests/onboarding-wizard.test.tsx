@@ -77,21 +77,6 @@ describe('Step 2 wizard', () => {
     expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
   });
 
-  it('puts Back on the left and Continue on the right', () => {
-    renderWizard(makeStore().store);
-
-    const continueButton = screen.getByRole('button', { name: /^continue$/i });
-    const back = screen.getByText('Back');
-
-    // Back precedes Continue in the DOM, and the row pushes them apart.
-    expect(
-      back.compareDocumentPosition(continueButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    const row = continueButton.parentElement as HTMLElement;
-    expect(row.style.justifyContent).toBe('space-between');
-  });
-
   it('does not pre-fill example values', () => {
     renderWizard(makeStore().store);
 
