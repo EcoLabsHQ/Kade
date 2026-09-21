@@ -64,6 +64,180 @@ textarea {
   font-family: inherit;
 }
 
+/*
+ * Responsive shell.
+ *
+ * The app styles with inline `style` objects, which cannot express a media
+ * query. Layout that must change with the viewport is therefore expressed here,
+ * once, as semantic classes; inline styles keep only the values that never
+ * change. One breakpoint is used for the whole shell: 768px. `useNarrowViewport`
+ * is deliberately not used, because the authenticated pages are async Server
+ * Components and a JS breakpoint would either force them client-side or flash
+ * the desktop layout on first paint.
+ */
+
+.kade-shell {
+  display: flex;
+  align-items: stretch;
+}
+
+.kade-sidebar {
+  width: var(--kade-sidebar-width);
+  flex: 0 0 var(--kade-sidebar-width);
+  border-right: 1px solid var(--kade-border);
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px 18px;
+  background: #fff;
+}
+
+.kade-content {
+  padding: 36px 40px 64px;
+}
+
+.kade-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.kade-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.kade-grid-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.kade-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.kade-announce {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 32px;
+}
+
+/*
+ * The nav drawer toggle. On desktop it is inert and invisible: the sidebar is
+ * simply the sticky column above. Below the breakpoint the checkbox drives the
+ * off-canvas drawer with pure CSS, so the drawer works without hydration.
+ */
+.kade-nav-toggle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.kade-nav-backdrop,
+.kade-nav-burger {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Clear the fixed burger. Onboarding's own column is out of this scope, so
+     its inline 36px top padding is left untouched (see responsive report). */
+  .kade-shell {
+    padding-top: 56px;
+  }
+
+  .kade-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: 100dvh;
+    width: min(86vw, 320px);
+    flex: none;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 60;
+    overflow-y: auto;
+    border-right: 1px solid var(--kade-border);
+  }
+
+  .kade-nav-toggle {
+    visibility: visible;
+  }
+
+  .kade-nav-toggle:checked ~ .kade-sidebar {
+    transform: translateX(0);
+  }
+
+  .kade-nav-toggle:checked ~ .kade-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 24, 40, 0.4);
+    z-index: 55;
+  }
+
+  .kade-nav-burger {
+    display: flex;
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 65;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--kade-border);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+    cursor: pointer;
+  }
+
+  .kade-nav-burger-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kade-nav-burger-bars span {
+    display: block;
+    width: 16px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--kade-ink);
+  }
+
+  .kade-content {
+    padding: 20px 16px 48px;
+  }
+
+  .kade-grid-2,
+  .kade-grid-4,
+  .kade-grid-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .kade-dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .kade-announce {
+    flex-wrap: wrap;
+    padding: 10px 16px;
+  }
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;

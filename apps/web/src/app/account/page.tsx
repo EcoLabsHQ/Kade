@@ -55,9 +55,8 @@ export default async function AccountPage() {
         </p>
 
         <div
+          className="kade-grid-2"
           style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
             gap: '16px',
             alignItems: 'start',
             maxWidth: '960px',

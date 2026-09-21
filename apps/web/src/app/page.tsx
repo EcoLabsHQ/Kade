@@ -100,15 +100,11 @@ export default async function OverviewPage() {
       explorerUrl={shellSafe.explorerUrl}
     >
       <div
+        className="kade-announce"
         style={{
           background: '#FDF6E7',
           color: '#8A5A12',
           fontSize: '13px',
-          padding: '10px 32px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '16px',
         }}
       >
         <span>
@@ -123,13 +119,8 @@ export default async function OverviewPage() {
 
       <ContentContainer>
         <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-end',
-            gap: '24px',
-            marginBottom: '24px',
-          }}
+          className="kade-dashboard-header"
+          style={{ marginBottom: '24px' }}
         >
           <div>
             <h1
@@ -174,9 +165,8 @@ export default async function OverviewPage() {
         </div>
 
         <div
+          className="kade-grid-4"
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
             gap: '14px',
             marginBottom: '16px',
           }}
@@ -203,12 +193,8 @@ export default async function OverviewPage() {
         </div>
 
         <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)',
-            gap: '16px',
-            alignItems: 'start',
-          }}
+          className="kade-grid-dashboard"
+          style={{ gap: '16px' }}
         >
           <Card radius={14}>
             <div
