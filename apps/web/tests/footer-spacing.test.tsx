@@ -52,14 +52,20 @@ describe('footer bottom spacing', () => {
     const paddedContent = column.firstElementChild as HTMLElement;
     const footer = column.querySelector('footer') as HTMLElement;
 
-    // The 64px gap belongs to the content column, so it stays above the footer.
-    expect(paddedContent.style.paddingBottom).toBe('64px');
-    // The footer is a sibling of the padded content, never inside its padding,
+    // The 64px gap belongs to the padded content region, so it stays above the
+    // footer. It lives in `.kade-content-padding` (globals.css) rather than
+    // inline, because it changes at the responsive breakpoint and an inline
+    // style cannot carry a media query — so assert the class, not a style.
+    expect(paddedContent.className).toContain('kade-content-padding');
+    // The footer is a sibling of the padded region, never inside its padding,
     // so the container's 64px can never stack underneath the footer.
     expect(paddedContent.contains(footer)).toBe(false);
     expect(footer.parentElement).toBe(column);
     // The gap below the footer is the footer's own fixed value.
     expect(footer.style.paddingBottom).toBe('18px');
+    // And the outer column must NOT also be padded, or the two would compound.
+    expect(column.className).toContain('kade-content');
+    expect(column.style.padding).toBe('');
   });
 
   it('renders the login screen footer outside the padded content column', () => {
@@ -76,8 +82,12 @@ describe('footer bottom spacing', () => {
     const column = footer.parentElement as HTMLElement;
     const paddedContent = column.firstElementChild as HTMLElement;
 
-    expect(paddedContent.style.paddingBottom).toBe('64px');
+    expect(paddedContent.className).toContain('kade-content-padding');
     expect(paddedContent.contains(footer)).toBe(false);
     expect(footer.style.paddingBottom).toBe('18px');
+    // The <main> that holds the container must not be a padded column itself:
+    // that was the merge bug, and it applied the padding a third time.
+    const main = column.parentElement as HTMLElement;
+    expect(main.className ?? '').not.toContain('kade-content');
   });
 });

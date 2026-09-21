@@ -175,13 +175,16 @@ work as complete.
   `passkey_credentials`, and `/account` reloads them server-side; the path is
   unit-tested. No signed-in end-to-end run has exercised the live write. The
   derived `signer_address` is server-written and needs
-  `SUPABASE_SERVICE_ROLE_KEY`; without that key the credential still persists,
+  `public.save_passkey_signer`, a SECURITY DEFINER function scoped to the
+  caller's own credential, so no service-role key is needed; without it the credential still persists,
   the signer stays NULL, and the panel says so rather than faking it.
 - **A test signature through the direct Safe WebAuthn signer.** The signer
   address is now derived from the passkey, but signing requires a deployed Safe
-  and a real assertion, and nothing is deployed.
+  and a real assertion. A Safe **is** deployed on Sepolia; signing has not been
+  exercised end to end.
 - **Any on-chain write other than the EAS schema registrations.** No attestation
-  has been issued, KadeLock is not deployed, and the resident Safe is not
+  has been issued, and KadeLock is not deployed. The resident Safe is deployed
+  on Sepolia, but no attestation
   deployed: the deployment engine exists at `apps/web/src/lib/safe/deploy.ts`
   but is not wired into the application and its payer key is not configured. The
   EAS tooling only generates, prints and verifies the plan and never broadcasts;

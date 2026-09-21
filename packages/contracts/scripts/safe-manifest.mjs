@@ -131,7 +131,7 @@ function main() {
     for (const error of errors) console.error(`  ${error}`);
     process.exit(1);
   }
-  console.log('Example conforms to the schema. Nothing is deployed; the example carries placeholders.');
+  console.log('Example conforms to the schema. It is a shape example, so it carries placeholders.');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

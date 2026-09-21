@@ -18,7 +18,7 @@ is approving the exact bytes that would be registered.
 | The encodings are generated, not hand-copied | `npm run eas:manifest --workspace @kade/contracts` regenerates both `eas-schema-manifest.json` and `REVIEW.md` from `@kade/shared` |
 | Every field carries its provenance | `documented` or `arbitrary` per field in `packages/shared/src/eas.ts` |
 | Registration cannot happen accidentally | `assertRegistrationApproved` throws unless an approval record names an approver and a timestamp; `eas/approval.json` records the approval (`onchainGateApproved: true`, with the approver and date); the planner prints calldata and never signs |
-| The EAS tooling is read-only | `npm run eas:verify --workspace @kade/contracts` reads `getSchema()` from the registry and compares it with the manifest; `eas:manifest`, `eas:calldata` and `eas:register` produce the plan and calldata for review and never sign or send. The repository does contain a send path for the resident Safe (`apps/web/src/lib/safe/deploy.ts`), but it is not wired into the application and its payer key (`SEPOLIA_DEPLOYER_PRIVATE_KEY`) is absent, so nothing has been broadcast from it |
+| The EAS tooling is read-only | `npm run eas:verify --workspace @kade/contracts` reads `getSchema()` from the registry and compares it with the manifest; `eas:manifest`, `eas:calldata` and `eas:register` produce the plan and calldata for review and never sign or send. The repository's only send path is the resident Safe deployment engine (`apps/web/src/lib/safe/deploy.ts`), which is wired into onboarding and has deployed one Safe on Sepolia |
 | KadeLock compiles and its policy passes | `forge test` — 33 tests |
 | KadeLock is described exactly | "blocks non-allowlisted native-value transactions while locked"; the ERC-20 gap and the production fix are documented rather than glossed |
 
@@ -39,8 +39,9 @@ Every one is currently `[arbitrary]` unless the DOCX states it.
 
 - **No attestation has been issued.** The five schemas exist on chain, but no
   `kade.*` attestation has been written against any of them.
-- **Nothing else is on chain.** KadeLock is not deployed, and the resident Safe
-  is not deployed: the deployment engine is unwired and its payer key is absent.
+- **KadeLock is not deployed.** The resident Safe **is** deployed on Sepolia
+  (`0x01C16fEc6C9E4b3DFa7eCA4464C55554a49d8918`), through the deployment engine
+  wired into onboarding.
 
 ## What approval authorises
 
@@ -85,7 +86,7 @@ the schema string, resolver and revocable flag against the manifest.
 The EAS plan is generated and verified here and does not broadcast; these five
 transactions were sent from outside the repository. The repository's only send
 path is the resident-Safe deployment engine in
-`apps/web/src/lib/safe/deploy.ts`, which is unwired and whose payer key is unset,
+`apps/web/src/lib/safe/deploy.ts`, which is wired into onboarding,
 so it has never sent a transaction.
 
 > **Note:** `approvedBy` is the literal string "project owner". Replace it with a

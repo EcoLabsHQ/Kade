@@ -95,7 +95,15 @@ textarea {
   background: #fff;
 }
 
-.kade-content {
+/*
+ * The content column's padding. It lives here, not inline, because it changes at
+ * the breakpoint below and an inline style cannot carry a media query.
+ *
+ * Applied exactly once, on the padded region inside `.kade-content`. The footer
+ * is a sibling of that region, so this bottom padding is the content-to-footer
+ * gap and the footer owns the space beneath itself.
+ */
+.kade-content-padding {
   padding: 36px 40px 64px;
 }
 
@@ -217,7 +225,7 @@ textarea {
     background: var(--kade-ink);
   }
 
-  .kade-content {
+  .kade-content-padding {
     padding: 20px 16px 48px;
   }
 
