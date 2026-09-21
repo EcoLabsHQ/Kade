@@ -1,0 +1,22 @@
+- id: F1
+  severity: WARN
+  scope: frontend
+  title: "Onboarding flow still has inline multi-column grids that cannot collapse"
+  evidence: "apps/web/src/components/onboarding/OnboardingWizard.tsx:244-249; apps/web/src/components/onboarding/ResidenceEditor.tsx:130-137; apps/web/src/components/onboarding/HouseholdEditor.tsx:115-136"
+  failure_mode: "Inner 1fr 1fr / 30px 1fr auto grids stay multi-column on a phone after the step grids collapse; date inputs can clip. Inline columns also override the media-query rule."
+  materiality: "Pre-existing, not introduced by this candidate; the step-level grids enumerated in the iteration are all moved. Scope-completeness observation, not a demonstrated regression."
+  status: open
+  introduced_by: null
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: frontend
+  title: "Regression guard could not fail on its own documented failure mode"
+  evidence: "tests/regressions/onboarding-responsive.test.ts:90-101"
+  failure_mode: "An inline gridTemplateColumns outranks the 768px media query; the grid stays multi-column while the suite stays green."
+  materiality: "Coverage gap, not a demonstrated defect."
+  status: resolved
+  introduced_by: 15c7d68
+  resolved_by: 362bf96
+  recheck_attempts: 1

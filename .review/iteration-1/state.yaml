@@ -1,0 +1,16 @@
+iteration: iteration-1
+known_good: 5f5ab9d
+candidate: 362bf96
+mode: resume
+reviewed_scopes:
+  frontend: complete
+  docs: not_applicable
+  harness: not_applicable
+active_findings: [F1]
+resolved_findings: [F2]
+next_finding_id: F3
+recheck_attempts:
+  F1: 0
+  F2: 1
+review_complete: true
+verdict: review_passed
