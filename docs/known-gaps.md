@@ -116,3 +116,43 @@ meaning it does not have.
 
   The underlying exposure is unchanged: the sweep is still manual and no
   mechanical check enforces this class.
+
+## Declared limitations of this promotion
+
+`known-good` was moved to a commit that did **not** pass adversarial review. It is
+recorded here so the tag cannot silently acquire a meaning it does not have.
+
+- **The promotion was an owner decision, not a passed gate.** Mechanical
+  verification passed (`./scripts/verify.sh`, nine gates). The adversarial review
+  did not: it failed eight times in this iteration. The owner chose to promote
+  with the limitation declared rather than continue correcting. **The tag means
+  "mechanically verified, promoted by owner decision, review outstanding" — not
+  the usual "both gates passed".** The development contract has not been amended,
+  so this deviation is declared inside it rather than resolved by it.
+
+- **The documentation is not fully reconciled with the current state.** All eight
+  failures were one class: a live file asserting something the current state
+  contradicts. The facts that moved this iteration are large — a Safe is deployed
+  on Sepolia, the EAS schemas are registered, the signer and the Safe record are
+  written by SECURITY DEFINER functions with no service-role key, the deployment
+  engine is wired into onboarding, and the app is responsive. Prose across roughly
+  fifty files describes the previous state in places.
+
+  Each fix corrected the instance a review named and missed the layer beneath it;
+  the eighth review found the *reasoning* two lines below the model that had just
+  been corrected. **The method is the defect**: this class is semantic, so
+  enumerating it by keyword cannot close it, and no mechanical check enforces it.
+  A regression guard was proposed for this and was not authorised, so the exposure
+  remains.
+
+- **What is known to be outstanding.** The last review's findings, left
+  uncorrected by the owner's decision, are the remaining write-authority phrasing
+  in `apps/web/src/lib/passkey/store.ts`, `env.ts` and `passkey-actions.ts`, and
+  any further prose that describes the pre-deployment state. They are declared, so
+  they are not review findings under this register's own rules — they are recorded
+  because a reader deserves to know they are there.
+
+- **The product is not affected.** The two reported bugs are fixed and verified;
+  the Safe is deployed and confirmed on chain; the EAS schemas are registered and
+  re-read by the repository's own verifier. What is outstanding is prose, not
+  behaviour.
