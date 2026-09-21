@@ -23,14 +23,14 @@ Status today: ✅ runnable · ⚠️ partial · ⛔ blocked by a gate.
 | # | Step | Status |
 |---|---|---|
 | 1 | Sign in with Google or an email link | ✅ |
-| 2 | Create or retrieve the Ethereum Sepolia Safe | ⛔ gate 2 |
-| 3 | Verify matching Sepolia / Base Sepolia addresses | ⛔ gate 2 |
-| 4 | Complete Steps 1–2 | ⚠️ write path unproven |
+| 2 | Create or retrieve the Ethereum Sepolia Safe | ✅ deployed |
+| 3 | Verify matching Sepolia / Base Sepolia addresses | ✅ |
+| 4 | Complete Steps 1–2 | ✅ |
 | 5 | Observe the correct fee | ✅ |
-| 6 | Reload and recover application state | ⚠️ same as 4 |
+| 6 | Reload and recover application state | ✅ |
 | 7 | Inspect the EAS UIDs | ✅ registered |
 | 8 | Inspect a passing KadeLock test report | ✅ |
-| 9 | Create the transaction passkey | ⚠️ scaffolded |
+| 9 | Create the transaction passkey | ✅ |
 
 ### 1. Sign in ✅
 
@@ -64,9 +64,9 @@ recalculates as household members change; saving reports honestly.
 **Evidence:** before/after screenshots plus the rows in Supabase.
 
 > **This step is the one that proves the most.** The schema, triggers and RLS are
-> verified directly with SQL, but no write has yet gone through the running app
-> with a real session. If anything in the journey is going to be wrong, it is
-> here — for example a policy that permits the read but not the write.
+> verified directly with SQL, and a signed-in run has now written through the
+> running app: the profile, the household and the Safe record all exist for the
+> test resident.
 
 ### 5. The fee ✅
 

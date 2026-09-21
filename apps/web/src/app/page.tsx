@@ -310,7 +310,9 @@ export default async function OverviewPage() {
                 $0
               </div>
               <div style={{ marginTop: '6px', fontSize: '12.5px', color: tokens.muted }}>
-                No Safe deployed yet · nothing is locked
+                {shellSafe.deployed
+                  ? 'Safe deployed · no qualified holdings yet'
+                  : 'No Safe deployed yet · nothing is locked'}
               </div>
             </Card>
 
