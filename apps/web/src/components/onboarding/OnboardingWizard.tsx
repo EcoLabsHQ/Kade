@@ -110,6 +110,11 @@ export function OnboardingWizard({
 
   const evaluation = useMemo(() => evaluateDraft(draft, mode), [draft, mode]);
 
+  // Nothing restored means the form opened on the example values, not on
+  // anything the resident entered. Say so, so the example is never mistaken for
+  // their own record.
+  const showingExample = initial === null;
+
   const citizenshipOptions = useMemo(
     () =>
       COUNTRIES.filter(
@@ -158,7 +163,7 @@ export function OnboardingWizard({
         message:
           cause instanceof Error
             ? cause.message
-            : 'Saving failed for an unknown reason. The save is not transactional, so some data may already have been written.',
+            : 'Saving failed for an unknown reason. Some of your details may already have been saved.',
       });
     }
   }
@@ -187,6 +192,17 @@ export function OnboardingWizard({
         Basic profile and household. Full identity verification happens after
         pre-approval — here we only need enough to open your file.
       </p>
+
+      {showingExample ? (
+        <Notice
+          tone="neutral"
+          title="Example details"
+          style={{ maxWidth: '920px', marginBottom: '16px' }}
+        >
+          These start as an example so you can see the form. Change anything that
+          is not right for you.
+        </Notice>
+      ) : null}
 
       {persistence === 'not-configured' ? (
         <Notice

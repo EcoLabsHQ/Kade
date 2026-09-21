@@ -56,8 +56,8 @@ export interface OnboardingStore {
 }
 
 export const NOT_CONFIGURED_PERSISTENCE_REASON =
-  'Supabase is not configured in this environment, so Step 2 changes cannot ' +
-  'be saved. The form will not pretend a save succeeded.';
+  'Saving is not configured here yet, so your details cannot be stored. ' +
+  'Nothing was saved.';
 
 /** Raised when a save is attempted with no configured backing store. */
 export class PersistenceNotConfiguredError extends Error {

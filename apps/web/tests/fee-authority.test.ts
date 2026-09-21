@@ -125,6 +125,22 @@ describe('configured fee schedule (the runtime authority)', () => {
     expect(breakdown?.totalUsdc).toBe(1.75);
   });
 
+  it('resolves the amount from the household size it is given', async () => {
+    const client = createFakeFeeDatabase([DEMO_ROW]);
+    const applicantOnly = await resolvePreapprovalFeeBreakdown('demo', 1, client);
+    const householdOfThree = await resolvePreapprovalFeeBreakdown(
+      'demo',
+      3,
+      client,
+    );
+
+    // 1.00 + 0.25 x 1, then 1.00 + 0.25 x 3: the resident's own household size
+    // is the only input, and the server's answer changes with it.
+    expect(applicantOnly?.totalUsdc).toBe(1.25);
+    expect(householdOfThree?.totalUsdc).toBe(1.75);
+    expect(householdOfThree?.householdSize).toBe(3);
+  });
+
   it('changes the displayed total when the schedule changes', async () => {
     const changed: FeeRow = { ...DEMO_ROW, per_member_amount: 0.5 };
     const client = createFakeFeeDatabase([changed]);
