@@ -53,16 +53,15 @@ open is below.
 
 ## What is not proven
 
-- **Any deployment.** No Safe exists on any chain. `chain.kadelock_address` and
-  the manifest examples carry placeholders.
+- **KadeLock.** Not deployed. `chain.kadelock_address` carries a placeholder.
+  The resident Safe **is** deployed on Sepolia (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`, tx `0x608f1c6709be262020f20f27652249bd2c75807395a96beba09118c299587e7d`).
 - **A signature validating through the signer.** The signer address is derived
   from the passkey, but validating one needs a deployed Safe and a real
   assertion.
-- **The derived signer address persisting across a reload.** The credential
-  metadata is written to `passkey_credentials` and reloaded. The derived
-  `signer_address` is server-written and needs `SUPABASE_SERVICE_ROLE_KEY`,
-  which is not set, so it stays NULL and the panel renders "Not stored". The
-  write path itself has not been exercised against a live signed-in session.
+- **The derived signer address persisting across a reload.** Exercised: the
+  credential metadata is written to `passkey_credentials`, the derived
+  `signer_address` is written by `public.save_passkey_signer` (a SECURITY DEFINER
+  function, so no service-role key is involved), and `/account` reloads it.
 
 ## What approval authorises
 

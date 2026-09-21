@@ -40,8 +40,8 @@ Every one is currently `[arbitrary]` unless the DOCX states it.
 - **No attestation has been issued.** The five schemas exist on chain, but no
   `kade.*` attestation has been written against any of them.
 - **KadeLock is not deployed.** The resident Safe **is** deployed on Sepolia
-  (`0x01C16fEc6C9E4b3DFa7eCA4464C55554a49d8918`), through the deployment engine
-  wired into onboarding.
+  (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`, tx `0x608f1c6709be262020f20f27652249bd2c75807395a96beba09118c299587e7d`), through the deployment engine wired into
+  onboarding.
 
 ## What approval authorises
 
@@ -86,7 +86,7 @@ the schema string, resolver and revocable flag against the manifest.
 The EAS plan is generated and verified here and does not broadcast; these five
 transactions were sent from outside the repository. The repository's only send
 path is the resident-Safe deployment engine in
-`apps/web/src/lib/safe/deploy.ts`, which is wired into onboarding,
+`apps/web/src/lib/safe/deploy.ts`, which is wired into onboarding and has sent,
 so it has never sent a transaction.
 
 > **Note:** `approvedBy` is the literal string "project owner". Replace it with a

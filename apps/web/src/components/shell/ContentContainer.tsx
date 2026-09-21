@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 /**
  * The reference's content column: 1160px max width, 36/40/64 padding.
  *
- * The padding lives in `.kade-content` (globals.css) rather than inline, because
+ * The padding lives in `.kade-content-padding` (globals.css) rather than inline, because
  * it has to change at the responsive breakpoint and an inline style cannot carry
  * a media query. It must therefore be applied **once**: an earlier version also
  * padded an inner wrapper, which compounded to 80px horizontally and 72px

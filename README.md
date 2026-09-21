@@ -182,13 +182,11 @@ work as complete.
   address is now derived from the passkey, but signing requires a deployed Safe
   and a real assertion. A Safe **is** deployed on Sepolia; signing has not been
   exercised end to end.
-- **Any on-chain write other than the EAS schema registrations.** No attestation
-  has been issued, and KadeLock is not deployed. The resident Safe is deployed
-  on Sepolia, but no attestation
-  deployed: the deployment engine exists at `apps/web/src/lib/safe/deploy.ts`
-  but is not wired into the application and its payer key is not configured. The
-  EAS tooling only generates, prints and verifies the plan and never broadcasts;
-  the five registrations were sent from outside the repository.
+- **Attestations and KadeLock.** No attestation has been issued, and KadeLock is
+  not deployed. The resident Safe **is** deployed on Sepolia (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`), through
+  the deployment engine wired into onboarding. The EAS tooling only generates,
+  prints and verifies the plan and never broadcasts; the five registrations were
+  sent from outside the repository.
 
 ## Human approval gates
 
