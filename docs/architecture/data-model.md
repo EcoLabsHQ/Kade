@@ -172,8 +172,12 @@ resident sees zero rows and can modify zero rows.
   with no policy denies every client; when its week arrives, the policy is added
   deliberately. This is why the Week 1 tables are not the only ones protected.
 - **Security-critical columns use column privileges, not application checks.**
-  Removing a column from the `authenticated` `INSERT`/`UPDATE` grants makes the
-  write impossible at the database boundary, independent of any UI or server bug.
+  Removing a column from the `authenticated` `INSERT`/`UPDATE` grants refuses a
+  direct write at the database boundary, independent of any UI or server bug.
+  Where a resident must supply such a value for their own record, it goes through
+  a `SECURITY DEFINER` function with an explicit `profile_id = auth.uid()`
+  predicate (migrations 17 and 18) — the grant is what makes the function the
+  only path, and the predicate is what keeps it to the caller's own row.
 - **Status is trigger-only.** `applications.status` is not writable by residents
   and is changed by the `SECURITY DEFINER` trigger on `review_events` inserts.
   The review log is append-only, so the audit trail cannot be rewritten.

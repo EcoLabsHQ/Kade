@@ -12,7 +12,7 @@ import type { StoredPasskeyCredential } from './credential';
  * - `inMemoryPasskeyStore` is honest about its limits: it does NOT survive a
  *   reload and must not be presented as satisfying D3.
  *
- * `signer_address` is deliberately not writable by the `authenticated` role
+ * `signer_address` is deliberately refused a direct write by the `authenticated` role
  * (migration 20260916000013): it is server-written from the public key. The
  * database store writes the resident's own columns with the session-scoped
  * client and then writes the derived signer through the SECURITY DEFINER
