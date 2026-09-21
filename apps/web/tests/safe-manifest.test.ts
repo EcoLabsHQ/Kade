@@ -445,6 +445,52 @@ describe('deployment outcomes', () => {
     expect(backend.rows('safe_deployments')).toHaveLength(1);
   });
 
+  it('marks an already-on-chain Safe deployed without clearing a recorded hash', async () => {
+    const backend = new FakeBackend();
+    const store = storeOver(backend);
+    await store.recordPrediction(PREDICTION);
+    await store.recordDeployment({
+      profileId: 'user-1',
+      safeAddress: SAFE,
+      deploymentTxHash: TX_HASH,
+    });
+
+    // A retry that finds the contract present has no hash to add. It must not
+    // regress the row to "no transaction".
+    const again = await store.recordDeployment({
+      profileId: 'user-1',
+      safeAddress: SAFE,
+      deploymentTxHash: null,
+    });
+
+    expect(again.status).toBe('deployed');
+    expect(again.deploymentTxHash).toBe(TX_HASH);
+    expect(backend.rows('safe_deployments')).toHaveLength(1);
+  });
+
+  it('reconciles a failed row to deployed when a retry finds the Safe on chain', async () => {
+    const backend = new FakeBackend();
+    const store = storeOver(backend);
+    await store.recordPrediction(PREDICTION);
+    await store.recordDeploymentFailure({
+      profileId: 'user-1',
+      safeAddress: SAFE,
+      reason: 'insufficient funds',
+    });
+
+    const reconciled = await store.recordDeployment({
+      profileId: 'user-1',
+      safeAddress: SAFE,
+      deploymentTxHash: null,
+    });
+
+    expect(reconciled.status).toBe('deployed');
+    expect(reconciled.failureReason).toBeNull();
+    expect(reconciled.provenance).toBe('approved');
+    expect(reconciled.deploymentTxHash).toBeNull();
+    expect(backend.rows('safe_deployments')).toHaveLength(1);
+  });
+
   it('records a failed deployment without creating a row', async () => {
     const backend = new FakeBackend();
     const store = storeOver(backend);

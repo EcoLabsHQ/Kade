@@ -37,6 +37,11 @@ import { deriveAccount } from '@/app/onboarding/signer-actions';
  * it is absent the engine reports `not-configured` and nothing is sent — it never
  * falls back to a fabricated account.
  *
+ * A failed attempt is safe to repeat: the address is deterministic and the
+ * engine is idempotent, so calling this again never creates a second passkey or
+ * a second Safe. The returned status names the failure mode (so the resident can
+ * act on it) while the diagnostic stays in the server log.
+ *
  * Note the exposure this creates and which the register declares: any
  * authenticated resident who creates a passkey causes a transaction to be sent
  * from the payer. The address is deterministic, so a repeat is free, but the
@@ -53,44 +58,85 @@ const PROXY_CREATION_CODE_ABI = [
   },
 ] as const;
 
+/**
+ * The outcome of a deployment attempt, as the resident's screen needs it.
+ *
+ * Each failure mode is its own status rather than one opaque "unavailable", so
+ * the UI can say something true and specific and offer a retry. The technical
+ * explanation — which can name configuration and addresses — never crosses this
+ * boundary: it is logged server-side. The returned object is serialised to the
+ * browser, so it carries no `detail`.
+ */
 export type DeployAccountStatus =
   | 'deployed'
   | 'already-deployed'
-  | 'unavailable'
-  | 'failed';
+  /** The payer key or the RPC endpoint is absent; nothing was sent. */
+  | 'not-configured'
+  /** The payer could not cover the estimated gas; nothing was sent. */
+  | 'insufficient-funds'
+  /** The frozen inputs no longer derive the recorded address; nothing was sent. */
+  | 'address-mismatch'
+  /** The engine reached the chain but the deployment did not succeed. */
+  | 'failed'
+  /** A precondition failed before the engine ran (no session or credential). */
+  | 'unavailable';
 
 export interface DeployAccountResult {
   readonly status: DeployAccountStatus;
   readonly safeAddress: string | null;
   readonly txHash?: string;
-  /**
-   * Diagnostic only. Never rendered: it names configuration the resident has no
-   * business seeing. Logged server-side instead.
-   */
-  readonly detail?: string;
 }
 
-function unavailable(safeAddress: string | null, detail: string): DeployAccountResult {
-  console.warn('[kade] Safe deployment unavailable:', detail);
-  return { status: 'unavailable', safeAddress, detail };
+/**
+ * Log the diagnostic and return the resident-facing result.
+ *
+ * `detail` is deliberately not part of the returned value: the result is
+ * serialised to the browser, and the detail names configuration the resident has
+ * no business seeing. The log line is where a deployment is diagnosed.
+ */
+function outcome(
+  status: DeployAccountStatus,
+  safeAddress: string | null,
+  detail: string,
+  extra: { readonly txHash?: string } = {},
+): DeployAccountResult {
+  if (status !== 'deployed' && status !== 'already-deployed') {
+    const where = safeAddress ? ` for ${safeAddress}` : '';
+    console.warn(`[kade] Safe deployment ${status}${where}: ${detail}`);
+  }
+  return { status, safeAddress, ...extra };
+}
+
+/** Record a failure on an already-predicted row, without letting that mask it. */
+async function recordFailure(
+  store: ReturnType<typeof safeDeploymentStore>,
+  profileId: string,
+  safeAddress: Address,
+  reason: string,
+): Promise<void> {
+  try {
+    await store.recordDeploymentFailure({ profileId, safeAddress, reason });
+  } catch (cause) {
+    console.error('[kade] could not record the deployment failure:', cause);
+  }
 }
 
 export async function deployAccount(): Promise<DeployAccountResult> {
   const session = await getSessionUser();
   if (!session) {
-    return unavailable(null, 'no authenticated session');
+    return outcome('unavailable', null, 'no authenticated session');
   }
 
   // The credential is read from the database rather than taken from the caller:
   // the signer must not be something the browser can name.
   const stored = await loadPasskeyCredential();
   if (!stored?.publicKey) {
-    return unavailable(null, 'no stored passkey credential for this resident');
+    return outcome('unavailable', null, 'no stored passkey credential for this resident');
   }
 
   const rpcUrl = readSepoliaRpcUrl();
   if (!rpcUrl) {
-    return unavailable(null, 'SEPOLIA_RPC_URL is not configured');
+    return outcome('not-configured', null, 'SEPOLIA_RPC_URL is not configured');
   }
 
   const deployment = SAFE_DEPLOYMENTS[ACTIVE_SAFE_VERSION];
@@ -122,7 +168,7 @@ export async function deployAccount(): Promise<DeployAccountResult> {
       functionName: 'proxyCreationCode',
     });
   } catch (cause) {
-    return unavailable(null, `derivation failed: ${String(cause)}`);
+    return outcome('failed', null, `derivation failed: ${String(cause)}`);
   }
 
   const initializer = safeInitializer({
@@ -137,9 +183,21 @@ export async function deployAccount(): Promise<DeployAccountResult> {
   });
   const saltNonce = residentSaltNonce(session.userId);
 
-  // Record the recovery inputs *before* anything is deployed.
+  let store: ReturnType<typeof safeDeploymentStore>;
   try {
-    const store = safeDeploymentStore();
+    store = safeDeploymentStore();
+  } catch (cause) {
+    return outcome(
+      'unavailable',
+      safeAddress,
+      `the deployment record store is unavailable: ${String(cause)}`,
+    );
+  }
+
+  // Record the recovery inputs *before* anything is deployed. This ordering is
+  // the whole point of the module and must not be reordered: if the prediction
+  // cannot be persisted, nothing is sent.
+  try {
     await store.recordPrediction({
       profileId: session.userId,
       safeAddress,
@@ -152,7 +210,8 @@ export async function deployAccount(): Promise<DeployAccountResult> {
       proxyCreationCodeHash: keccak256(proxyCreationCode),
     });
   } catch (cause) {
-    return unavailable(
+    return outcome(
+      'failed',
       safeAddress,
       `prediction could not be persisted, so nothing was deployed: ${String(cause)}`,
     );
@@ -164,7 +223,6 @@ export async function deployAccount(): Promise<DeployAccountResult> {
     expectedSafeAddress: safeAddress,
   });
 
-  const store = safeDeploymentStore();
   if (result.status === 'deployed') {
     try {
       await store.recordDeployment({
@@ -181,20 +239,46 @@ export async function deployAccount(): Promise<DeployAccountResult> {
   }
 
   if (result.status === 'already-deployed') {
+    // The contract is on chain. Reconcile the record so the shell shows it as
+    // deployed even if a previous success never made it into the row. There is
+    // no hash to add here; a null leaves any recorded hash untouched.
+    try {
+      await store.recordDeployment({
+        profileId: session.userId,
+        safeAddress,
+        deploymentTxHash: null,
+      });
+    } catch (cause) {
+      console.error('[kade] could not record the already-deployed Safe:', cause);
+    }
     return { status: 'already-deployed', safeAddress };
   }
 
-  if (result.status !== 'not-configured') {
-    try {
-      await store.recordDeploymentFailure({
-        profileId: session.userId,
-        safeAddress,
-        reason: result.status,
-      });
-    } catch (cause) {
-      console.error('[kade] could not record the deployment failure:', cause);
-    }
+  if (result.status === 'not-configured') {
+    // Nothing was sent, so there is no deployment failure to record. The
+    // resident can retry once the payer is configured.
+    return outcome('not-configured', safeAddress, result.reason);
   }
 
-  return unavailable(safeAddress, `deployment returned ${result.status}`);
+  if (result.status === 'insufficient-funds') {
+    const detail =
+      `the payer ${result.payer} holds ${result.available} wei but the ` +
+      `deployment needs ${result.required} wei`;
+    await recordFailure(store, session.userId, safeAddress, `insufficient funds: ${detail}`);
+    return outcome('insufficient-funds', safeAddress, detail);
+  }
+
+  if (result.status === 'address-mismatch') {
+    await recordFailure(store, session.userId, safeAddress, `address mismatch: ${result.reason}`);
+    return outcome('address-mismatch', safeAddress, result.reason);
+  }
+
+  // result.status === 'failed'
+  await recordFailure(
+    store,
+    session.userId,
+    safeAddress,
+    `failed at ${result.stage}: ${result.reason}`,
+  );
+  return outcome('failed', safeAddress, `the engine failed at ${result.stage}: ${result.reason}`);
 }
