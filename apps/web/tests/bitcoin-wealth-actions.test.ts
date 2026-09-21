@@ -18,6 +18,7 @@ import {
 const hoisted = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
   isBitcoinAddress: vi.fn(),
+  normalizeBitcoinAddress: vi.fn(),
   readBitcoinBalance: vi.fn(),
   readBitcoinApiBase: vi.fn(),
 }));
@@ -27,6 +28,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 vi.mock('@/lib/wealth/bitcoin', () => ({
   isBitcoinAddress: hoisted.isBitcoinAddress,
+  normalizeBitcoinAddress: hoisted.normalizeBitcoinAddress,
   readBitcoinBalance: hoisted.readBitcoinBalance,
 }));
 vi.mock('@/lib/env', () => ({
@@ -105,6 +107,11 @@ function createFakeClient(options: FakeOptions = {}): {
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.isBitcoinAddress.mockReturnValue(true);
+  hoisted.normalizeBitcoinAddress.mockImplementation((value: string) => {
+    const trimmed = value.trim();
+    const lower = trimmed.toLowerCase();
+    return lower.startsWith('bc1') || lower.startsWith('tb1') ? lower : trimmed;
+  });
   hoisted.readBitcoinApiBase.mockReturnValue(BASE);
   hoisted.readBitcoinBalance.mockResolvedValue({
     address: ADDRESS,
@@ -137,6 +144,17 @@ describe('addBitcoinAddress', () => {
     expect(call.args.p_address).toBe(ADDRESS);
     expect(call.args.p_chain).toBe(BITCOIN_CHAIN_ID);
     expect(call.args.p_provider).toBe(BITCOIN_PROVIDER);
+  });
+
+  it('normalises a bech32 address before the RPC, so case cannot duplicate a row', async () => {
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    await addBitcoinAddress(`  ${ADDRESS.toUpperCase()}  `);
+
+    const call = rpcCalls[0];
+    if (!call) throw new Error('the RPC was not called');
+    expect(call.args.p_address).toBe(ADDRESS);
   });
 
   it('enforces the address cap', async () => {

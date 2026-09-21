@@ -3,6 +3,7 @@ import {
   BitcoinReadError,
   formatBitcoin,
   isBitcoinAddress,
+  normalizeBitcoinAddress,
   readBitcoinBalance,
 } from '@/lib/wealth/bitcoin';
 
@@ -65,6 +66,22 @@ describe('isBitcoinAddress', () => {
     expect(isBitcoinAddress(EVM_ADDRESS)).toBe(false);
     expect(isBitcoinAddress('')).toBe(false);
     expect(isBitcoinAddress('   ')).toBe(false);
+  });
+});
+
+describe('normalizeBitcoinAddress', () => {
+  it('trims and lower-cases bech32, so one address cannot occupy two slots', () => {
+    expect(normalizeBitcoinAddress(`  ${MAINNET_BECH32.toUpperCase()}  `)).toBe(
+      MAINNET_BECH32,
+    );
+    expect(normalizeBitcoinAddress(TESTNET_BECH32.toUpperCase())).toBe(
+      TESTNET_BECH32,
+    );
+  });
+
+  it('never lower-cases base58, which is case-sensitive', () => {
+    expect(normalizeBitcoinAddress(` ${MAINNET_P2PKH} `)).toBe(MAINNET_P2PKH);
+    expect(normalizeBitcoinAddress(MAINNET_P2SH)).toBe(MAINNET_P2SH);
   });
 });
 

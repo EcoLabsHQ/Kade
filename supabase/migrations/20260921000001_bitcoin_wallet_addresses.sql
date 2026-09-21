@@ -48,6 +48,67 @@ create policy wallets_all_own
 create unique index wallets_profile_address_chain_key
   on public.wallets (profile_id, address, chain);
 
+-- ---------------------------------------------------------------------------
+-- The 5-address cap is a product rule from contract section 8.7 / v1.7 ("up to
+-- 5 Bitcoin addresses"). It is enforced here, at the database boundary, not
+-- only in the server action: the resident holds the insert privilege for their
+-- own rows, and a trigger is the one place that sees every path — the RPC and a
+-- direct PostgREST insert alike.
+--
+-- A repeat of an address the resident already saved is not a new row (the
+-- unique index above makes it a no-op), so it is let through rather than
+-- failing the cap, which keeps `record_wallet_address` idempotent at the cap.
+-- ---------------------------------------------------------------------------
+create or replace function public.enforce_wallet_address_cap()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  k_bitcoin_chain constant integer := 0;
+  k_max_addresses constant integer := 5;
+  v_count integer;
+begin
+  if new.chain <> k_bitcoin_chain then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+      from public.wallets
+     where profile_id = new.profile_id
+       and address = new.address
+       and chain = new.chain
+  ) then
+    return new;
+  end if;
+
+  select count(*) into v_count
+    from public.wallets
+   where profile_id = new.profile_id
+     and chain = k_bitcoin_chain;
+
+  if v_count >= k_max_addresses then
+    raise exception 'At most % Bitcoin addresses may be saved.', k_max_addresses
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+comment on function public.enforce_wallet_address_cap() is
+  'BEFORE INSERT guard on public.wallets: refuses a 6th Bitcoin address '
+  '(chain = 0) for the same resident. Enforces the contract v1.7 product rule at '
+  'the database boundary, because a resident holds the insert privilege for '
+  'their own rows and the server action is not the only write path. A repeat of '
+  'an address already saved passes through, so the write stays idempotent.';
+
+create trigger wallets_bitcoin_address_cap
+  before insert on public.wallets
+  for each row execute function public.enforce_wallet_address_cap();
+
 comment on column public.wallets.verified_at is
   'When ownership of the address was cryptographically proven. NULL means the '
   'address was pasted and never verified (the Bitcoin watch-only rows added by '
@@ -68,8 +129,9 @@ security invoker
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid uuid := auth.uid();
-  v_id  bigint;
+  v_uid     uuid := auth.uid();
+  v_id      bigint;
+  v_address text;
 begin
   if v_uid is null then
     raise exception 'record_wallet_address requires an authenticated user'
@@ -81,8 +143,16 @@ begin
       using errcode = '22023';
   end if;
 
+  -- Canonicalise like the server action does: trim, and lower-case bech32
+  -- (`bc1`/`tb1`) only, never base58, which is case-sensitive. Without this a
+  -- direct caller could store the same bech32 address twice.
+  v_address := trim(p_address);
+  if lower(v_address) like 'bc1%' or lower(v_address) like 'tb1%' then
+    v_address := lower(v_address);
+  end if;
+
   insert into public.wallets (profile_id, address, chain, provider)
-  values (v_uid, p_address, p_chain, p_provider)
+  values (v_uid, v_address, p_chain, p_provider)
   on conflict (profile_id, address, chain) do nothing
   returning id into v_id;
 
@@ -91,7 +161,7 @@ begin
       into v_id
       from public.wallets
      where profile_id = v_uid
-       and address = p_address
+       and address = v_address
        and chain = p_chain;
   end if;
 

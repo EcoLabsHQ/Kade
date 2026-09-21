@@ -57,3 +57,6 @@ $$;
 
 grant usage on schema extensions to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
+-- A real Supabase project lets the API roles call `auth.uid()`; without this the
+-- shim cannot exercise a policy or a SECURITY INVOKER function that reads it.
+grant usage on schema auth to anon, authenticated, service_role;
