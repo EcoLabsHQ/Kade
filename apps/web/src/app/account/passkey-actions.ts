@@ -11,11 +11,7 @@ import type {
   SignerPersistence,
   StoredPasskeyCredential,
 } from '@/lib/passkey/credential';
-import {
-  createSupabaseServerClient,
-  createSupabaseServiceClient,
-  isServiceRoleConfigured,
-} from '@/lib/supabase/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /**
  * Passkey credential persistence, executed on the server.
@@ -24,25 +20,25 @@ import {
  * allowed to name: the credential id, its public key, transports and the
  * user-verification flag. The signer address is derived here, from the public
  * key, through the deployed Safe signer factory; a value supplied by the
- * browser is neither read nor stored. `signer_address` is written with the
- * service-role client because the `authenticated` role is deliberately denied
- * that column (migration 20260916000013).
+ * browser is neither read nor stored. `signer_address` is written through the
+ * `SECURITY DEFINER` `save_passkey_signer` function (migration
+ * 20260916000017), which can only touch the caller's own credential, because
+ * the `authenticated` role is deliberately denied that column (migration
+ * 20260916000013). No service-role key is involved.
  *
- * When SUPABASE_SERVICE_ROLE_KEY is absent the resident's own columns are still
- * written with the session-scoped client and the signer stays NULL. The result
- * reports that explicitly instead of pretending the signer was stored.
+ * When the signer write fails the resident's own columns are still written with
+ * the session-scoped client and the signer stays NULL. The result reports that
+ * explicitly instead of pretending the signer was stored.
  */
 
 /**
  * The technical reason a derived signer was not stored. This is a server-side
- * explanation and must never reach the resident's screen: it names an
- * environment variable. `PasskeyEnrolmentPanel` renders the product-language
- * `SIGNER_NOT_STORED_REASON` from `@/lib/passkey/credential` instead, and the
- * full detail is available here in the server log.
+ * explanation and must never reach the resident's screen: it can name a
+ * database detail or an environment variable. `PasskeyEnrolmentPanel` renders
+ * the product-language `SIGNER_NOT_STORED_REASON` from
+ * `@/lib/passkey/credential` instead, and the full detail is available here in
+ * the server log.
  */
-const SERVICE_ROLE_MISSING_DETAIL =
-  'SUPABASE_SERVICE_ROLE_KEY is not configured, so the derived signer address ' +
-  'was not written to passkey_credentials.signer_address.';
 
 const NO_PUBLIC_KEY_REASON =
   'The credential did not include a public key, so the signer address could ' +
@@ -58,11 +54,7 @@ interface ResolvedSigner {
 async function resolveSignerAddress(
   publicKey: string,
   userId: string,
-  canPersist: boolean,
 ): Promise<ResolvedSigner> {
-  if (!canPersist) {
-    return { address: null, reason: SERVICE_ROLE_MISSING_DETAIL };
-  }
   if (!publicKey) {
     return { address: null, reason: NO_PUBLIC_KEY_REASON };
   }
@@ -105,21 +97,11 @@ export async function savePasskeyCredential(
     throw new Error('Saving a passkey credential requires a signed-in session.');
   }
 
-  // The elevated client is optional; absence degrades the signer write, not
-  // the credential save.
-  const serviceClient = isServiceRoleConfigured()
-    ? await createSupabaseServiceClient()
-    : null;
+  const resolved = await resolveSignerAddress(input.publicKey, user.id);
 
-  const resolved = await resolveSignerAddress(
-    input.publicKey,
-    user.id,
-    serviceClient !== null,
-  );
-
-  // `passkeyStore` is used with clients this action already holds, so the
+  // `passkeyStore` is used with the client this action already holds, so the
   // session is verified once and no second client is constructed.
-  const store = passkeyStore({ client, serviceClient });
+  const store = passkeyStore({ client });
   const outcome = await store.save(user.id, {
     credentialId: input.credentialId,
     publicKey: input.publicKey,
@@ -140,11 +122,15 @@ export async function savePasskeyCredential(
       ? { status: 'persisted', address: stored.signerAddress }
       : {
           status: 'not-persisted',
-          reason: resolved.reason ?? SIGNER_NOT_STORED_REASON,
+          reason:
+            outcome.signerError ??
+            resolved.reason ??
+            SIGNER_NOT_STORED_REASON,
         };
 
-  // The reason string may name server configuration, so it is logged here
-  // rather than shown. Callers render the product-language explanation.
+  // The reason string may name server configuration or a database detail, so it
+  // is logged here rather than shown. Callers render the product-language
+  // explanation.
   if (signer.status === 'not-persisted') {
     console.warn('[kade] Passkey signer not persisted:', signer.reason);
   }
@@ -180,7 +166,7 @@ export async function loadPasskeyCredential(): Promise<StoredPasskeyCredential |
     }
     // SELECT is granted to the authenticated role, so the session client
     // suffices to read the resident's own row.
-    const store = passkeyStore({ client, serviceClient: null });
+    const store = passkeyStore({ client });
     return await store.getByUser(user.id);
   } catch (cause) {
     // The detailed reason belongs in the server log, not on the screen. A

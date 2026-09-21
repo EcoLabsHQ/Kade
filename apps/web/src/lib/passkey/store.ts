@@ -14,10 +14,12 @@ import type { StoredPasskeyCredential } from './credential';
  *
  * `signer_address` is deliberately not writable by the `authenticated` role
  * (migration 20260916000013): it is server-written from the public key. The
- * database store therefore writes the resident's own columns with the
- * session-scoped client and, only when a service-role client is available,
- * writes the derived signer with the elevated client. When that capability is
- * absent the signer stays NULL and the outcome says so; it is never faked.
+ * database store writes the resident's own columns with the session-scoped
+ * client and then writes the derived signer through the SECURITY DEFINER
+ * `save_passkey_signer` function (migration 20260916000017), which can only
+ * touch the caller's own row. If that write fails the credential stays saved
+ * and the outcome says the signer was not persisted; it is never faked. No
+ * service-role client is involved.
  */
 
 export type PasskeyStoreKind = 'in-memory' | 'database';
@@ -35,6 +37,11 @@ export interface PasskeyCredentialWrite {
 /** What actually happened to the derived signer during a save. */
 export interface SavePasskeyOutcome {
   readonly signerAddressPersisted: boolean;
+  /**
+   * Technical reason the signer was not persisted. Server-log detail only; the
+   * UI renders the product-language reason from `./credential`.
+   */
+  readonly signerError?: string;
 }
 
 export interface PasskeyStore {
@@ -101,11 +108,6 @@ interface PasskeyCredentialRow {
 export interface DatabasePasskeyStoreOptions {
   /** Session-scoped client; row level security applies as the resident. */
   readonly getClient: () => Promise<SupabaseClient>;
-  /**
-   * Elevated client, or null when no service-role key is configured. Called
-   * only when there is a derived signer to write.
-   */
-  readonly getServiceClient?: () => Promise<SupabaseClient | null>;
 }
 
 export function createDatabasePasskeyStore(
@@ -148,24 +150,20 @@ export function createDatabasePasskeyStore(
         return { signerAddressPersisted: false };
       }
 
-      const serviceClient = options.getServiceClient
-        ? await options.getServiceClient()
-        : null;
-      if (serviceClient === null) {
-        // The resident's own columns are stored. The derived signer is not,
-        // because `signer_address` is not granted to the authenticated role.
-        return { signerAddressPersisted: false };
-      }
-
-      const update = await serviceClient
-        .from('passkey_credentials')
-        .update({ signer_address: record.signerAddress })
-        .eq('profile_id', userId)
-        .eq('credential_id', record.credentialId);
-      if (update.error) {
-        throw new Error(
-          `Storing the derived signer address failed: ${update.error.message}`,
-        );
+      // `signer_address` is not granted to `authenticated`. The SECURITY
+      // DEFINER function writes it for the caller's own row only (migration
+      // 20260916000017); the session client is enough, and the scoping is the
+      // function's, not the caller's. A failure here does not undo the saved
+      // credential, so it is reported rather than thrown.
+      const signer = await client.rpc('save_passkey_signer', {
+        p_credential_id: record.credentialId,
+        p_signer_address: record.signerAddress,
+      });
+      if (signer.error) {
+        return {
+          signerAddressPersisted: false,
+          signerError: `Storing the derived signer address failed: ${signer.error.message}`,
+        };
       }
 
       return { signerAddressPersisted: true };
@@ -205,10 +203,9 @@ export function createDatabasePasskeyStore(
 /* Selection                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Clients already verified by a caller, so no second request is made. */
+/** The session-scoped client, already verified by a caller. */
 export interface PasskeyStoreClients {
   readonly client: SupabaseClient;
-  readonly serviceClient: SupabaseClient | null;
 }
 
 /**
@@ -216,14 +213,13 @@ export interface PasskeyStoreClients {
  *
  * With no Supabase configuration the in-memory seam is returned, preserving
  * the pre-database behaviour. When Supabase is configured the database store
- * is returned; its clients are resolved lazily through a dynamic import so
- * that merely importing this module never constructs a server client.
+ * is returned; its client is resolved lazily through a dynamic import so that
+ * merely importing this module never constructs a server client.
  */
 export function passkeyStore(clients?: PasskeyStoreClients): PasskeyStore {
   if (clients) {
     return createDatabasePasskeyStore({
       getClient: async () => clients.client,
-      getServiceClient: async () => clients.serviceClient,
     });
   }
 
@@ -237,12 +233,6 @@ export function passkeyStore(clients?: PasskeyStoreClients): PasskeyStore {
         '@/lib/supabase/server'
       );
       return createSupabaseServerClient();
-    },
-    getServiceClient: async () => {
-      const { createSupabaseServiceClient, isServiceRoleConfigured } =
-        await import('@/lib/supabase/server');
-      if (!isServiceRoleConfigured()) return null;
-      return createSupabaseServiceClient();
     },
   });
 }
