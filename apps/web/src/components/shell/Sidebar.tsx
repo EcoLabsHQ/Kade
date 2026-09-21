@@ -18,6 +18,9 @@ export interface SidebarProps {
   readonly stepper?: readonly StepperItem[];
   readonly network: string;
   readonly safeAddress: string | null;
+  /** True once the Safe contract exists on chain. */
+  readonly safeDeployed?: boolean;
+  readonly explorerUrl?: string | null;
   readonly email: string | null;
 }
 
@@ -30,6 +33,8 @@ export function Sidebar({
   stepper,
   network,
   safeAddress,
+  safeDeployed = false,
+  explorerUrl = null,
   email,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -91,7 +96,12 @@ export function Sidebar({
       )}
 
       <div style={{ marginTop: '18px' }}>
-        <SafeAddressCard address={safeAddress} network={network} />
+        <SafeAddressCard
+          address={safeAddress}
+          network={network}
+          deployed={safeDeployed}
+          explorerUrl={explorerUrl}
+        />
       </div>
 
       <div

@@ -8,6 +8,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
 import { hasCompletedOnboarding } from '@/lib/onboarding/state';
 import { getSessionUser } from '@/lib/supabase/server';
+import { loadShellSafe } from '@/lib/safe/shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,7 @@ export default async function OverviewPage() {
   if (!session) {
     redirect('/login');
   }
+  const shellSafe = await loadShellSafe(session.userId);
 
   // Spec section 8: an authenticated session is not enough to see the account
   // screens. Until the onboarding steps are complete there is no account state
@@ -90,7 +92,12 @@ export default async function OverviewPage() {
   }
 
   return (
-    <AppShell email={session.email}>
+    <AppShell
+      email={session.email}
+      safeAddress={shellSafe.address}
+      safeDeployed={shellSafe.deployed}
+      explorerUrl={shellSafe.explorerUrl}
+    >
       <div
         style={{
           background: '#FDF6E7',
