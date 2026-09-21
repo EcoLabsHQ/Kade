@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.8 — human decisions recorded 16 September 2026; eight
-amendments recorded in sections 8.1-8.8  
+**Status:** Frozen v1.9 — human decisions recorded 16 September 2026; nine
+amendments recorded in sections 8.1-8.9  
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -44,7 +44,9 @@ Values are taken verbatim from the DOCX §7 fee table. Any parameter absent from
 - Currency/rail: USDC.
 - Resident pays on Ethereum; production treasury leg is Ethereum mainnet (testnet in iteration 1).
 - Both fees are stored in the single `fee_schedule` table with a `mode` column (`demo | production`); a single environment variable selects the mode. No amount is hard-coded in the client.
-- Week 1 computes and displays only the pre-approval fee. The service fee is seeded but not charged in Week 1.
+- Week 1 computes, displays and collects the pre-approval fee on Ethereum
+  Sepolia, testnet (section 8.9). The service fee is seeded but not charged in
+  Week 1.
 - The demo fixture must reach `household_size = 3` to reproduce the DOCX `1.75 USDC` example (resolves Appendix B.2).
 
 The fee is calculated server-side from the active `fee_schedule`; the client may display it but cannot override it.
@@ -157,9 +159,12 @@ From a clean browser and clean test resident, the reviewer can:
 4. verify matching Ethereum Sepolia and Base Sepolia addresses;
 5. complete Steps 1–2;
 6. observe the correct fee;
-7. reload and recover application state;
-8. inspect the EAS UIDs;
-9. inspect a passing KadeLock test report.
+7. connect an external wallet on Ethereum Sepolia and pay the pre-approval fee
+   to the Kade treasury;
+8. observe the payment verified from the Sepolia receipt;
+9. reload and recover application state;
+10. inspect the EAS UIDs;
+11. inspect a passing KadeLock test report.
 
 No manual database edits or fixture-only state are permitted during this journey.
 
@@ -173,6 +178,10 @@ The delivery clock assumes Day 1 access to:
 - a funded Sepolia deployment account;
 - a funded Sepolia deployment account (the Safe version and addresses are recorded in `@kade/shared`; the signer is derived from the passkey, not supplied);
 - an authorized Sepolia EAS registration account;
+- a Sepolia treasury address that can receive USDC, to collect the pre-approval
+  fee (section 8.9);
+- a Reown/WalletConnect project id for the browser wallet connection (section
+  8.9);
 - DOCX fee parameters and the five EAS schema field definitions;
 - the deployed MVP UI at `https://mvp.onchainisland.co/` as the visual baseline.
 
@@ -447,7 +456,9 @@ Only Bitcoin, and only one provider. EVM wallet connection (browser extension /
 WalletConnect), the "Wallet address (0x)" multi-chain block, DeBank, hardware
 wallets, and background balance aggregation/indexing remain out of scope. The
 browser-extension and WalletConnect rows stay demo and are labelled demo; the
-hardware-wallet row is removed.
+hardware-wallet row is removed. *(The EVM wallet-connection exclusion is
+superseded by v1.9 for the pre-approval fee payment. Kept as the record of
+v1.7.)*
 
 Section 9 is narrowed in two places, and both are stated there in full:
 "external wallet connection and proof-of-wallet ownership" becomes external
@@ -522,7 +533,9 @@ RPC removes the caller's own rows for one address. The migration file is
 Wallet connection remains excluded. No wallet-connection package is added and
 no real wallet connection is implemented (project-owner decision, 21 September
 2026): the browser-extension and WalletConnect rows stay demo and are labelled
-demo. Only pasted addresses (Bitcoin and EVM) are read.
+demo. Only pasted addresses (Bitcoin and EVM) are read. *(Superseded by v1.9: a
+payment-only wallet connection is added for the pre-approval fee. Kept as the
+record of the decision taken at v1.8.)*
 
 Other tokens and other chains stay out. ERC-20 balances **other than USDC**, and
 balances on Arbitrum, Optimism and Celo, are not read in this iteration; the
@@ -541,7 +554,8 @@ ownership proof, and a background indexer/aggregator remain excluded.
 Acceptance criteria. D5's evidence is unchanged in substance. Nothing in D6, D7
 or D8 changes, and the D8 journey is unchanged (sign-in → passkey → Sepolia
 Safe → matching Sepolia/Base Sepolia addresses → Steps 1–2 → fee → reload → EAS
-UIDs → KadeLock report).
+UIDs → KadeLock report). *(The D8 journey is extended by v1.9, which adds the
+external-wallet fee payment.)*
 
 Affected clauses:
 
@@ -559,13 +573,97 @@ What this does **not** change:
   or balance read can authorise a transaction;
 - `public.wallets` keeps its existing shape — no table and no column is added;
 - no wallet-connection package is added and no real wallet connection is
-  implemented;
+  implemented *(superseded by v1.9 for the pre-approval fee payment)*;
 - ERC-20 balances other than USDC, other chains, payment execution, the EVM
   multi-chain block, DeBank, hardware wallets, and the indexer remain excluded.
 
 Evidence: the migration file and the extended 5-address cap; the server-side
 provider client and its unit tests; the server actions; the persisted rows; and
 the on-screen "read from a public source, not proof of ownership" statement.
+
+### 8.9 Amendment v1.9 — the pre-approval fee is paid from an external wallet
+
+**v1.9 — 21 September 2026. Approved by the project owner. Week 2 change
+control onto the frozen Week 1 contract.**
+
+The pre-approval fee is collected on Ethereum Sepolia. A signed-in resident
+connects an external wallet in the browser (an injected browser wallet or
+WalletConnect, through Reown AppKit) and sends the configured pre-approval fee
+as a direct USDC transfer to the **Kade treasury address**. The server reads the
+Sepolia transaction receipt and confirms the payment before the step advances:
+the receipt must be successful and carry a USDC `Transfer` to the treasury of at
+least the server-resolved fee, with the required confirmations.
+
+This reverses the v1.8 owner decision that no wallet-connection package is added
+and no real wallet connection is implemented. The reversal is bounded, because
+the connection is **payment-only** and changes no authority over the resident
+Safe:
+
+- the connected EOA is never a Safe owner or signer, is never added to
+  `safe_deployments` or `passkey_credentials`, and cannot authorise a Safe
+  transaction;
+- the passkey remains the only transaction authority;
+- no managed or embedded signer is introduced (section 2, item 5 unchanged);
+- wallet connection is **not** a login method: Google OAuth and email magic link
+  remain the only logins, and no wallet can establish a session (section 2, item
+  2 unchanged).
+
+Persistence and authority. The payment transaction hash is recorded in the
+existing `applications.fee_tx` column — already the documented "on-chain payment
+transaction hash, server-written". `authenticated` has no column privilege on
+it and the owner may update only `applications.tier`, so a new `SECURITY DEFINER`
+function scoped to `profile_id = auth.uid()` writes exactly that column for the
+caller's own application, once. The stored hash is a **claim, not a proof**: the
+paid state is derived by re-reading the Sepolia receipt, never from the presence
+of `fee_tx`. A resident who writes a fabricated hash gains no capability, because
+the read path re-verifies the chain. No service-role key is involved.
+`applications.status` is not changed; it remains trigger-only through
+`review_events`.
+
+The recipient and the amount are configuration, not client input. The treasury
+address is supplied by the project as a Day-1 dependency (section 5) and read
+server-side; the amount is the `applications.preapproval_usdc` value the database
+already computes from `fee_schedule` (section 2.1).
+
+In scope: an external wallet connection for the fee payment; a direct USDC
+transfer from that wallet to the Kade treasury on Ethereum Sepolia (testnet);
+server-side receipt verification; and recording `applications.fee_tx`.
+
+Remaining excluded: ownership proof for the payment wallet; the production
+treasury operation (the Safe-originated `MultiSend`/UserOp that batches USDC to
+the Treasury Safe with `kade.fee.v1` and `kade.application.v1` in one signature);
+payment sponsorship or paymaster policy; payment on any network other than
+Ethereum Sepolia; the residency service fee; and wallet connection anywhere other
+than the pre-approval fee step.
+
+Ownership: the wallet connection and the receipt verifier fall to the
+Identity/Account workstream, the connect-and-pay step to the Onboarding
+workstream, and the `fee_tx` writer to the Foundation/Data workstream.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 2.1, Week 1 fee | computes and displays only the pre-approval fee | computes, displays and collects the pre-approval fee on Ethereum Sepolia (testnet) |
+| Section 4, D8 journey | no payment step | adds: connect an external wallet and pay the pre-approval fee, then observe it verified |
+| Section 5, dependencies | no treasury address and no wallet-connect project id | adds a Sepolia treasury address that can receive USDC, and a Reown/WalletConnect project id |
+| Section 9, external wallet connection | excluded | in scope for the pre-approval fee payment only; ownership proof and wallet login stay excluded; the v1.7/v1.8 read-only address reads are unchanged |
+| Section 9, pre-approval payment execution and Treasury transfer | excluded | a direct external-wallet USDC transfer to the Kade treasury on Ethereum Sepolia is in scope; the production Safe-originated batched Treasury transfer and attestation issuance stay excluded |
+| Section 10, freeze checklist | login methods: password and wallet excluded | unchanged: wallet login stays excluded; a payment-only wallet connection is added (v1.9) |
+
+What this does **not** change:
+
+- section 2, items 2, 3, 4, 5 and 6: the login methods, the passkey as the only
+  transaction authority, no EOA Safe owner, and no managed signer;
+- D1–D7, and the existing D8 steps, which are added to rather than replaced;
+- `applications.status` and its trigger-only transition;
+- the v1.7/v1.8 read-only Bitcoin and pasted-EVM balance reads;
+- KadeLock, the EAS schemas, and the service fee.
+
+Evidence: the migration and its `SECURITY DEFINER` writer; the server-side
+receipt verifier and its unit tests; the component test for the connect-and-pay
+step; the recorded `applications.fee_tx`; and the Sepolia explorer link for the
+treasury transfer.
 
 ## 9. Explicit Week 1 development exclusions
 
@@ -574,8 +672,14 @@ Unless introduced through change control, Week 1 excludes:
 - external wallet connection and proof-of-wallet ownership *(narrowed by
   section 8.7 / v1.7: external wallet connection and ownership proof stay
   excluded; read-only, unverified, address-based Bitcoin balance reads are in
-  scope)*;
-- pre-approval payment execution and Treasury transfer;
+  scope. Narrowed again by section 8.9 / v1.9: an external wallet connection is
+  in scope for the pre-approval fee payment only; ownership proof and wallet
+  login stay excluded)*;
+- pre-approval payment execution and Treasury transfer *(narrowed by
+  section 8.9 / v1.9: a direct USDC transfer from an external wallet to the Kade
+  treasury on Ethereum Sepolia is in scope; the production Safe-originated,
+  batched Treasury transfer with its `kade.fee.v1` / `kade.application.v1`
+  attestations stays excluded)*;
 - paymaster policy beyond what is strictly required to deploy the Week 1 Safe;
 - balance aggregation and indexer *(narrowed by section 8.7 / v1.7: a
   background aggregator/indexer stays excluded; a single on-demand,
@@ -597,7 +701,8 @@ Freeze status at v1.0:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours with parallel agents.
 - [x] authoritative UI source repository — **supplied; section 6.1 resolved** (option 1).
-- [x] Login methods — Google OAuth and email magic link. Password and wallet excluded. (Amended v1.2; originally Google-only.)
+- [x] Login methods — Google OAuth and email magic link. Password and wallet excluded. (Amended v1.2; originally Google-only. v1.9 keeps wallet login excluded and adds a payment-only wallet connection.)
+- [x] Pre-approval fee payment rail — an external wallet connection (browser wallet or WalletConnect) with a direct USDC transfer to the Kade treasury on Ethereum Sepolia, verified server-side. (Added v1.9.)
 - [x] direct Safe WebAuthn versus managed embedded signer — direct Safe WebAuthn signer.
 - [x] full versus partial Supabase schema scope — full DOCX schema, RLS/deny-by-default.
 - [x] Safe deployment network — all-testnet iteration 1: deploy on Ethereum Sepolia; predict Base Sepolia. Arbitrum deferred (section 8.6).
@@ -610,7 +715,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.8** with the open items above tracked under change control.
+This contract is **Frozen v1.9** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 

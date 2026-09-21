@@ -130,6 +130,42 @@ export function readSepoliaRpcUrl(): string | null {
   return process.env.SEPOLIA_RPC_URL?.trim() || null;
 }
 
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * The Sepolia treasury address that receives the pre-approval fee.
+ *
+ * Server-only, and deliberately **not** `NEXT_PUBLIC_`: the resident is told
+ * where to send, but the recipient is resolved on the server and passed to the
+ * payment screen as a value, so the browser cannot substitute its own address.
+ * Returns null (rather than a placeholder) when it is absent or malformed, so
+ * the payment path degrades to "not configured" instead of pointing at an
+ * address nobody controls. Week-1 contract section 8.9.
+ */
+export function readTreasuryAddress(): string | null {
+  const value = process.env.TREASURY_ADDRESS?.trim();
+  if (!value) return null;
+  if (!ADDRESS_PATTERN.test(value)) {
+    console.warn(
+      '[kade] TREASURY_ADDRESS is not a 20-byte hex address; ignoring it.',
+    );
+    return null;
+  }
+  return value;
+}
+
+/**
+ * The Reown/WalletConnect project id used by the browser wallet modal.
+ *
+ * Public by nature (it ships in the browser bundle and is not a secret), but it
+ * is read here rather than hard-coded so an unconfigured environment disables
+ * the wallet connection instead of throwing at import. Returns null when
+ * absent. Week-1 contract section 8.9.
+ */
+export function readWalletConnectProjectId(): string | null {
+  return process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() || null;
+}
+
 /** [arbitrary] the public mempool.space Esplora endpoint. */
 const DEFAULT_BITCOIN_API_BASE = 'https://mempool.space';
 

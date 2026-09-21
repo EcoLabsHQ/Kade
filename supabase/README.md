@@ -44,6 +44,7 @@ supabase/
     20260916000018_safe_deployment_writes.sql SECURITY DEFINER Safe-record writers
     20260916000019_safe_address_comment.sql     comment-only correction
     20260921000001_bitcoin_wallet_addresses.sql  wallets owner policy + Bitcoin address RPCs
+    20260921000002_evm_wallet_addresses.sql      pasted EVM addresses: cap + delete-by-address
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
@@ -111,7 +112,9 @@ Security is enforced in the database, not in the client (ADR 0004). The RLS
 migration declares the policies for the original table set; tables added later
 carry their own RLS and policies in their own migration — `passkey_credentials`
 (migration 13), `safe_deployments` / `safe_pre_deposits` (migration 16) and the
-owner-scoped `wallets` policy for pasted Bitcoin addresses (migration 20).
+owner-scoped `wallets` policy for pasted Bitcoin addresses (migration 20) and the
+cap extension plus `delete_wallet_addresses` for pasted EVM addresses (migration
+21).
 
 ### Row ownership
 
