@@ -58,7 +58,8 @@ create index passkey_credentials_profile_id_idx
   on public.passkey_credentials (profile_id);
 
 -- ---------------------------------------------------------------------------
--- RLS: owner reads and proposes; the server decides the derived columns.
+-- RLS: owner reads and proposes. The derived columns are refused a direct write;
+-- migration 17 adds save_passkey_signer for the caller's own credential.
 -- ---------------------------------------------------------------------------
 alter table public.passkey_credentials enable row level security;
 

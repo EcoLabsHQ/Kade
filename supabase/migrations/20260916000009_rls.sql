@@ -10,8 +10,10 @@
 --   * Owner tables (profiles, citizenships, residences, applications, household)
 --     are readable and writable only by the owning resident.
 --   * Security-critical columns are removed from the `authenticated` column
---     privileges, so even an owner cannot write them: the resident proposes, the
---     server decides. applications.status is written only by the review trigger.
+--     privileges, so a direct write by an owner is refused. Where a resident must
+--     supply such a value for their own row it goes through a SECURITY DEFINER
+--     function (migrations 17, 18). applications.status is written only by the
+--     review trigger.
 --   * Post-Week-1 tables are deny-by-default: RLS on, no permissive policy, no
 --     privileges for anon/authenticated.
 --   * chains and fee_schedule are public configuration, readable by any
@@ -44,7 +46,8 @@ alter table public.profiles enable row level security;
 
 revoke all on table public.profiles from anon, authenticated;
 grant select on table public.profiles to authenticated;
--- safe_address is deliberately absent from both grants: server-written only.
+-- safe_address is deliberately absent from both grants: a direct write is
+-- refused. Migration 18 adds record_safe_prediction for the caller's own row.
 grant insert (id, email, first_name, last_name, dob) on table public.profiles to authenticated;
 grant update (email, first_name, last_name, dob) on table public.profiles to authenticated;
 

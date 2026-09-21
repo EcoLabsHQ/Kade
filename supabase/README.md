@@ -150,7 +150,7 @@ they can set their own signer or record their own prediction. What is closed is
 naming another resident's row, moving an existing prediction's inputs, and
 changing a signer once set.
 
-### Server-written ("the resident proposes, the server decides")
+### Server-written columns (a direct write is refused)
 
 These columns are removed from the `authenticated` column privileges, so a
 direct write from the browser is refused. Some of them are still reachable
