@@ -1,14 +1,25 @@
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
-import { chainsForEnv } from '@kade/shared';
+import { WalletProvider } from '@/components/wallet/WalletProvider';
+import { CHAIN_IDS, chainByChainId, chainsForEnv } from '@kade/shared';
 import { getSessionUser } from '@/lib/supabase/server';
-import { isAuthConfigured, readAuthEnv, readChainEnv, readFeeMode } from '@/lib/env';
+import {
+  isAuthConfigured,
+  readAuthEnv,
+  readChainEnv,
+  readFeeMode,
+  readTreasuryAddress,
+  readWalletConnectProjectId,
+} from '@/lib/env';
+import { isFeePaymentConfigured, loadFeePayment } from '@/lib/payments/server';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { listBitcoinAddresses } from '@/app/onboarding/wealth-actions';
 import { listWalletAddresses } from '@/app/onboarding/wallet-actions';
 import { loadOnboardingSnapshot } from '@/lib/onboarding/server';
 import { resolvePreapprovalFeeBreakdown } from '@/lib/onboarding/fee-server';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
+import type { FeePaymentState } from '@/lib/payments/preapproval-fee';
 import type { OnboardingSnapshot } from '@/lib/onboarding/persistence';
 import type { BitcoinAddressRecord, EvmAddressRecord } from '@/lib/wealth/types';
 
@@ -109,18 +120,52 @@ export default async function OnboardingPage() {
     }
   }
 
+  // The pre-approval fee payment state, re-derived from the recorded hash and
+  // the Sepolia receipt. A failed read degrades to "nothing recorded" so the
+  // step offers the payment rather than claiming it already happened.
+  let initialPayment: FeePaymentState = { status: 'none' };
+  if (configured) {
+    try {
+      initialPayment = await loadFeePayment(session.userId);
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not load the pre-approval fee payment:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }
+
+  // The wallet modal and the fee rail are both configuration. The rail's own
+  // check includes the RPC verifier, so a missing SEPOLIA_RPC_URL disables the
+  // payment rather than letting a resident send funds the server cannot verify.
+  const treasuryAddress = readTreasuryAddress();
+  const walletConfigured = readWalletConnectProjectId() !== null;
+  const paymentConfigured = walletConfigured && isFeePaymentConfigured();
+  const sepolia = chainByChainId(CHAIN_IDS.sepolia);
+  const usdcAddress = sepolia?.usdcAddress.value ?? '';
+  const explorerUrl = sepolia?.explorerUrl ?? 'https://sepolia.etherscan.io';
+
+  const cookieHeader = (await headers()).get('cookie');
+
   return (
-    <OnboardingFlow
-      userId={session.userId}
-      mode={feeMode}
-      persistence={configured ? 'supabase' : 'not-configured'}
-      initial={initial}
-      initialFee={initialFee}
-      initialCredentialId={initialCredentialId}
-      initialBitcoinAddresses={initialBitcoinAddresses}
-      initialEvmAddresses={initialEvmAddresses}
-      network={activeNetworkLabel()}
-      accountState={{ kind: 'pending' }}
-    />
+    <WalletProvider cookies={cookieHeader}>
+      <OnboardingFlow
+        userId={session.userId}
+        mode={feeMode}
+        persistence={configured ? 'supabase' : 'not-configured'}
+        initial={initial}
+        initialFee={initialFee}
+        initialCredentialId={initialCredentialId}
+        initialBitcoinAddresses={initialBitcoinAddresses}
+        initialEvmAddresses={initialEvmAddresses}
+        initialPayment={initialPayment}
+        paymentConfigured={paymentConfigured}
+        treasuryAddress={treasuryAddress}
+        usdcAddress={usdcAddress}
+        explorerUrl={explorerUrl}
+        network={activeNetworkLabel()}
+        accountState={{ kind: 'pending' }}
+      />
+    </WalletProvider>
   );
 }

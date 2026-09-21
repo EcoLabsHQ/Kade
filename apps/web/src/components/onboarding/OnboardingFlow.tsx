@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Hex } from 'viem';
 import { useRouter } from 'next/navigation';
 import { TIERS, type FeeMode } from '@kade/shared';
 import { previewPreapprovalFee } from '@/app/onboarding/actions';
@@ -22,6 +23,7 @@ import { SiteFooter } from '@/components/shell/SiteFooter';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { AccountState } from '@/components/auth/AccountSummary';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
+import type { FeePaymentState } from '@/lib/payments/preapproval-fee';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
@@ -64,6 +66,19 @@ export interface OnboardingFlowProps {
    * server-side. Read-only every time the flow mounts; balances are re-read.
    */
   readonly initialEvmAddresses?: readonly EvmAddressRecord[];
+  /**
+   * The pre-approval fee payment state, resolved server-side from
+   * `applications.fee_tx` and re-verified against the Sepolia receipt. Only
+   * `paid` opens the platform.
+   */
+  readonly initialPayment: FeePaymentState;
+  /** True when both the wallet modal and the fee rail are configured. */
+  readonly paymentConfigured: boolean;
+  /** The Kade treasury, resolved on the server; null when unconfigured. */
+  readonly treasuryAddress: string | null;
+  /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
+  readonly usdcAddress: string;
+  readonly explorerUrl: string;
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
@@ -97,9 +112,11 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
  * are labelled demo. Bitcoin and pasted EVM addresses are real but read-only:
  * the resident pastes an address and the server reads its balances from a public
  * source, with no ownership proof, so the screen says so rather than implying
- * control. Step 4's payment still flips local state only. Real wallet connection
- * and payment execution remain excluded (contract section 9 as narrowed by
- * v1.7).
+ * control. Step 4's payment is real on Ethereum Sepolia: the resident connects
+ * an external wallet and sends USDC to the Kade treasury, and the server
+ * verifies the receipt before the step is marked paid (contract v1.9, section
+ * 8.9). The wallet connection is payment-only and confers no authority over the
+ * Safe.
  */
 export function OnboardingFlow({
   userId,
@@ -114,6 +131,11 @@ export function OnboardingFlow({
   store,
   initialBitcoinAddresses = [],
   initialEvmAddresses = [],
+  initialPayment,
+  paymentConfigured,
+  treasuryAddress,
+  usdcAddress,
+  explorerUrl,
 }: OnboardingFlowProps) {
   const router = useRouter();
   // The passkey is created before the pre-registration steps, as the reference's
@@ -131,7 +153,9 @@ export function OnboardingFlow({
   const [evmAddresses, setEvmAddresses] = useState<readonly EvmAddressRecord[]>(
     initialEvmAddresses,
   );
-  const [paid, setPaid] = useState(false);
+  // Paid is restored from the server, not assumed: the platform opens only
+  // when the recorded payment still verifies on chain.
+  const [paid, setPaid] = useState(initialPayment.status === 'paid');
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
   // The server's fee for a household size, tagged with the size it belongs to
   // so a stale amount is never shown while a new one is being resolved.
@@ -144,6 +168,13 @@ export function OnboardingFlow({
   }));
 
   const householdSize = snapshot ? 1 + snapshot.members.length : 1;
+
+  // Stable so the payment component's confirmation effect does not re-run on
+  // every render of the flow.
+  const handlePaid = useCallback((txHash: Hex) => {
+    void txHash;
+    setPaid(true);
+  }, []);
 
   // The browser never computes the amount. It asks the server, which reads the
   // active fee_schedule and returns the database's own answer.
@@ -368,7 +399,11 @@ export function OnboardingFlow({
             rows={fileRows}
             breakdown={breakdown}
             paid={paid}
-            onPay={() => setPaid(true)}
+            paymentConfigured={paymentConfigured}
+            treasuryAddress={treasuryAddress}
+            usdcAddress={usdcAddress}
+            explorerUrl={explorerUrl}
+            onPaid={handlePaid}
             onBack={() => setStep(3)}
             onEnter={() => {
               router.push('/');

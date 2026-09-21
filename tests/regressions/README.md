@@ -30,3 +30,4 @@ Current coverage:
 |---|---|
 | `open-redirect.test.ts` | The post-auth open redirect fixed on 17 September 2026: a `next` value of `/\evil.com` passed a string-prefix check and resolved off-origin. |
 | `eas-schema-registry-abi.test.ts` | The EAS `getSchema` ABI shape: it returns one `SchemaRecord` tuple, not four flat outputs. Declared flat, viem mis-decodes the trailing string and the verifier throws once the read loop runs. |
+| `preapproval-fee-receipt-proof.test.ts` | The pre-approval fee is proved from the Sepolia receipt, not from the caller-supplied `applications.fee_tx`: a receipt with no matching USDC transfer to the treasury, a wrong recipient, or an underpayment is never reported as paid. |

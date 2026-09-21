@@ -20,6 +20,16 @@ const hoisted = vi.hoisted(() => ({
   removeBitcoinAddress: vi.fn(),
   addWalletAddress: vi.fn(),
   removeWalletAddress: vi.fn(),
+  // Wallet + fee payment. The hooks are mocked so the flow is exercised
+  // against recorded wallet state, with no AppKit modal or provider.
+  open: vi.fn(),
+  switchNetwork: vi.fn(),
+  writeContract: vi.fn(),
+  resetWrite: vi.fn(),
+  recordPreapprovalFeePayment: vi.fn(),
+  account: { isConnected: false, address: undefined as string | undefined },
+  network: { chainId: 11155111 as number | string | undefined },
+  receipt: { isLoading: false, isSuccess: false },
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -55,6 +65,31 @@ vi.mock('@/app/onboarding/wealth-actions', () => ({
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   addWalletAddress: hoisted.addWalletAddress,
   removeWalletAddress: hoisted.removeWalletAddress,
+}));
+// The wallet hooks come from AppKit and wagmi. They are mocked so the fee step
+// renders against a recorded connection state rather than a real modal.
+vi.mock('@reown/appkit/react', () => ({
+  useAppKit: () => ({ open: hoisted.open }),
+  useAppKitAccount: () => hoisted.account,
+  useAppKitNetwork: () => ({
+    chainId: hoisted.network.chainId,
+    switchNetwork: hoisted.switchNetwork,
+  }),
+}));
+vi.mock('wagmi', () => ({
+  useWriteContract: () => ({
+    data: undefined,
+    writeContract: hoisted.writeContract,
+    isPending: false,
+    error: null,
+    reset: hoisted.resetWrite,
+  }),
+  useWaitForTransactionReceipt: () => hoisted.receipt,
+}));
+// The fee payment write is a server action; it is mocked so the fee step is
+// exercised against a recorded server outcome.
+vi.mock('@/app/onboarding/payment-actions', () => ({
+  recordPreapprovalFeePayment: hoisted.recordPreapprovalFeePayment,
 }));
 
 /** The seeded demo row: base 1, 0.25 per member, two decimal places. */
@@ -104,6 +139,10 @@ const CREDENTIAL_PUBLIC_KEY =
 const SIGNER_ADDRESS = '0xE39f50B9f260e835246AC2A40a1EFd87dF5f21B6';
 /** The Safe that signer owns for `user-1`, under the frozen deployment inputs. */
 const ACCOUNT_ADDRESS = '0xEcB18f6529713349d1864715A40B0124e798e523';
+/** USDC on Sepolia, from `@kade/shared`. */
+const SEPOLIA_USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+/** The treasury the flow is configured with. */
+const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A';
 
 afterEach(() => {
   cleanup();
@@ -117,6 +156,16 @@ afterEach(() => {
   hoisted.removeBitcoinAddress.mockReset();
   hoisted.addWalletAddress.mockReset();
   hoisted.removeWalletAddress.mockReset();
+  hoisted.open.mockReset();
+  hoisted.switchNetwork.mockReset();
+  hoisted.writeContract.mockReset();
+  hoisted.resetWrite.mockReset();
+  hoisted.recordPreapprovalFeePayment.mockReset();
+  hoisted.account.isConnected = false;
+  hoisted.account.address = undefined;
+  hoisted.network.chainId = 11155111;
+  hoisted.receipt.isLoading = false;
+  hoisted.receipt.isSuccess = false;
 });
 
 function makeStore() {
@@ -136,6 +185,11 @@ function renderFlow(store: OnboardingStore) {
       persistence="supabase"
       initial={null}
       initialFee={demoFee(1)}
+      initialPayment={{ status: 'none' }}
+      paymentConfigured={false}
+      treasuryAddress={null}
+      usdcAddress={SEPOLIA_USDC}
+      explorerUrl="https://sepolia.etherscan.io"
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -154,6 +208,11 @@ function renderFlowFromStart(store: OnboardingStore) {
       persistence="supabase"
       initial={null}
       initialFee={demoFee(1)}
+      initialPayment={{ status: 'none' }}
+      paymentConfigured={false}
+      treasuryAddress={null}
+      usdcAddress={SEPOLIA_USDC}
+      explorerUrl="https://sepolia.etherscan.io"
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -468,9 +527,61 @@ describe('pre-registration flow', () => {
     // Household of three, the contract's worked example.
     expect(await screen.findByText('1.75 USDC')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /pay now/i }));
+    // Payment is not configured in this render, so the step says so rather
+    // than offering a control that could only fail.
+    expect(screen.getByText(/payment is not configured/i)).toBeInTheDocument();
+  });
+
+  it('opens the platform when the server restored a paid fee', async () => {
+    render(
+      <OnboardingFlow
+        userId="user-1"
+        mode="demo"
+        persistence="supabase"
+        initial={RESTORED_SNAPSHOT}
+        initialFee={demoFee(3)}
+        initialPayment={{ status: 'paid', txHash: `0x${'ab'.repeat(32)}` }}
+        paymentConfigured
+        treasuryAddress={TREASURY}
+        usdcAddress={SEPOLIA_USDC}
+        explorerUrl="https://sepolia.etherscan.io"
+        network="Ethereum Sepolia"
+        accountState={{ kind: 'pending' }}
+        currentYear={2026}
+        initialCredentialId="cred-existing"
+        store={makeStore().store}
+      />,
+    );
+    await reachFeeStep();
     expect(
-      screen.getByRole('button', { name: /enter the platform/i }),
+      await screen.findByRole('button', { name: /enter the platform/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the wallet connection when the fee is unpaid and configured', async () => {
+    hoisted.account.isConnected = false;
+    render(
+      <OnboardingFlow
+        userId="user-1"
+        mode="demo"
+        persistence="supabase"
+        initial={RESTORED_SNAPSHOT}
+        initialFee={demoFee(3)}
+        initialPayment={{ status: 'none' }}
+        paymentConfigured
+        treasuryAddress={TREASURY}
+        usdcAddress={SEPOLIA_USDC}
+        explorerUrl="https://sepolia.etherscan.io"
+        network="Ethereum Sepolia"
+        accountState={{ kind: 'pending' }}
+        currentYear={2026}
+        initialCredentialId="cred-existing"
+        store={makeStore().store}
+      />,
+    );
+    await reachFeeStep();
+    expect(
+      await screen.findByRole('button', { name: /connect wallet/i }),
     ).toBeInTheDocument();
   });
 
@@ -490,7 +601,9 @@ describe('pre-registration flow', () => {
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
-    expect(screen.getByText(/does not send a transaction/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/verified from the transaction receipt/i),
+    ).toBeInTheDocument();
     expect(await screen.findByText(/1\.75 USDC/)).toBeInTheDocument();
   });
 
@@ -559,7 +672,9 @@ describe('pre-registration flow', () => {
       await screen.findByText(/configured pre-approval fee could not be read/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/USDC/)).toBeNull();
-    expect(screen.getByRole('button', { name: /pay now/i })).toBeDisabled();
+    expect(
+      screen.getByText(/configured fee could not be read, so payment is unavailable/i),
+    ).toBeInTheDocument();
   });
 });
 
@@ -626,6 +741,11 @@ function renderRestoredFlow(
       persistence="supabase"
       initial={RESTORED_SNAPSHOT}
       initialFee={demoFee(3)}
+      initialPayment={{ status: 'none' }}
+      paymentConfigured={false}
+      treasuryAddress={null}
+      usdcAddress={SEPOLIA_USDC}
+      explorerUrl="https://sepolia.etherscan.io"
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -700,11 +820,14 @@ describe('what is the resident\u2019s and what is demo', () => {
       name: /pay the pre-approval fee and go live/i,
     });
 
-    // The payment is labelled demo; the fee line states it is the configured
-    // amount for this household, and the proof-of-wealth row is marked Demo.
-    expect(screen.getByText('Demo payment')).toBeInTheDocument();
+    // The payment rail is labelled testnet; the fee line states it is the
+    // configured amount for this household, and the proof-of-wealth row is
+    // marked Demo.
+    expect(screen.getByText('Testnet payment')).toBeInTheDocument();
     expect(screen.getByText('Demo')).toBeInTheDocument();
-    expect(screen.getByText(/does not send a transaction/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/verified from the transaction receipt/i),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/configured pre-approval fee for your household/i),
     ).toBeInTheDocument();

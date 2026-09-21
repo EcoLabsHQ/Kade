@@ -1,20 +1,21 @@
 'use client';
 
+import type { Hex } from 'viem';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
+import { FeePayment } from './FeePayment';
 
 /**
  * Step 4 — pay the pre-approval fee.
  *
- * DEMO ONLY. "Paying" flips local state and nothing else: payment execution is
- * excluded from Week 1 (contract section 9), so no transaction is built, signed
- * or sent, and the screen does not claim one was.
- *
- * The amounts are the server's, resolved from the active `fee_schedule` and
- * passed down. The screen holds no formula and no constant; when the server
- * cannot resolve the fee it shows that plainly rather than an amount.
+ * The payment is a real on-chain USDC transfer to the Kade treasury on Ethereum
+ * Sepolia, made from a connected wallet and verified from the receipt on the
+ * server (contract section 8.9 / v1.9). The screen builds no amount and names
+ * no recipient: both are resolved on the server and passed down. When the
+ * environment is not configured for payment it says so rather than rendering a
+ * button that could only fail.
  */
 export interface FileRow {
   readonly label: string;
@@ -30,7 +31,14 @@ export interface FeeStepProps {
   /** The server-resolved fee, or null when it could not be read. */
   readonly breakdown: PreapprovalFeeBreakdown | null;
   readonly paid: boolean;
-  readonly onPay: () => void;
+  /** False when the wallet modal or the fee rail is not configured. */
+  readonly paymentConfigured: boolean;
+  /** The Kade treasury, resolved on the server; null when unconfigured. */
+  readonly treasuryAddress: string | null;
+  /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
+  readonly usdcAddress: string;
+  readonly explorerUrl: string;
+  readonly onPaid: (txHash: Hex) => void;
   readonly onEnter: () => void;
   readonly onBack: () => void;
 }
@@ -44,7 +52,11 @@ export function FeeStep({
   rows,
   breakdown,
   paid,
-  onPay,
+  paymentConfigured,
+  treasuryAddress,
+  usdcAddress,
+  explorerUrl,
+  onPaid,
   onEnter,
   onBack,
 }: FeeStepProps) {
@@ -140,8 +152,8 @@ export function FeeStep({
                 </div>
                 <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
                   This is the configured pre-approval fee for your household.
-                  Paying is simulated in this demo and does not send a
-                  transaction.
+                  Payment is an on-chain USDC transfer on Ethereum Sepolia,
+                  verified from the transaction receipt.
                 </p>
               </>
             ) : (
@@ -179,7 +191,7 @@ export function FeeStep({
             }}
           >
             <div style={darkEyebrow}>Your pre-approval</div>
-            <span style={demoTagDark}>Demo payment</span>
+            <span style={demoTagDark}>Testnet payment</span>
           </div>
           <p
             style={{
@@ -189,10 +201,10 @@ export function FeeStep({
               lineHeight: 1.35,
             }}
           >
-            Paying pre-approves your account on the spot.
+            Pay the fee to open your file for pre-approval.
           </p>
           {[
-            ['Now', 'use the platform: identity, containers, GOS, voting'],
+            ['Now', 'open your file and start pre-approval'],
             ['3 days', 'we review; we only step in if something is wrong'],
             ['After', 'card, bank payouts, borrowing, Start Residency'],
           ].map(([when, what]) => (
@@ -216,30 +228,32 @@ export function FeeStep({
             </div>
           ))}
 
+          <p style={{ margin: '14px 0 0', fontSize: '11.5px', color: '#98A2B3' }}>
+            The steps above are the product flow. Identity, containers, GOS,
+            voting, card, payouts and borrowing are not live in this build.
+          </p>
+
           <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
             {paid ? (
               <button type="button" onClick={onEnter} style={{ ...primaryButton, width: '100%' }}>
                 Enter the platform →
               </button>
+            ) : breakdown === null ? (
+              <p style={{ margin: 0, fontSize: '13px', color: '#FECDCA' }}>
+                The configured fee could not be read, so payment is unavailable.
+              </p>
+            ) : !paymentConfigured || !treasuryAddress ? (
+              <p style={{ margin: 0, fontSize: '13px', color: '#D0D5DD' }}>
+                Payment is not configured in this environment.
+              </p>
             ) : (
-              <button
-                type="button"
-                onClick={onPay}
-                disabled={breakdown === null}
-                title={
-                  breakdown === null
-                    ? 'The configured pre-approval fee is unavailable.'
-                    : undefined
-                }
-                style={{
-                  ...primaryButton,
-                  width: '100%',
-                  opacity: breakdown === null ? 0.5 : 1,
-                  cursor: breakdown === null ? 'not-allowed' : 'pointer',
-                }}
-              >
-                Pay now to start pre-approval
-              </button>
+              <FeePayment
+                amountUsdc={String(breakdown.totalUsdc)}
+                treasuryAddress={treasuryAddress as `0x${string}`}
+                usdcAddress={usdcAddress as `0x${string}`}
+                explorerUrl={explorerUrl}
+                onPaid={onPaid}
+              />
             )}
           </div>
         </div>

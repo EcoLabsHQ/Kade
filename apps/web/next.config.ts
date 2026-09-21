@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
       '.js': ['.ts', '.tsx', '.js'],
       '.mjs': ['.mts', '.mjs'],
     };
+    // WalletConnect's transitive dependencies import optional Node-only
+    // packages; excluding them keeps the browser bundle from trying to resolve
+    // them. This is the configuration Reown documents for Next.js.
+    const externals = Array.isArray(config.externals) ? config.externals : [];
+    config.externals = [...externals, 'pino-pretty', 'lokijs', 'encoding'];
     return config;
   },
 };

@@ -19,10 +19,26 @@ const hoisted = vi.hoisted(() => ({
   loadPasskeyCredential: vi.fn(),
   listBitcoinAddresses: vi.fn(),
   listWalletAddresses: vi.fn(),
+  loadFeePayment: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+// The page reads the request cookies for the wallet provider; there is no
+// request in a unit test, so return an empty cookie jar.
+vi.mock('next/headers', () => ({
+  headers: async () => new Map<string, string>(),
+}));
+// The wallet provider is a client component with an AppKit side effect at
+// import. It is stubbed to a passthrough so the page's data wiring is what is
+// under test.
+vi.mock('@/components/wallet/WalletProvider', () => ({
+  WalletProvider: ({ children }: { children: ReactElement }) => children,
+}));
+vi.mock('@/lib/payments/server', () => ({
+  loadFeePayment: hoisted.loadFeePayment,
+  isFeePaymentConfigured: () => false,
+}));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
 }));
@@ -59,6 +75,8 @@ vi.mock('@/lib/env', () => ({
   }),
   readChainEnv: () => 'testnet',
   readFeeMode: () => 'demo',
+  readTreasuryAddress: () => null,
+  readWalletConnectProjectId: () => null,
 }));
 
 import OnboardingPage from '@/app/onboarding/page';
@@ -66,6 +84,9 @@ import OnboardingPage from '@/app/onboarding/page';
 interface FlowProps {
   readonly initialCredentialId?: string | null;
   readonly initial?: OnboardingSnapshot | null;
+  readonly initialPayment?: { readonly status: string; readonly txHash?: string };
+  readonly paymentConfigured?: boolean;
+  readonly treasuryAddress?: string | null;
   readonly initialBitcoinAddresses?: readonly {
     readonly id: number;
     readonly address: string;
@@ -77,8 +98,10 @@ interface FlowProps {
 }
 
 async function flowProps(): Promise<FlowProps> {
-  const element = (await OnboardingPage()) as ReactElement<FlowProps>;
-  return element.props;
+  const element = (await OnboardingPage()) as ReactElement<{
+    children: ReactElement<FlowProps>;
+  }>;
+  return element.props.children.props;
 }
 
 beforeEach(() => {
@@ -92,6 +115,7 @@ beforeEach(() => {
   hoisted.loadPasskeyCredential.mockResolvedValue(null);
   hoisted.listBitcoinAddresses.mockResolvedValue([]);
   hoisted.listWalletAddresses.mockResolvedValue([]);
+  hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
 });
 
 afterEach(() => {
@@ -174,6 +198,21 @@ describe('onboarding page credential restore', () => {
     hoisted.listWalletAddresses.mockRejectedValue(new Error('provider down'));
 
     expect((await flowProps()).initialEvmAddresses).toEqual([]);
+  });
+
+  it('hands the server-verified fee payment state to the flow', async () => {
+    hoisted.loadFeePayment.mockResolvedValue({
+      status: 'paid',
+      txHash: `0x${'ab'.repeat(32)}`,
+    });
+
+    expect((await flowProps()).initialPayment?.status).toBe('paid');
+  });
+
+  it('degrades to no recorded payment when the fee read fails', async () => {
+    hoisted.loadFeePayment.mockRejectedValue(new Error('rpc down'));
+
+    expect((await flowProps()).initialPayment).toEqual({ status: 'none' });
   });
 
   it('redirects to login when there is no session', async () => {

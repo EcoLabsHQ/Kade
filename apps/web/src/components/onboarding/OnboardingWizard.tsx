@@ -341,6 +341,7 @@ export function OnboardingWizard({
       <div
         style={{
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
           gap: '10px',
           marginTop: '22px',
