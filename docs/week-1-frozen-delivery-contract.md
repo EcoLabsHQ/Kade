@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.6 — human decisions recorded 16 September 2026; six
-amendments recorded in sections 8.1-8.6
+**Status:** Frozen v1.7 — human decisions recorded 16 September 2026; seven
+amendments recorded in sections 8.1-8.7
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -419,14 +419,90 @@ toolchain change is caught, while the application reads `proxyCreationCode()`
 from the deployed factory at runtime, and the deployed code is recorded
 separately in the same module.
 
+### 8.7 Amendment v1.7 — read-only Bitcoin proof-of-wealth, and empty-first profile entry
+
+**v1.7 — 21 September 2026. Approved by the project owner. Week 2 change
+control onto the frozen Week 1 contract.**
+
+Bitcoin address reads are in scope, read-only and unverified. A signed-in
+resident may add up to **5** Bitcoin addresses. The server validates the
+address, reads its balance and the BTC/USD price from a single public
+Esplora-compatible source (`mempool.space`), and returns the USD value. There
+is **no signature, no wallet connection, and no ownership proof**; the UI states
+the balance was read from a public source and is not evidence of control.
+
+Addresses are persisted. Rows live in the existing `public.wallets` table:
+`address`, `chain = 0` (the `[arbitrary]` sentinel — the DOCX documents `chain`
+as an EVM chain id, and Bitcoin has none), `provider = 'bitcoin-address'`, and
+`siwe_sig`/`verified_at` left NULL, which is the documented "unverified"
+meaning. RLS is enabled with an owner-only policy; the resident may
+insert/select/delete their own rows, and a unique index on
+`(profile_id, address, chain)` makes a repeat idempotent. There is **no new
+table and no new column**, so no schema field is invented — the amendment
+extends the meaning of two `wallets` columns whose encodings were already
+`[arbitrary]`. The migration file is
+`supabase/migrations/20260921000001_bitcoin_wallet_addresses.sql`.
+
+Only Bitcoin, and only one provider. EVM wallet connection (browser extension /
+WalletConnect), the "Wallet address (0x)" multi-chain block, DeBank, hardware
+wallets, and background balance aggregation/indexing remain out of scope. The
+browser-extension and WalletConnect rows stay demo and are labelled demo; the
+hardware-wallet row is removed.
+
+Section 9 is narrowed in two places, and both are stated there in full:
+"external wallet connection and proof-of-wallet ownership" becomes external
+wallet *connection* and *ownership proof* excluded while read-only, unverified,
+address-based Bitcoin balance reads are in scope; "balance aggregation and
+indexer" becomes a background aggregator/indexer excluded while a single
+on-demand, server-proxied read per address is in scope.
+
+Step 2 starts empty. The profile form opens empty, matching the design handoff
+("Everything starts empty"); the earlier example prefill is removed. The
+applicant, citizenship, five-year residence, tier and household groups all
+remain mandatory; `Continue` is always actionable and marks the missing groups
+instead of being disabled. Date of birth uses a styled date picker.
+
+Acceptance criteria. D5 evidence now also covers entry from empty, validation
+marking, and the date picker. D6, D7 and D8 are unaffected; the D8 journey is
+unchanged (sign-in → passkey → Sepolia Safe → matching Sepolia/Base Sepolia
+addresses → Steps 1–2 → fee → reload → EAS UIDs → KadeLock report).
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 9, exclusions | external wallet connection and proof-of-wallet ownership | external wallet connection and ownership proof excluded; read-only, unverified, address-based Bitcoin balance reads in scope |
+| Section 9, exclusions | balance aggregation and indexer | a background aggregator/indexer excluded; a single on-demand, server-proxied read per address in scope |
+| Section 4, D5 evidence | clean-browser end-to-end test covering initial entry, validation, save, reload, edit, and fee recalculation | adds entry from empty, validation marking, and the styled date picker |
+| Schema, `public.wallets` | `chain` used only as an EVM chain id | `chain = 0` and `provider = 'bitcoin-address'` mark up to 5 read-only Bitcoin addresses per resident, unverified |
+
+What this does **not** change:
+
+- D6, D7 and D8, including the D8 journey;
+- the passkey remains the only transaction authority, and no session, address
+  or balance read can authorise a transaction;
+- `public.wallets` keeps its existing shape — no table and no column is added;
+- payment execution, the EVM multi-chain block, DeBank, hardware wallets, and
+  the indexer remain excluded.
+
+Evidence: the migration file and its owner-only RLS policy; the server-side
+provider client (address validation, balance math, provider-error handling);
+the server actions; unit tests; the persisted rows; and the on-screen "read
+from a public source, not proof of ownership" statement.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
 
-- external wallet connection and proof-of-wallet ownership;
+- external wallet connection and proof-of-wallet ownership *(narrowed by
+  section 8.7 / v1.7: external wallet connection and ownership proof stay
+  excluded; read-only, unverified, address-based Bitcoin balance reads are in
+  scope)*;
 - pre-approval payment execution and Treasury transfer;
 - paymaster policy beyond what is strictly required to deploy the Week 1 Safe;
-- balance aggregation and indexer;
+- balance aggregation and indexer *(narrowed by section 8.7 / v1.7: a
+  background aggregator/indexer stays excluded; a single on-demand,
+  server-proxied read per address is in scope)*;
 - L2 Safe deployment;
 - Aave vault deployment/integration;
 - full KYC/Self verification flow;
@@ -454,7 +530,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.6** with the open items above tracked under change control.
+This contract is **Frozen v1.7** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
