@@ -53,9 +53,13 @@ Aave, KYC, admin review, GOS/CCTP, card and voting are out of scope.
    Foundation, Account, Onchain, Acceptance.
 5. Record the Appendix D evidence manifest for every package before marking it
    complete.
-6. At the end of an iteration, after verification passes, hand off to the
-   `reviewer` subagent on `git diff known-good...HEAD`.
-7. Only when both gates pass may you run `git tag -f known-good HEAD`.
+6. At the end of an iteration, after verification passes, start a **review
+   session** by handing off to the `reviewer` subagent in `MODE=DISCOVERY` on
+   `git diff known-good...HEAD`. Persist the session state under
+   `.review/<iteration>/` (see `docs/review-state.md`).
+7. Only when the review session reports `REVIEW PASSED` and a final
+   `./scripts/verify.sh` passes on the exact HEAD may you run
+   `git tag -f known-good HEAD`.
 8. If a timebox is exhausted, stop and trigger change control; never silently
    downgrade, mock, or mark work complete.
 9. On a regression, follow the failure and recovery protocol in the development
@@ -82,12 +86,36 @@ Each iteration follows this state machine:
    FAIL   PASS
     |       |
     |       v
-    |     REVIEW
-    |     /    \
-    |   FAIL   PASS
-    |    |       |
-    +----+       v
-             PROMOTE
+    |   REVIEW SESSION
+    |   (MODE=DISCOVERY)
+    |     /       \
+    |  FAILED     PASSED
+    | (batch <= 3)  |
+    |    |          |
+    |    v          |
+    |  FIX BATCH    |
+    |    |          |
+    |    v          |
+    | focused tests |
+    |    |          |
+    |    v          |
+    |  RECHECK -----+-- FAILED -> FIX BATCH
+    |    |                    (max 2 attempts/finding)
+    |  RESOLVED
+    |    |
+    |    v
+    |  RESUME -> ... -> PASSED
+    |    |
+    +----+
+         |
+         v
+    FINAL VERIFY
+      /       \
+   FAIL       PASS
+    |           |
+    v           v
+ failure      PROMOTE
+ protocol
 ```
 
 During IMPLEMENT:
@@ -105,46 +133,114 @@ If VERIFY fails:
 4. return to IMPLEMENT;
 5. do not invoke the reviewer.
 
-If REVIEW fails:
-
-1. treat findings as evidence, not implementation instructions;
-2. validate blocking findings;
-3. begin a new corrective iteration;
-4. fix root causes;
-5. run VERIFY again;
-6. invoke a fresh reviewer only after VERIFY passes.
-
 The reviewer always evaluates:
 
 ```bash
 git diff known-good...HEAD
 ```
 
-even across corrective iterations. Therefore all corrective work remains visible
+even across corrective work. Therefore every corrective change remains visible
 relative to the last trusted baseline.
 
-If REVIEW passes:
+A review session is **incremental**. You drive it; the reviewer never runs
+itself. Start it in `MODE=DISCOVERY` and pass the reviewer:
 
-1. confirm mechanical verification still represents the current HEAD;
+- `known_good`, `candidate`, and the recorded verify result for that candidate;
+- the state path under `.review/<iteration>/`.
+
+Persist the state the reviewer returns, per `docs/review-state.md`.
+
+If the reviewer returns `REVIEW FAILED` (a batch of at most three blockers):
+
+1. treat findings as evidence, not implementation instructions;
+2. validate the blocking findings before acting on them;
+3. fix the root cause of the batch — a class of defects, not three literal lines;
+4. run focused tests that demonstrate each fix;
+5. re-run `./scripts/verify.sh`;
+6. hand the same findings back to the reviewer in `MODE=RECHECK`.
+
+If a recheck reports a finding still open, fix it and recheck again, up to
+`MAX_RECHECK_ATTEMPTS_PER_FINDING`.
+
+### Repeated-finding escape hatch
+
+Do not repeatedly patch individual instances of the same underlying problem.
+Before fixing a reviewer finding, compare it with findings from the current
+review session and recent corrective work.
+
+If a new finding appears to be another instance of the same underlying problem
+already corrected once, STOP instance-level patching. Instead:
+
+1. identify the shared defect class in one sentence;
+2. determine the bounded scope where that class may recur;
+3. inspect that scope once and build a complete inventory before editing;
+4. fix the class coherently in one corrective pass;
+5. run the relevant focused verification;
+6. return the result to the reviewer for targeted recheck/resume.
+
+Examples include repeated stale claims, repeated authorization mistakes,
+repeated responsive-layout failures, repeated schema mismatches, or repeated
+instances of the same incorrect assumption.
+
+The reviewer does not need to enumerate every instance before this rule applies.
+Representative evidence is sufficient to trigger class-level remediation.
+
+Do not start another instance-level fix/recheck cycle when the same underlying
+problem has already appeared before.
+
+If the bounded scope cannot be determined confidently, stop and report that the
+finding appears systemic rather than continuing speculative patches.
+
+If every batch finding is resolved, the reviewer returns `REVIEW INCOMPLETE`.
+Resume the session in `MODE=RESUME`; the reviewer continues only the scopes that
+are still incomplete, plus any scope invalidated by the corrective diff. It does
+not start over.
+
+If the reviewer returns `REVIEW PASSED`, the session is complete:
+
+1. run `./scripts/verify.sh` one final time on the exact HEAD;
 2. promote HEAD by moving `known-good`;
-3. end the iteration.
+3. commit the review state under `.review/`;
+4. end the iteration.
 
-Never move `known-good` during IMPLEMENT, VERIFY failure recovery, or REVIEW
-failure recovery.
+Never move `known-good` during IMPLEMENT, VERIFY failure recovery, or review
+recovery.
 
-### Circuit breaker
+### Circuit breakers
 
 Do not run an unbounded `while not reviewer_passes: fix()` loop. That is the
-patch-on-patch behavior the development contract forbids. You control the cycle
-and run root-cause recovery plus VERIFY between every corrective iteration.
+patch-on-patch behavior the development contract forbids. You drive the review
+session and run root-cause recovery plus focused tests between every batch.
 
-Operational limit (tunable by evals):
+Operational limits (tunable by evals):
 
 ```text
-MAX_CORRECTIVE_ITERATIONS = 3
+MAX_BLOCKERS_PER_BATCH             = 3
+MAX_RECHECK_ATTEMPTS_PER_FINDING   = 2
+MAX_FULL_REVIEW_RESTARTS           = 1
 ```
 
-When the limit is exceeded:
+There is deliberately no cap on the number of healthy batches:
+
+```text
+3 blockers -> fix -> 2 blockers -> fix -> 0 blockers
+```
+
+is a healthy session, not a failure.
+
+A full `DISCOVERY` restart is allowed only once, and only when corrective work
+materially invalidates the session — for example:
+
+- the architecture changes materially;
+- public interfaces change;
+- the schema changes substantially;
+- a security boundary changes;
+- earlier reviewed assumptions no longer hold;
+- large unrelated implementation changes are introduced.
+
+Otherwise continue the existing session with `RECHECK` then `RESUME`.
+
+When a limit is exceeded:
 
 1. STOP;
 2. report the repeated failure with evidence;
