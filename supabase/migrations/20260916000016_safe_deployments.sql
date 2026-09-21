@@ -21,7 +21,7 @@
 --   `passkey_credentials` (20260916000013). The Safe address, the deployment
 --   transaction hash and the manifest inputs are server-written: the
 --   `authenticated` role has no column privilege on them, so a resident cannot
---   name their own address. A pre-deposit may only reference a Safe address that
+--   name an address directly. A pre-deposit may only reference a Safe address that
 --   has already been predicted (foreign key), which keeps the recovery inputs
 --   ahead of any funds movement.
 -- =============================================================================

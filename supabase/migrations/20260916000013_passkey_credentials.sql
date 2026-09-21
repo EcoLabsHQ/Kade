@@ -15,7 +15,7 @@
 -- Security
 --   Row level security is on. A resident may read their own credential and may
 --   propose one, but `signer_address` is server-written: it is derived from the
---   public key and the frozen Safe inputs, so the browser cannot name its own
+--   public key and the frozen Safe inputs, so a direct write cannot name the
 --   signer. Nothing here stores the credential's private key, the raw attestation
 --   object, or any document.
 -- =============================================================================

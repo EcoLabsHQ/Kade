@@ -43,17 +43,17 @@ the overview greets you by your actual provider.
 **Evidence:** screenshot of the signed-in overview.
 **Done already:** the project owner completed this.
 
-### 2. The resident Safe ⛔
+### 2. The resident Safe ✅
 
 **Done.** The resident Safe is deployed on Sepolia (`0x9a87d79c9B051936D490741e8d45e5CE1034D17B`, tx `0x608f1c6709be262020f20f27652249bd2c75807395a96beba09118c299587e7d`), and
 the shell shows the address with its state and an explorer link.
 
-### 3. Matching addresses on the active chains ⛔
+### 3. Matching addresses on the active chains ✅
 
 **Done.** The D4 manifest is persisted in `safe_deployments`, and the address is
 identical across the active chains by construction.
 
-### 4. Steps 1–2 ⚠️
+### 4. Steps 1–2 ✅
 
 Open `/onboarding`. Enter profile, citizenships, residence history covering five
 years, a tier, and at least one household member.
@@ -78,7 +78,7 @@ in the database returns 1.75 for `('demo', 3)` and 447 for `('production', 3)`,
 and `@kade/shared` computes the same. All three agree.
 **Evidence:** screenshot; the value is also asserted in the acceptance tests.
 
-### 6. Reload ✅/⚠️
+### 6. Reload ✅
 
 Reload after step 4. A Supabase session must survive, and the onboarding data
 must return from the database rather than from browser storage.
@@ -100,7 +100,7 @@ cd packages/contracts && forge test
 **Expected:** 33 tests pass (30 `KadeLockTest`, 3 integration), plus the 12
 `SafeAddress` tests. Record the output.
 
-### 9. The transaction passkey ⚠️
+### 9. The transaction passkey ✅
 
 Open `/account`. The passkey panel enforces user verification and shows the
 signer address derived from the credential. Credential metadata and the derived
@@ -110,8 +110,9 @@ is needed — and reloaded on the next visit.
 
 ## What a pass looks like
 
-- Steps 1, 2, 3, 5, 7, 8 and 9 pass today.
-- Step 4 plus 6 are the highest-value remaining check and need no gate.
+- Steps 1–9 pass today, with one caveat: step 9 shows the passkey and its
+  derived signer, but a signature cannot validate until the signer contract is
+  deployed (declared in the register).
 - Week 1 cannot be declared complete until the acceptance gate is recorded.
 
 ## Approval record

@@ -151,16 +151,19 @@ changing a signer once set.
 
 ### Server-written ("the resident proposes, the server decides")
 
-These columns are removed from the `authenticated` column privileges, so even
-the owner cannot write them from the browser:
+These columns are removed from the `authenticated` column privileges, so a
+direct write from the browser is refused. Some of them are still reachable
+through the SECURITY DEFINER writers above, which is the deliberate trade-off
+described there:
 
 - `profiles.safe_address`
 - `passkey_credentials.signer_address` (derived from the public key; the
   resident may write the other credential columns)
 - every `safe_deployments` column except `profile_id`: the counterfactual
   address, the status, the deployment transaction hash and all the manifest
-  inputs. The prediction is derived server-side, so the browser cannot name its
-  own address
+  inputs. A direct write is refused; `record_safe_prediction` can write them for
+  the caller's own row, so a resident can record their own prediction but cannot
+  touch another resident's
 - `safe_pre_deposits.verification_status`, `verified_at`: the resident may
   propose a deposit, but only a server-side check may mark it verified
 - `applications.status`, `ref`, `preapproval_usdc`, `service_usdc`, `fee_tx`,
