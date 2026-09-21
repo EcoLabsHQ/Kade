@@ -3,6 +3,7 @@ import {
   EVM_READ_CHAINS,
   EvmReadError,
   formatNative,
+  formatUnits,
   isEvmAddress,
   normalizeEvmAddress,
   readEvmBalances,
@@ -13,26 +14,31 @@ import {
  * The EVM balance read is the only place that talks to the EVM provider.
  *
  * It is pure and injectable, so these tests pin the address handling, the
- * wei -> fixed-decimal formatting and the failure modes without the network. A
- * provider failure must not fabricate a zero balance: the chain is skipped, and
- * an invalid address must fail before any fetch is attempted.
+ * native + USDC parsing, the fixed-decimal formatting and the failure modes
+ * without the network. A provider failure must not fabricate a zero balance: the
+ * chain is skipped (or the token balance is reported as null), and an invalid
+ * address must fail before any fetch is attempted.
  */
 
 const CHECKSUMMED = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const LOWERCASE = '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed';
 const BITCOIN_ADDRESS = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+const USDC_ONE = '0x1111111111111111111111111111111111111111';
+const USDC_TWO = '0x2222222222222222222222222222222222222222';
 
 const CHAIN_ONE: EvmReadChain = {
   chainId: 1,
   name: 'Ethereum',
   symbol: 'ETH',
   baseUrl: 'https://one.test',
+  usdcAddress: USDC_ONE,
 };
 const CHAIN_TWO: EvmReadChain = {
   chainId: 8453,
   name: 'Base',
   symbol: 'ETH',
   baseUrl: 'https://two.test',
+  usdcAddress: USDC_TWO,
 };
 
 interface FakeResponseInit {
@@ -58,6 +64,31 @@ function throwingJsonResponse(): Response {
       throw new SyntaxError('Unexpected token < in JSON');
     },
   } as unknown as Response;
+}
+
+/** Summary body: native wei + the native coin's USD price. */
+function summary(coinBalance: string, exchangeRate: unknown): unknown {
+  return { coin_balance: coinBalance, exchange_rate: exchangeRate };
+}
+
+/** Blockscout v1 token-balance body for USDC. */
+function tokenBalance(raw: string): unknown {
+  return { status: '1', message: 'OK', result: raw };
+}
+
+/** Route a fake fetch by matching the URL, so call order does not matter. */
+function routedFetch(
+  routes: readonly (readonly [string, unknown | (() => Response)])[],
+): typeof fetch {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    for (const [needle, body] of routes) {
+      if (url.includes(needle)) {
+        return typeof body === 'function' ? body() : jsonResponse(body);
+      }
+    }
+    return jsonResponse({}, { ok: false, status: 404 });
+  }) as unknown as typeof fetch;
 }
 
 describe('isEvmAddress', () => {
@@ -86,34 +117,40 @@ describe('normalizeEvmAddress', () => {
   });
 });
 
-describe('formatNative', () => {
+describe('formatUnits / formatNative', () => {
   it('formats wei as a fixed 18-decimal native string', () => {
     expect(formatNative(512_300_000_000_000_000n)).toBe('0.512300000000000000');
     expect(formatNative(1_000_000_000_000_000_000n)).toBe('1.000000000000000000');
     expect(formatNative(1n)).toBe('0.000000000000000001');
     expect(formatNative(0n)).toBe('0.000000000000000000');
   });
+
+  it('formats a 6-decimal token amount as USDC is quoted', () => {
+    expect(formatUnits(183_500_000n, 6)).toBe('183.500000');
+    expect(formatUnits(1n, 6)).toBe('0.000001');
+  });
 });
 
 describe('EVM_READ_CHAINS', () => {
-  it('targets the Ethereum and Base mainnets, symbol ETH', () => {
+  it('targets the Ethereum and Base mainnets, symbol ETH, with a USDC contract', () => {
     expect(EVM_READ_CHAINS.map((chain) => chain.chainId)).toEqual([1, 8453]);
     expect(EVM_READ_CHAINS.map((chain) => chain.name)).toEqual([
       'Ethereum',
       'Base',
     ]);
     expect(EVM_READ_CHAINS.every((chain) => chain.symbol === 'ETH')).toBe(true);
+    expect(EVM_READ_CHAINS.every((chain) => /^0x[0-9a-fA-F]{40}$/.test(chain.usdcAddress))).toBe(
+      true,
+    );
   });
 });
 
 describe('readEvmBalances', () => {
-  it('parses coin_balance and exchange_rate into amount and usd', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({
-        coin_balance: '512300000000000000',
-        exchange_rate: '2764.7',
-      }),
-    );
+  it('reads the native coin and USDC, and sums them into usd', async () => {
+    const fetchImpl = routedFetch([
+      ['/api/v2/addresses/', summary('512300000000000000', '2764.7')],
+      ['action=tokenbalance', tokenBalance('183500000')],
+    ]);
 
     const balances = await readEvmBalances(CHECKSUMMED, {
       chains: [CHAIN_ONE],
@@ -121,47 +158,50 @@ describe('readEvmBalances', () => {
     });
     const balance = balances[0]!;
 
-    expect(balance.amount).toBe('0.512300000000000000');
-    expect(balance.usd).toBeCloseTo(0.5123 * 2764.7);
     expect(balance.chainId).toBe(1);
-    expect(balance.symbol).toBe('ETH');
+    expect(balance.name).toBe('Ethereum');
+    expect(balance.nativeSymbol).toBe('ETH');
+    expect(balance.nativeAmount).toBe('0.512300000000000000');
+    expect(balance.nativeUsd).toBeCloseTo(0.5123 * 2764.7);
+    expect(balance.usdc).toEqual({
+      symbol: 'USDC',
+      amount: '183.500000',
+      usd: 183.5,
+    });
+    expect(balance.usd).toBeCloseTo(0.5123 * 2764.7 + 183.5);
+
+    // The USDC read is scoped to this chain's known contract and the address.
     expect(fetchImpl).toHaveBeenCalledWith(
-      `${CHAIN_ONE.baseUrl}/api/v2/addresses/${CHECKSUMMED}`,
+      `${CHAIN_ONE.baseUrl}/api?module=account&action=tokenbalance&contractaddress=${USDC_ONE}&address=${CHECKSUMMED}&tag=latest`,
     );
   });
 
-  it('uses each chain baseUrl, in order', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({ coin_balance: '1000000000000000000', exchange_rate: '1' }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ coin_balance: '2000000000000000000', exchange_rate: '1' }),
-      );
+  it('uses each chain baseUrl and its own USDC contract', async () => {
+    const fetchImpl = routedFetch([
+      [`${CHAIN_ONE.baseUrl}/api/v2`, summary('1000000000000000000', '1')],
+      [`${CHAIN_ONE.baseUrl}/api?`, tokenBalance('5000000')],
+      [`${CHAIN_TWO.baseUrl}/api/v2`, summary('2000000000000000000', '1')],
+      [`${CHAIN_TWO.baseUrl}/api?`, tokenBalance('7000000')],
+    ]);
 
     const balances = await readEvmBalances(LOWERCASE, {
       chains: [CHAIN_ONE, CHAIN_TWO],
       fetchImpl,
     });
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(
-      1,
-      `${CHAIN_ONE.baseUrl}/api/v2/addresses/${CHECKSUMMED}`,
-    );
-    expect(fetchImpl).toHaveBeenNthCalledWith(
-      2,
-      `${CHAIN_TWO.baseUrl}/api/v2/addresses/${CHECKSUMMED}`,
-    );
     expect(balances.map((balance) => balance.chainId)).toEqual([1, 8453]);
+    expect(balances[0]!.usdc?.amount).toBe('5.000000');
+    expect(balances[1]!.usdc?.amount).toBe('7.000000');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining(`contractaddress=${USDC_TWO}`),
+    );
   });
 
-  it('leaves usd null on a null rate but still returns the amount', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ coin_balance: '1000000000000000000', exchange_rate: null }),
-      );
+  it('leaves nativeUsd null on a null rate but still values the USDC', async () => {
+    const fetchImpl = routedFetch([
+      ['/api/v2/addresses/', summary('1000000000000000000', null)],
+      ['action=tokenbalance', tokenBalance('2500000')],
+    ]);
 
     const balances = await readEvmBalances(CHECKSUMMED, {
       chains: [CHAIN_ONE],
@@ -169,16 +209,22 @@ describe('readEvmBalances', () => {
     });
     const balance = balances[0]!;
 
-    expect(balance.amount).toBe('1.000000000000000000');
-    expect(balance.usd).toBeNull();
+    expect(balance.nativeAmount).toBe('1.000000000000000000');
+    expect(balance.nativeUsd).toBeNull();
+    expect(balance.usdc?.usd).toBe(2.5);
+    // Native could not be valued, but the USDC could, so the chain still has a
+    // USD figure rather than being discarded.
+    expect(balance.usd).toBe(2.5);
   });
 
-  it('leaves usd null on a non-numeric rate', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ coin_balance: '1000000000000000000', exchange_rate: 'n/a' }),
-      );
+  it('keeps the chain and reports usdc null when the USDC read fails', async () => {
+    const fetchImpl = routedFetch([
+      ['/api/v2/addresses/', summary('1000000000000000000', '2')],
+      [
+        'action=tokenbalance',
+        () => jsonResponse({}, { ok: false, status: 500 }),
+      ],
+    ]);
 
     const balances = await readEvmBalances(CHECKSUMMED, {
       chains: [CHAIN_ONE],
@@ -186,17 +232,31 @@ describe('readEvmBalances', () => {
     });
     const balance = balances[0]!;
 
-    expect(balance.amount).toBe('1.000000000000000000');
-    expect(balance.usd).toBeNull();
+    expect(balance.nativeUsd).toBe(2);
+    expect(balance.usdc).toBeNull();
+    expect(balance.usd).toBe(2);
+  });
+
+  it('does not fabricate a zero USDC when its body has no result', async () => {
+    const fetchImpl = routedFetch([
+      ['/api/v2/addresses/', summary('1000000000000000000', '1')],
+      ['action=tokenbalance', { status: '1', message: 'OK' }],
+    ]);
+
+    const balances = await readEvmBalances(CHECKSUMMED, {
+      chains: [CHAIN_ONE],
+      fetchImpl,
+    });
+
+    expect(balances[0]!.usdc).toBeNull();
   });
 
   it('skips a non-2xx chain without failing the whole read', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({ coin_balance: '1000000000000000000', exchange_rate: '1' }),
-      )
-      .mockResolvedValueOnce(jsonResponse({}, { ok: false, status: 500 }));
+    const fetchImpl = routedFetch([
+      [`${CHAIN_ONE.baseUrl}/api/v2`, summary('1000000000000000000', '1')],
+      [`${CHAIN_ONE.baseUrl}/api?`, tokenBalance('0')],
+      [`${CHAIN_TWO.baseUrl}/api/v2`, () => jsonResponse({}, { ok: false, status: 500 })],
+    ]);
 
     const balances = await readEvmBalances(CHECKSUMMED, {
       chains: [CHAIN_ONE, CHAIN_TWO],

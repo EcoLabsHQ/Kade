@@ -891,8 +891,24 @@ describe('the Bitcoin address is read for real, not demoed', () => {
 const EVM_RECORD: EvmAddressRecord = {
   address: '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
   chains: [
-    { chainId: 1, name: 'Ethereum', symbol: 'ETH', amount: '0.512300', usd: 1600 },
-    { chainId: 8453, name: 'Base', symbol: 'ETH', amount: '0.250000', usd: 780 },
+    {
+      chainId: 1,
+      name: 'Ethereum',
+      nativeSymbol: 'ETH',
+      nativeAmount: '0.512300',
+      nativeUsd: 1416.5,
+      usdc: { symbol: 'USDC', amount: '183.500000', usd: 183.5 },
+      usd: 1600,
+    },
+    {
+      chainId: 8453,
+      name: 'Base',
+      nativeSymbol: 'ETH',
+      nativeAmount: '0.250000',
+      nativeUsd: 690.9,
+      usdc: { symbol: 'USDC', amount: '89.100000', usd: 89.1 },
+      usd: 780,
+    },
   ],
   usd: 2380,
   readAt: '2026-09-21T00:00:00Z',
@@ -938,6 +954,9 @@ describe('the pasted wallet address is read for real, not demoed', () => {
       await screen.findByText(/Ethereum · 0\.512300 ETH/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Base · 0\.250000 ETH/)).toBeInTheDocument();
+    // USDC is read too, on both chains, not just the native coin.
+    expect(screen.getByText(/Ethereum · .* · 183\.500000 USDC/)).toBeInTheDocument();
+    expect(screen.getByText(/Base · .* · 89\.100000 USDC/)).toBeInTheDocument();
     // A confirmed source flips the row's right side to the Read state.
     expect(screen.getByText('Read')).toBeInTheDocument();
   });
