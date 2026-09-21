@@ -121,4 +121,38 @@ describe('Step 2 wizard', () => {
     expect(save).not.toHaveBeenCalled();
     expect(screen.queryByText(/^Saved$/)).not.toBeInTheDocument();
   });
+
+  it('labels the prefilled details as an example, so they are not the resident\u2019s record', () => {
+    renderWizard(makeStore().store);
+
+    expect(screen.getByText('Example details')).toBeInTheDocument();
+    // The label is plain product copy, with no build vocabulary in it.
+    const text = document.body.textContent ?? '';
+    for (const pattern of [/SUPABASE/i, /SERVICE_ROLE/i, /environment/i]) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
+
+  it('drops the example label when the resident\u2019s saved details were restored', () => {
+    const restored: OnboardingSnapshot = {
+      profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+      citizenships: ['NL'],
+      residences: [{ countryCode: 'NL', fromYear: 2021, toYear: 'present' }],
+      tier: 1,
+      members: [],
+    };
+    render(
+      <OnboardingWizard
+        mode="demo"
+        userId="user-1"
+        persistence="supabase"
+        currentYear={2026}
+        initial={restored}
+        store={makeStore().store}
+      />,
+    );
+
+    expect(screen.getByLabelText('First name')).toHaveValue('Ada');
+    expect(screen.queryByText('Example details')).toBeNull();
+  });
 });

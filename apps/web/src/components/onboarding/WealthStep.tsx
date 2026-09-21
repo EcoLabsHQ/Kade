@@ -1,7 +1,12 @@
 'use client';
 
+import { TIERS } from '@kade/shared';
 import { Card } from '@/components/ui/Card';
+import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
+
+/** The widest qualifying figure, used only to scale the progress track. */
+const TIER_SCALE_MAX = Math.max(...TIERS.map((tier) => tier.minUsdc));
 
 /**
  * Step 3 — show proof of wealth.
@@ -125,8 +130,8 @@ export function WealthStep({
   const linked = MOCK_WALLETS.filter((wallet) => connected.includes(wallet.key));
   const total = linked.reduce((sum, wallet) => sum + wallet.value, 0);
   const shortfall = Math.max(0, tierMinimum - total);
-  const progress = Math.min(100, (total / 850000) * 100);
-  const targetMark = Math.min(100, (tierMinimum / 850000) * 100);
+  const progress = Math.min(100, (total / TIER_SCALE_MAX) * 100);
+  const targetMark = Math.min(100, (tierMinimum / TIER_SCALE_MAX) * 100);
 
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
@@ -208,7 +213,17 @@ export function WealthStep({
         </div>
 
         <Card padding="20px 22px">
-          <div style={eyebrow}>Proof of wealth</div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div style={eyebrow}>Proof of wealth</div>
+            <Chip tone="muted">Demo balances</Chip>
+          </div>
           <div
             style={{
               marginTop: '10px',
@@ -224,7 +239,7 @@ export function WealthStep({
           <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '4px' }}>
             {linked.length === 0
               ? 'Connect a wallet to begin'
-              : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · provenance clean`}
+              : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · example balances`}
           </div>
 
           <div style={{ position: 'relative', marginTop: '18px' }}>
