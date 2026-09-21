@@ -145,10 +145,10 @@ work as complete.
 - The committed `supabase/seed.sql` is byte-for-byte reproducible from
   `packages/shared`, so the database and the application cannot disagree.
 - The Supabase schema, RLS and seed are applied to the live project and verified
-  there: 20 tables, RLS on all 20, 10 deny-by-default, and the fee function and
-  its triggers reproduce the contract's worked examples. A 20th migration (the
-  `wallets` owner policy and Bitcoin-address RPCs, contract v1.7) is committed
-  and pending apply — see `docs/known-gaps.md`.
+  there: 20 tables, RLS on all 20, 9 deny-by-default, and the fee function and
+  its triggers reproduce the contract's worked examples. Migration 20 (the
+  `wallets` owner policy, the Bitcoin-address RPCs and the 5-address cap) is
+  applied too.
 
 **Verified outside the gate — not by the agent:**
 
@@ -176,7 +176,7 @@ reloads both.
   enabled and the form is implemented and tested, but no link has completed the
   round trip through a real mailbox.
 - **Database RLS enforcement.** The policies are applied to the live project with
-  RLS enabled on all 20 tables and 10 deny-by-default, but no committed harness
+  RLS enabled on all 20 tables and 9 deny-by-default, but no committed harness
   exercises row visibility: enforcement is Postgres's, configured through
   Supabase.
 - **A test signature through the direct Safe WebAuthn signer.** The signer

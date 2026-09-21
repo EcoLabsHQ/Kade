@@ -1,0 +1,42 @@
+Migration 20 applied to the live Supabase project — 21 September 2026 (Week 2)
+
+Order of operations
+  1. Flushed the demo: `select public.reset_demo_data();`
+     (the documented demo reset; deletes every resident via auth.users cascade,
+     keeps the seeded configuration).
+  2. Applied `supabase/migrations/20260921000001_bitcoin_wallet_addresses.sql`
+     with the same statements as the committed file.
+
+Before
+  profiles 3 · applications 3 · household_members 4 · wallets 0
+  safe_deployments 3 · passkey_credentials 3 · auth.users 3
+  wallets policies 0 · wallets RPCs 0 · cap triggers 0      (19 migrations)
+
+After
+  wallets 0 · chains 6 · fee_schedule 4 · auth.users 0      (flush held)
+  migrations applied 20
+
+Verified in the live schema after applying
+  wallets_all_own policy                                present  (1)
+  wallets_bitcoin_address_cap trigger                   present  (1)
+  wallets_profile_address_chain_key unique index        present  (1)
+  record_wallet_address / delete_wallet_address /
+    enforce_wallet_address_cap                          present  (3)
+  record_wallet_address / delete_wallet_address are
+    SECURITY INVOKER                                    confirmed
+  comment on wallets.verified_at                        applied
+  RLS enabled but no policy (deny-by-default)           9 of 20 tables
+
+Column privileges on public.wallets (live)
+  authenticated SELECT : id, address, chain, profile_id, provider, siwe_sig,
+                         verified_at
+  authenticated INSERT : profile_id, address, chain, provider
+  (siwe_sig and verified_at are select-only: a resident cannot declare an
+   address verified)
+  anon                 : no privilege
+
+Also exercised on a disposable postgres:16 with the identical migration text
+(shim + 20 migrations + seed): 6th address refused (check_violation); direct 6th
+insert refused; repeat at the cap idempotent; `verified_at` insert refused
+(insufficient_privilege); uppercase bech32 stored lower-case; a second resident
+sees only their own row; anon denied.
