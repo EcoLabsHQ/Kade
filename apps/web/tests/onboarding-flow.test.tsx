@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { preapprovalFeeUsdc } from '@kade/shared';
 import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
-import type { BitcoinAddressRecord } from '@/lib/wealth/types';
+import type { BitcoinAddressRecord, EvmAddressRecord } from '@/lib/wealth/types';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
@@ -18,6 +18,8 @@ const hoisted = vi.hoisted(() => ({
   savePasskeyCredential: vi.fn(),
   addBitcoinAddress: vi.fn(),
   removeBitcoinAddress: vi.fn(),
+  addWalletAddress: vi.fn(),
+  removeWalletAddress: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -46,6 +48,13 @@ vi.mock('@/app/onboarding/actions', () => ({
 vi.mock('@/app/onboarding/wealth-actions', () => ({
   addBitcoinAddress: hoisted.addBitcoinAddress,
   removeBitcoinAddress: hoisted.removeBitcoinAddress,
+}));
+// The pasted EVM ("wallet address") actions are server actions: they read the
+// chain and persist server-side. They are mocked so the client is exercised
+// against recorded outcomes, with no database or provider.
+vi.mock('@/app/onboarding/wallet-actions', () => ({
+  addWalletAddress: hoisted.addWalletAddress,
+  removeWalletAddress: hoisted.removeWalletAddress,
 }));
 
 /** The seeded demo row: base 1, 0.25 per member, two decimal places. */
@@ -106,6 +115,8 @@ afterEach(() => {
   hoisted.savePasskeyCredential.mockReset();
   hoisted.addBitcoinAddress.mockReset();
   hoisted.removeBitcoinAddress.mockReset();
+  hoisted.addWalletAddress.mockReset();
+  hoisted.removeWalletAddress.mockReset();
 });
 
 function makeStore() {
@@ -606,6 +617,7 @@ const RESTORED_SNAPSHOT: OnboardingSnapshot = {
 function renderRestoredFlow(
   store: OnboardingStore,
   initialBitcoinAddresses?: readonly BitcoinAddressRecord[],
+  initialEvmAddresses?: readonly EvmAddressRecord[],
 ) {
   return render(
     <OnboardingFlow
@@ -620,6 +632,7 @@ function renderRestoredFlow(
       initialCredentialId="cred-existing"
       store={store}
       initialBitcoinAddresses={initialBitcoinAddresses}
+      initialEvmAddresses={initialEvmAddresses}
     />,
   );
 }
@@ -709,22 +722,53 @@ const BITCOIN_RECORD: BitcoinAddressRecord = {
   readError: null,
 };
 
+/** Opens the collapsed Bitcoin row's paste flow. */
+function openBitcoinPaste() {
+  fireEvent.click(screen.getByRole('button', { name: /bitcoin address/i }));
+}
+
+/** Opens the collapsed wallet-address row's paste flow. */
+function openEvmPaste() {
+  fireEvent.click(screen.getByRole('button', { name: /wallet address/i }));
+}
+
 describe('the Bitcoin address is read for real, not demoed', () => {
-  async function goToWealth(store: OnboardingStore) {
-    renderRestoredFlow(store);
+  async function goToWealth(
+    store: OnboardingStore,
+    bitcoin: readonly BitcoinAddressRecord[] = [],
+    evm: readonly EvmAddressRecord[] = [],
+  ) {
+    renderRestoredFlow(store, bitcoin, evm);
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
   }
+
+  it('shows an Add address pill that expands to the paste input', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+
+    // Collapsed: an Add address pill, and no input until it is opened.
+    expect(
+      screen.getByRole('button', { name: 'Add a Bitcoin address' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bitcoin address')).toBeNull();
+
+    openBitcoinPaste();
+    expect(screen.getByLabelText('Bitcoin address')).toBeInTheDocument();
+  });
 
   it('calls the action on Confirm and shows the returned BTC and USD', async () => {
     const { store } = makeStore();
     await goToWealth(store);
     hoisted.addBitcoinAddress.mockResolvedValue(BITCOIN_RECORD);
+    openBitcoinPaste();
 
     fireEvent.change(screen.getByLabelText('Bitcoin address'), {
       target: { value: BITCOIN_RECORD.address },
     });
-    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm Bitcoin address' }),
+    );
 
     await waitFor(() =>
       expect(hoisted.addBitcoinAddress).toHaveBeenCalledWith(
@@ -734,17 +778,23 @@ describe('the Bitcoin address is read for real, not demoed', () => {
     expect(await screen.findByText(BITCOIN_RECORD.address)).toBeInTheDocument();
     expect(screen.getByText('0.01234567 BTC')).toBeInTheDocument();
     expect(screen.getAllByText('$812').length).toBeGreaterThan(0);
+    // A confirmed source flips the row's right side to the Read state: the
+    // balance was read, nothing was signed.
+    expect(screen.getByText('Read')).toBeInTheDocument();
   });
 
   it('labels the read values as read from the network, not demo', async () => {
     const { store } = makeStore();
     await goToWealth(store);
     hoisted.addBitcoinAddress.mockResolvedValue(BITCOIN_RECORD);
+    openBitcoinPaste();
 
     fireEvent.change(screen.getByLabelText('Bitcoin address'), {
       target: { value: BITCOIN_RECORD.address },
     });
-    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm Bitcoin address' }),
+    );
     await screen.findByText(BITCOIN_RECORD.address);
 
     expect(screen.getByText('Read from the network')).toBeInTheDocument();
@@ -766,11 +816,14 @@ describe('the Bitcoin address is read for real, not demoed', () => {
       usd: null,
       readError: 'Address not found on the network.',
     });
+    openBitcoinPaste();
 
     fireEvent.change(screen.getByLabelText('Bitcoin address'), {
       target: { value: BITCOIN_RECORD.address },
     });
-    fireEvent.click(screen.getByRole('button', { name: /confirm/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm Bitcoin address' }),
+    );
 
     expect(
       await screen.findByText(/address not found on the network/i),
@@ -780,10 +833,9 @@ describe('the Bitcoin address is read for real, not demoed', () => {
 
   it('removes an address through the action', async () => {
     const { store } = makeStore();
-    renderRestoredFlow(store, [BITCOIN_RECORD]);
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    await goToWealth(store, [BITCOIN_RECORD]);
     hoisted.removeBitcoinAddress.mockResolvedValue(undefined);
+    openBitcoinPaste();
 
     fireEvent.click(screen.getByRole('button', { name: /remove address/i }));
 
@@ -809,9 +861,7 @@ describe('the Bitcoin address is read for real, not demoed', () => {
 
   it('allows Continue once a Bitcoin address is present', async () => {
     const { store } = makeStore();
-    renderRestoredFlow(store, [BITCOIN_RECORD]);
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    await goToWealth(store, [BITCOIN_RECORD]);
 
     expect(
       screen.getByRole('button', { name: /^continue$/i }),
@@ -825,13 +875,157 @@ describe('the Bitcoin address is read for real, not demoed', () => {
       id: index + 1,
       address: `bc1qaddress${index + 1}0000000000000000000000000000000`,
     }));
-    renderRestoredFlow(store, five);
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
-    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    await goToWealth(store, five);
+    openBitcoinPaste();
 
-    expect(screen.getByRole('button', { name: /confirm/i })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Confirm Bitcoin address' }),
+    ).toBeDisabled();
     expect(
       screen.getByText(/maximum of 5 addresses reached/i),
     ).toBeInTheDocument();
+  });
+});
+
+/** One confirmed pasted EVM address, as the server action returns it. */
+const EVM_RECORD: EvmAddressRecord = {
+  address: '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
+  chains: [
+    { chainId: 1, name: 'Ethereum', symbol: 'ETH', amount: '0.512300', usd: 1600 },
+    { chainId: 8453, name: 'Base', symbol: 'ETH', amount: '0.250000', usd: 780 },
+  ],
+  usd: 2380,
+  readAt: '2026-09-21T00:00:00Z',
+  readError: null,
+};
+
+describe('the pasted wallet address is read for real, not demoed', () => {
+  async function goToWealth(
+    store: OnboardingStore,
+    evm: readonly EvmAddressRecord[] = [],
+  ) {
+    renderRestoredFlow(store, [], evm);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+  }
+
+  it('shows the Wallet address row and adds an address with its chain balances', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+    hoisted.addWalletAddress.mockResolvedValue(EVM_RECORD);
+
+    expect(screen.getByText('Wallet address')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add a wallet address' }),
+    ).toBeInTheDocument();
+
+    openEvmPaste();
+    const confirm = screen.getByRole('button', {
+      name: 'Confirm wallet address',
+    });
+    // Confirm is disabled until there is an address to read.
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: EVM_RECORD.address },
+    });
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(hoisted.addWalletAddress).toHaveBeenCalledWith(EVM_RECORD.address),
+    );
+    expect(
+      await screen.findByText(/Ethereum · 0\.512300 ETH/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Base · 0\.250000 ETH/)).toBeInTheDocument();
+    // A confirmed source flips the row's right side to the Read state.
+    expect(screen.getByText('Read')).toBeInTheDocument();
+  });
+
+  it('does not append a duplicate when the same address is re-added', async () => {
+    const { store } = makeStore();
+    await goToWealth(store);
+    hoisted.addWalletAddress.mockResolvedValue(EVM_RECORD);
+    openEvmPaste();
+
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.change(screen.getByLabelText('Wallet address'), {
+        target: { value: EVM_RECORD.address },
+      });
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm wallet address' }),
+      );
+      await waitFor(() =>
+        expect(hoisted.addWalletAddress).toHaveBeenCalledTimes(index + 1),
+      );
+    }
+
+    expect(
+      screen.getAllByRole('button', { name: /remove wallet address/i }),
+    ).toHaveLength(1);
+  });
+
+  it('labels the read values as read from a public source, not demo', async () => {
+    const { store } = makeStore();
+    await goToWealth(store, [EVM_RECORD]);
+
+    expect(
+      screen.getAllByText(/read from a public source/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/not proof of ownership/i).length,
+    ).toBeGreaterThan(0);
+    // A real read is present, so the all-demo chip is gone.
+    expect(screen.queryByText('Demo balances')).toBeNull();
+    // The demo rows still say they are demo.
+    expect(screen.getAllByText('Demo').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('removes an address by address through the action', async () => {
+    const { store } = makeStore();
+    await goToWealth(store, [EVM_RECORD]);
+    hoisted.removeWalletAddress.mockResolvedValue(undefined);
+    openEvmPaste();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Remove wallet address ${EVM_RECORD.address}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(hoisted.removeWalletAddress).toHaveBeenCalledWith(
+        EVM_RECORD.address,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTitle(EVM_RECORD.address)).toBeNull(),
+    );
+  });
+
+  it('caps the number of addresses at five', async () => {
+    const { store } = makeStore();
+    const five = Array.from({ length: 5 }, (_, index) => ({
+      ...EVM_RECORD,
+      address: `0x${String(index + 1).repeat(40).slice(0, 40)}`,
+    }));
+    await goToWealth(store, five);
+    openEvmPaste();
+
+    expect(
+      screen.getByRole('button', { name: 'Confirm wallet address' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/maximum of 5 addresses reached/i),
+    ).toBeInTheDocument();
+  });
+
+  it('allows Continue once a wallet address is present', async () => {
+    const { store } = makeStore();
+    await goToWealth(store, [EVM_RECORD]);
+
+    expect(
+      screen.getByRole('button', { name: /^continue$/i }),
+    ).toBeEnabled();
   });
 });

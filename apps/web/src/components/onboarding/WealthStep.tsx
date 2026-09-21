@@ -7,11 +7,14 @@ import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import {
   MAX_BITCOIN_ADDRESSES,
+  MAX_WALLET_ADDRESSES,
   type BitcoinAddressRecord,
+  type EvmAddressRecord,
 } from '@/lib/wealth/types';
 import { WalletGlyph } from '@/components/icons/WalletGlyph';
 import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
 import { BitcoinGlyph } from '@/components/icons/BitcoinGlyph';
+import { EvmAddressGlyph } from '@/components/icons/EvmAddressGlyph';
 
 /** The widest qualifying figure, used only to scale the progress track. */
 const TIER_SCALE_MAX = Math.max(...TIERS.map((tier) => tier.minUsdc));
@@ -21,15 +24,13 @@ const BITCOIN_ORANGE = '#F7931A';
 /**
  * Step 3 — show proof of wealth.
  *
- * The EVM rows are DEMO ONLY: connecting attaches the balances the reference
- * ships as seed data and the screen labels them as demo balances. Real wallet
- * connection is Week 2 (the Week 1 contract excludes it), so nothing there
- * claims to have read anything.
- *
- * Bitcoin is different: the resident pastes an address and the server reads its
- * balance from a public source. That value really is read, so it is labelled
- * "Read from the network" and every row says outright that a public read is not
- * proof of ownership.
+ * Two kinds of row carry two different meanings, and the screen says which is
+ * which. The browser-extension and WalletConnect rows are DEMO: connecting
+ * attaches the reference's seed balances, they are labelled `Demo`, and nothing
+ * is signed. Bitcoin and pasted EVM ("wallet address") rows are watch-only: the
+ * server reads the balance from a public source (Bitcoin on-chain; Ethereum and
+ * Base for 0x addresses) with no signature, no wallet connection and no proof of
+ * ownership, so every such row says so.
  */
 
 const CHAIN_COLORS: Record<string, string> = {
@@ -107,6 +108,9 @@ export interface WealthStepProps {
   readonly bitcoinAddresses: readonly BitcoinAddressRecord[];
   readonly onAddBitcoin: (address: string) => Promise<void> | void;
   readonly onRemoveBitcoin: (id: number) => Promise<void> | void;
+  readonly evmAddresses: readonly EvmAddressRecord[];
+  readonly onAddWalletAddress: (address: string) => Promise<void> | void;
+  readonly onRemoveWalletAddress: (address: string) => Promise<void> | void;
 }
 
 function usd(value: number): string {
@@ -115,6 +119,13 @@ function usd(value: number): string {
 
 function btc(value: string | null): string {
   return value === null ? '—' : `${value} BTC`;
+}
+
+/** Shorten a long address for display; the full value stays on `title`. */
+function shortAddress(address: string): string {
+  return address.length <= 16
+    ? address
+    : `${address.slice(0, 8)}…${address.slice(-6)}`;
 }
 
 export function WealthStep({
@@ -127,10 +138,19 @@ export function WealthStep({
   bitcoinAddresses,
   onAddBitcoin,
   onRemoveBitcoin,
+  evmAddresses,
+  onAddWalletAddress,
+  onRemoveWalletAddress,
 }: WealthStepProps) {
   const [addressInput, setAddressInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [bitcoinOpen, setBitcoinOpen] = useState(false);
+
+  const [evmInput, setEvmInput] = useState('');
+  const [evmAdding, setEvmAdding] = useState(false);
+  const [evmError, setEvmError] = useState<string | null>(null);
+  const [evmOpen, setEvmOpen] = useState(false);
 
   const linked = MOCK_WALLETS.filter((wallet) => connected.includes(wallet.key));
   const demoTotal = linked.reduce((sum, wallet) => sum + wallet.value, 0);
@@ -138,14 +158,27 @@ export function WealthStep({
     (sum, record) => sum + (record.usd ?? 0),
     0,
   );
-  const total = demoTotal + bitcoinTotal;
+  const evmTotal = evmAddresses.reduce(
+    (sum, record) => sum + (record.usd ?? 0),
+    0,
+  );
+  const total = demoTotal + bitcoinTotal + evmTotal;
   const shortfall = Math.max(0, tierMinimum - total);
   const progress = Math.min(100, (total / TIER_SCALE_MAX) * 100);
   const targetMark = Math.min(100, (tierMinimum / TIER_SCALE_MAX) * 100);
 
+  const hasRealRead = bitcoinAddresses.length > 0 || evmAddresses.length > 0;
+
   const atCap = bitcoinAddresses.length >= MAX_BITCOIN_ADDRESSES;
   const confirmDisabled = addressInput.trim() === '' || atCap || adding;
-  const canContinue = bitcoinAddresses.length > 0 || connected.length > 0;
+
+  const evmAtCap = evmAddresses.length >= MAX_WALLET_ADDRESSES;
+  const evmConfirmDisabled = evmInput.trim() === '' || evmAtCap || evmAdding;
+
+  const canContinue =
+    bitcoinAddresses.length > 0 ||
+    evmAddresses.length > 0 ||
+    connected.length > 0;
 
   async function handleConfirm() {
     const address = addressInput.trim();
@@ -166,15 +199,37 @@ export function WealthStep({
     }
   }
 
+  async function handleEvmConfirm() {
+    const address = evmInput.trim();
+    if (address === '' || evmAtCap || evmAdding) return;
+    setEvmAdding(true);
+    setEvmError(null);
+    try {
+      await onAddWalletAddress(address);
+      setEvmInput('');
+    } catch (cause) {
+      setEvmError(
+        cause instanceof Error
+          ? cause.message
+          : 'The address could not be read from a public source.',
+      );
+    } finally {
+      setEvmAdding(false);
+    }
+  }
+
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
       <div style={eyebrow}>Step 3 of 4</div>
       <h1 style={heading}>Show proof of wealth</h1>
       <p style={lead}>
-        One signature per wallet reads your balances on Ethereum, Base, Arbitrum,
-        Optimism and Celo — nothing moves. Bitcoin is read-only: paste an address
-        and its balance is read from a public source. This only shows you can meet
-        the tier; moving funds into a qualified vault happens inside the platform.
+        The browser-extension and WalletConnect rows are demo: connecting shows
+        example balances and signs nothing. Bitcoin and pasted wallet addresses
+        are read-only — you paste an address and its balance is read from a
+        public source (Bitcoin on-chain; Ethereum and Base for 0x addresses). No
+        signature is used, no wallet is connected, and a public read is not proof
+        of ownership. This only shows you can meet the tier; moving funds into a
+        qualified vault happens inside the platform.
       </p>
 
       <div
@@ -191,7 +246,7 @@ export function WealthStep({
             const Glyph = WALLET_GLYPHS[wallet.key] ?? WalletGlyph;
             return (
               <Card key={wallet.key} padding="14px 16px">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={rowHeaderStyle}>
                   <span aria-hidden style={{ ...badgeStyle, background: wallet.color }}>
                     <Glyph size={22} />
                   </span>
@@ -202,15 +257,10 @@ export function WealthStep({
                       </span>
                       <Chip tone="muted">Demo</Chip>
                     </div>
-                    <div style={{ fontSize: '13px', color: tokens.muted }}>
-                      {wallet.subtitle}
-                    </div>
+                    <div style={rowSubtitleStyle}>{wallet.subtitle}</div>
                   </div>
                   {isSigned ? (
-                    <span style={signedStyle}>
-                      <span style={signedDot} />
-                      Signed
-                    </span>
+                    <SignedState />
                   ) : (
                     <button
                       type="button"
@@ -239,7 +289,7 @@ export function WealthStep({
               <div style={{ fontSize: '15px', fontWeight: 600 }}>
                 Bank statement (optional)
               </div>
-              <div style={{ fontSize: '13px', color: tokens.muted }}>
+              <div style={rowSubtitleStyle}>
                 For off-chain assets · PDF, hashed &amp; pinned
               </div>
             </div>
@@ -248,135 +298,333 @@ export function WealthStep({
             </button>
           </div>
 
-          <div style={bitcoinCardStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Card padding="14px 16px">
+            <div style={rowHeaderStyle}>
               <span aria-hidden style={{ ...badgeStyle, background: BITCOIN_ORANGE }}>
                 <BitcoinGlyph size={22} />
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '15px', fontWeight: 600 }}>Bitcoin</div>
-                <div style={{ fontSize: '13px', color: tokens.muted }}>
-                  Paste an address to read its balance
+                <div style={rowSubtitleStyle}>
+                  Watch-only address · read-only
                 </div>
               </div>
-              <Chip tone="warning" dot dotColor={BITCOIN_ORANGE}>
-                Read from the network
-              </Chip>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <input
-                type="text"
-                aria-label="Bitcoin address"
-                placeholder="bc1q… or 1… or 3…"
-                value={addressInput}
-                spellCheck={false}
-                onChange={(event) => setAddressInput(event.target.value)}
-                style={addressInputStyle}
-              />
+              {bitcoinAddresses.length > 0 ? <ReadState /> : null}
               <button
                 type="button"
-                onClick={handleConfirm}
-                disabled={confirmDisabled}
-                title={
-                  atCap
-                    ? `Up to ${MAX_BITCOIN_ADDRESSES} addresses`
-                    : addressInput.trim() === ''
-                      ? 'Paste a Bitcoin address first'
-                      : 'Read this address from the network'
+                onClick={() => setBitcoinOpen((open) => !open)}
+                aria-expanded={bitcoinOpen}
+                aria-label={
+                  bitcoinAddresses.length > 0
+                    ? 'Add Bitcoin address'
+                    : 'Add a Bitcoin address'
                 }
-                style={{
-                  ...confirmButton,
-                  opacity: confirmDisabled ? 0.5 : 1,
-                  cursor: confirmDisabled ? 'not-allowed' : 'pointer',
-                }}
+                style={connectButton}
               >
-                <CheckGlyph />
-                {adding ? 'Reading…' : 'Confirm'}
+                {bitcoinAddresses.length > 0 ? 'Add' : 'Add address'}
               </button>
             </div>
 
-            {addError ? (
-              <div role="alert" style={errorText}>
-                {addError}
-              </div>
-            ) : null}
-
-            {atCap ? (
-              <div style={{ ...mutedNote, marginTop: '8px' }}>
-                Maximum of {MAX_BITCOIN_ADDRESSES} addresses reached.
-              </div>
-            ) : null}
-
-            <p style={{ ...mutedNote, marginTop: '10px' }}>
-              Balances are read from a public source and are not proof of
-              ownership. Support: up to {MAX_BITCOIN_ADDRESSES} addresses.
-            </p>
-
-            {bitcoinAddresses.map((record) => (
-              <div key={record.id} style={bitcoinRowStyle}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: '10px',
-                  }}
-                >
-                  <span
-                    title={record.address}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontFamily:
-                        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                      fontSize: '12.5px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {record.address}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      fontVariantNumeric: 'tabular-nums',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {btc(record.btc)}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      fontVariantNumeric: 'tabular-nums',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {record.usd === null ? '—' : usd(record.usd)}
-                  </span>
+            {bitcoinOpen ? (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    aria-label="Bitcoin address"
+                    placeholder="bc1q… or 1… or 3…"
+                    value={addressInput}
+                    spellCheck={false}
+                    onChange={(event) => setAddressInput(event.target.value)}
+                    style={addressInputStyle}
+                  />
                   <button
                     type="button"
-                    aria-label={`Remove address ${record.address}`}
-                    onClick={() => onRemoveBitcoin(record.id)}
-                    style={removeButton}
+                    aria-label="Confirm Bitcoin address"
+                    onClick={handleConfirm}
+                    disabled={confirmDisabled}
+                    title={
+                      atCap
+                        ? `Up to ${MAX_BITCOIN_ADDRESSES} addresses`
+                        : addressInput.trim() === ''
+                          ? 'Paste a Bitcoin address first'
+                          : 'Read this address from the network'
+                    }
+                    style={{
+                      ...confirmButton,
+                      opacity: confirmDisabled ? 0.5 : 1,
+                      cursor: confirmDisabled ? 'not-allowed' : 'pointer',
+                    }}
                   >
-                    Remove
+                    <CheckGlyph />
+                    {adding ? 'Reading…' : 'Confirm'}
                   </button>
                 </div>
-                <div style={{ ...mutedNote, marginTop: '4px' }}>
-                  Read from a public source — not proof of ownership.
-                </div>
-                {record.readError ? (
-                  <div role="alert" style={{ ...errorText, marginTop: '4px' }}>
-                    {record.readError}
+
+                {addError ? (
+                  <div role="alert" style={errorText}>
+                    {addError}
                   </div>
                 ) : null}
+
+                {atCap ? (
+                  <div style={{ ...mutedNote, marginTop: '8px' }}>
+                    Maximum of {MAX_BITCOIN_ADDRESSES} addresses reached.
+                  </div>
+                ) : null}
+
+                <p style={{ ...mutedNote, marginTop: '10px' }}>
+                  Bitcoin is read from the network: balances come from a public
+                  source, are not proof of ownership, and nothing is signed.
+                </p>
+
+                <div style={{ marginTop: '6px' }}>
+                  <Chip tone="warning" dot dotColor={BITCOIN_ORANGE}>
+                    Read from the network
+                  </Chip>
+                </div>
+
+                {bitcoinAddresses.map((record) => (
+                  <div key={record.id} style={bitcoinRowStyle}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '10px',
+                      }}
+                    >
+                      <span
+                        title={record.address}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                          fontSize: '12.5px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {record.address}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {btc(record.btc)}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {record.usd === null ? '—' : usd(record.usd)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Remove address ${record.address}`}
+                        onClick={() => onRemoveBitcoin(record.id)}
+                        style={removeButton}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div style={{ ...mutedNote, marginTop: '4px' }}>
+                      Read from a public source — not proof of ownership.
+                    </div>
+                    {record.readError ? (
+                      <div role="alert" style={{ ...errorText, marginTop: '4px' }}>
+                        {record.readError}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            ) : null}
+          </Card>
+
+          <Card padding="14px 16px">
+            <div style={rowHeaderStyle}>
+              <span aria-hidden style={{ ...badgeStyle, background: tokens.ink }}>
+                <EvmAddressGlyph size={22} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '15px', fontWeight: 600 }}>
+                  Wallet address
+                </div>
+                <div style={rowSubtitleStyle}>
+                  Paste a 0x address · reads balances
+                </div>
+              </div>
+              {evmAddresses.length > 0 ? <ReadState /> : null}
+              <button
+                type="button"
+                onClick={() => setEvmOpen((open) => !open)}
+                aria-expanded={evmOpen}
+                aria-label={
+                  evmAddresses.length > 0
+                    ? 'Add wallet address'
+                    : 'Add a wallet address'
+                }
+                style={connectButton}
+              >
+                {evmAddresses.length > 0 ? 'Add' : 'Add address'}
+              </button>
+            </div>
+
+            {evmOpen ? (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    aria-label="Wallet address"
+                    placeholder="0x…"
+                    value={evmInput}
+                    spellCheck={false}
+                    onChange={(event) => setEvmInput(event.target.value)}
+                    style={addressInputStyle}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Confirm wallet address"
+                    onClick={handleEvmConfirm}
+                    disabled={evmConfirmDisabled}
+                    title={
+                      evmAtCap
+                        ? `Up to ${MAX_WALLET_ADDRESSES} addresses`
+                        : evmInput.trim() === ''
+                          ? 'Paste a 0x address first'
+                          : 'Read this address from a public source'
+                    }
+                    style={{
+                      ...confirmButton,
+                      opacity: evmConfirmDisabled ? 0.5 : 1,
+                      cursor: evmConfirmDisabled ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <CheckGlyph />
+                    {evmAdding ? 'Reading…' : 'Confirm'}
+                  </button>
+                </div>
+
+                {evmError ? (
+                  <div role="alert" style={errorText}>
+                    {evmError}
+                  </div>
+                ) : null}
+
+                {evmAtCap ? (
+                  <div style={{ ...mutedNote, marginTop: '8px' }}>
+                    Maximum of {MAX_WALLET_ADDRESSES} addresses reached.
+                  </div>
+                ) : null}
+
+                <p style={{ ...mutedNote, marginTop: '10px' }}>
+                  Balances are read from a public source on Ethereum and Base and
+                  are not proof of ownership: nothing is signed and no wallet is
+                  connected.
+                </p>
+
+                {evmAddresses.map((record) => (
+                  <div key={record.address} style={addressRowStyle}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        gap: '10px',
+                      }}
+                    >
+                      <span
+                        title={record.address}
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                          fontSize: '12.5px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {shortAddress(record.address)}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          fontVariantNumeric: 'tabular-nums',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {record.usd === null ? '—' : usd(record.usd)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Remove wallet address ${record.address}`}
+                        onClick={() => onRemoveWalletAddress(record.address)}
+                        style={removeButton}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    {record.chains.map((chain) => (
+                      <div
+                        key={chain.chainId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginTop: '6px',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '2px',
+                            background: CHAIN_COLORS[chain.name] ?? tokens.muted,
+                            flex: '0 0 auto',
+                          }}
+                        />
+                        <span style={{ color: tokens.muted }}>
+                          {chain.name} · {chain.amount} {chain.symbol}
+                        </span>
+                        <span
+                          style={{
+                            marginLeft: 'auto',
+                            fontVariantNumeric: 'tabular-nums',
+                            color: tokens.muted,
+                          }}
+                        >
+                          {chain.usd === null ? '—' : usd(chain.usd)}
+                        </span>
+                      </div>
+                    ))}
+
+                    <div style={{ ...mutedNote, marginTop: '4px' }}>
+                      Read from a public source — not proof of ownership.
+                    </div>
+                    {record.readError ? (
+                      <div role="alert" style={{ ...errorText, marginTop: '4px' }}>
+                        {record.readError}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </Card>
         </div>
 
         <Card padding="20px 22px">
@@ -390,7 +638,7 @@ export function WealthStep({
           >
             <div style={eyebrow}>Proof of wealth</div>
             <Chip tone="muted">
-              {bitcoinAddresses.length > 0 ? 'Demo + network' : 'Demo balances'}
+              {hasRealRead ? 'Demo + network' : 'Demo balances'}
             </Chip>
           </div>
           <div
@@ -406,10 +654,14 @@ export function WealthStep({
             {usd(total)}
           </div>
           <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '4px' }}>
-            {linked.length === 0 && bitcoinAddresses.length === 0
-              ? 'Connect a wallet or add a Bitcoin address to begin'
+            {linked.length === 0 &&
+            bitcoinAddresses.length === 0 &&
+            evmAddresses.length === 0
+              ? 'Connect a wallet or add an address to begin'
               : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · ${bitcoinAddresses.length} bitcoin address${
                   bitcoinAddresses.length === 1 ? '' : 'es'
+                } · ${evmAddresses.length} wallet address${
+                  evmAddresses.length === 1 ? '' : 'es'
                 }`}
           </div>
 
@@ -545,6 +797,44 @@ export function WealthStep({
             </div>
           ))}
 
+          {evmAddresses.map((record) => (
+            <div key={record.address} style={{ marginTop: '18px' }}>
+              <div
+                style={{
+                  borderTop: `1px solid ${tokens.border}`,
+                  paddingTop: '14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <span
+                  title={record.address}
+                  style={{
+                    fontFamily:
+                      "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {shortAddress(record.address)}
+                </span>
+                <span
+                  style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {record.usd === null ? '—' : usd(record.usd)}
+                </span>
+              </div>
+              <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}>
+                Read from a public source · not proof of ownership
+              </div>
+            </div>
+          ))}
+
           <p
             style={{
               margin: '18px 0 0',
@@ -555,9 +845,9 @@ export function WealthStep({
               lineHeight: 1.6,
             }}
           >
-            {bitcoinAddresses.length > 0
-              ? 'Demo wallet balances shown are demo data. Bitcoin balances are read from a public source and are not proof of ownership.'
-              : 'One signature covers every EVM chain — balances are read on Ethereum, Base, Arbitrum, Optimism and Celo. Balances shown are demo data.'}
+            {hasRealRead
+              ? 'Demo wallet balances shown are demo data. Bitcoin and pasted wallet-address balances are read from a public source, are not proof of ownership, and involve no signature and no wallet connection.'
+              : 'Browser-extension and WalletConnect balances shown are demo data. Connecting is simulated: nothing is signed and no real wallet is connected.'}
           </p>
         </Card>
       </div>
@@ -570,7 +860,7 @@ export function WealthStep({
           title={
             canContinue
               ? 'Continue to the pre-approval fee'
-              : 'Add a wallet or a Bitcoin address to continue'
+              : 'Add a wallet or a Bitcoin address, or paste a wallet address, to continue'
           }
           style={{
             ...primaryButton,
@@ -585,6 +875,30 @@ export function WealthStep({
         </button>
       </div>
     </div>
+  );
+}
+
+/** The state a row shows once it carries at least one confirmed source. */
+function SignedState() {
+  return (
+    <span style={signedStyle}>
+      <span style={signedDot} />
+      Signed
+    </span>
+  );
+}
+
+/**
+ * The state a watch-only row shows once an address is stored. Deliberately not
+ * "Signed": no signature was produced and no wallet was connected — the balance
+ * was read from a public source.
+ */
+function ReadState() {
+  return (
+    <span style={signedStyle}>
+      <span style={signedDot} />
+      Read
+    </span>
   );
 }
 
@@ -630,6 +944,17 @@ const lead: React.CSSProperties = {
   textWrap: 'pretty',
 };
 
+const rowHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+};
+
+const rowSubtitleStyle: React.CSSProperties = {
+  fontSize: '13px',
+  color: tokens.muted,
+};
+
 const badgeStyle: React.CSSProperties = {
   width: '38px',
   height: '38px',
@@ -673,13 +998,6 @@ const connectButton: React.CSSProperties = {
   flex: '0 0 auto',
 };
 
-const bitcoinCardStyle: React.CSSProperties = {
-  border: `1.5px solid ${BITCOIN_ORANGE}`,
-  borderRadius: '14px',
-  padding: '16px',
-  background: '#FFF9F0',
-};
-
 const addressInputStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
@@ -713,6 +1031,12 @@ const confirmButton: React.CSSProperties = {
 const bitcoinRowStyle: React.CSSProperties = {
   marginTop: '10px',
   borderTop: `1px solid #F2D8B8`,
+  paddingTop: '10px',
+};
+
+const addressRowStyle: React.CSSProperties = {
+  marginTop: '10px',
+  borderTop: `1px solid ${tokens.border}`,
   paddingTop: '10px',
 };
 

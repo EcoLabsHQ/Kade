@@ -8,7 +8,14 @@ import {
   addBitcoinAddress,
   removeBitcoinAddress,
 } from '@/app/onboarding/wealth-actions';
-import type { BitcoinAddressRecord } from '@/lib/wealth/types';
+import {
+  addWalletAddress,
+  removeWalletAddress,
+} from '@/app/onboarding/wallet-actions';
+import type {
+  BitcoinAddressRecord,
+  EvmAddressRecord,
+} from '@/lib/wealth/types';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { SiteFooter } from '@/components/shell/SiteFooter';
@@ -52,6 +59,11 @@ export interface OnboardingFlowProps {
    * Read-only every time the flow mounts; the balances are re-read by the action.
    */
   readonly initialBitcoinAddresses?: readonly BitcoinAddressRecord[];
+  /**
+   * Pasted EVM addresses already confirmed for this resident, restored
+   * server-side. Read-only every time the flow mounts; balances are re-read.
+   */
+  readonly initialEvmAddresses?: readonly EvmAddressRecord[];
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
@@ -69,7 +81,7 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
     },
     { title: 'Profile & household', state: state(2), lockReason: 'Create your passkey first.' },
     { title: 'Proof of wealth', state: state(3), lockReason: 'Save your profile first.' },
-    { title: 'Pay pre-approval fee', state: state(4), lockReason: 'Add a wallet or a Bitcoin address first.' },
+    { title: 'Pay pre-approval fee', state: state(4), lockReason: 'Add a wallet or a Bitcoin address, or paste a wallet address, first.' },
   ];
 }
 
@@ -80,13 +92,14 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
  * progress; this keeps that shape. Step state lives here rather than in the URL
  * so the walkthrough survives moving between steps.
  *
- * Step 3 holds two different things. The browser-extension and WalletConnect
+ * Step 3 holds three different things. The browser-extension and WalletConnect
  * rows are demo: connecting attaches the reference's seed balances and the rows
- * are labelled demo. Bitcoin is real but read-only: the resident pastes an
- * address and the server reads its balance from a public source, with no
- * ownership proof, so the screen says so rather than implying control. Step 4's
- * payment still flips local state only. Real wallet connection and payment
- * execution remain excluded (contract section 9 as narrowed by v1.7).
+ * are labelled demo. Bitcoin and pasted EVM addresses are real but read-only:
+ * the resident pastes an address and the server reads its balances from a public
+ * source, with no ownership proof, so the screen says so rather than implying
+ * control. Step 4's payment still flips local state only. Real wallet connection
+ * and payment execution remain excluded (contract section 9 as narrowed by
+ * v1.7).
  */
 export function OnboardingFlow({
   userId,
@@ -100,6 +113,7 @@ export function OnboardingFlow({
   initialCredentialId = null,
   store,
   initialBitcoinAddresses = [],
+  initialEvmAddresses = [],
 }: OnboardingFlowProps) {
   const router = useRouter();
   // The passkey is created before the pre-registration steps, as the reference's
@@ -114,6 +128,9 @@ export function OnboardingFlow({
   const [bitcoinAddresses, setBitcoinAddresses] = useState<
     readonly BitcoinAddressRecord[]
   >(initialBitcoinAddresses);
+  const [evmAddresses, setEvmAddresses] = useState<readonly EvmAddressRecord[]>(
+    initialEvmAddresses,
+  );
   const [paid, setPaid] = useState(false);
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(initial);
   // The server's fee for a household size, tagged with the size it belongs to
@@ -159,7 +176,11 @@ export function OnboardingFlow({
     (sum, record) => sum + (record.usd ?? 0),
     0,
   );
-  const wealthTotal = demoTotal + bitcoinTotal;
+  const evmTotal = evmAddresses.reduce(
+    (sum, record) => sum + (record.usd ?? 0),
+    0,
+  );
+  const wealthTotal = demoTotal + bitcoinTotal + evmTotal;
 
   // The Bitcoin actions both read and write on the server. The browser only
   // shows the record the server returns, so a read that failed is presented as
@@ -183,6 +204,26 @@ export function OnboardingFlow({
     );
   }
 
+  // The EVM actions are keyed by address: re-adding an address the resident
+  // already saved replaces its record rather than rendering it twice.
+  async function handleAddWalletAddress(address: string) {
+    const record = await addWalletAddress(address);
+    setEvmAddresses((current) =>
+      current.some((existing) => existing.address === record.address)
+        ? current.map((existing) =>
+            existing.address === record.address ? record : existing,
+          )
+        : [...current, record],
+    );
+  }
+
+  async function handleRemoveWalletAddress(address: string) {
+    await removeWalletAddress(address);
+    setEvmAddresses((current) =>
+      current.filter((record) => record.address !== address),
+    );
+  }
+
   const fileRows = useMemo<readonly FileRow[]>(() => {
     const cits = snapshot?.citizenships.join(' / ') ?? '—';
     const residences = snapshot?.residences
@@ -197,6 +238,13 @@ export function OnboardingFlow({
       sources.push(
         `${bitcoinAddresses.length} bitcoin address${
           bitcoinAddresses.length === 1 ? '' : 'es'
+        }`,
+      );
+    }
+    if (evmAddresses.length > 0) {
+      sources.push(
+        `${evmAddresses.length} wallet address${
+          evmAddresses.length === 1 ? '' : 'es'
         }`,
       );
     }
@@ -233,9 +281,12 @@ export function OnboardingFlow({
         status: wealthTotal >= tierMinimum ? 'Meets tier' : 'Below tier',
         tone: wealthTotal >= tierMinimum ? 'success' : 'warning',
         // All-demo only when every counted source is a demo wallet. Once a real
-        // bitcoin read is in the total, the row drops the blanket Demo chip and
-        // names its sources instead.
-        demo: bitcoinAddresses.length === 0 && linked.length > 0,
+        // bitcoin or wallet-address read is in the total, the row drops the
+        // blanket Demo chip and names its sources instead.
+        demo:
+          bitcoinAddresses.length === 0 &&
+          evmAddresses.length === 0 &&
+          linked.length > 0,
       },
     ];
   }, [
@@ -246,6 +297,7 @@ export function OnboardingFlow({
     linked.length,
     wealthTotal,
     bitcoinAddresses.length,
+    evmAddresses.length,
   ]);
 
   return (
@@ -307,6 +359,9 @@ export function OnboardingFlow({
             bitcoinAddresses={bitcoinAddresses}
             onAddBitcoin={handleAddBitcoin}
             onRemoveBitcoin={handleRemoveBitcoin}
+            evmAddresses={evmAddresses}
+            onAddWalletAddress={handleAddWalletAddress}
+            onRemoveWalletAddress={handleRemoveWalletAddress}
           />
         ) : (
           <FeeStep
