@@ -2,7 +2,11 @@
 
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { readBitcoinApiBase } from '@/lib/env';
-import { isBitcoinAddress, readBitcoinBalance } from '@/lib/wealth/bitcoin';
+import {
+  isBitcoinAddress,
+  normalizeBitcoinAddress,
+  readBitcoinBalance,
+} from '@/lib/wealth/bitcoin';
 import {
   BITCOIN_CHAIN_ID,
   BITCOIN_PROVIDER,
@@ -99,7 +103,10 @@ async function readAddressRecord(
 export async function addBitcoinAddress(
   address: string,
 ): Promise<BitcoinAddressRecord> {
-  if (!isBitcoinAddress(address)) {
+  // Canonicalise before validating and persisting, so the same address in the
+  // other accepted bech32 case is the same row rather than a second one.
+  const normalized = normalizeBitcoinAddress(address);
+  if (!isBitcoinAddress(normalized)) {
     throw new Error('That is not a recognised Bitcoin address.');
   }
 
@@ -112,7 +119,7 @@ export async function addBitcoinAddress(
   }
 
   const stored = await loadStoredAddresses(client, user.id);
-  const alreadyStored = stored.some((row) => row.address === address);
+  const alreadyStored = stored.some((row) => row.address === normalized);
   if (!alreadyStored && stored.length >= MAX_BITCOIN_ADDRESSES) {
     throw new Error(
       `You can save at most ${MAX_BITCOIN_ADDRESSES} Bitcoin addresses. ` +
@@ -121,7 +128,7 @@ export async function addBitcoinAddress(
   }
 
   const { data: id, error } = await client.rpc('record_wallet_address', {
-    p_address: address,
+    p_address: normalized,
     p_chain: BITCOIN_CHAIN_ID,
     p_provider: BITCOIN_PROVIDER,
   });
@@ -129,7 +136,7 @@ export async function addBitcoinAddress(
     throw new Error(`Saving the Bitcoin address failed: ${error.message}`);
   }
 
-  return readAddressRecord(Number(id), address, readBitcoinApiBase());
+  return readAddressRecord(Number(id), normalized, readBitcoinApiBase());
 }
 
 /** Remove one of the resident's own Bitcoin addresses. */

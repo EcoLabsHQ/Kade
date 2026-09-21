@@ -33,6 +33,22 @@ export interface BitcoinReadOptions {
 const BASE58_ADDRESS = /^[123mn][1-9A-HJ-NP-Za-km-z]{25,34}$/;
 const BECH32_ADDRESS = /^(bc1|tb1)[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{11,71}$/;
 
+/**
+ * Canonical form for storage and comparison.
+ *
+ * Trims, and lower-cases bech32 (`bc1`/`tb1`) because BIP173 allows either case
+ * for it. Base58 is **not** lower-cased: it is case-sensitive, so changing it
+ * would corrupt the address. Without this, the same bech32 address pasted in the
+ * other accepted case would defeat the `(profile_id, address, chain)` unique
+ * index and consume two of the five slots.
+ */
+export function normalizeBitcoinAddress(value: string): string {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('bc1') || lower.startsWith('tb1')) return lower;
+  return trimmed;
+}
+
 /** True when `value` looks like a Bitcoin address. Conservative by design. */
 export function isBitcoinAddress(value: string): boolean {
   if (typeof value !== 'string') return false;
@@ -90,7 +106,8 @@ export async function readBitcoinBalance(
   address: string,
   options: BitcoinReadOptions = {},
 ): Promise<BitcoinBalanceRead> {
-  if (!isBitcoinAddress(address)) {
+  const normalized = normalizeBitcoinAddress(address);
+  if (!isBitcoinAddress(normalized)) {
     throw new BitcoinReadError(
       `"${address}" is not a recognised Bitcoin address.`,
     );
@@ -100,7 +117,7 @@ export async function readBitcoinBalance(
   const fetchImpl = options.fetchImpl ?? fetch;
 
   const response = await fetchImpl(
-    `${base}/api/address/${encodeURIComponent(address)}`,
+    `${base}/api/address/${encodeURIComponent(normalized)}`,
   );
   if (!response.ok) {
     throw new BitcoinReadError(
@@ -138,5 +155,5 @@ export async function readBitcoinBalance(
   const price = await readUsdPerBtc(base, fetchImpl);
   const usd = price === null ? null : Number(btc) * price;
 
-  return { address, satoshis, btc, usd };
+  return { address: normalized, satoshis, btc, usd };
 }
