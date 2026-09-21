@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.7 — human decisions recorded 16 September 2026; seven
-amendments recorded in sections 8.1-8.7
+**Status:** Frozen v1.8 — human decisions recorded 16 September 2026; eight
+amendments recorded in sections 8.1-8.8  
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -490,6 +490,81 @@ provider client (address validation, balance math, provider-error handling);
 the server actions; unit tests; the persisted rows; and the on-screen "read
 from a public source, not proof of ownership" statement.
 
+### 8.8 Amendment v1.8 — pasted EVM addresses, and the proof-of-wealth row layout
+
+**v1.8 — 21 September 2026. Approved by the project owner. Week 2 change
+control onto the frozen Week 1 contract.**
+
+Pasted EVM addresses are in scope, read-only and unverified. A signed-in
+resident may paste up to **5** EVM (`0x…`) addresses. The server validates the
+address format, reads each address's **native coin balance** on the product
+chains' **mainnets** (Ethereum and Base) from a public Blockscout-compatible
+explorer API, and returns the balance and its USD value (from the explorer's
+native-coin price). There is **no signature, no wallet connection, and no
+ownership proof**; the UI states the balance was read from a public source and
+is not evidence of control. Rationale, for the record: proof-of-wealth is about
+real assets, so the read-only balance query targets mainnet even though
+iteration 1 deploys only on testnets — a read moves nothing and is not a
+deployment.
+
+Persistence. Rows live in the existing `public.wallets` table, **one row per
+(address, chain)** — the table's documented "one row per chain the EOA is read
+on" shape — with `provider = 'pasted-address'` and `siwe_sig`/`verified_at`
+NULL (unverified). There is **no new table and no new column**. The 5-address
+cap in migration 20's trigger is extended to cover both encodings: 5 rows for
+Bitcoin (`chain = 0`) and 5 **distinct addresses** for pasted EVM rows
+(`chain <> 0`), idempotent on a repeat. A new `delete_wallet_addresses(p_address)`
+RPC removes the caller's own rows for one address. The migration file is
+`supabase/migrations/20260921000002_evm_wallet_addresses.sql`.
+
+Wallet connection remains excluded. No wallet-connection package is added and
+no real wallet connection is implemented (project-owner decision, 21 September
+2026): the browser-extension and WalletConnect rows stay demo and are labelled
+demo. Only pasted addresses (Bitcoin and EVM) are read.
+
+Multi-token and other chains stay out. ERC-20/token balances (including USDC),
+and balances on Arbitrum, Optimism and Celo, are not read in this iteration; the
+chain list is data, so they can be added by configuration later.
+
+Row layout parity. The Bitcoin and wallet-address rows present the same
+collapsed row shape as the mockup (badge, title, subtitle, right-hand `Connect`
+pill) and expand in place to the paste-and-confirm flow; the WalletConnect mark
+is corrected to the official geometry.
+
+Section 9 is narrowed again, for the read path only: a single on-demand,
+server-proxied, read-only balance read per pasted address is in scope, for
+Bitcoin **and** pasted EVM addresses, while external wallet connection,
+ownership proof, and a background indexer/aggregator remain excluded.
+
+Acceptance criteria. D5's evidence is unchanged in substance. Nothing in D6, D7
+or D8 changes, and the D8 journey is unchanged (sign-in → passkey → Sepolia
+Safe → matching Sepolia/Base Sepolia addresses → Steps 1–2 → fee → reload → EAS
+UIDs → KadeLock report).
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 9, exclusions | read-only, unverified, address-based Bitcoin balance reads in scope (v1.7) | read-only, unverified, address-based Bitcoin **and** pasted EVM balance reads in scope (v1.8) |
+| Section 9, exclusions | a single on-demand, server-proxied read per address in scope | the in-scope read covers Bitcoin and pasted EVM addresses; external wallet connection, ownership proof, and the background aggregator/indexer stay excluded |
+| Schema, `public.wallets` | up to 5 read-only Bitcoin addresses per resident (`chain = 0`, `provider = 'bitcoin-address'`) | plus up to 5 read-only pasted EVM addresses per resident, one row per `(address, chain)` (`chain <> 0`, `provider = 'pasted-address'`) |
+| UI, proof-of-wealth rows | Bitcoin rows use the collapsed mockup row shape | Bitcoin and pasted-EVM rows share the collapsed shape and expand to the paste-and-confirm flow; the WalletConnect mark uses the official geometry |
+
+What this does **not** change:
+
+- D6, D7 and D8, including the D8 journey;
+- the passkey remains the only transaction authority, and no session, address
+  or balance read can authorise a transaction;
+- `public.wallets` keeps its existing shape — no table and no column is added;
+- no wallet-connection package is added and no real wallet connection is
+  implemented;
+- ERC-20/token balances, other chains, payment execution, the EVM multi-chain
+  block, DeBank, hardware wallets, and the indexer remain excluded.
+
+Evidence: the migration file and the extended 5-address cap; the server-side
+provider client and its unit tests; the server actions; the persisted rows; and
+the on-screen "read from a public source, not proof of ownership" statement.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -502,7 +577,10 @@ Unless introduced through change control, Week 1 excludes:
 - paymaster policy beyond what is strictly required to deploy the Week 1 Safe;
 - balance aggregation and indexer *(narrowed by section 8.7 / v1.7: a
   background aggregator/indexer stays excluded; a single on-demand,
-  server-proxied read per address is in scope)*;
+  server-proxied read per address is in scope; narrowed again by section 8.8 /
+  v1.8: the in-scope read covers Bitcoin and pasted EVM addresses, while
+  external wallet connection, ownership proof and the background
+  aggregator/indexer remain excluded)*;
 - L2 Safe deployment;
 - Aave vault deployment/integration;
 - full KYC/Self verification flow;
@@ -530,7 +608,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.7** with the open items above tracked under change control.
+This contract is **Frozen v1.8** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
