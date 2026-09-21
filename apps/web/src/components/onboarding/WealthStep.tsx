@@ -235,7 +235,7 @@ export function WealthStep({
       </p>
 
       <div
-        className='kade-grid-wealth'
+        className="kade-grid-wealth"
         style={{
           gap: '16px',
           alignItems: 'start',
@@ -247,7 +247,7 @@ export function WealthStep({
             const isSigned = connected.includes(wallet.key);
             const Glyph = WALLET_GLYPHS[wallet.key] ?? WalletGlyph;
             return (
-              <Card key={wallet.key} padding='14px 16px'>
+              <Card key={wallet.key} padding="14px 16px">
                 <div style={rowHeaderStyle}>
                   <span
                     aria-hidden
@@ -266,7 +266,7 @@ export function WealthStep({
                       <span style={{ fontSize: '15px', fontWeight: 600 }}>
                         {wallet.name}
                       </span>
-                      <Chip tone='muted'>Demo</Chip>
+                      <Chip tone="muted">Demo</Chip>
                     </div>
                     <div style={rowSubtitleStyle}>{wallet.subtitle}</div>
                   </div>
@@ -274,7 +274,7 @@ export function WealthStep({
                     <SignedState />
                   ) : (
                     <button
-                      type='button'
+                      type="button"
                       onClick={() => onConnect(wallet.key)}
                       style={connectButton}
                     >
@@ -286,7 +286,7 @@ export function WealthStep({
             );
           })}
 
-          <Card padding='14px 16px'>
+          <Card padding="14px 16px">
             <div style={rowHeaderStyle}>
               <span
                 aria-hidden
@@ -302,7 +302,7 @@ export function WealthStep({
               </div>
               {bitcoinAddresses.length > 0 ? <ReadState /> : null}
               <button
-                type='button'
+                type="button"
                 onClick={() => setBitcoinOpen((open) => !open)}
                 aria-expanded={bitcoinOpen}
                 aria-label={
@@ -320,17 +320,17 @@ export function WealthStep({
               <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
-                    type='text'
-                    aria-label='Bitcoin address'
-                    placeholder='bc1q… or 1… or 3…'
+                    type="text"
+                    aria-label="Bitcoin address"
+                    placeholder="bc1q… or 1… or 3…"
                     value={addressInput}
                     spellCheck={false}
                     onChange={(event) => setAddressInput(event.target.value)}
                     style={addressInputStyle}
                   />
                   <button
-                    type='button'
-                    aria-label='Confirm Bitcoin address'
+                    type="button"
+                    aria-label="Confirm Bitcoin address"
                     onClick={handleConfirm}
                     disabled={confirmDisabled}
                     title={
@@ -352,7 +352,7 @@ export function WealthStep({
                 </div>
 
                 {addError ? (
-                  <div role='alert' style={errorText}>
+                  <div role="alert" style={errorText}>
                     {addError}
                   </div>
                 ) : null}
@@ -369,7 +369,7 @@ export function WealthStep({
                 </p>
 
                 <div style={{ marginTop: '6px' }}>
-                  <Chip tone='warning' dot dotColor={BITCOIN_ORANGE}>
+                  <Chip tone="warning" dot dotColor={BITCOIN_ORANGE}>
                     Read from the network
                   </Chip>
                 </div>
@@ -419,7 +419,7 @@ export function WealthStep({
                         {record.usd === null ? '—' : usd(record.usd)}
                       </span>
                       <button
-                        type='button'
+                        type="button"
                         aria-label={`Remove address ${record.address}`}
                         onClick={() => onRemoveBitcoin(record.id)}
                         style={removeButton}
@@ -432,7 +432,7 @@ export function WealthStep({
                     </div>
                     {record.readError ? (
                       <div
-                        role='alert'
+                        role="alert"
                         style={{ ...errorText, marginTop: '4px' }}
                       >
                         {record.readError}
@@ -444,7 +444,7 @@ export function WealthStep({
             ) : null}
           </Card>
 
-          <Card padding='14px 16px'>
+          <Card padding="14px 16px">
             <div style={rowHeaderStyle}>
               <span
                 aria-hidden
@@ -462,7 +462,7 @@ export function WealthStep({
               </div>
               {evmAddresses.length > 0 ? <ReadState /> : null}
               <button
-                type='button'
+                type="button"
                 onClick={() => setEvmOpen((open) => !open)}
                 aria-expanded={evmOpen}
                 aria-label={
@@ -480,17 +480,17 @@ export function WealthStep({
               <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
-                    type='text'
-                    aria-label='Wallet address'
-                    placeholder='0x…'
+                    type="text"
+                    aria-label="Wallet address"
+                    placeholder="0x…"
                     value={evmInput}
                     spellCheck={false}
                     onChange={(event) => setEvmInput(event.target.value)}
                     style={addressInputStyle}
                   />
                   <button
-                    type='button'
-                    aria-label='Confirm wallet address'
+                    type="button"
+                    aria-label="Confirm wallet address"
                     onClick={handleEvmConfirm}
                     disabled={evmConfirmDisabled}
                     title={
@@ -512,7 +512,7 @@ export function WealthStep({
                 </div>
 
                 {evmError ? (
-                  <div role='alert' style={errorText}>
+                  <div role="alert" style={errorText}>
                     {evmError}
                   </div>
                 ) : null}
@@ -564,7 +564,7 @@ export function WealthStep({
                         {record.usd === null ? '—' : usd(record.usd)}
                       </span>
                       <button
-                        type='button'
+                        type="button"
                         aria-label={`Remove wallet address ${record.address}`}
                         onClick={() => onRemoveWalletAddress(record.address)}
                         style={removeButton}
@@ -618,7 +618,7 @@ export function WealthStep({
                     </div>
                     {record.readError ? (
                       <div
-                        role='alert'
+                        role="alert"
                         style={{ ...errorText, marginTop: '4px' }}
                       >
                         {record.readError}
@@ -648,14 +648,14 @@ export function WealthStep({
                 For off-chain assets · PDF, hashed &amp; pinned
               </div>
             </div>
-            <button type='button' style={connectButton}>
+            <button type="button" style={connectButton}>
               Upload
             </button>
           </div>
 
         </div>
 
-        <Card padding='20px 22px'>
+        <Card padding="20px 22px">
           <div
             style={{
               display: 'flex',
@@ -665,7 +665,7 @@ export function WealthStep({
             }}
           >
             <div style={eyebrow}>Proof of wealth</div>
-            <Chip tone='muted'>
+            <Chip tone="muted">
               {hasRealRead ? 'Demo + network' : 'Demo balances'}
             </Chip>
           </div>
@@ -901,11 +901,11 @@ export function WealthStep({
       </div>
 
       <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-        <button type='button' onClick={onBack} style={secondaryButton}>
+        <button type="button" onClick={onBack} style={secondaryButton}>
           Back
         </button>
         <button
-          type='button'
+          type="button"
           disabled={!canContinue}
           onClick={onContinue}
           title={
@@ -956,16 +956,16 @@ function CheckGlyph() {
     <svg
       width={15}
       height={15}
-      viewBox='0 0 24 24'
-      fill='none'
+      viewBox="0 0 24 24"
+      fill="none"
       stroke={tokens.success}
       strokeWidth={3}
-      strokeLinecap='round'
-      strokeLinejoin='round'
-      aria-hidden='true'
-      focusable='false'
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
     >
-      <path d='M4 12.5 9.5 18 20 6.5' />
+      <path d="M4 12.5 9.5 18 20 6.5" />
     </svg>
   );
 }
