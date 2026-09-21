@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { FeeMode } from '@kade/shared';
+import { TIERS, type FeeMode } from '@kade/shared';
 import { previewPreapprovalFee } from '@/app/onboarding/actions';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { SiteFooter } from '@/components/shell/SiteFooter';
@@ -20,6 +20,9 @@ import { AccountSetupStep } from './AccountSetupStep';
 
 /** The account phase creates the passkey; 2-4 are the pre-registration steps. */
 type Step = 'account' | 2 | 3 | 4;
+
+/** The entry tier, shown before the resident has chosen one. */
+const DEFAULT_TIER = TIERS[0];
 
 export interface OnboardingFlowProps {
   readonly userId: string;
@@ -126,10 +129,11 @@ export function OnboardingFlow({
   const breakdown =
     fee.householdSize === householdSize ? fee.breakdown : null;
 
-  const tierName = snapshot
-    ? (['3-year', '5-year', 'Indefinite'][snapshot.tier] ?? '3-year')
-    : '3-year';
-  const tierMinimum = snapshot ? [280000, 425000, 850000][snapshot.tier] ?? 280000 : 280000;
+  // The name and qualifying minimum come from the resident's own tier, resolved
+  // against the frozen tier table rather than copied here as literals.
+  const tier = snapshot ? TIERS[snapshot.tier] : DEFAULT_TIER;
+  const tierName = tier?.name ?? '3-year';
+  const tierMinimum = tier?.minUsdc ?? 280000;
 
   const linked = MOCK_WALLETS.filter((w) => connected.includes(w.key));
   const wealthTotal = linked.reduce((sum, w) => sum + w.value, 0);
@@ -169,9 +173,10 @@ export function OnboardingFlow({
       },
       {
         label: 'Proof of wealth',
-        value: `${linked.length} wallet${linked.length === 1 ? '' : 's'} · $${wealthTotal.toLocaleString('en-US')} · demo balances`,
+        value: `${linked.length} wallet${linked.length === 1 ? '' : 's'} · $${wealthTotal.toLocaleString('en-US')}`,
         status: wealthTotal >= tierMinimum ? 'Meets tier' : 'Below tier',
         tone: wealthTotal >= tierMinimum ? 'success' : 'warning',
+        demo: true,
       },
     ];
   }, [snapshot, householdSize, tierName, tierMinimum, linked.length, wealthTotal]);
@@ -239,7 +244,6 @@ export function OnboardingFlow({
           <FeeStep
             rows={fileRows}
             breakdown={breakdown}
-            mode={mode}
             paid={paid}
             onPay={() => setPaid(true)}
             onBack={() => setStep(3)}

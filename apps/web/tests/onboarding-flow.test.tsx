@@ -465,3 +465,145 @@ describe('pre-registration flow', () => {
     expect(screen.getByRole('button', { name: /pay now/i })).toBeDisabled();
   });
 });
+
+/**
+ * The distinction the owner asked for: what the flow shows is the resident's,
+ * and what it shows is demo state is labelled as such. The vocabulary check
+ * covers every rendered surface, sidebar and footer included.
+ */
+const INTERNAL_VOCABULARY: readonly RegExp[] = [
+  /fee_schedule/i,
+  /preapproval_usdc/i,
+  /save_onboarding_step2/i,
+  /SUPABASE/i,
+  /SERVICE_ROLE/i,
+  /postgrest/i,
+  /\bRLS\b/,
+  /KADE_FEE_MODE/,
+  /SECURITY INVOKER/i,
+  /passkey_credentials/i,
+  /household_members/i,
+  /profile_residences/i,
+  /profile_citizenships/i,
+  /\bgate\b/i,
+];
+
+function expectNoInternalVocabulary() {
+  const text = document.body.textContent ?? '';
+  for (const pattern of INTERNAL_VOCABULARY) {
+    expect(text).not.toMatch(pattern);
+  }
+}
+
+/** A restored resident: household of three, aiming at the 5-year tier. */
+const RESTORED_SNAPSHOT: OnboardingSnapshot = {
+  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  citizenships: ['NL'],
+  residences: [{ countryCode: 'NL', fromYear: 2021, toYear: 'present' }],
+  tier: 1,
+  members: [
+    {
+      name: 'Grace Lovelace',
+      relation: 'Daughter',
+      dob: '2015-05-05',
+      citizenship: 'DE',
+    },
+    {
+      name: 'Alan Lovelace',
+      relation: 'Son',
+      dob: '2017-01-01',
+      citizenship: 'DE',
+    },
+  ],
+};
+
+function renderRestoredFlow(store: OnboardingStore) {
+  return render(
+    <OnboardingFlow
+      userId="user-1"
+      mode="demo"
+      persistence="supabase"
+      initial={RESTORED_SNAPSHOT}
+      initialFee={demoFee(3)}
+      network="Ethereum Sepolia"
+      accountState={{ kind: 'pending' }}
+      currentYear={2026}
+      initialCredentialId="cred-existing"
+      store={store}
+    />,
+  );
+}
+
+async function reachFeeStep() {
+  fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+  await screen.findByRole('heading', { name: /show proof of wealth/i });
+  fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+  await screen.findByRole('heading', {
+    name: /pay the pre-approval fee and go live/i,
+  });
+}
+
+describe('what is the resident\u2019s and what is demo', () => {
+  it('drives the fee from the restored household, not the applicant alone', async () => {
+    const { store } = makeStore();
+    renderRestoredFlow(store);
+
+    // The restored household of three is what the server is asked about.
+    await waitFor(() =>
+      expect(hoisted.previewPreapprovalFee).toHaveBeenCalledWith(3),
+    );
+    expect(hoisted.previewPreapprovalFee).not.toHaveBeenCalledWith(1);
+
+    await reachFeeStep();
+
+    expect(
+      await screen.findByText(/household · 3 members at 0\.25 USDC each/i),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('1.75 USDC')).toBeInTheDocument();
+  });
+
+  it('shows the resident\u2019s own tier target, not a reference default', async () => {
+    const { store } = makeStore();
+    renderRestoredFlow(store);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    // Tier 1 (5-year) is the resident's stored choice; $425,000 is its minimum.
+    expect(screen.getByText(/target · 5-year/i)).toBeInTheDocument();
+    expect(screen.getByText('$425,000')).toBeInTheDocument();
+    expect(screen.queryByText(/target · 3-year/i)).toBeNull();
+  });
+
+  it('labels the mocked values and leaves the real ones unlabelled', async () => {
+    const { store } = makeStore();
+    renderFlow(store);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
+
+    // The mocked balance figure carries a demo label next to it, and the step
+    // still says so outright. The real tier target has no such label.
+    expect(screen.getByText('Demo balances')).toBeInTheDocument();
+    expect(screen.getByText(/balances shown are demo data/i)).toBeInTheDocument();
+    expect(screen.getByText(/target · 3-year/i)).toBeInTheDocument();
+    expectNoInternalVocabulary();
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', {
+      name: /pay the pre-approval fee and go live/i,
+    });
+
+    // The payment is labelled demo; the fee line states it is the configured
+    // amount for this household, and the proof-of-wealth row is marked Demo.
+    expect(screen.getByText('Demo payment')).toBeInTheDocument();
+    expect(screen.getByText('Demo')).toBeInTheDocument();
+    expect(screen.getByText(/does not send a transaction/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/configured pre-approval fee for your household/i),
+    ).toBeInTheDocument();
+    expectNoInternalVocabulary();
+  });
+});
