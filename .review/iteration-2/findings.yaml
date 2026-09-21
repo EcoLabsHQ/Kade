@@ -1,0 +1,64 @@
+findings:
+  - id: F1
+    severity: fail
+    scope: docs
+    status: fix-applied
+    title: Schema/RLS docs described wallets as deny-by-default and omitted migration 20
+    batch: discovery-1
+    class: documentation that describes the schema/RLS/migration set left stale by a new migration
+    remediation: >-
+      Class-level sweep of every document that enumerates the migration set or the
+      RLS matrix: supabase/README.md, docs/architecture/data-model.md,
+      docs/gates/foundation.md and README.md now include migration
+      20260921000001, classify `wallets` as owner-scoped with `siwe_sig`/
+      `verified_at` withheld, and record the 5-address cap trigger. The
+      "all 19 applied in order" claim became "all 20", verified by applying the
+      full set plus seed to a clean postgres:16 container.
+    evidence:
+      - supabase/README.md (migration list, security model, RLS matrix, server-written columns)
+      - docs/architecture/data-model.md (migration order, policy set, RLS matrix, [arbitrary] table)
+      - docs/gates/foundation.md
+      - README.md
+      - clean-database apply: 20/20 migrations + seed, ON_ERROR_STOP=1
+  - id: F2
+    severity: warn
+    scope: database
+    status: fix-applied
+    title: The 5-address cap was enforced only in the server action
+    batch: discovery-1
+    remediation: >-
+      Added `public.enforce_wallet_address_cap()`, a BEFORE INSERT trigger on
+      public.wallets, so the cap holds for a direct PostgREST insert as well as
+      the RPC. A repeat of an address already stored passes through, keeping
+      `record_wallet_address` idempotent at the cap.
+    evidence:
+      - supabase/migrations/20260921000001_bitcoin_wallet_addresses.sql
+      - live: 6th address refused (check_violation); direct 6th insert refused; repeat at cap idempotent
+  - id: F3
+    severity: warn
+    scope: bitcoin-read-path
+    status: fix-applied
+    title: Persisted address was not normalised, so case could defeat the idempotency index
+    batch: discovery-1
+    remediation: >-
+      Added `normalizeBitcoinAddress` (trim; lower-case bech32 only, never
+      base58) and applied it in the server action, in `readBitcoinBalance`, and
+      in the SQL RPC, so the same address cannot occupy two rows or two cap slots.
+    evidence:
+      - apps/web/src/lib/wealth/bitcoin.ts
+      - apps/web/src/app/onboarding/wealth-actions.ts
+      - live: uppercase bech32 stored lower-case
+      - apps/web/tests/bitcoin-balance.test.ts, apps/web/tests/bitcoin-wealth-actions.test.ts
+  - id: F4
+    severity: note
+    scope: test-infrastructure
+    status: fix-applied
+    title: The Supabase shim could not exercise auth.uid() as an API role
+    batch: discovery-1
+    remediation: >-
+      The shim now grants `usage on schema auth` to anon/authenticated/
+      service_role, matching a real Supabase project, which is what let the new
+      RLS boundary be exercised against a plain Postgres.
+    evidence:
+      - supabase/tests/support/supabase-shim.sql
+      - live: RLS isolates residents; anon denied
