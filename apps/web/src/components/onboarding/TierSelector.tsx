@@ -16,7 +16,8 @@ export function TierSelector({ value, onSelect }: TierSelectorProps) {
     <div
       role="radiogroup"
       aria-label="Permit tier you are aiming for"
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}
+      className="kade-grid-tiers"
+      style={{ gap: '8px' }}
     >
       {TIERS.map((tier) => {
         const selected = value === tier.index;

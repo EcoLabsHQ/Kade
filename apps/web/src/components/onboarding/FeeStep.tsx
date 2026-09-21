@@ -58,9 +58,8 @@ export function FeeStep({
       </p>
 
       <div
+        className="kade-grid-fee"
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0,1.9fr) minmax(0,1fr)',
           gap: '16px',
           alignItems: 'stretch',
           maxWidth: '1060px',
@@ -72,9 +71,8 @@ export function FeeStep({
             {rows.map((row) => (
               <div
                 key={row.label}
+                className="kade-grid-file-row"
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: '120px 1fr auto',
                   gap: '12px',
                   alignItems: 'center',
                   padding: '11px 0',

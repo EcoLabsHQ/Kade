@@ -144,9 +144,8 @@ export function WealthStep({
       </p>
 
       <div
+        className="kade-grid-wealth"
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.15fr)',
           gap: '16px',
           alignItems: 'start',
           maxWidth: '1160px',
