@@ -1,0 +1,17 @@
+iteration: iteration-eda2573
+known_good: ef81b658b457b3ce3986e03e65d845dcfbf53b6c
+candidate: eda2573d5bfad73840be139372b187d1c7d4b401
+mode: discovery
+reviewed_scopes:
+  money_path: partial
+  database: partial
+  wallet_connection: partial
+  deposit_modal: partial
+  docs_contract: partial
+  tests: partial
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: false
+verdict: pending
