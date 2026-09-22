@@ -15,7 +15,6 @@ import type { AppKitNetwork } from '@reown/appkit/networks';
 
 /** Iteration 1 pays on Ethereum Sepolia only (contract v1.9). */
 export const WALLET_NETWORKS: [AppKitNetwork, ...AppKitNetwork[]] = [sepolia];
-export const WALLET_CHAIN_ID: number = sepolia.id;
 
 /** The project id, or null when the environment has not configured one. */
 export const walletProjectId: string | null =
