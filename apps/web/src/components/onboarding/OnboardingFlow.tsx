@@ -17,6 +17,10 @@ import type {
   BitcoinAddressRecord,
   EvmAddressRecord,
 } from '@/lib/wealth/types';
+import {
+  summarizeWealth,
+  type ConnectedWalletSummary,
+} from '@/lib/wealth/summary';
 import { SetupSidebar } from '@/components/shell/SetupSidebar';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { SiteFooter } from '@/components/shell/SiteFooter';
@@ -149,12 +153,13 @@ export function OnboardingFlow({
   const [step, setStep] = useState<Step>(
     initialCredentialId ? 2 : 'account',
   );
-  // The connected wallet is reported by the panel, which owns the AppKit
-  // hooks; only its address and USD figure matter here, for the tier total.
-  const [connectedWallet, setConnectedWallet] = useState<{
-    readonly address: string;
-    readonly usd: number | null;
-  } | null>(null);
+  // The connected wallets are reported by the panel, which owns the AppKit
+  // hooks; only their addresses and USD figures matter here, for the tier total.
+  // The list is deduplicated by address, both in the panel and again against
+  // the pasted addresses below, so a wallet is never counted twice.
+  const [connectedWallets, setConnectedWallets] = useState<
+    readonly ConnectedWalletSummary[]
+  >([]);
   const [bitcoinAddresses, setBitcoinAddresses] = useState<
     readonly BitcoinAddressRecord[]
   >(initialBitcoinAddresses);
@@ -209,16 +214,17 @@ export function OnboardingFlow({
   const tierName = tier?.name ?? '3-year';
   const tierMinimum = tier?.minUsdc ?? 280000;
 
-  const bitcoinTotal = bitcoinAddresses.reduce(
-    (sum, record) => sum + (record.usd ?? 0),
-    0,
-  );
-  const evmTotal = evmAddresses.reduce(
-    (sum, record) => sum + (record.usd ?? 0),
-    0,
-  );
-  const walletTotal = connectedWallet?.usd ?? 0;
-  const wealthTotal = bitcoinTotal + evmTotal + walletTotal;
+  const wealth = summarizeWealth({
+    connectedWallets,
+    evmAddresses,
+    bitcoinAddresses,
+  });
+  const wealthTotal = wealth.total;
+  const {
+    connectedCount,
+    bitcoinCount,
+    walletAddressCount,
+  } = wealth;
 
   // The Bitcoin actions both read and write on the server. The browser only
   // shows the record the server returns, so a read that failed is presented as
@@ -269,21 +275,19 @@ export function OnboardingFlow({
       .join(' · ') ?? '—';
     const names = snapshot?.members.map((m) => m.name.split(' ')[0]).join(', ') ?? '';
     const sources: string[] = [];
-    if (connectedWallet) {
-      sources.push('1 connected wallet');
-    }
-    if (bitcoinAddresses.length > 0) {
+    if (connectedCount > 0) {
       sources.push(
-        `${bitcoinAddresses.length} bitcoin address${
-          bitcoinAddresses.length === 1 ? '' : 'es'
-        }`,
+        `${connectedCount} connected wallet${connectedCount === 1 ? '' : 's'}`,
       );
     }
-    if (evmAddresses.length > 0) {
+    if (bitcoinCount > 0) {
       sources.push(
-        `${evmAddresses.length} wallet address${
-          evmAddresses.length === 1 ? '' : 'es'
-        }`,
+        `${bitcoinCount} bitcoin address${bitcoinCount === 1 ? '' : 'es'}`,
+      );
+    }
+    if (walletAddressCount > 0) {
+      sources.push(
+        `${walletAddressCount} wallet address${walletAddressCount === 1 ? '' : 'es'}`,
       );
     }
     return [
@@ -328,10 +332,10 @@ export function OnboardingFlow({
     householdSize,
     tierName,
     tierMinimum,
-    connectedWallet,
+    connectedCount,
     wealthTotal,
-    bitcoinAddresses.length,
-    evmAddresses.length,
+    bitcoinCount,
+    walletAddressCount,
   ]);
 
   return (
@@ -381,10 +385,15 @@ export function OnboardingFlow({
         ) : step === 3 ? (
           <WealthStep
             walletConfigured={walletConfigured}
-            connectedWallet={connectedWallet}
-            onWalletChange={(state) =>
-              setConnectedWallet(
-                state ? { address: state.address, usd: state.usd } : null,
+            connectedWallets={connectedWallets}
+            onWalletChange={(states) =>
+              setConnectedWallets(
+                states
+                  ? states.map((state) => ({
+                      address: state.address,
+                      usd: state.usd,
+                    }))
+                  : [],
               )
             }
             onContinue={() => setStep(4)}

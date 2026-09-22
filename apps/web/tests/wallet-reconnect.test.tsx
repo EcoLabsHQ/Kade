@@ -34,14 +34,15 @@ const hoisted = vi.hoisted(() => ({
   open: vi.fn(),
   readAddressBalances: vi.fn(),
   disconnect: vi.fn(),
-  account: { isConnected: false, address: undefined as string | undefined },
-  connector: undefined as { id?: string; name?: string } | undefined,
+  connections: [] as Array<{
+    connector: { uid: string; id?: string; name?: string };
+    accounts: string[];
+  }>,
 }));
 
 vi.mock('@reown/appkit/react', () => ({
   createAppKit: hoisted.createAppKit,
   useAppKit: () => ({ open: hoisted.open }),
-  useAppKitAccount: () => hoisted.account,
 }));
 
 vi.mock('@reown/appkit-adapter-wagmi', () => ({
@@ -73,12 +74,11 @@ vi.mock('wagmi', () => ({
     // `reconnectOnMount === false` clears `config.state.connections` on every
     // mount, so a live connection is dropped when the provider remounts.
     if (reconnectOnMount === false) {
-      hoisted.account.isConnected = false;
-      hoisted.account.address = undefined;
+      hoisted.connections = [];
     }
     return <div>{children}</div>;
   },
-  useAccount: () => ({ connector: hoisted.connector }),
+  useConnections: () => hoisted.connections,
   useDisconnect: () => ({ disconnect: hoisted.disconnect }),
 }));
 
@@ -101,9 +101,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.stubEnv('NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID', 'test-project-id');
   hoisted.wagmiProps = undefined;
-  hoisted.account.isConnected = false;
-  hoisted.account.address = undefined;
-  hoisted.connector = undefined;
+  hoisted.connections = [];
   hoisted.readAddressBalances.mockResolvedValue(RECORD);
 });
 
@@ -159,9 +157,12 @@ describe('wallet reconnection is opt-in', () => {
     );
 
     // The resident has clicked Connect and the wallet is live.
-    hoisted.account.isConnected = true;
-    hoisted.account.address = ADDRESS;
-    hoisted.connector = { id: 'metaMask', name: 'MetaMask' };
+    hoisted.connections = [
+      {
+        connector: { uid: 'uid-metaMask', id: 'metaMask', name: 'MetaMask' },
+        accounts: [ADDRESS],
+      },
+    ];
 
     const onChange = vi.fn();
     const tree = () => (
