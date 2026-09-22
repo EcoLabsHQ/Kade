@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeResidenceCoverage,
+  isApplicantAdult,
+  latestDobForAge,
   residenceCoverage,
   type Residence,
 } from '@kade/shared';
@@ -171,6 +173,44 @@ describe('field-level errors', () => {
 
     const withIncompleteMember = addMember(validDraft());
     expect(draftFieldErrors(withIncompleteMember, 'demo').members).toBeTruthy();
+  });
+});
+
+describe('applicant age — at least 18', () => {
+  const ADULT_DOB_MESSAGE = 'You must be at least 18 years old.';
+
+  /** `iso` plus `days`, as a `YYYY-MM-DD` string. */
+  function addDays(iso: string, days: number): string {
+    const [year, month, day] = iso.split('-').map(Number);
+    const date = new Date(year!, month! - 1, day! + days);
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${mm}-${dd}`;
+  }
+
+  it('accepts a date of birth exactly 18 years ago and rejects one day short', () => {
+    const cutoff = latestDobForAge(18);
+    expect(isApplicantAdult(cutoff)).toBe(true);
+    expect(isApplicantAdult(addDays(cutoff, 1))).toBe(false);
+  });
+
+  it('marks the dob field with the shared message for an under-18 applicant', () => {
+    const draft: OnboardingDraft = {
+      ...validDraft(),
+      dob: addDays(latestDobForAge(18), 1),
+    };
+
+    expect(draftFieldErrors(draft, 'demo').dob).toBe(ADULT_DOB_MESSAGE);
+
+    const evaluation = evaluateDraft(draft, 'demo');
+    expect(evaluation.canContinue).toBe(false);
+    expect(evaluation.blockers).toContain(ADULT_DOB_MESSAGE);
+    expect(() => draftToSnapshot(draft, 'demo')).toThrow(/incomplete/i);
+  });
+
+  it('accepts a clearly adult date of birth on the dob field', () => {
+    expect(draftFieldErrors(validDraft(), 'demo').dob).toBeUndefined();
+    expect(evaluateDraft(validDraft(), 'demo').canContinue).toBe(true);
   });
 });
 

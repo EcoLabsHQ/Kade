@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applicantDob,
   citizenshipList,
   COUNTRIES,
   COUNTRY_CODES,
   householdSize,
+  isApplicantAdult,
+  latestDobForAge,
   preapprovalFeeUsdc,
   residence,
   residenceCoverage,
@@ -16,6 +19,17 @@ import {
   type HouseholdMember,
   type Residence,
 } from '../src/index.js';
+
+const ADULT_DOB_MESSAGE = 'You must be at least 18 years old.';
+
+/** `iso` plus `days`, as a `YYYY-MM-DD` string, without a date library. */
+function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year!, month! - 1, day! + days);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${mm}-${dd}`;
+}
 
 /**
  * The field contract is frozen by docs/week-1-frozen-delivery-contract.md
@@ -157,6 +171,56 @@ describe('householdSize', () => {
   it('includes the applicant: zero members is a household of one (contract 2.1)', () => {
     expect(householdSize([])).toBe(1);
     expect(householdSize([{ name: 'A' }])).toBe(2);
+  });
+});
+
+describe('applicant age — at least 18', () => {
+  const today = new Date(2026, 8, 22); // 22 September 2026, local time
+
+  it('accepts a date of birth exactly 18 years ago', () => {
+    expect(latestDobForAge(18, today)).toBe('2008-09-22');
+    expect(isApplicantAdult('2008-09-22', today)).toBe(true);
+  });
+
+  it('rejects a date of birth one day short of 18', () => {
+    expect(isApplicantAdult('2008-09-23', today)).toBe(false);
+  });
+
+  it('accepts a clearly adult date of birth', () => {
+    expect(isApplicantAdult('1990-01-01', today)).toBe(true);
+  });
+
+  it('exposes the message on the dob path for an under-18 applicant', () => {
+    const cutoff = latestDobForAge(18);
+    const tooYoung = addDays(cutoff, 1);
+
+    const result = applicantDob.safeParse(tooYoung);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe(ADULT_DOB_MESSAGE);
+    }
+  });
+
+  it('accepts exactly-18 through step one and blocks one day short', () => {
+    const cutoff = latestDobForAge(18);
+    const exactly18 = stepOneComplete({
+      applicant: { firstName: 'Ada', lastName: 'Lovelace', dob: cutoff },
+      citizenships: ['NL'],
+      residences: fullSpan,
+    });
+    expect(exactly18).toEqual({ complete: true, blockers: [] });
+
+    const justShort = stepOneComplete({
+      applicant: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dob: addDays(cutoff, 1),
+      },
+      citizenships: ['NL'],
+      residences: fullSpan,
+    });
+    expect(justShort.complete).toBe(false);
+    expect(justShort.blockers).toContain(ADULT_DOB_MESSAGE);
   });
 });
 

@@ -228,6 +228,7 @@ export function DatePicker({
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-invalid={invalid || undefined}
         aria-describedby={error || hint ? `${id}-message` : undefined}
         onClick={() => (open ? setOpen(false) : openCalendar())}
         style={{

@@ -151,14 +151,66 @@ export function tierDatabaseValue(index: TierIndex): string {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * [documented] The principal applicant must be at least this old. The handoff
+ * says the Self identity proof discloses "age over 18"
+ * (reference/design-handoff/README.md, "Identity is powered by Self").
+ */
+export const MINIMUM_APPLICANT_AGE = 18;
+
+/**
+ * The date exactly `years` before `today`, as a `YYYY-MM-DD` string. A date of
+ * birth on or before this is old enough. `today` is injectable so the boundary
+ * is testable without freezing the clock.
+ */
+export function latestDobForAge(
+  years: number = MINIMUM_APPLICANT_AGE,
+  today: Date = new Date(),
+): string {
+  const cutoff = new Date(
+    today.getFullYear() - years,
+    today.getMonth(),
+    today.getDate(),
+  );
+  const month = String(cutoff.getMonth() + 1).padStart(2, '0');
+  const day = String(cutoff.getDate()).padStart(2, '0');
+  return `${cutoff.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * Whether `dob` (an ISO `YYYY-MM-DD` calendar date) is at least 18 years before
+ * `today`. A pure comparison of zero-padded dates, so "exactly 18 years ago" is
+ * accepted and "one day short" is rejected.
+ */
+export function isApplicantAdult(
+  dob: string,
+  today: Date = new Date(),
+): boolean {
+  return dob <= latestDobForAge(MINIMUM_APPLICANT_AGE, today);
+}
+
+/**
+ * The applicant's date of birth: the ISO `YYYY-MM-DD` wire format plus the 18+
+ * rule. Kept separate from the schema object so the refinement's issue path,
+ * when embedded, is exactly `['dob']`.
+ */
+export const applicantDob = z
+  .iso.date()
+  .refine((value) => isApplicantAdult(value), {
+    message: 'You must be at least 18 years old.',
+  });
+
+/**
  * The applicant profile. Column mapping (profiles): firstName → first_name,
  * lastName → last_name, dob → dob (`date`).
  */
 export const applicantProfile = z.object({
   firstName: z.string().trim().min(1, 'First name is required.'),
   lastName: z.string().trim().min(1, 'Last name is required.'),
-  /** ISO 8601 calendar date (`YYYY-MM-DD`), the Postgres `date` wire format. */
-  dob: z.iso.date(),
+  /**
+   * ISO 8601 calendar date (`YYYY-MM-DD`), the Postgres `date` wire format,
+   * carrying the 18+ rule.
+   */
+  dob: applicantDob,
 });
 
 export type ApplicantProfile = z.infer<typeof applicantProfile>;

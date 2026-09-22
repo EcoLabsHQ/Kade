@@ -230,6 +230,9 @@ function connectWallet() {
     },
   ];
   hoisted.readAddressBalances.mockResolvedValue(CONNECTED_RECORD);
+  // A connected wallet is saved as a watch-only row through the same action a
+  // pasted address uses, so the flow has a record to store.
+  hoisted.addWalletAddress.mockResolvedValue(CONNECTED_RECORD);
 }
 
 /** A pasted address, used when a test needs step 3 satisfied but disconnected. */
@@ -328,9 +331,16 @@ function setField(label: string, value: string) {
 /** The applicant's date of birth is a calendar trigger, not a native input. */
 function pickApplicantDob() {
   fireEvent.click(screen.getByLabelText('Date of birth'));
+  // Step 1 rejects an applicant under 18, so step back to an unambiguously
+  // adult year before choosing the day.
+  const age = 30;
   const now = new Date();
-  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15`;
-  fireEvent.click(screen.getByRole('button', { name: iso }));
+  const year = now.getFullYear() - age;
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  for (let i = 0; i < age; i += 1) {
+    fireEvent.click(screen.getByRole('button', { name: 'Previous year' }));
+  }
+  fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
 }
 
 function addHouseholdMember(
@@ -1303,23 +1313,24 @@ describe('the pasted wallet address is read for real, not demoed', () => {
 describe('a wallet is counted once however it arrives', () => {
   it('counts an address that is both connected and pasted exactly once', async () => {
     const { store } = makeStore();
-    // `EVM_RECORD.address` is the same address `connectWallet` connects, so the
-    // pasted copy must not be added to the connected figure a second time.
+    // `EVM_RECORD.address` is the same address `connectWallet` connects. The
+    // connected read is now saved through the same action a pasted address
+    // uses, so it replaces the pasted duplicate rather than adding to it.
     renderRestoredFlow(store, undefined, [EVM_RECORD], true);
     // The restored snapshot already fills step 2, so it advances directly.
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
 
-    // The connected read wins ($2,510); the pasted duplicate ($2,380) is not
-    // summed on top of it.
+    // The connected read is saved ($2,510); the pasted duplicate ($2,380) is
+    // replaced, not summed on top of it.
     await waitFor(() =>
       expect(screen.getAllByText('$2,510').length).toBeGreaterThan(0),
     );
     expect(screen.queryByText('$4,890')).toBeNull();
-    // The source counts describe the same set: one connected wallet, and no
-    // separate pasted wallet address.
-    expect(screen.getByText('1 connected wallet')).toBeInTheDocument();
-    expect(screen.queryByText('1 wallet address')).toBeNull();
+    // The source counts describe the same set: one saved wallet address, and no
+    // separate live connection once it has been stored.
+    expect(screen.getByText('1 wallet address')).toBeInTheDocument();
+    expect(screen.queryByText('1 connected wallet')).toBeNull();
   });
 });
 

@@ -354,7 +354,12 @@ export function OnboardingWizard({
         >
           Back
         </LockedAction>
-        <Button variant="primary" title="Continue" onClick={handleContinue}>
+        <Button
+          variant={evaluation.canContinue ? 'primary' : 'locked'}
+          title="Continue"
+          onClick={handleContinue}
+          style={evaluation.canContinue ? undefined : { cursor: 'pointer' }}
+        >
           Continue
         </Button>
       </div>

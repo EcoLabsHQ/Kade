@@ -7,6 +7,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
 }));
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { tokens } from '@/components/ui/tokens';
 import type {
   OnboardingSnapshot,
   OnboardingStore,
@@ -71,10 +72,20 @@ describe('Step 2 wizard', () => {
     expect(screen.getByLabelText('Add citizenship')).toBeInTheDocument();
   });
 
-  it('keeps Continue clickable while the form is empty', () => {
+  it('keeps Continue clickable but grey while the form is empty', () => {
     renderWizard(makeStore().store);
 
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeEnabled();
+    expect(continueButton).toHaveStyle({ backgroundColor: tokens.locked });
+  });
+
+  it('paints Continue blue once the form is complete', () => {
+    renderWizard(makeStore().store, 'supabase', validSnapshot);
+
+    const continueButton = screen.getByRole('button', { name: /^continue$/i });
+    expect(continueButton).toBeEnabled();
+    expect(continueButton).toHaveStyle({ backgroundColor: tokens.action });
   });
 
   it('does not pre-fill example values', () => {
@@ -100,6 +111,19 @@ describe('Step 2 wizard', () => {
       'aria-invalid',
       'true',
     );
+    expect(screen.getByLabelText('Last name')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.getByLabelText('Date of birth')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(
+      screen.getByRole('radiogroup', {
+        name: 'Permit tier you are aiming for',
+      }),
+    ).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('renders the date of birth as a dd/mm/yyyy trigger, not a native date input', () => {
