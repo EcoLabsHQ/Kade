@@ -36,7 +36,7 @@ describe('ConnectedWalletPanel without a WalletConnect project id', () => {
 
     expect(() =>
       render(
-        <WalletProvider cookies={null}>
+        <WalletProvider>
           <ConnectedWalletPanel configured={false} onChange={onChange} />
         </WalletProvider>,
       ),
@@ -61,7 +61,7 @@ describe('ConnectedWalletPanel without a WalletConnect project id', () => {
     const onChange = vi.fn();
 
     render(
-      <WalletProvider cookies={null}>
+      <WalletProvider>
         <ConnectedWalletPanel configured={false} onChange={onChange} />
       </WalletProvider>,
     );
