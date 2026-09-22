@@ -5,8 +5,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
  * The proof-of-wealth wallet rows.
  *
  * Browser extension and WalletConnect are the two real connection routes: each
- * must open the AppKit modal (there is no dedicated WalletConnect view, so that
- * row opens the all-wallets list), and the connected account's balance must be
+ * must open the AppKit modal (the extension opens the connector list, while
+ * WalletConnect opens the dedicated `ConnectingWalletConnectBasic` QR view), and
+ * the connected account's balance must be
  * read through the server action and reported upward. Nothing here is mocked
  * except the AppKit/wagmi hooks and the server action, which is what makes the
  * assertions about the wiring meaningful.
@@ -73,7 +74,7 @@ describe('ConnectedWalletPanel', () => {
     expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2);
   });
 
-  it('opens the connector list for the browser extension and the wallet list for WalletConnect', () => {
+  it('opens the connector list for the browser extension and the WalletConnect QR for WalletConnect', () => {
     render(<ConnectedWalletPanel configured onChange={() => {}} />);
 
     const [extension, walletConnect] = screen.getAllByRole('button', {
@@ -83,7 +84,10 @@ describe('ConnectedWalletPanel', () => {
     expect(hoisted.open).toHaveBeenCalledWith({ view: 'Connect' });
 
     fireEvent.click(walletConnect!);
-    expect(hoisted.open).toHaveBeenCalledWith({ view: 'AllWallets' });
+    expect(hoisted.open).toHaveBeenCalledWith({
+      view: 'ConnectingWalletConnectBasic',
+    });
+    expect(hoisted.open).not.toHaveBeenCalledWith({ view: 'AllWallets' });
   });
 
   it('reads the connected account balance and reports it upward', async () => {
