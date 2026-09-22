@@ -181,6 +181,40 @@ export async function addWalletAddress(
   };
 }
 
+/**
+ * Read one address's balances for a connected wallet, without persisting
+ * anything.
+ *
+ * The proof-of-wealth step offers a real wallet connection as well as pasted
+ * addresses. The balances for that connected account come from the same
+ * provider and the same chain set as a pasted address, so the two paths cannot
+ * disagree; nothing is written, because a connection proves the account is in
+ * the browser, not that the server can verify it.
+ */
+export async function readAddressBalances(
+  address: string,
+): Promise<EvmAddressRecord> {
+  let normalized: string;
+  try {
+    normalized = normalizeEvmAddress(address);
+  } catch (cause) {
+    if (cause instanceof EvmReadError) {
+      throw new Error('That is not a recognised EVM address.');
+    }
+    throw cause;
+  }
+
+  const client = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  if (!user) {
+    throw new Error('Reading wallet balances requires a signed-in session.');
+  }
+
+  return readAddressRecord(normalized);
+}
+
 /** Remove every stored row of one of the resident's own EVM addresses. */
 export async function removeWalletAddress(address: string): Promise<void> {
   const normalized = normalizeEvmAddress(address);

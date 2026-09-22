@@ -30,6 +30,10 @@ const hoisted = vi.hoisted(() => ({
   account: { isConnected: false, address: undefined as string | undefined },
   network: { chainId: 11155111 as number | string | undefined },
   receipt: { isLoading: false, isSuccess: false },
+  // The connected-wallet panel reads balances through this server action.
+  readAddressBalances: vi.fn(),
+  disconnect: vi.fn(),
+  connector: undefined as { id?: string; name?: string } | undefined,
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -65,6 +69,7 @@ vi.mock('@/app/onboarding/wealth-actions', () => ({
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   addWalletAddress: hoisted.addWalletAddress,
   removeWalletAddress: hoisted.removeWalletAddress,
+  readAddressBalances: hoisted.readAddressBalances,
 }));
 // The wallet hooks come from AppKit and wagmi. They are mocked so the fee step
 // renders against a recorded connection state rather than a real modal.
@@ -85,6 +90,8 @@ vi.mock('wagmi', () => ({
     reset: hoisted.resetWrite,
   }),
   useWaitForTransactionReceipt: () => hoisted.receipt,
+  useAccount: () => ({ connector: hoisted.connector }),
+  useDisconnect: () => ({ disconnect: hoisted.disconnect }),
 }));
 // The fee payment write is a server action; it is mocked so the fee step is
 // exercised against a recorded server outcome.
@@ -163,6 +170,9 @@ afterEach(() => {
   hoisted.recordPreapprovalFeePayment.mockReset();
   hoisted.account.isConnected = false;
   hoisted.account.address = undefined;
+  hoisted.readAddressBalances.mockReset();
+  hoisted.disconnect.mockReset();
+  hoisted.connector = undefined;
   hoisted.network.chainId = 11155111;
   hoisted.receipt.isLoading = false;
   hoisted.receipt.isSuccess = false;
@@ -177,7 +187,82 @@ function makeStore() {
   return { store, save };
 }
 
-function renderFlow(store: OnboardingStore) {
+const CONNECTED_ADDRESS = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+const CONNECTED_RECORD = {
+  address: CONNECTED_ADDRESS,
+  chains: [
+    {
+      chainId: 1,
+      name: 'Ethereum',
+      nativeSymbol: 'ETH',
+      nativeAmount: '1.000000000000000000',
+      nativeUsd: 2500,
+      usdc: { symbol: 'USDC', amount: '10.000000', usd: 10 },
+      usd: 2510,
+    },
+  ],
+  usd: 2510,
+  readAt: '2026-09-21T00:00:00Z',
+  readError: null,
+};
+
+/**
+ * Start a render with a wallet already connected.
+ *
+ * Connecting is a real AppKit modal now, so a test cannot click its way through
+ * it; the recorded connection state is what the panel reads on mount.
+ */
+function connectWallet() {
+  hoisted.account.isConnected = true;
+  hoisted.account.address = CONNECTED_ADDRESS;
+  hoisted.connector = { id: 'metaMask', name: 'MetaMask' };
+  hoisted.readAddressBalances.mockResolvedValue(CONNECTED_RECORD);
+}
+
+/** A pasted address, used when a test needs step 3 satisfied but disconnected. */
+const PASTED_RECORD = {
+  address: '0x00000000000000000000000000000000000000A1',
+  chains: [
+    {
+      chainId: 1,
+      name: 'Ethereum',
+      nativeSymbol: 'ETH',
+      nativeAmount: '0.100000',
+      nativeUsd: 250,
+      usdc: null,
+      usd: 250,
+    },
+  ],
+  usd: 250,
+  readAt: '2026-09-21T00:00:00Z',
+  readError: null,
+};
+
+/** Satisfy step 3 by pasting an address, leaving the wallet disconnected. */
+async function passStep3WithPastedAddress() {
+  hoisted.addWalletAddress.mockResolvedValue(PASTED_RECORD);
+  fireEvent.click(screen.getByRole('button', { name: /wallet address/i }));
+  fireEvent.change(screen.getByLabelText('Wallet address'), {
+    target: { value: PASTED_RECORD.address },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Confirm wallet address' }),
+  );
+  await screen.findAllByText(/Ethereum · 0\.100000 ETH/);
+}
+
+/**
+ * Leave step 3. The connected wallet's balances are read asynchronously, so the
+ * button becomes enabled only after the read resolves.
+ */
+async function continueFromWealth() {
+  const button = screen.getByRole('button', { name: /^continue$/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
+
+function renderFlow(store: OnboardingStore, connected = false) {
+  if (connected) connectWallet();
   return render(
     <OnboardingFlow
       userId="user-1"
@@ -190,6 +275,7 @@ function renderFlow(store: OnboardingStore) {
       treasuryAddress={null}
       usdcAddress={SEPOLIA_USDC}
       explorerUrl="https://sepolia.etherscan.io"
+      walletConfigured={true}
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -213,6 +299,7 @@ function renderFlowFromStart(store: OnboardingStore) {
       treasuryAddress={null}
       usdcAddress={SEPOLIA_USDC}
       explorerUrl="https://sepolia.etherscan.io"
+      walletConfigured={true}
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -495,7 +582,7 @@ describe('step 1, the transaction passkey', () => {
 describe('pre-registration flow', () => {
   it('walks from the saved profile through proof of wealth to the fee', async () => {
     const { store, save } = makeStore();
-    renderFlow(store);
+    renderFlow(store, true);
 
     // Step 2 starts empty now that the example prefill is gone: no demo
     // defaults are present, so the flow must be filled before it can advance.
@@ -507,15 +594,16 @@ describe('pre-registration flow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
 
-    // Step 3, gated until a wallet is connected.
+    // Step 3, gated until a source is present. The wallet is already connected
+    // in this render, so its read account is the source.
     expect(
       await screen.findByRole('heading', { name: /show proof of wealth/i }),
     ).toBeInTheDocument();
+    expect(
+      await screen.findByText(CONNECTED_ADDRESS),
+    ).toBeInTheDocument();
     const continueButton = screen.getByRole('button', { name: /^continue$/i });
-    expect(continueButton).toBeDisabled();
-
-    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
-    expect(continueButton).toBeEnabled();
+    await waitFor(() => expect(continueButton).toBeEnabled());
     fireEvent.click(continueButton);
 
     // Step 4, with the file and the server-controlled fee.
@@ -533,6 +621,7 @@ describe('pre-registration flow', () => {
   });
 
   it('opens the platform when the server restored a paid fee', async () => {
+    connectWallet();
     render(
       <OnboardingFlow
         userId="user-1"
@@ -545,6 +634,7 @@ describe('pre-registration flow', () => {
         treasuryAddress={TREASURY}
         usdcAddress={SEPOLIA_USDC}
         explorerUrl="https://sepolia.etherscan.io"
+      walletConfigured={true}
         network="Ethereum Sepolia"
         accountState={{ kind: 'pending' }}
         currentYear={2026}
@@ -572,6 +662,7 @@ describe('pre-registration flow', () => {
         treasuryAddress={TREASURY}
         usdcAddress={SEPOLIA_USDC}
         explorerUrl="https://sepolia.etherscan.io"
+      walletConfigured={true}
         network="Ethereum Sepolia"
         accountState={{ kind: 'pending' }}
         currentYear={2026}
@@ -579,7 +670,7 @@ describe('pre-registration flow', () => {
         store={makeStore().store}
       />,
     );
-    await reachFeeStep();
+    await reachFeeStep({ connected: false });
     expect(
       await screen.findByRole('button', { name: /connect wallet/i }),
     ).toBeInTheDocument();
@@ -587,17 +678,19 @@ describe('pre-registration flow', () => {
 
   it('labels the mocked steps so they are not mistaken for real operations', async () => {
     const { store } = makeStore();
-    renderFlow(store);
+    renderFlow(store, true);
     fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
-    // The step says outright that the balances are demo data.
-    expect(screen.getByText(/balances shown are demo data/i)).toBeInTheDocument();
+    // Every figure is a public read now, and the step says so.
+    expect(
+      screen.getAllByText(/read from a public source on Ethereum and Base/i)
+        .length,
+    ).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await continueFromWealth();
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
@@ -623,13 +716,12 @@ describe('pre-registration flow', () => {
       load: async () => null,
       save: async () => ({ applicationId: 'app-user-1', preapprovalUsdc: 999 }),
     };
-    renderFlow(store);
+    renderFlow(store, true);
     fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
-    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await continueFromWealth();
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
@@ -657,13 +749,12 @@ describe('pre-registration flow', () => {
   it('shows no amount and blocks payment when the fee cannot be resolved', async () => {
     hoisted.previewPreapprovalFee.mockResolvedValue(null);
     const { store } = makeStore();
-    renderFlow(store);
+    renderFlow(store, true);
     fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
-    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await continueFromWealth();
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
@@ -733,7 +824,9 @@ function renderRestoredFlow(
   store: OnboardingStore,
   initialBitcoinAddresses?: readonly BitcoinAddressRecord[],
   initialEvmAddresses?: readonly EvmAddressRecord[],
+  connected = false,
 ) {
+  if (connected) connectWallet();
   return render(
     <OnboardingFlow
       userId="user-1"
@@ -746,6 +839,7 @@ function renderRestoredFlow(
       treasuryAddress={null}
       usdcAddress={SEPOLIA_USDC}
       explorerUrl="https://sepolia.etherscan.io"
+      walletConfigured={true}
       network="Ethereum Sepolia"
       accountState={{ kind: 'pending' }}
       currentYear={2026}
@@ -757,10 +851,18 @@ function renderRestoredFlow(
   );
 }
 
-async function reachFeeStep() {
+async function reachFeeStep({ connected = true }: { connected?: boolean } = {}) {
   fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
   await screen.findByRole('heading', { name: /show proof of wealth/i });
-  fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
+  // Step 3 needs a source: a connected wallet, or a pasted address when the test
+  // needs the wallet to stay disconnected.
+  if (connected) {
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled(),
+    );
+  } else {
+    await passStep3WithPastedAddress();
+  }
   fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
   await screen.findByRole('heading', {
     name: /pay the pre-approval fee and go live/i,
@@ -770,7 +872,7 @@ async function reachFeeStep() {
 describe('what is the resident\u2019s and what is demo', () => {
   it('drives the fee from the restored household, not the applicant alone', async () => {
     const { store } = makeStore();
-    renderRestoredFlow(store);
+    renderRestoredFlow(store, undefined, undefined, true);
 
     // The restored household of three is what the server is asked about.
     await waitFor(() =>
@@ -799,32 +901,37 @@ describe('what is the resident\u2019s and what is demo', () => {
     expect(screen.queryByText(/target · 3-year/i)).toBeNull();
   });
 
-  it('labels the mocked values and leaves the real ones unlabelled', async () => {
+  it('labels the wallet as a public read and never as demo', async () => {
     const { store } = makeStore();
-    renderFlow(store);
+    renderFlow(store, true);
     fillStep2Wizard();
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
-    fireEvent.click(screen.getAllByRole('button', { name: /^connect$/i })[0]!);
 
-    // The mocked balance figure carries a demo label next to it, and the step
-    // still says so outright. The real tier target has no such label.
-    expect(screen.getByText('Demo balances')).toBeInTheDocument();
-    expect(screen.getByText(/balances shown are demo data/i)).toBeInTheDocument();
+    // The connected wallet's balances are a public read, and the step says so.
+    // Nothing on this screen is labelled demo any more, and the real tier target
+    // carries no label at all.
+    expect(
+      (
+        await screen.findAllByText(
+          /read from a public source on Ethereum and Base/i,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('Demo')).toBeNull();
+    expect(screen.queryByText('Demo balances')).toBeNull();
     expect(screen.getByText(/target · 3-year/i)).toBeInTheDocument();
     expectNoInternalVocabulary();
 
-    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await continueFromWealth();
     await screen.findByRole('heading', {
       name: /pay the pre-approval fee and go live/i,
     });
 
     // The payment rail is labelled testnet; the fee line states it is the
-    // configured amount for this household, and the proof-of-wealth row is
-    // marked Demo.
+    // configured amount for this household, and nothing claims demo state.
     expect(screen.getByText('Testnet payment')).toBeInTheDocument();
-    expect(screen.getByText('Demo')).toBeInTheDocument();
     expect(
       screen.getByText(/verified from the transaction receipt/i),
     ).toBeInTheDocument();
@@ -924,10 +1031,9 @@ describe('the Bitcoin address is read for real, not demoed', () => {
     expect(
       screen.getAllByText(/not proof of ownership/i).length,
     ).toBeGreaterThan(0);
-    // The Bitcoin read is real, so the all-demo chip is gone.
+    // Nothing is demo any more: the read is real and the demo rows are gone.
     expect(screen.queryByText('Demo balances')).toBeNull();
-    // The demo rows still say they are demo.
-    expect(screen.getAllByText('Demo').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Demo')).toBeNull();
   });
 
   it('keeps the row and shows the error when the read fails', async () => {
@@ -1123,10 +1229,9 @@ describe('the pasted wallet address is read for real, not demoed', () => {
     expect(
       screen.getAllByText(/not proof of ownership/i).length,
     ).toBeGreaterThan(0);
-    // A real read is present, so the all-demo chip is gone.
+    // Nothing is demo any more: the read is real and the demo rows are gone.
     expect(screen.queryByText('Demo balances')).toBeNull();
-    // The demo rows still say they are demo.
-    expect(screen.getAllByText('Demo').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('Demo')).toBeNull();
   });
 
   it('removes an address by address through the action', async () => {

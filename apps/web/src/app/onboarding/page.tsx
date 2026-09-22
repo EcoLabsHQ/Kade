@@ -163,6 +163,7 @@ export default async function OnboardingPage() {
         treasuryAddress={treasuryAddress}
         usdcAddress={usdcAddress}
         explorerUrl={explorerUrl}
+        walletConfigured={walletConfigured}
         network={activeNetworkLabel()}
         accountState={{ kind: 'pending' }}
       />
