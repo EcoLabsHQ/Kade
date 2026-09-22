@@ -262,6 +262,14 @@ describe('readMorphoPoolConfig', () => {
     expect(readMorphoPoolConfig({ ...ENV, [MORPHO_ENV_KEYS.oracle]: '0xnope' })).toBeNull();
   });
 
+  it('rejects a malformed Morpho contract address without throwing (F1)', () => {
+    const malformed = { ...ENV, [MORPHO_ENV_KEYS.morpho]: '0x1234' };
+    expect(() => readMorphoPoolConfig(malformed)).not.toThrow();
+    expect(readMorphoPoolConfig(malformed)).toBeNull();
+    expect(isMorphoConfigured(malformed)).toBe(false);
+    expect(() => isMorphoConfigured(malformed)).not.toThrow();
+  });
+
   it('rejects a non-decimal lltv', () => {
     expect(readMorphoPoolConfig({ ...ENV, [MORPHO_ENV_KEYS.lltv]: '86%' })).toBeNull();
   });
