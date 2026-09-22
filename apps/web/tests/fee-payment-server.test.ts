@@ -6,8 +6,9 @@ import type { Address, Hex } from 'viem';
  *
  * The Supabase client and the Sepolia reader are both faked, so the module's
  * own decisions are what is under test: the amount comes from the application
- * row, a recorded hash is replaced rather than trusted, and a receipt that does
- * not prove the payment is never reported as paid.
+ * row, a recorded hash is replaced rather than trusted, the transfer must name
+ * the connected wallet as its sender, and a receipt that does not prove the
+ * payment is never reported as paid.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -42,6 +43,7 @@ import { ERC20_TRANSFER_TOPIC } from '@/lib/payments/preapproval-fee';
 const TOKEN = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
 const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A' as Address;
 const SENDER = '0x1111111111111111111111111111111111111111' as Address;
+const OTHER_SENDER = '0x2222222222222222222222222222222222222222' as Address;
 const TX = `0x${'cd'.repeat(32)}` as Hex;
 const OTHER_TX = `0x${'ef'.repeat(32)}` as Hex;
 
@@ -49,14 +51,14 @@ function topicFor(address: string): Hex {
   return `0x${address.slice(2).toLowerCase().padStart(64, '0')}` as Hex;
 }
 
-function paidReceipt(value = 1_750_000n) {
+function paidReceipt(value = 1_750_000n, from: Address = SENDER) {
   return {
     status: 'success' as const,
     blockNumber: 10n,
     logs: [
       {
         address: TOKEN,
-        topics: [ERC20_TRANSFER_TOPIC, topicFor(SENDER), topicFor(TREASURY)],
+        topics: [ERC20_TRANSFER_TOPIC, topicFor(from), topicFor(TREASURY)],
         data: `0x${value.toString(16).padStart(64, '0')}` as Hex,
       },
     ],
@@ -91,7 +93,7 @@ describe('recordFeePayment', () => {
   it('records a verified payment and returns paid', async () => {
     applicationRow(null);
 
-    const result = await recordFeePayment('user-1', TX);
+    const result = await recordFeePayment('user-1', TX, SENDER);
 
     expect(result).toEqual({ status: 'paid', txHash: TX });
     expect(hoisted.rpc).toHaveBeenCalledWith('record_preapproval_fee_tx', {
@@ -103,7 +105,7 @@ describe('recordFeePayment', () => {
     // A fabricated hash was recorded first; the real payment must still land.
     applicationRow(OTHER_TX);
 
-    const result = await recordFeePayment('user-1', TX);
+    const result = await recordFeePayment('user-1', TX, SENDER);
 
     expect(result).toEqual({ status: 'paid', txHash: TX });
     expect(hoisted.rpc).toHaveBeenCalledWith('record_preapproval_fee_tx', {
@@ -115,7 +117,7 @@ describe('recordFeePayment', () => {
     applicationRow(null);
     hoisted.receipt.mockResolvedValue({ status: 'success', blockNumber: 10n, logs: [] });
 
-    const result = await recordFeePayment('user-1', TX);
+    const result = await recordFeePayment('user-1', TX, SENDER);
 
     expect(result.status).toBe('no-transfer');
     expect(hoisted.rpc).not.toHaveBeenCalled();
@@ -125,7 +127,7 @@ describe('recordFeePayment', () => {
     applicationRow(null);
     hoisted.receipt.mockResolvedValue(paidReceipt(1_000_000n));
 
-    const result = await recordFeePayment('user-1', TX);
+    const result = await recordFeePayment('user-1', TX, SENDER);
 
     expect(result.status).toBe('underpaid');
     expect(hoisted.rpc).not.toHaveBeenCalled();
@@ -135,7 +137,7 @@ describe('recordFeePayment', () => {
     applicationRow(null);
     hoisted.receipt.mockResolvedValue({ status: 'reverted', blockNumber: 10n, logs: [] });
 
-    const result = await recordFeePayment('user-1', TX);
+    const result = await recordFeePayment('user-1', TX, SENDER);
 
     expect(result.status).toBe('failed');
     expect(hoisted.rpc).not.toHaveBeenCalled();
@@ -144,10 +146,41 @@ describe('recordFeePayment', () => {
   it('rejects a malformed hash before touching the chain', async () => {
     applicationRow(null);
 
-    const result = await recordFeePayment('user-1', 'not-a-hash');
+    const result = await recordFeePayment('user-1', 'not-a-hash', SENDER);
 
     expect(result.status).toBe('invalid-hash');
     expect(hoisted.receipt).not.toHaveBeenCalled();
+  });
+
+  it('rejects a payment whose transfer came from another wallet', async () => {
+    applicationRow(null);
+    hoisted.receipt.mockResolvedValue(paidReceipt(1_750_000n, OTHER_SENDER));
+
+    const result = await recordFeePayment('user-1', TX, SENDER);
+
+    expect(result).toEqual({ status: 'wrong-sender' });
+    expect(hoisted.rpc).not.toHaveBeenCalled();
+  });
+
+  it('accepts a payment whose transfer came from the connected wallet', async () => {
+    applicationRow(null);
+    hoisted.receipt.mockResolvedValue(paidReceipt(1_750_000n, SENDER));
+
+    const result = await recordFeePayment('user-1', TX, SENDER);
+
+    expect(result).toEqual({ status: 'paid', txHash: TX });
+    expect(hoisted.rpc).toHaveBeenCalledWith('record_preapproval_fee_tx', {
+      p_tx_hash: TX,
+    });
+  });
+
+  it('matches the connected wallet without regard to address case', async () => {
+    applicationRow(null);
+    hoisted.receipt.mockResolvedValue(paidReceipt(1_750_000n, SENDER));
+
+    const result = await recordFeePayment('user-1', TX, SENDER.toLowerCase());
+
+    expect(result).toEqual({ status: 'paid', txHash: TX });
   });
 });
 

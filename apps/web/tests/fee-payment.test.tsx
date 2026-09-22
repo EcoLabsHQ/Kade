@@ -54,6 +54,7 @@ import { FeePayment } from '@/components/onboarding/FeePayment';
 const TX = `0x${'ab'.repeat(32)}` as Hex;
 const USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as const;
 const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A' as const;
+const CONNECTED = '0x1111111111111111111111111111111111111111';
 
 function renderPayment() {
   const onPaid = vi.fn();
@@ -71,6 +72,7 @@ function renderPayment() {
 
 beforeEach(() => {
   hoisted.account.isConnected = true;
+  hoisted.account.address = CONNECTED;
   hoisted.network.chainId = 11155111;
   hoisted.write.data = undefined;
   hoisted.write.isPending = false;
@@ -129,7 +131,7 @@ describe('FeePayment', () => {
     const { onPaid } = renderPayment();
 
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(TX));
-    expect(hoisted.record).toHaveBeenCalledWith(TX);
+    expect(hoisted.record).toHaveBeenCalledWith(TX, CONNECTED);
   });
 
   it('does not open the platform on an underpayment', async () => {

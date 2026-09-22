@@ -97,6 +97,8 @@ export type RecordFeeResult =
       readonly receivedUsdc: string;
     }
   | { readonly status: 'no-transfer' }
+  /** The receipt's `from` is not the wallet that connected to claim it. */
+  | { readonly status: 'wrong-sender' }
   | { readonly status: 'unauthenticated' }
   | { readonly status: 'no-application' }
   | { readonly status: 'not-configured' }

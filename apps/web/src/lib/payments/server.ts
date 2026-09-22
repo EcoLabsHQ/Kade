@@ -1,4 +1,4 @@
-import { formatUnits, parseUnits, type Hex } from 'viem';
+import { formatUnits, getAddress, parseUnits, type Hex } from 'viem';
 import { CHAIN_IDS, chainByChainId, type Address } from '@kade/shared';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { readSepoliaRpcUrl, readTreasuryAddress } from '@/lib/env';
@@ -159,21 +159,48 @@ async function writeFeeTx(txHash: string): Promise<boolean> {
 }
 
 /**
+ * Normalize a connected wallet address, or null when it is not one.
+ *
+ * `getAddress` checksums and validates; comparing checksummed forms (rather
+ * than lowercasing) is what the review asked for, and it rejects anything that
+ * is not a real address instead of quietly failing to match.
+ */
+function normalizePayer(rawPayer: string): Address | null {
+  try {
+    return getAddress(rawPayer.trim());
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Verify a Sepolia receipt for the fee and record the hash when it proves out.
  *
  * The amount is the server-resolved `applications.preapproval_usdc`, never a
- * client value. An already-recorded hash is immutable: the same hash is
- * re-verified and reported, a different one is refused.
+ * client value. The transfer must also name the connected wallet as its
+ * sender: `verifyUsdcPayment` returns the receipt's `from`, and a payment sent
+ * by a different wallet is refused, so a resident cannot claim someone else's
+ * treasury transfer as their own.
+ *
+ * The recorded hash is a replaceable claim, not an immutable record: a
+ * submitted hash is verified on its own and, when it proves out, replaces
+ * whatever claim was stored. "Paid" is always re-derived from the receipt, so
+ * an old or fabricated claim cannot lock a resident out of recording the real
+ * payment.
  */
 export async function recordFeePayment(
   profileId: string,
   rawTxHash: string,
+  rawPayer: string,
 ): Promise<RecordFeeResult> {
   const config = readFeePaymentConfig();
   if (!config) return { status: 'not-configured' };
 
   const txHash = rawTxHash.trim().toLowerCase();
   if (!TX_HASH_PATTERN.test(txHash)) return { status: 'invalid-hash' };
+
+  const payer = normalizePayer(rawPayer);
+  if (payer === null) return { status: 'wrong-sender' };
 
   const row = await loadApplicationFeeRow(profileId);
   if (!row) return { status: 'no-application' };
@@ -189,6 +216,9 @@ export async function recordFeePayment(
 
   switch (verification.status) {
     case 'paid': {
+      if (getAddress(verification.from) !== payer) {
+        return { status: 'wrong-sender' };
+      }
       if (!(await writeFeeTx(txHash))) return { status: 'error' };
       return { status: 'paid', txHash: txHash as Hex };
     }
