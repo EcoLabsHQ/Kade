@@ -13,7 +13,7 @@ unrun.
 | Artifact | Status |
 |---|---|
 | `supabase/seed.sql` generation | **Verified** — `node scripts/db/generate-seed.mjs` runs and the drift guard passes |
-| Migrations apply from a clean database | **Verified** — all 20 applied in order with `ON_ERROR_STOP=1` |
+| Migrations apply from a clean database | **Verified** — all 20 applied and verified in order with `ON_ERROR_STOP=1`; migrations 21 and 22 are committed but not yet applied |
 | Seed applies | **Verified** |
 | Fee function + recompute triggers (pgTAP) | **Verified** — `supabase/tests/0001_fee_recompute.test.sql` runs 19 assertions green on a `postgres:16` container; a deliberately failing assertion makes `psql` exit 3 |
 | `supabase/config.toml` | **Not verified** — not executed against the Supabase CLI |
@@ -45,6 +45,7 @@ supabase/
     20260916000019_safe_address_comment.sql     comment-only correction
     20260921000001_bitcoin_wallet_addresses.sql  wallets owner policy + Bitcoin address RPCs
     20260921000002_evm_wallet_addresses.sql      pasted EVM addresses: cap + delete-by-address
+    20260921000003_record_preapproval_fee_tx.sql SECURITY DEFINER fee_tx writer
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
@@ -138,7 +139,7 @@ equals `auth.uid()`. A second resident sees zero rows and can change zero rows.
 
 ### The SECURITY DEFINER writers
 
-Three functions write columns the `authenticated` role has no privilege on, each
+Four functions write columns the `authenticated` role has no privilege on, each
 scoped to the caller's own row by an explicit `profile_id = auth.uid()` predicate
 (RLS is bypassed by the definition, so that predicate is the only thing deciding
 which row may be touched):
@@ -148,6 +149,7 @@ which row may be touched):
 | `save_passkey_signer` | `passkey_credentials.signer_address` | 17 |
 | `record_safe_prediction` | the `safe_deployments` manifest columns | 18 |
 | `record_safe_deployment_outcome` | `safe_deployments` status, tx hash, timestamps | 18 |
+| `record_preapproval_fee_tx` | `applications.fee_tx` | 22 |
 
 They exist because the alternative was a service-role key in the deployed
 environment, which is the most powerful credential in the project. The trade-off

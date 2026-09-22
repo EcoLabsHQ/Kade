@@ -36,17 +36,21 @@ and how each was resolved.
 | `20260916000018_safe_deployment_writes.sql` | no tables; `record_safe_prediction` and `record_safe_deployment_outcome`, SECURITY DEFINER writers for the Safe record |
 | `20260916000019_safe_address_comment.sql` | no tables; comment-only correction of the Safe address description |
 | `20260921000001_bitcoin_wallet_addresses.sql` | no tables; owner RLS policy and column grants for `wallets`, the `record_wallet_address` / `delete_wallet_address` RPCs, and the 5-address cap trigger (contract v1.7) |
+| `20260921000002_evm_wallet_addresses.sql` | no tables; extends the `wallets` 5-address cap trigger to pasted EVM rows and adds the `delete_wallet_addresses` RPC (contract v1.8) |
+| `20260921000003_record_preapproval_fee_tx.sql` | no tables; `record_preapproval_fee_tx`, a SECURITY DEFINER writer for `applications.fee_tx`, plus the unique index on `fee_tx` (contract v1.9) |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
 `recompute_application_preapproval_fee`, `recompute_preapproval_fee`,
 `init_preapproval_fee`, `enforce_wallet_address_cap`), the `save_onboarding`,
-`record_wallet_address`, `delete_wallet_address` and `reset_demo_data` RPCs, and
-foreign-key lookup indexes. The original table migrations create structure only;
-`…_rls.sql` is the single place RLS is declared for them. The later
-`passkey_credentials` migration (13), `safe_deployments` migration (16) and
-`bitcoin_wallet_addresses` migration (20) carry their own RLS and policies with
-their tables, so migrations 9, 13, 16 and 20 are the complete policy set.
+`record_wallet_address`, `delete_wallet_address`, `delete_wallet_addresses` and
+`reset_demo_data` RPCs, plus `record_preapproval_fee_tx`, and foreign-key lookup
+indexes. The original table migrations create structure only; `…_rls.sql` is the
+single place RLS is declared for them. The later `passkey_credentials` migration
+(13), `safe_deployments` migration (16) and `bitcoin_wallet_addresses` migration
+(20) carry their own RLS and policies with their tables, so migrations 9, 13, 16
+and 20 are the complete policy set; migrations 21 and 22 add functions but no new
+policy.
 
 ## Columns
 
@@ -178,7 +182,7 @@ resident sees zero rows and can modify zero rows.
   direct write at the database boundary, independent of any UI or server bug.
   Where a resident must supply such a value for their own record, it goes through
   a `SECURITY DEFINER` function with an explicit `profile_id = auth.uid()`
-  predicate (migrations 17 and 18) — the grant is what makes the function the
+  predicate (migrations 17, 18 and 22) — the grant is what makes the function the
   only path, and the predicate is what keeps it to the caller's own row.
 - **Status is trigger-only.** `applications.status` is not writable by residents
   and is changed by the `SECURITY DEFINER` trigger on `review_events` inserts.
