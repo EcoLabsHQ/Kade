@@ -136,6 +136,8 @@ export type ReadVerifiedBalances = (
 export interface HoldingWallet {
   readonly address: string;
   readonly verifiedAt: string;
+  /** Chains the wallet has a stored row for (from the signature proof). */
+  readonly chainIds: readonly number[];
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
   readonly readError: string | null;
@@ -188,6 +190,7 @@ export async function aggregateHoldings(input: {
       wallets.push({
         address: wallet.address,
         verifiedAt: wallet.verifiedAt,
+        chainIds: wallet.chainIds,
         chains: read.chains,
         usd,
         readError: null,
@@ -197,6 +200,7 @@ export async function aggregateHoldings(input: {
       wallets.push({
         address: wallet.address,
         verifiedAt: wallet.verifiedAt,
+        chainIds: wallet.chainIds,
         chains: [],
         usd: null,
         readError:
