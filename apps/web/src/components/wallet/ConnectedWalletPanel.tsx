@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react';
 import { useAccount, useDisconnect } from 'wagmi';
 import { readAddressBalances } from '@/app/onboarding/wallet-actions';
@@ -25,6 +25,14 @@ import type { EvmChainBalance } from '@/lib/wealth/types';
  * resident Safe, and it is not proof the server can verify: the address comes
  * from the browser, so the screen says the balances were read from a public
  * source rather than claiming verified ownership.
+ *
+ * Every AppKit and wagmi hook lives in `ConfiguredWalletPanel`, which is mounted
+ * only when a WalletConnect project id is configured and `WalletProvider` has
+ * therefore mounted a `WagmiProvider`. Calling those hooks without a provider
+ * throws, and the route has no error boundary, so the unconfigured environment
+ * renders `UnconfiguredWalletPanel` instead: pure static markup with no hooks,
+ * an honest "not configured" notice, and no way to reach a modal that does not
+ * exist.
  */
 
 /** What the panel reports upward, so the step can count it. */
@@ -71,6 +79,89 @@ export function ConnectedWalletPanel({
   configured,
   onChange,
 }: ConnectedWalletPanelProps) {
+  // Gate the hooks on configuration, exactly as FeeStep gates FeePayment on
+  // `paymentConfigured`: a component that calls the wallet hooks is never
+  // mounted unless WagmiProvider/createAppKit are actually present.
+  if (!configured) return <UnconfiguredWalletPanel />;
+  return <ConfiguredWalletPanel onChange={onChange} />;
+}
+
+/**
+ * A single wallet row. Presentational only: it holds no wallet state and calls
+ * no hooks, so it can be rendered on both the configured and unconfigured path.
+ */
+function WalletRow({
+  row,
+  subtitle,
+  action,
+}: Readonly<{
+  row: (typeof ROWS)[number];
+  subtitle: string;
+  action: ReactNode;
+}>) {
+  return (
+    <Card padding="14px 16px">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <span
+          aria-hidden
+          style={{ ...badgeStyle, background: row.background }}
+        >
+          <row.Glyph size={22} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 600 }}>{row.title}</div>
+          <div style={{ fontSize: '13px', color: tokens.muted }}>{subtitle}</div>
+        </div>
+        {action}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * The unconfigured path: static markup only.
+ *
+ * It renders no AppKit or wagmi hook, so it cannot throw when there is no
+ * `WagmiProvider`, and the Connect buttons are disabled rather than opening a
+ * modal that was never created.
+ */
+function UnconfiguredWalletPanel() {
+  return (
+    <div style={{ display: 'grid', gap: '10px' }}>
+      {ROWS.map((row) => (
+        <WalletRow
+          key={row.key}
+          row={row}
+          subtitle={row.subtitle}
+          action={
+            <button
+              type="button"
+              disabled
+              title="Wallet connection is not configured in this environment."
+              style={{
+                ...connectButton,
+                opacity: 0.5,
+                cursor: 'not-allowed',
+              }}
+            >
+              Connect
+            </button>
+          }
+        />
+      ))}
+
+      <div style={mutedNote}>
+        Wallet connection is not configured in this environment. Paste an
+        address instead — its balance is still read from a public source.
+      </div>
+    </div>
+  );
+}
+
+/** The configured path: the only place the AppKit and wagmi hooks are called. */
+function ConfiguredWalletPanel({
+  onChange,
+}: Readonly<{ onChange: (state: ConnectedWalletState | null) => void }>) {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const { connector } = useAccount();
@@ -91,7 +182,7 @@ export function ConnectedWalletPanel({
   );
 
   useEffect(() => {
-    if (!configured || !isConnected || !address) {
+    if (!isConnected || !address) {
       setChains([]);
       setReadError(null);
       setReading(false);
@@ -138,7 +229,7 @@ export function ConnectedWalletPanel({
     return () => {
       active = false;
     };
-  }, [configured, isConnected, address, method]);
+  }, [isConnected, address, method]);
 
   function connect(key: (typeof ROWS)[number]['key']) {
     if (key === 'extension') {
@@ -160,23 +251,12 @@ export function ConnectedWalletPanel({
         const connectedHere = isConnected && isThisMethod;
 
         return (
-          <Card key={row.key} padding="14px 16px">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span
-                aria-hidden
-                style={{ ...badgeStyle, background: row.background }}
-              >
-                <row.Glyph size={22} />
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '15px', fontWeight: 600 }}>
-                  {row.title}
-                </div>
-                <div style={{ fontSize: '13px', color: tokens.muted }}>
-                  {connectedHere ? address : row.subtitle}
-                </div>
-              </div>
-              {connectedHere ? (
+          <WalletRow
+            key={row.key}
+            row={row}
+            subtitle={connectedHere && address ? address : row.subtitle}
+            action={
+              connectedHere ? (
                 <button
                   type="button"
                   onClick={() => disconnect()}
@@ -188,34 +268,18 @@ export function ConnectedWalletPanel({
                 <button
                   type="button"
                   onClick={() => connect(row.key)}
-                  disabled={!configured}
-                  title={
-                    configured
-                      ? `Connect with ${row.title}`
-                      : 'Wallet connection is not configured in this environment.'
-                  }
-                  style={{
-                    ...connectButton,
-                    opacity: configured ? 1 : 0.5,
-                    cursor: configured ? 'pointer' : 'not-allowed',
-                  }}
+                  title={`Connect with ${row.title}`}
+                  style={connectButton}
                 >
                   Connect
                 </button>
-              )}
-            </div>
-          </Card>
+              )
+            }
+          />
         );
       })}
 
-      {!configured ? (
-        <div style={mutedNote}>
-          Wallet connection is not configured in this environment. Paste an
-          address instead — its balance is still read from a public source.
-        </div>
-      ) : null}
-
-      {configured && isConnected && address ? (
+      {isConnected && address ? (
         <Card padding="14px 16px">
           <div
             style={{
