@@ -237,9 +237,9 @@ function ConfiguredWalletPanel({
       void open({ view: 'Connect' });
       return;
     }
-    // AppKit has no dedicated WalletConnect view; the all-wallets list is where
-    // WalletConnect (and its QR) lives, so this row opens straight into it.
-    void open({ view: 'AllWallets' });
+    // `ConnectingWalletConnectBasic` is the dedicated WalletConnect QR view, so
+    // this row opens the QR directly instead of the generic all-wallets list.
+    void open({ view: 'ConnectingWalletConnectBasic' });
   }
 
   return (
