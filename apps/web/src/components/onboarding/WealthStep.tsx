@@ -11,6 +11,10 @@ import {
   type BitcoinAddressRecord,
   type EvmAddressRecord,
 } from '@/lib/wealth/types';
+import {
+  summarizeWealth,
+  type ConnectedWalletSummary,
+} from '@/lib/wealth/summary';
 import { BitcoinGlyph } from '@/components/icons/BitcoinGlyph';
 import { EvmAddressGlyph } from '@/components/icons/EvmAddressGlyph';
 import {
@@ -40,12 +44,11 @@ const BITCOIN_ORANGE = '#F7931A';
 export interface WealthStepProps {
   /** False when no WalletConnect project id is configured for this environment. */
   readonly walletConfigured: boolean;
-  /** The connected wallet, reported by the panel; null while disconnected. */
-  readonly connectedWallet: {
-    readonly address: string;
-    readonly usd: number | null;
-  } | null;
-  readonly onWalletChange: (state: ConnectedWalletState | null) => void;
+  /** The distinct connected wallets, reported by the panel. */
+  readonly connectedWallets: readonly ConnectedWalletSummary[];
+  readonly onWalletChange: (
+    states: readonly ConnectedWalletState[] | null,
+  ) => void;
   readonly onContinue: () => void;
   readonly onBack: () => void;
   readonly tierName: string;
@@ -64,7 +67,7 @@ function btc(value: string | null): string {
 
 export function WealthStep({
   walletConfigured,
-  connectedWallet,
+  connectedWallets,
   onWalletChange,
   onContinue,
   onBack,
@@ -87,24 +90,20 @@ export function WealthStep({
   const [evmError, setEvmError] = useState<string | null>(null);
   const [evmOpen, setEvmOpen] = useState(false);
 
-  const bitcoinTotal = bitcoinAddresses.reduce(
-    (sum, record) => sum + (record.usd ?? 0),
-    0,
-  );
-  const evmTotal = evmAddresses.reduce(
-    (sum, record) => sum + (record.usd ?? 0),
-    0,
-  );
-  const walletTotal = connectedWallet?.usd ?? 0;
-  const total = bitcoinTotal + evmTotal + walletTotal;
+  const summary = summarizeWealth({
+    connectedWallets,
+    evmAddresses,
+    bitcoinAddresses,
+  });
+  const total = summary.total;
   const shortfall = Math.max(0, tierMinimum - total);
   const progress = Math.min(100, (total / TIER_SCALE_MAX) * 100);
   const targetMark = Math.min(100, (tierMinimum / TIER_SCALE_MAX) * 100);
 
   const hasRealRead =
-    bitcoinAddresses.length > 0 ||
-    evmAddresses.length > 0 ||
-    connectedWallet !== null;
+    summary.bitcoinCount > 0 ||
+    summary.walletAddressCount > 0 ||
+    summary.connectedCount > 0;
 
   const atCap = bitcoinAddresses.length >= MAX_BITCOIN_ADDRESSES;
   const confirmDisabled = addressInput.trim() === '' || atCap || adding;
@@ -113,9 +112,9 @@ export function WealthStep({
   const evmConfirmDisabled = evmInput.trim() === '' || evmAtCap || evmAdding;
 
   const canContinue =
-    bitcoinAddresses.length > 0 ||
-    evmAddresses.length > 0 ||
-    connectedWallet !== null;
+    summary.bitcoinCount > 0 ||
+    summary.walletAddressCount > 0 ||
+    summary.connectedCount > 0;
 
   async function handleConfirm() {
     const address = addressInput.trim();
@@ -584,15 +583,19 @@ export function WealthStep({
             {!hasRealRead
               ? 'Connect a wallet or add an address to begin'
               : [
-                  connectedWallet ? '1 connected wallet' : null,
-                  bitcoinAddresses.length > 0
-                    ? `${bitcoinAddresses.length} bitcoin address${
-                        bitcoinAddresses.length === 1 ? '' : 'es'
+                  summary.connectedCount > 0
+                    ? `${summary.connectedCount} connected wallet${
+                        summary.connectedCount === 1 ? '' : 's'
                       }`
                     : null,
-                  evmAddresses.length > 0
-                    ? `${evmAddresses.length} wallet address${
-                        evmAddresses.length === 1 ? '' : 'es'
+                  summary.bitcoinCount > 0
+                    ? `${summary.bitcoinCount} bitcoin address${
+                        summary.bitcoinCount === 1 ? '' : 'es'
+                      }`
+                    : null,
+                  summary.walletAddressCount > 0
+                    ? `${summary.walletAddressCount} wallet address${
+                        summary.walletAddressCount === 1 ? '' : 'es'
                       }`
                     : null,
                 ]

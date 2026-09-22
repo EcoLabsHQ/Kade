@@ -34,6 +34,10 @@ const hoisted = vi.hoisted(() => ({
   readAddressBalances: vi.fn(),
   disconnect: vi.fn(),
   connector: undefined as { id?: string; name?: string } | undefined,
+  connections: [] as Array<{
+    connector: { uid: string; id?: string; name?: string };
+    accounts: string[];
+  }>,
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -91,6 +95,7 @@ vi.mock('wagmi', () => ({
   }),
   useWaitForTransactionReceipt: () => hoisted.receipt,
   useAccount: () => ({ connector: hoisted.connector }),
+  useConnections: () => hoisted.connections,
   useDisconnect: () => ({ disconnect: hoisted.disconnect }),
 }));
 // The fee payment write is a server action; it is mocked so the fee step is
@@ -173,6 +178,7 @@ afterEach(() => {
   hoisted.readAddressBalances.mockReset();
   hoisted.disconnect.mockReset();
   hoisted.connector = undefined;
+  hoisted.connections = [];
   hoisted.network.chainId = 11155111;
   hoisted.receipt.isLoading = false;
   hoisted.receipt.isSuccess = false;
@@ -216,6 +222,12 @@ function connectWallet() {
   hoisted.account.isConnected = true;
   hoisted.account.address = CONNECTED_ADDRESS;
   hoisted.connector = { id: 'metaMask', name: 'MetaMask' };
+  hoisted.connections = [
+    {
+      connector: { uid: 'uid-metaMask', id: 'metaMask', name: 'MetaMask' },
+      accounts: [CONNECTED_ADDRESS],
+    },
+  ];
   hoisted.readAddressBalances.mockResolvedValue(CONNECTED_RECORD);
 }
 
@@ -1284,3 +1296,27 @@ describe('the pasted wallet address is read for real, not demoed', () => {
     ).toBeEnabled();
   });
 });
+
+describe('a wallet is counted once however it arrives', () => {
+  it('counts an address that is both connected and pasted exactly once', async () => {
+    const { store } = makeStore();
+    // `EVM_RECORD.address` is the same address `connectWallet` connects, so the
+    // pasted copy must not be added to the connected figure a second time.
+    renderRestoredFlow(store, undefined, [EVM_RECORD], true);
+    // The restored snapshot already fills step 2, so it advances directly.
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    // The connected read wins ($2,510); the pasted duplicate ($2,380) is not
+    // summed on top of it.
+    await waitFor(() =>
+      expect(screen.getAllByText('$2,510').length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText('$4,890')).toBeNull();
+    // The source counts describe the same set: one connected wallet, and no
+    // separate pasted wallet address.
+    expect(screen.getByText('1 connected wallet')).toBeInTheDocument();
+    expect(screen.queryByText('1 wallet address')).toBeNull();
+  });
+});
+
