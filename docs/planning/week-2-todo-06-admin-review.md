@@ -1,6 +1,6 @@
 # Week 2 — Front 06 admin-review (D19 / EXE-015)
 
-**Branch:** `week-2/06-admin-review`
+**Branch:** `week-2-06-admin-review`
 **Status:** Built on the real DB path; the on-chain `kade.review.v1` write is
 gated; the reviewer account is not supplied.
 
@@ -28,7 +28,7 @@ not edited here because the shell is shared across fronts.
 
 ## Appendix D — evidence note
 
-- **Front / branch:** 06-admin-review · `week-2/06-admin-review`
+- **Front / branch:** 06-admin-review · `week-2-06-admin-review`
 - **Commits:** see `git log` on the branch (granular; migration, domain libs,
   admin surface, resident gate, DB suite, evidence).
 - **Files:**
