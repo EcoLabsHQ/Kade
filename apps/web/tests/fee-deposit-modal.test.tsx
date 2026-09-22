@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import type { Hex } from 'viem';
 
 /**
  * The pre-approval fee is paid from a modal that names the amount, the deposit
@@ -24,6 +31,12 @@ const hoisted = vi.hoisted(() => ({
       | undefined,
   },
   network: { chainId: 11155111 as number | string | undefined },
+  write: {
+    data: undefined as Hex | undefined,
+    isPending: false,
+    error: null as Error | null,
+  },
+  receipt: { isLoading: false, isSuccess: false },
 }));
 
 vi.mock('@reown/appkit/react', () => ({
@@ -36,13 +49,13 @@ vi.mock('@reown/appkit/react', () => ({
 }));
 vi.mock('wagmi', () => ({
   useWriteContract: () => ({
-    data: undefined,
+    data: hoisted.write.data,
     writeContract: hoisted.writeContract,
-    isPending: false,
-    error: null,
+    isPending: hoisted.write.isPending,
+    error: hoisted.write.error,
     reset: hoisted.reset,
   }),
-  useWaitForTransactionReceipt: () => ({ isLoading: false, isSuccess: false }),
+  useWaitForTransactionReceipt: () => hoisted.receipt,
 }));
 vi.mock('@/app/onboarding/payment-actions', () => ({
   recordPreapprovalFeePayment: hoisted.record,
@@ -50,9 +63,11 @@ vi.mock('@/app/onboarding/payment-actions', () => ({
 
 import { FeeStep, type FeeStepProps } from '@/components/onboarding/FeeStep';
 import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
+import { shortAddress } from '@/lib/wealth/format';
 
 const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A';
 const USDC = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
+const TX = `0x${'ab'.repeat(32)}` as Hex;
 
 /** The contract's worked example: base 1, 0.25 per member, household of three. */
 const BREAKDOWN = preapprovalBreakdownFromSchedule(
@@ -87,6 +102,15 @@ beforeEach(() => {
   hoisted.account.isConnected = true;
   hoisted.account.address = '0x1111111111111111111111111111111111111111';
   hoisted.network.chainId = 11155111;
+  hoisted.write.data = undefined;
+  hoisted.write.isPending = false;
+  hoisted.write.error = null;
+  hoisted.receipt.isLoading = false;
+  hoisted.receipt.isSuccess = false;
+  hoisted.record.mockResolvedValue({ status: 'pending' });
+  // The pay control mirrors its in-flight hash into sessionStorage, so clear it
+  // between tests to keep each one starting from a clean wallet state.
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -104,7 +128,9 @@ describe('FeeStep deposit modal', () => {
       name: /deposit the pre-approval fee/i,
     });
     expect(within(dialog).getByText('1.75 USDC')).toBeInTheDocument();
-    expect(within(dialog).getByText(TREASURY)).toBeInTheDocument();
+    // The address is shown truncated, never as the raw 42-character value.
+    expect(within(dialog).getByText(shortAddress(TREASURY))).toBeInTheDocument();
+    expect(within(dialog).queryByText(TREASURY)).toBeNull();
     expect(within(dialog).getByText('Ethereum Sepolia')).toBeInTheDocument();
     expect(within(dialog).getByText('USDC')).toBeInTheDocument();
     expect(
@@ -182,5 +208,67 @@ describe('FeeStep deposit modal', () => {
         /configured fee could not be read, so payment is unavailable/i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('keeps the full deposit address on hover and copies it in full', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderStep();
+    openDeposit();
+
+    const dialog = screen.getByRole('dialog');
+    const code = within(dialog).getByText(shortAddress(TREASURY));
+    expect(code.tagName).toBe('CODE');
+    expect(code).toHaveAttribute('title', TREASURY);
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /copy deposit address/i }),
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(TREASURY));
+    expect(
+      within(dialog).getByRole('button', { name: /copy deposit address/i }),
+    ).toHaveTextContent(/copied/i);
+  });
+
+  it('shows an animated loader while the payment is confirming', () => {
+    hoisted.receipt.isLoading = true;
+
+    renderStep();
+    openDeposit();
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(/confirming your payment on sepolia/i);
+    expect(
+      within(status).getByRole('progressbar', { name: /confirming payment/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows Close and a View transaction button once the payment confirms', async () => {
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+
+    renderStep();
+    openDeposit();
+
+    const actions = await screen.findByTestId('fee-complete-actions');
+    const view = within(actions).getByRole('link', {
+      name: /view transaction/i,
+    });
+    expect(view).toHaveAttribute(
+      'href',
+      `https://sepolia.etherscan.io/tx/${TX}`,
+    );
+    expect(
+      within(actions).queryByRole('button', { name: /pay 1\.75 usdc/i }),
+    ).toBeNull();
+
+    fireEvent.click(within(actions).getByRole('button', { name: /^close$/i }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
