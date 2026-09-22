@@ -130,7 +130,37 @@ export function readSepoliaRpcUrl(): string | null {
   return process.env.SEPOLIA_RPC_URL?.trim() || null;
 }
 
+/**
+ * Ethereum mainnet JSON-RPC endpoint (iteration 2, week-2 contract section 5).
+ *
+ * Server-only, and deliberately **not** `NEXT_PUBLIC_`: the endpoint carries a
+ * provider key, so it is read on the server and never reaches the browser.
+ * Returns null when absent, so the mainnet path degrades to "not configured"
+ * instead of pretending a funded chain is available. No endpoint is fabricated
+ * here: the value is supplied by the project.
+ */
+export function readEthereumRpcUrl(): string | null {
+  return process.env.ETHEREUM_RPC_URL?.trim() || null;
+}
+
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Read a hex address from `name`, or null when it is absent or malformed.
+ *
+ * Every address-valued variable (the testnet and mainnet treasuries) is read
+ * through this one function, so a malformed value is ignored with a warning
+ * rather than used, and the caller always sees null instead of a bad address.
+ */
+function readAddressEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  if (!value) return null;
+  if (!ADDRESS_PATTERN.test(value)) {
+    console.warn(`[kade] ${name} is not a 20-byte hex address; ignoring it.`);
+    return null;
+  }
+  return value;
+}
 
 /**
  * The Sepolia treasury address that receives the pre-approval fee.
@@ -143,15 +173,43 @@ const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
  * address nobody controls. Week-1 contract section 8.9.
  */
 export function readTreasuryAddress(): string | null {
-  const value = process.env.TREASURY_ADDRESS?.trim();
-  if (!value) return null;
-  if (!ADDRESS_PATTERN.test(value)) {
-    console.warn(
-      '[kade] TREASURY_ADDRESS is not a 20-byte hex address; ignoring it.',
-    );
-    return null;
-  }
-  return value;
+  return readAddressEnv('TREASURY_ADDRESS');
+}
+
+/**
+ * The Ethereum mainnet treasury address that receives USDC fees.
+ *
+ * Server-only and deliberately **not** `NEXT_PUBLIC_`, for the same reason as
+ * `readTreasuryAddress`: the browser must not be able to substitute the
+ * recipient. Returns null (never a placeholder) when absent or malformed, so a
+ * missing project-supplied value disables the mainnet path instead of pointing
+ * at an address nobody controls. The freeze checklist records that this value
+ * is not supplied; nothing here invents one. Week-2 contract sections 2.2 and 5.
+ */
+export function readMainnetTreasuryAddress(): string | null {
+  return readAddressEnv('MAINNET_TREASURY_ADDRESS');
+}
+
+/**
+ * The treasury address for the active chain environment.
+ *
+ * `testnet` resolves the Sepolia treasury (`TREASURY_ADDRESS`); `mainnet`
+ * resolves `MAINNET_TREASURY_ADDRESS`. Either may be null, which the caller
+ * treats as "this rail is not configured". Chain-aware callers should prefer
+ * this over reaching for one environment's variable directly.
+ */
+export function readTreasuryAddressFor(env: ChainEnv): string | null {
+  return env === 'mainnet' ? readMainnetTreasuryAddress() : readTreasuryAddress();
+}
+
+/**
+ * The JSON-RPC endpoint for the active chain environment.
+ *
+ * The testnet counterpart of `readTreasuryAddressFor`: `testnet` resolves
+ * `SEPOLIA_RPC_URL`, `mainnet` resolves `ETHEREUM_RPC_URL`. Either may be null.
+ */
+export function readRpcUrlFor(env: ChainEnv): string | null {
+  return env === 'mainnet' ? readEthereumRpcUrl() : readSepoliaRpcUrl();
 }
 
 /**
