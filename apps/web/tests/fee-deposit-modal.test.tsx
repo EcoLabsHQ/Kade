@@ -56,6 +56,9 @@ vi.mock('wagmi', () => ({
     reset: hoisted.reset,
   }),
   useWaitForTransactionReceipt: () => hoisted.receipt,
+  // FeeStep tears down every connection when the deposit modal opens.
+  useConnections: () => [],
+  useDisconnect: () => ({ disconnect: vi.fn() }),
 }));
 vi.mock('@/app/onboarding/payment-actions', () => ({
   recordPreapprovalFeePayment: hoisted.record,

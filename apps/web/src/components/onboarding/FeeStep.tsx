@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { Hex } from 'viem';
+import { useConnections, useDisconnect } from 'wagmi';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
@@ -65,6 +66,23 @@ export function FeeStep({
 }: FeeStepProps) {
   const [depositOpen, setDepositOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const connections = useConnections();
+  const { disconnect } = useDisconnect();
+
+  /**
+   * Open the deposit modal with a clean slate.
+   *
+   * The proof-of-wealth step may have left wallets connected for its read-only
+   * balance display. Paying is a different act: the resident must connect the
+   * specific wallet that will send the fee, so every existing connection is
+   * torn down first and the modal starts disconnected.
+   */
+  function openDeposit() {
+    for (const connection of connections) {
+      disconnect({ connector: connection.connector });
+    }
+    setDepositOpen(true);
+  }
 
   function closeDeposit() {
     setDepositOpen(false);
@@ -270,7 +288,7 @@ export function FeeStep({
             ) : (
               <button
                 type="button"
-                onClick={() => setDepositOpen(true)}
+                onClick={openDeposit}
                 style={{ ...primaryButton, width: '100%' }}
               >
                 Deposit
