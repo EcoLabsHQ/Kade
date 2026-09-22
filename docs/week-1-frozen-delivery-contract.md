@@ -1,6 +1,6 @@
 # Kade MVP — Week 1 Delivery Contract
 
-**Status:** Frozen v1.9 — human decisions recorded 16 September 2026; nine
+**Status:** Frozen v1.10 — human decisions recorded 16 September 2026; ten
 amendments recorded in sections 8.1-8.9  
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
@@ -665,6 +665,50 @@ receipt verifier and its unit tests; the component test for the connect-and-pay
 step; the recorded `applications.fee_tx`; and the Sepolia explorer link for the
 treasury transfer.
 
+### 8.10 Amendment v1.10 — the proof-of-wealth rows use the real wallet connection
+
+**v1.10 — 21 September 2026. Approved by the project owner. Week 2 change
+control onto the frozen Week 1 contract.**
+
+The two proof-of-wealth wallet rows stop being demo. **Browser extension** and
+**WalletConnect** now open the same Reown AppKit modal that v1.9 added for the
+fee rail, and the connected account's balance is read from the same public
+provider (Blockscout, on Ethereum and Base) that a pasted address uses. The
+demo seed balances and the `Demo` labels are removed, so nothing on the step is
+mocked.
+
+Scope of the connection. It is the v1.9 connection, reused. It confers no
+authority over the resident Safe, is not a login, and proves no ownership to the
+server: the address comes from the browser, so the rows say the balances were
+read from a public source rather than claiming verified control. A connected
+wallet is therefore **not** persisted as verified — nothing is written for it,
+and `wallets.verified_at` stays NULL for every row this repository writes.
+
+Only Ethereum and Base are read, native coin and USDC, exactly as for a pasted
+address; ERC-20 balances other than USDC, and other chains, remain out.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| Section 9, external wallet connection | in scope for the pre-approval fee payment only (v1.9) | in scope for the fee payment **and** for the read-only proof-of-wealth rows |
+| UI, proof-of-wealth wallet rows | demo: connecting attached seed balances and the rows carried a `Demo` label | real: the rows open the AppKit modal and the connected account's balance is read from a public source |
+| Schema, `public.wallets` | pasted Bitcoin and pasted EVM rows, `verified_at` NULL | unchanged — a connected wallet writes no row, so `verified_at` stays NULL everywhere |
+
+What this does **not** change:
+
+- D1–D8, including the D8 journey;
+- the passkey as the only transaction authority: the connection authorises no
+  transaction and is not a Safe owner;
+- wallet login stays excluded; the connection is not an authentication method;
+- the v1.7/v1.8 read-only Bitcoin and pasted-EVM balance reads, and their
+  "not proof of ownership" wording.
+
+Evidence: the connection component and its unit tests; the shared balance
+provider reused by the connected path; and the screen copy stating that the
+balances are a public read and that the connection gives Kade no authority over
+the Safe.
+
 ## 9. Explicit Week 1 development exclusions
 
 Unless introduced through change control, Week 1 excludes:
@@ -674,7 +718,8 @@ Unless introduced through change control, Week 1 excludes:
   excluded; read-only, unverified, address-based Bitcoin balance reads are in
   scope. Narrowed again by section 8.9 / v1.9: an external wallet connection is
   in scope for the pre-approval fee payment only; ownership proof and wallet
-  login stay excluded)*;
+  login stay excluded. Narrowed again by section 8.10 / v1.10: the same
+  connection is also used, read-only, by the proof-of-wealth wallet rows)*;
 - pre-approval payment execution and Treasury transfer *(narrowed by
   section 8.9 / v1.9: a direct USDC transfer from an external wallet to the Kade
   treasury on Ethereum Sepolia is in scope; the production Safe-originated,
@@ -715,7 +760,7 @@ Freeze status at v1.0:
 - [ ] all Day 1 dependencies — pending availability confirmation.
 - [x] 20-hour package allocation and Week 1 integrated journey — EXE-001–EXE-006, 20 hours.
 
-This contract is **Frozen v1.9** with the open items above tracked under change control.
+This contract is **Frozen v1.10** with the open items above tracked under change control.
 
 ## Appendix A — Requirement traceability
 
