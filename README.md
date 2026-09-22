@@ -297,6 +297,8 @@ rather than vendored into it.
 - Build guide: `docs/planning/kade-mvp-build-document-v7.docx` (plain-text extract: `.txt`)
 - Backlog and 80-hour plan: `docs/planning/kade-mvp-backlog.xlsx`
 - Week 1 contract: `docs/week-1-frozen-delivery-contract.md`
+- Week 2 contract (Frozen v1.0): `docs/week-2-frozen-delivery-contract.md`
+- Week 2 iteration plan: `docs/planning/week-2-iteration-plan.md`
 - Development contract: `docs/DEVELOPMENT_CONTRACT.md`
 - Human approval gates (the four Week 1 checkpoints): `docs/gates/README.md`
 - Known gaps and deliberate shortcuts: `docs/known-gaps.md`

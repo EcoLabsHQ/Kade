@@ -47,9 +47,12 @@ contract.
 The product scope for the current iteration is frozen in:
 
 ```text
-docs/week-1-frozen-delivery-contract.md
+docs/week-2-frozen-delivery-contract.md
 ```
 
+The Week 1 contract (`docs/week-1-frozen-delivery-contract.md`, Frozen v1.10)
+remains frozen and governs the scope it delivered.
+
 Where product scope and the development contract disagree, the development
-contract governs how work is verified and promoted; the Week 1 contract governs
-what is in scope.
+contract governs how work is verified and promoted; the current week's contract
+governs what is in scope.
