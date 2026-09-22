@@ -180,6 +180,8 @@ export function WealthStep({
           <ConnectedWalletPanel
             configured={walletConfigured}
             onChange={onWalletChange}
+            onAddWalletAddress={onAddWalletAddress}
+            atCap={evmAtCap}
           />
 
           <Card padding="14px 16px">
