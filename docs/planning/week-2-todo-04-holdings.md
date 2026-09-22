@@ -4,36 +4,29 @@
 document. Scope is `docs/week-2-frozen-delivery-contract.md` (Frozen v1.0),
 deliverable **D17 / EXE-013**, frozen decisions §2.1 item 2 and §2.2 items 2–3.
 
-## Blocked
+## Resolved: front 03 ownership module
 
-- `BLOCKED: consumes 03 ownership module (not merged yet)`. Front 03
-  (`week-2-03-ownership-proof`) owns `apps/web/src/lib/wallet/**`, including the
-  frozen `@/lib/wallet/ownership` interface (`issueOwnershipChallenge`,
-  `verifyWalletOwnership`). That module is being built in parallel and does not
-  exist on any branch at the time of writing (checked
-  `git show week-2-03-ownership-proof:apps/web/src/lib/wallet/ownership.ts` —
-  no such path). The Holdings link/verify wiring
-  (`apps/web/src/app/holdings/link-actions.ts`) imports it and therefore does
-  **not typecheck** on this branch. No stub or duplicate of 03's logic is
-  created here; the aggregation is isolated so its tests never require 03.
+Front 03 (`week-2-03-ownership-proof`) merged into `week-2` (merge `a3beb40`) and
+this branch picked it up (`78df7bc`), so `@/lib/wallet/ownership` exists and the
+import resolves. There is no remaining BLOCKED dependency for this front.
 
-## Interface assumption consumed from 03
-
-The only documented surface is the two function names in the front brief
-(`docs/planning/week-2-front-briefs.md`, front 03). `link-actions.ts` codes to
-this assumed shape and isolates it so reconciliation is one file:
+The interface consumed — front 03's real, frozen signature — is:
 
 ```ts
-issueOwnershipChallenge(address: string): Promise<{ message: string }>;
+issueOwnershipChallenge(address: string): Promise<{ nonce: string; message: string }>;
 verifyWalletOwnership(input: {
   address: string;
   message: string;
   signature: string;
-}): Promise<{ verifiedAt: string }>;
+}): Promise<{ ok: boolean; error?: string }>;
 ```
 
-When 03 merges, align `link-actions.ts` with the frozen signature. Everything
-else in this front is independent of 03.
+`link-actions.ts` branches on `verified.ok` and relays `verified.error`; it does
+not write `wallets.verified_at` (03 owns that) and no longer references the
+earlier assumed `{ verifiedAt }`. A first pass had assumed that shape; the front
+verifier raised it as blocking finding **F1** and it was corrected in `c09b2f4`
+with `apps/web/tests/link-actions.test.ts` pinning the contract. See the
+evidence note's "Corrective history".
 
 ## Integration request (not owned here)
 
