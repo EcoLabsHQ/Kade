@@ -81,8 +81,13 @@ export function readMorphoPoolConfig(env: MorphoEnv = process.env): MorphoPoolCo
   }
   if (!DECIMAL.test(lltvRaw)) return null;
 
+  let morpho: `0x${string}`;
   let marketParams: MarketParams;
   try {
+    // Every address is parsed inside the guard: a malformed value anywhere —
+    // including the Morpho contract itself — must fail closed to `null`, never
+    // throw out of the reader and take the route down.
+    morpho = checksumAddress(morphoRaw, MORPHO_ENV_KEYS.morpho);
     marketParams = {
       loanToken: checksumAddress(loanRaw, MORPHO_ENV_KEYS.loanToken),
       collateralToken: checksumAddress(collateralRaw, MORPHO_ENV_KEYS.collateralToken),
@@ -104,7 +109,7 @@ export function readMorphoPoolConfig(env: MorphoEnv = process.env): MorphoPoolCo
   }
 
   return {
-    morpho: checksumAddress(morphoRaw, MORPHO_ENV_KEYS.morpho),
+    morpho,
     chainId: CHAIN_IDS.ethereum,
     marketParams,
     marketId: derivedId,
