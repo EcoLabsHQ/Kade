@@ -4,9 +4,9 @@
 **Iteration branch:** `week-2` (integration, base `main`)
 **Deploy safety:** `main` stays deployable; only `week-2` and its stacked
 branches receive Week 2 work.
-**Source of scope:** `docs/week-2-delivery-contract.mock.md` (owner priorities
-recorded 22 September 2026) and `docs/DEVELOPMENT_CONTRACT.md` (how work is
-verified and promoted).
+**Source of scope:** `docs/week-2-frozen-delivery-contract.md` (Frozen v1.0,
+owner decisions recorded 22 September 2026) and `docs/DEVELOPMENT_CONTRACT.md`
+(how work is verified and promoted).
 
 ## 1. Objective
 
@@ -97,8 +97,8 @@ fronts start, and give each shared file one owner:
 | `supabase/migrations/**` | per front, distinct prefixes | Append-only; each front uses its own timestamp range (below) |
 | `apps/web/src/components/shell/nav.ts` | integration | Unlocking routes is one small PR on the integration branch, not four parallel edits |
 | `apps/web/src/components/wallet/**` | `03-ownership-proof` | The wallet provider is touched once; Holdings consumes it |
-| `docs/week-1-frozen-delivery-contract.md` | human only | Change control; the mock stays a mock |
-| `docs/week-2-delivery-contract.mock.md` | integration | Becomes the frozen Week 2 contract only by owner approval |
+| `docs/week-1-frozen-delivery-contract.md` | human only | Frozen v1.10; change control only |
+| `docs/week-2-frozen-delivery-contract.md` | human only | Frozen v1.0; amendment via change control only |
 
 Migration timestamp ranges (proposed), to avoid filename collisions:
 
@@ -114,13 +114,13 @@ Migration timestamp ranges (proposed), to avoid filename collisions:
 
 | Front | Deliverables | Key surfaces | Gate |
 |---|---|---|---|
-| 00 mainnet-config | EXE-014: payer, RPC, treasury, fee rail on mainnet; per-chain config | `env.ts`, `packages/shared`, `chains` seed | Foundation |
-| 01 signer-deploy | Deploy the Safe WebAuthn signer (`createSigner`); unblock passkey signing | `packages/contracts`, `apps/web/src/lib/safe` | Account |
-| 02 invest-morpho | D18: one Morpho pool, ETH mainnet, deposit end to end, position reflected | new invest module, `allocations` | Onchain |
-| 03 ownership-proof | Signed-message challenge + verify; `wallets.verified_at` set only here | `apps/web/src/lib/wallet`, migration 03x | Account |
-| 04 holdings | D17: Holdings shows all signed linked wallets; pasted rows excluded | Holdings screen, `nav.ts`, provider reads | Acceptance |
-| 05 residency | D16: Self, four checks, service fee, `kade.permit.v1`, tracker | onboarding residency, migrations 04x | Onchain |
-| 06 admin-review | D19: reviewer role, approve/reject, `kade.review.v1`, RLS | admin route, `reviewers`, migrations 06x | Acceptance |
+| 00 mainnet-config | EXE-010: payer, RPC, treasury, fee rail on mainnet; per-chain config | `env.ts`, `packages/shared`, `chains` seed | Foundation |
+| 01 signer-deploy | EXE-011: deploy the Safe WebAuthn signer (`createSigner`); unblock passkey signing | `packages/contracts`, `apps/web/src/lib/safe` | Account |
+| 02 invest-morpho | EXE-014 / D18: one Morpho pool, ETH mainnet, deposit end to end, position reflected | new invest module, `allocations` | Onchain |
+| 03 ownership-proof | EXE-013 enabler: signed-message challenge + verify; `wallets.verified_at` set only here | `apps/web/src/lib/wallet`, migration 03x | Account |
+| 04 holdings | EXE-013 / D17: Holdings shows all signed linked wallets; pasted rows excluded | Holdings screen, `nav.ts`, provider reads | Acceptance |
+| 05 residency | EXE-012 / D16: Self, four checks, service fee, `kade.permit.v1`, tracker | onboarding residency, migrations 04x | Onchain |
+| 06 admin-review | EXE-015 / D19: reviewer role, approve/reject, `kade.review.v1`, RLS | admin route, `reviewers`, migrations 06x | Acceptance |
 
 ## 6. Verification and review per front
 
