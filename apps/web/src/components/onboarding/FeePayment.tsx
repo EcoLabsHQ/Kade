@@ -91,14 +91,18 @@ type ServerState =
       readonly canRetryPayment: boolean;
     };
 
-/** Which recovery a failed verification offers. */
+/**
+ * Which recovery a failed verification offers.
+ *
+ * `pending` is deliberately absent: a payment that is still confirming is not
+ * a failure, so it never reaches this and never offers a re-check. It stays on
+ * the loader until the receipt is mined.
+ */
 function recoveryFor(status: RecordFeeResult['status']): {
   readonly canRecheck: boolean;
   readonly canRetryPayment: boolean;
 } {
   switch (status) {
-    case 'pending':
-      return { canRecheck: true, canRetryPayment: false };
     case 'underpaid':
     case 'failed':
     case 'no-transfer':
@@ -112,6 +116,9 @@ function recoveryFor(status: RecordFeeResult['status']): {
 
 /** How long a verification may run before the resident is offered a re-check. */
 const VERIFY_TIMEOUT_MS = 15_000;
+
+/** How often a still-confirming payment is re-checked without user action. */
+const PENDING_POLL_MS = 4_000;
 
 /**
  * Race a server verification against a deadline.
@@ -223,10 +230,7 @@ export function FeePayment({
   // The hash already acted on, so a single confirmed receipt is processed once.
   const handledRef = useRef<Hex | null>(null);
 
-  const amountUnits = useMemo(
-    () => parseUnits(amountUsdc, 6),
-    [amountUsdc],
-  );
+  const amountUnits = useMemo(() => parseUnits(amountUsdc, 6), [amountUsdc]);
 
   const onSepolia = Number(chainId) === sepolia.id;
 
@@ -260,26 +264,27 @@ export function FeePayment({
           return;
         }
         if (result.status === 'pending') {
-          // Still confirming: keep the hash so a later mount (or the watcher
-          // confirming now) can retry, and allow the effect to run again.
+          // Still confirming is not a failure: stay on the loader and let the
+          // poll below ask again. The hash is kept so a later mount can resume.
           handledRef.current = null;
-        } else {
-          // Every other outcome is final, so the hash is no longer resumable.
-          clearPendingHash(treasuryAddress);
-          setResumedHash(null);
+          setServer({ kind: 'verifying' });
+          return;
         }
+        // Every other outcome is final, so the hash is no longer resumable.
+        clearPendingHash(treasuryAddress);
+        setResumedHash(null);
         setServer({
           kind: 'error',
           message: messageFor(result),
           ...recoveryFor(result.status),
         });
       } catch {
-        setServer({
-          kind: 'error',
-          message: 'We could not confirm the payment. Please try again.',
-          canRecheck: true,
-          canRetryPayment: false,
-        });
+        // A timeout or a transient network failure is not a verdict on the
+        // payment: the transaction may simply not be mined yet. Stay on the
+        // loader and let the poll ask again, so the resident never sees an
+        // error for a payment that is still confirming.
+        handledRef.current = null;
+        setServer({ kind: 'verifying' });
       }
     },
     [treasuryAddress],
@@ -291,6 +296,18 @@ export function FeePayment({
     handledRef.current = txHash;
     void verify(txHash, address);
   }, [txHash, address, verify]);
+
+  // While the payment is still confirming, keep asking on a short interval and
+  // stay on the loader. A pending receipt is not a failure, so the resident is
+  // never shown an error for a transaction that is simply not mined yet.
+  useEffect(() => {
+    if (server.kind !== 'verifying') return;
+    if (!txHash || !address) return;
+    const timer = setInterval(() => {
+      void verify(txHash, address);
+    }, PENDING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [server, txHash, address, verify]);
 
   async function checkAgain() {
     if (!txHash || !address) return;
@@ -320,7 +337,7 @@ export function FeePayment({
           to Kade.
         </p>
         <button
-          type="button"
+          type='button'
           onClick={() => void open()}
           style={{ ...primaryButton, width: '100%' }}
         >
@@ -338,7 +355,7 @@ export function FeePayment({
           the fee.
         </p>
         <button
-          type="button"
+          type='button'
           onClick={() => void switchNetwork(sepolia)}
           style={{ ...primaryButton, width: '100%' }}
         >
@@ -354,12 +371,16 @@ export function FeePayment({
         <p style={{ ...statusText, color: tokens.danger }}>{server.message}</p>
         <div style={actions}>
           {server.canRecheck ? (
-            <button type="button" onClick={() => void checkAgain()} style={primaryButton}>
+            <button
+              type='button'
+              onClick={() => void checkAgain()}
+              style={primaryButton}
+            >
               Check again
             </button>
           ) : null}
           {server.canRetryPayment ? (
-            <button type="button" onClick={pay} style={secondaryButton}>
+            <button type='button' onClick={pay} style={secondaryButton}>
               Try the payment again
             </button>
           ) : null}
@@ -368,29 +389,32 @@ export function FeePayment({
     );
   }
 
-  // The receipt has been verified: offer to close the modal and to inspect the
-  // transaction, both as proper buttons rather than a bare underlined link.
+  // The receipt has been verified: the transaction link is offered only now,
+  // never while the payment is still confirming, and the Close button is left
+  // for the owner to lay out.
   if (paid) {
     return (
-      <div data-testid="fee-complete-actions">
+      <div data-testid='fee-complete-actions'>
         <p style={statusText}>
           Payment confirmed. Your file is open for pre-approval.
-        </p>
-        <div style={actions}>
-          {onClose ? (
-            <button type="button" onClick={onClose} style={primaryButton}>
-              Close
-            </button>
-          ) : null}
+          <br/>
+        
           {txHash ? (
             <a
               href={`${explorerUrl}/tx/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
-              style={linkButton}
+              target='_blank'
+              rel='noreferrer'
             >
-              View transaction
+             View transaction
             </a>
+          ) : null}
+        </p>
+
+        <div style={actions}>
+          {onClose ? (
+            <button type='button' onClick={onClose} style={{ ...primaryButton, width: '100%' }}>
+              Close
+            </button>
           ) : null}
         </div>
       </div>
@@ -411,11 +435,11 @@ export function FeePayment({
   return (
     <div>
       {busy ? (
-        <div role="status" aria-live="polite" style={loaderRow}>
+        <div role='status' aria-live='polite' style={loaderRow}>
           <span
-            role="progressbar"
-            aria-label="Confirming payment"
-            className="kade-spinner"
+            role='progressbar'
+            aria-label='Confirming payment'
+            className='kade-spinner'
             style={spinner}
           />
           <span style={{ ...statusText, margin: 0 }}>{status}</span>
@@ -425,7 +449,7 @@ export function FeePayment({
       )}
 
       <button
-        type="button"
+        type='button'
         onClick={pay}
         disabled={busy}
         style={{
@@ -442,16 +466,6 @@ export function FeePayment({
             : `Pay ${amountUsdc} USDC`}
       </button>
 
-      {txHash ? (
-        <a
-          href={`${explorerUrl}/tx/${txHash}`}
-          target="_blank"
-          rel="noreferrer"
-          style={{ ...linkButton, marginTop: '10px' }}
-        >
-          View transaction
-        </a>
-      ) : null}
       {writeError ? (
         <p style={{ ...statusText, color: tokens.danger, marginTop: '8px' }}>
           The wallet rejected or could not send the payment.
@@ -486,6 +500,7 @@ const spinner: React.CSSProperties = {
 
 const actions: React.CSSProperties = {
   display: 'flex',
+  flex: 1,
   gap: '8px',
   flexWrap: 'wrap',
 };
@@ -516,20 +531,4 @@ const secondaryButton: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-/** A link styled as a button, for the explorer receipt. */
-const linkButton: React.CSSProperties = {
-  height: '46px',
-  padding: '0 22px',
-  border: `1px solid ${tokens.border}`,
-  borderRadius: '999px',
-  background: '#fff',
-  color: tokens.brandPrimary,
-  fontFamily: 'inherit',
-  fontSize: '15px',
-  fontWeight: 600,
-  textDecoration: 'none',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-};
+

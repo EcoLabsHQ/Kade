@@ -184,16 +184,20 @@ describe('FeePayment', () => {
     expect(onPaid).not.toHaveBeenCalled();
   });
 
-  it('offers a re-check, not a second transfer, while the payment is pending', async () => {
+  it('stays on the loader while the payment is still confirming', async () => {
     hoisted.record.mockResolvedValue({ status: 'pending' });
     const { rerender } = renderPayment();
 
     payAndConfirm(rerender);
 
+    // A pending receipt is not a failure: the resident keeps seeing the
+    // confirming state and is never offered a re-check or a second transfer.
     expect(
-      await screen.findByRole('button', { name: /check again/i }),
+      await screen.findByRole('progressbar', { name: /confirming payment/i }),
     ).toBeInTheDocument();
-    // A second transfer cannot help a transaction that is still confirming.
+    expect(
+      screen.queryByRole('button', { name: /check again/i }),
+    ).toBeNull();
     expect(
       screen.queryByRole('button', { name: /try the payment again/i }),
     ).toBeNull();
@@ -252,8 +256,10 @@ describe('FeePayment', () => {
     hoisted.receipt.isSuccess = true;
     first.rerender();
 
+    // The first read is pending, so the control stays on the loader and keeps
+    // the hash rather than resolving or forgetting it.
     expect(
-      await screen.findByRole('button', { name: /check again/i }),
+      await screen.findByRole('progressbar', { name: /confirming payment/i }),
     ).toBeInTheDocument();
 
     // The modal closes: FeePayment unmounts and wagmi forgets the in-flight
