@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { preapprovalFeeUsdc } from '@kade/shared';
 import { preapprovalBreakdownFromSchedule } from '@/lib/onboarding/fee';
+import { shortAddress } from '@/lib/wealth/format';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import type { BitcoinAddressRecord, EvmAddressRecord } from '@/lib/wealth/types';
 import type {
@@ -611,9 +612,11 @@ describe('pre-registration flow', () => {
     expect(
       await screen.findByRole('heading', { name: /show proof of wealth/i }),
     ).toBeInTheDocument();
+    // The panel shows the address truncated; the full value stays on the title.
+    // It appears twice: the row subtitle and the wallet's detail card.
     expect(
-      await screen.findByText(CONNECTED_ADDRESS),
-    ).toBeInTheDocument();
+      (await screen.findAllByText(shortAddress(CONNECTED_ADDRESS))).length,
+    ).toBeGreaterThan(0);
     const continueButton = screen.getByRole('button', { name: /^continue$/i });
     await waitFor(() => expect(continueButton).toBeEnabled());
     fireEvent.click(continueButton);

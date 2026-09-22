@@ -161,9 +161,19 @@ function WalletRow({
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: '15px', fontWeight: 600 }}>{row.title}</div>
-          <div style={{ fontSize: '13px', color: tokens.muted }}>{subtitle}</div>
+          <div
+            style={{
+              fontSize: '13px',
+              color: tokens.muted,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {subtitle}
+          </div>
         </div>
-        {action}
+        <div style={{ flex: '0 0 auto' }}>{action}</div>
       </div>
     </Card>
   );
@@ -229,8 +239,12 @@ function ConfiguredWalletPanel({
 
   // One read per connector, even across effect re-runs.
   const readsInFlight = useRef(new Set<string>());
+  // Set on mount and cleared on unmount. StrictMode mounts, unmounts and
+  // remounts the effect, so the flag must be set back to true on every mount;
+  // leaving it false after the first cleanup discarded every balance read.
   const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
     return () => {
       mounted.current = false;
     };
@@ -389,7 +403,7 @@ function ConfiguredWalletPanel({
             row={row}
             subtitle={
               connectedHere
-                ? rowWallets.map((entry) => entry.address).join(', ')
+                ? rowWallets.map((entry) => shortAddress(entry.address)).join(', ')
                 : row.subtitle
             }
             action={
