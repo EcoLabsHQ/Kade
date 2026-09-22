@@ -7,6 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
 import { tokens } from '@/components/ui/tokens';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
+import { shortAddress } from '@/lib/wealth/format';
 import { FeePayment } from './FeePayment';
 
 /**
@@ -292,43 +293,53 @@ export function FeeStep({
               the transaction receipt.
             </p>
 
-            <dl style={detailList}>
-              <div style={detailRow}>
-                <dt style={detailLabel}>Amount due</dt>
-                <dd style={detailValue}>{usdc(breakdown.totalUsdc)}</dd>
-              </div>
-              <div style={detailRow}>
-                <dt style={detailLabel}>Network</dt>
-                <dd style={detailValue}>Ethereum Sepolia</dd>
-              </div>
-              <div style={detailRow}>
-                <dt style={detailLabel}>Token</dt>
-                <dd style={detailValue}>USDC</dd>
-              </div>
-              <div style={detailRow}>
-                <dt style={detailLabel}>Deposit address</dt>
-                <dd style={{ ...detailValue, ...addressValue }}>
-                  <code style={addressCode}>{treasuryAddress}</code>
-                  <button
-                    type="button"
-                    aria-label="Copy deposit address"
-                    onClick={() => void copyAddress(treasuryAddress)}
-                    style={copyButton}
-                  >
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
-                </dd>
-              </div>
-            </dl>
+            {/*
+              The amount, rail and pay action share one surface so the modal
+              reads as a single designed panel rather than a white card with a
+              dark box dropped into it.
+            */}
+            <div style={paySurface}>
+              <dl style={detailList}>
+                <div style={detailRow}>
+                  <dt style={detailLabel}>Amount due</dt>
+                  <dd style={detailValue}>{usdc(breakdown.totalUsdc)}</dd>
+                </div>
+                <div style={detailRow}>
+                  <dt style={detailLabel}>Network</dt>
+                  <dd style={detailValue}>Ethereum Sepolia</dd>
+                </div>
+                <div style={detailRow}>
+                  <dt style={detailLabel}>Token</dt>
+                  <dd style={detailValue}>USDC</dd>
+                </div>
+                <div style={{ ...detailRow, borderBottom: 0 }}>
+                  <dt style={detailLabel}>Deposit address</dt>
+                  <dd style={{ ...detailValue, ...addressValue }}>
+                    <code title={treasuryAddress} style={addressCode}>
+                      {shortAddress(treasuryAddress)}
+                    </code>
+                    <button
+                      type="button"
+                      aria-label="Copy deposit address"
+                      onClick={() => void copyAddress(treasuryAddress)}
+                      style={copyButton}
+                    >
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </dd>
+                </div>
+              </dl>
 
-            <div style={payPanel}>
-              <FeePayment
-                amountUsdc={String(breakdown.totalUsdc)}
-                treasuryAddress={treasuryAddress as `0x${string}`}
-                usdcAddress={usdcAddress as `0x${string}`}
-                explorerUrl={explorerUrl}
-                onPaid={onPaid}
-              />
+              <div style={payAction}>
+                <FeePayment
+                  amountUsdc={String(breakdown.totalUsdc)}
+                  treasuryAddress={treasuryAddress as `0x${string}`}
+                  usdcAddress={usdcAddress as `0x${string}`}
+                  explorerUrl={explorerUrl}
+                  onPaid={onPaid}
+                  onClose={closeDeposit}
+                />
+              </div>
             </div>
           </div>
         </Modal>
@@ -429,9 +440,17 @@ const modalLead: React.CSSProperties = {
   color: tokens.muted,
 };
 
+/** The one surface that holds both the deposit details and the pay action. */
+const paySurface: React.CSSProperties = {
+  marginTop: '16px',
+  background: tokens.surface,
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '16px',
+  padding: '6px 18px 18px',
+};
+
 const detailList: React.CSSProperties = {
-  margin: '14px 0 0',
-  borderTop: `1px solid ${tokens.border}`,
+  margin: 0,
 };
 
 const detailRow: React.CSSProperties = {
@@ -463,7 +482,7 @@ const addressValue: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'flex-end',
   gap: '8px',
-  flexWrap: 'wrap',
+  minWidth: 0,
 };
 
 const addressCode: React.CSSProperties = {
@@ -471,7 +490,7 @@ const addressCode: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 500,
   color: tokens.ink,
-  wordBreak: 'break-all',
+  whiteSpace: 'nowrap',
 };
 
 const copyButton: React.CSSProperties = {
@@ -487,10 +506,6 @@ const copyButton: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-const payPanel: React.CSSProperties = {
-  marginTop: '16px',
-  background: tokens.ink,
-  borderRadius: '16px',
-  padding: '18px 20px',
-  color: '#fff',
+const payAction: React.CSSProperties = {
+  marginTop: '14px',
 };

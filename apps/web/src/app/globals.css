@@ -296,6 +296,19 @@ textarea {
   }
 }
 
+/* The fee payment's confirming indicator. Inline styles cannot express the
+   rotation, so the animation lives here and the element keeps its inline size
+   and colours. */
+@keyframes kade-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.kade-spinner {
+  animation: kade-spin .8s linear infinite;
+}
+
 /* DatePicker popover affordances. Inline styles cannot express :hover, so the
    two interactive states live here. */
 .kade-datepicker-nav:hover {
