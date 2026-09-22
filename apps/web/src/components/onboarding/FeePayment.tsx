@@ -299,15 +299,18 @@ export function FeePayment({
 
   // While the payment is still confirming, keep asking on a short interval and
   // stay on the loader. A pending receipt is not a failure, so the resident is
-  // never shown an error for a transaction that is simply not mined yet.
+  // never shown an error for a transaction that is simply not mined yet. The
+  // poll stops the moment the payment is verified, so a confirmed payment does
+  // not keep re-running the server write.
   useEffect(() => {
+    if (paid) return;
     if (server.kind !== 'verifying') return;
     if (!txHash || !address) return;
     const timer = setInterval(() => {
       void verify(txHash, address);
     }, PENDING_POLL_MS);
     return () => clearInterval(timer);
-  }, [server, txHash, address, verify]);
+  }, [paid, server, txHash, address, verify]);
 
   async function checkAgain() {
     if (!txHash || !address) return;

@@ -52,6 +52,45 @@ function usdc(value: number): string {
   return `${Number.isInteger(value) ? value : value.toFixed(2)} USDC`;
 }
 
+/**
+ * The Deposit button, and the only place this step calls wagmi hooks.
+ *
+ * It is mounted only when payment is configured, which is the same condition
+ * that guarantees `WalletProvider` mounted a `WagmiProvider`. Calling
+ * `useConnections`/`useDisconnect` without that provider throws, and the route
+ * has no error boundary, so the hooks must never run on the unconfigured path.
+ *
+ * Opening the modal tears down every existing connection first: the
+ * proof-of-wealth step may have left wallets connected for its read-only
+ * balance display, and paying is a different act that needs the specific wallet
+ * which will send the fee.
+ */
+function DepositControl({
+  open,
+  onOpen,
+}: Readonly<{ open: boolean; onOpen: () => void }>) {
+  const connections = useConnections();
+  const { disconnect } = useDisconnect();
+
+  function handleOpen() {
+    for (const connection of connections) {
+      disconnect({ connector: connection.connector });
+    }
+    onOpen();
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      aria-expanded={open}
+      style={{ ...primaryButton, width: '100%' }}
+    >
+      Deposit
+    </button>
+  );
+}
+
 export function FeeStep({
   rows,
   breakdown,
@@ -66,23 +105,6 @@ export function FeeStep({
 }: FeeStepProps) {
   const [depositOpen, setDepositOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const connections = useConnections();
-  const { disconnect } = useDisconnect();
-
-  /**
-   * Open the deposit modal with a clean slate.
-   *
-   * The proof-of-wealth step may have left wallets connected for its read-only
-   * balance display. Paying is a different act: the resident must connect the
-   * specific wallet that will send the fee, so every existing connection is
-   * torn down first and the modal starts disconnected.
-   */
-  function openDeposit() {
-    for (const connection of connections) {
-      disconnect({ connector: connection.connector });
-    }
-    setDepositOpen(true);
-  }
 
   function closeDeposit() {
     setDepositOpen(false);
@@ -286,13 +308,10 @@ export function FeeStep({
                 Payment is not configured in this environment.
               </p>
             ) : (
-              <button
-                type="button"
-                onClick={openDeposit}
-                style={{ ...primaryButton, width: '100%' }}
-              >
-                Deposit
-              </button>
+              <DepositControl
+                open={depositOpen}
+                onOpen={() => setDepositOpen(true)}
+              />
             )}
           </div>
         </div>
