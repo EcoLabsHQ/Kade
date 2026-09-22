@@ -7,6 +7,8 @@ they never leave fixtures behind.
 | File | Covers |
 |---|---|
 | `0001_fee_recompute.test.sql` | `fee_schedule` formula parameters, `preapproval_fee_usdc()`, the `household_members` / application recompute triggers, mode switching, the definer path, column privileges |
+| `0002_passkey_signer.test.sql` | `save_passkey_signer()` scoping, immutability, definer grants and column privileges |
+| `0003_admin_review.test.sql` | `is_reviewer()`, the reviewer RLS policies on `review_events` and the decide fields, the `review_events_apply` status trigger, append-only enforcement, and the non-reviewer denial |
 | `support/supabase-shim.sql` | Not a test. Supplies the `auth` schema, `auth.uid()` and the API roles for a plain PostgreSQL |
 
 ## With the Supabase CLI
