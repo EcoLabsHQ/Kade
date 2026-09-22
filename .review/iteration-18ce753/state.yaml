@@ -1,0 +1,20 @@
+iteration: iteration-18ce753
+known_good: ff5d852b532e8948eae20978333d78e20bab50db
+candidate: 3d3523ff047772606164ce5daa44fe7b8cc28bdc
+mode: recheck
+reviewed_scopes:
+  money_path: complete
+  database: complete
+  wallet_connection: complete
+  build_config: complete
+  docs_contract: complete
+  tests: complete
+active_findings: []
+resolved_findings: [F1, F2, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 2
+  F2: 2
+  F3: 2
+review_complete: true
+verdict: review_passed

@@ -1,0 +1,44 @@
+- id: F1
+  severity: FAIL
+  scope: wallet_connection
+  title: "Proof-of-wealth step crashes when no WalletConnect project id is configured"
+  evidence: "apps/web/src/components/wallet/ConnectedWalletPanel.tsx:74-77; apps/web/src/components/wallet/WalletProvider.tsx:43; apps/web/src/lib/wallet/appkit.ts:31-37; apps/web/src/components/onboarding/WealthStep.tsx:181-184"
+  failure_mode: "useAccount() throws WagmiProviderNotFoundError without a WagmiProvider; no error boundary; /onboarding step 3 errors in the default environment."
+  materiality: "Runtime regression introduced by v1.10, hidden by mocked wallet hooks in tests."
+  status: resolved
+  introduced_by: 18ce75325e37aec70b52be5f3d19b0b8bf37ba63
+  resolved_by: 215300a
+  recheck_attempts: 2
+- id: F2
+  severity: FAIL
+  scope: money_path
+  title: "Fee claim is not bound to the payer and the global fee_tx index locks the real payer out"
+  evidence: "apps/web/src/lib/payments/server.ts:191-193; apps/web/src/lib/payments/preapproval-fee.ts:146-177; supabase/migrations/20260921000003_record_preapproval_fee_tx.sql:88-89"
+  failure_mode: "A resident submits a public treasury transfer hash first and is recorded paid; the true payer's later update collides with the global unique index and is refused."
+  materiality: "Money path: unearned paid state and permanent lockout of the paying resident."
+  status: resolved
+  introduced_by: 18ce75325e37aec70b52be5f3d19b0b8bf37ba63
+  resolved_by: f903f3c
+  recheck_attempts: 2
+- id: F3
+  severity: FAIL
+  scope: docs_contract
+  title: "Pending migration 22 undeclared and money-path prose contradicts the code"
+  evidence: "docs/known-gaps.md:52; supabase/README.md:15,47; docs/architecture/data-model.md; docs/gates/foundation.md:18; docs/week-1-frozen-delivery-contract.md:3,616; apps/web/src/lib/payments/server.ts:165-166; apps/web/src/components/onboarding/OnboardingFlow.tsx:112-115"
+  failure_mode: "Operator applies migration 21 only and the fee writer is absent; reviewers are told the hash is immutable/refused when it is replaced."
+  materiality: "Undeclared pending migration plus false statements about deployed behaviour."
+  status: resolved
+  introduced_by: 18ce75325e37aec70b52be5f3d19b0b8bf37ba63
+  resolved_by: f878aa1
+  recheck_attempts: 2
+- id: W1
+  severity: WARN
+  scope: docs_contract
+  title: "Two docs described the fee index as 'on fee_tx' rather than '(profile_id, fee_tx)'"
+  evidence: "docs/architecture/data-model.md:40; docs/known-gaps.md:53"
+  failure_mode: "A reader skimming only these lines could under-specify the index; no behavioural decision depends on it."
+  materiality: "Documentation imprecision, not a false behavioural claim."
+  status: resolved
+  introduced_by: f878aa1
+  resolved_by: 3d3523f
+  recheck_attempts: 0
