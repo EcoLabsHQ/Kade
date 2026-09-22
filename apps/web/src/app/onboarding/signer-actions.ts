@@ -1,13 +1,17 @@
 'use server';
 
 import { getAddress, type Address } from 'viem';
-import {
-  ACTIVE_SAFE_VERSION,
-  SAFE_DEPLOYMENTS,
-  SAFE_PASSKEY_MODULE,
-} from '@kade/shared';
+import { ACTIVE_SAFE_VERSION, SAFE_DEPLOYMENTS } from '@kade/shared';
 import { readSepoliaRpcUrl } from '@/lib/env';
 import { predictedSafeAddress } from '@/lib/safe/account';
+import {
+  SAFE_WEBAUTHN_SIGNER_FACTORY_ABI,
+  p256Verifiers,
+  preparePasskeySigner,
+  signerFactoryAddress,
+} from '@/lib/safe/signer';
+import { getSessionUser } from '@/lib/supabase/server';
+import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 
 /**
  * Derive the resident's account from their passkey, asking the chain.
@@ -30,20 +34,6 @@ import { predictedSafeAddress } from '@/lib/safe/account';
  * Runs on the server only: the RPC endpoint carries a provider key.
  */
 
-const GET_SIGNER_ABI = [
-  {
-    type: 'function',
-    name: 'getSigner',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'x', type: 'uint256' },
-      { name: 'y', type: 'uint256' },
-      { name: 'verifiers', type: 'uint176' },
-    ],
-    outputs: [{ name: 'signer', type: 'address' }],
-  },
-] as const;
-
 const PROXY_CREATION_CODE_ABI = [
   {
     type: 'function',
@@ -53,20 +43,6 @@ const PROXY_CREATION_CODE_ABI = [
     outputs: [{ name: '', type: 'bytes' }],
   },
 ] as const;
-
-/**
- * Pack the P-256 verifiers exactly as the module's `P256.Verifiers` expects:
- * a 16-bit EIP-7212 precompile slot above a 160-bit fallback verifier.
- *
- * The precompile slot is zero. Sepolia has no P-256 precompile, and the module
- * treats a zero slot as "no precompile" and falls through to the Solidity
- * verifier, which is what will actually check the signature.
- */
-function p256Verifiers(): bigint {
-  const precompile = 0n;
-  const fallback = BigInt(SAFE_PASSKEY_MODULE.p256Verifier.value);
-  return (precompile << 160n) | fallback;
-}
 
 export interface DerivedAccount {
   readonly signerAddress: Address;
@@ -90,8 +66,8 @@ export async function deriveAccount(
 
   const [signer, proxyCreationCode] = await Promise.all([
     client.readContract({
-      address: getAddress(SAFE_PASSKEY_MODULE.safeWebAuthnSignerFactory.value),
-      abi: GET_SIGNER_ABI,
+      address: signerFactoryAddress(),
+      abi: SAFE_WEBAUTHN_SIGNER_FACTORY_ABI,
       functionName: 'getSigner',
       args: [BigInt(x), BigInt(y), p256Verifiers()],
     }),
@@ -114,3 +90,89 @@ export async function deriveAccount(
     }),
   };
 }
+
+/**
+ * The outcome of preparing the signer deployment, as the caller needs it.
+ *
+ * `ready-to-deploy` means the transaction was built and simulated and is
+ * **not sent**: the Account gate is not approved, and `preparePasskeySigner`
+ * has no send path. The technical reason (which can name addresses) is logged
+ * server-side rather than returned, because this result is serialised.
+ */
+export type PrepareSignerStatus =
+  | 'ready-to-deploy'
+  | 'already-deployed'
+  /** The RPC endpoint is absent; nothing was simulated. */
+  | 'not-configured'
+  /** The factory's signer is not the Safe's owner; nothing was prepared. */
+  | 'address-mismatch'
+  /** The engine reached the factory but the call did not succeed. */
+  | 'failed'
+  /** A precondition failed (no session or no stored credential). */
+  | 'unavailable';
+
+export interface PrepareSignerResult {
+  readonly status: PrepareSignerStatus;
+  readonly signerAddress: string | null;
+  readonly safeAddress?: string;
+}
+
+/**
+ * Prepare the resident's direct Safe WebAuthn signer deployment.
+ *
+ * This is the createSigner call path: it reads the stored credential's P-256
+ * coordinates, asks the deployed factory for the signer address, and simulates
+ * `createSigner` against the factory's own code. It does **not** broadcast —
+ * the deployment is an irreversible on-chain write and the Account gate is not
+ * approved. A post-gate caller sends the prepared transaction.
+ *
+ * The credential is read from the database rather than taken from the caller,
+ * so the coordinates (and therefore the signer) are not something the browser
+ * can name. Runs on the server only: the RPC endpoint carries a provider key.
+ */
+export async function preparePasskeySignerDeployment(): Promise<PrepareSignerResult> {
+  const session = await getSessionUser();
+  if (!session) {
+    return { status: 'unavailable', signerAddress: null };
+  }
+
+  const stored = await loadPasskeyCredential();
+  if (!stored?.publicKey) {
+    return { status: 'unavailable', signerAddress: null };
+  }
+
+  const rpcUrl = readSepoliaRpcUrl();
+  if (!rpcUrl) {
+    console.warn(
+      '[kade] passkey signer preparation not-configured: SEPOLIA_RPC_URL is not set',
+    );
+    return { status: 'not-configured', signerAddress: null };
+  }
+
+  try {
+    const { createPublicClient, http } = await import('viem');
+    const { parseP256PublicKey } = await import('@/lib/passkey/public-key');
+    const client = createPublicClient({ transport: http(rpcUrl) });
+
+    const { x, y } = parseP256PublicKey(stored.publicKey);
+    const derived = await deriveAccount(x.toString(), y.toString(), session.userId);
+    const result = await preparePasskeySigner(
+      { x, y, expectedSignerAddress: derived.signerAddress },
+      { publicClient: client },
+    );
+
+    if (result.status === 'failed' || result.status === 'address-mismatch') {
+      console.warn(`[kade] passkey signer ${result.status}: ${result.reason}`);
+    }
+
+    return {
+      status: result.status,
+      signerAddress: derived.signerAddress,
+      safeAddress: derived.safeAddress,
+    };
+  } catch (cause) {
+    console.warn(`[kade] passkey signer preparation failed: ${String(cause)}`);
+    return { status: 'failed', signerAddress: null };
+  }
+}
+
