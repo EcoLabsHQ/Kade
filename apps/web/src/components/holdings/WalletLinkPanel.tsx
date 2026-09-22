@@ -41,7 +41,7 @@ export interface WalletLinkPanelProps {
     readonly address: string;
     readonly message: string;
     readonly signature: string;
-  }) => Promise<{ readonly verifiedAt: string }>;
+  }) => Promise<{ readonly ok: boolean }>;
   /** Called after a successful verification so the page can refresh. */
   readonly onLinked: () => void;
 }
@@ -102,7 +102,7 @@ function ConfiguredLinkForm({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [linkedAt, setLinkedAt] = useState<string | null>(null);
+  const [linked, setLinked] = useState(false);
 
   const address = connections[0]?.accounts[0] ?? null;
 
@@ -110,7 +110,7 @@ function ConfiguredLinkForm({
     if (!address || busy) return;
     setBusy(true);
     setError(null);
-    setLinkedAt(null);
+    setLinked(false);
     try {
       const challenge = await onBegin(address);
       const signature = await signMessageAsync({
@@ -122,7 +122,12 @@ function ConfiguredLinkForm({
         message: challenge.message,
         signature,
       });
-      setLinkedAt(result.verifiedAt);
+      if (!result.ok) {
+        throw new Error(
+          'The signature did not verify; the wallet was not linked.',
+        );
+      }
+      setLinked(true);
       onLinked();
     } catch (cause) {
       setError(
@@ -186,7 +191,7 @@ function ConfiguredLinkForm({
         )}
       </div>
 
-      {linkedAt ? (
+      {linked ? (
         <div style={{ marginTop: '10px' }}>
           <Chip tone="success" dot>
             Linked · verified signature

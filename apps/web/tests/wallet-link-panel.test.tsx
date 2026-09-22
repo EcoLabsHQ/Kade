@@ -73,9 +73,7 @@ describe('WalletLinkPanel', () => {
     hoisted.connections = [{ accounts: [ADDRESS], connector: { uid: 'uid-1' } }];
     hoisted.signMessageAsync.mockResolvedValue('0xsigned');
     const onBegin = vi.fn(async () => ({ message: MESSAGE }));
-    const onComplete = vi.fn(async () => ({
-      verifiedAt: '2026-09-22T10:00:00.000Z',
-    }));
+    const onComplete = vi.fn(async () => ({ ok: true }));
     const onLinked = vi.fn();
 
     render(

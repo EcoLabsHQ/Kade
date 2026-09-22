@@ -17,15 +17,18 @@ import {
  * any of that: it guards the caller's session, delegates to 03, and revalidates
  * the screen.
  *
- * ASSUMED 03 SIGNATURE (the brief documents only the two names; 03 is not merged
- * yet). When 03 lands, reconcile this single file with the frozen signature:
+ * Front 03's frozen interface (merged on week-2):
  *
- *   issueOwnershipChallenge(address: string): Promise<{ message: string }>
+ *   issueOwnershipChallenge(address: string): Promise<OwnershipChallenge>
+ *     // { nonce, message }
  *   verifyWalletOwnership(input: {
  *     address: string; message: string; signature: string;
- *   }): Promise<{ verifiedAt: string }>
+ *   }): Promise<OwnershipVerificationResult>
+ *     // { ok: boolean; error?: string }
  *
- * See docs/planning/week-2-todo-04-holdings.md (BLOCKED).
+ * 03 sets `wallets.verified_at` as a side effect of a verified proof; this file
+ * never writes it. On failure it relays 03's own error text rather than
+ * replacing it with a generic message.
  */
 
 /** The signed-in resident, or a thrown error. No proof without a session. */
@@ -57,12 +60,14 @@ export async function completeWalletLink(input: {
   readonly address: string;
   readonly message: string;
   readonly signature: string;
-}): Promise<{ readonly verifiedAt: string }> {
+}): Promise<{ readonly ok: true }> {
   await requireUserId();
   const verified = await verifyWalletOwnership(input);
-  if (!verified.verifiedAt) {
-    throw new Error('The signature did not verify; the wallet was not linked.');
+  if (!verified.ok) {
+    throw new Error(
+      verified.error ?? 'The signature did not verify; the wallet was not linked.',
+    );
   }
   revalidatePath('/holdings');
-  return { verifiedAt: verified.verifiedAt };
+  return { ok: true };
 }
