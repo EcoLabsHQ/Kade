@@ -82,6 +82,22 @@ the pool; no value is invented for them.
   `public.allocations` table already exists (migration `20260916000003`) and is
   the intended home; wiring it is a follow-on once a deposit can execute.
 
+## Corrective history
+
+- The front verifier (DISCOVERY) raised **F1** (blocking): `readMorphoPoolConfig`
+  parsed `KADE_MORPHO_MORPHO_ADDRESS` outside the address guard, so a malformed
+  value threw out of the reader — and out of `isMorphoConfigured` — crashing
+  `/invest` instead of returning `null`.
+- Corrected in `956c62d`: every address is parsed inside the guard, and a
+  regression test pins malformed-address → `null` / `false` without throwing.
+  Recheck verdict: **REVIEW PASSED**, F1 resolved.
+- Non-blocking warnings left open for integration: **W1** `signerDeployed` is
+  wired to the Safe deployment record rather than the WebAuthn signer contract
+  (depends on front 01); **W2** the execution gate flags are client-supplied;
+  **W3** gate misclassification; **W4** `ready-to-execute` can be returned after
+  `execute`; **W5** the chain label is hard-coded in the component; **W6**
+  present-tense deposit copy.
+
 ## Verification
 
 See the Appendix D evidence note returned with this front. `./scripts/verify.sh`
