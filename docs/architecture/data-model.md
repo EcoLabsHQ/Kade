@@ -37,7 +37,7 @@ and how each was resolved.
 | `20260916000019_safe_address_comment.sql` | no tables; comment-only correction of the Safe address description |
 | `20260921000001_bitcoin_wallet_addresses.sql` | no tables; owner RLS policy and column grants for `wallets`, the `record_wallet_address` / `delete_wallet_address` RPCs, and the 5-address cap trigger (contract v1.7) |
 | `20260921000002_evm_wallet_addresses.sql` | no tables; extends the `wallets` 5-address cap trigger to pasted EVM rows and adds the `delete_wallet_addresses` RPC (contract v1.8) |
-| `20260921000003_record_preapproval_fee_tx.sql` | no tables; `record_preapproval_fee_tx`, a SECURITY DEFINER writer for `applications.fee_tx`, plus the unique index on `fee_tx` (contract v1.9) |
+| `20260921000003_record_preapproval_fee_tx.sql` | no tables; `record_preapproval_fee_tx`, a SECURITY DEFINER writer for `applications.fee_tx`, plus the unique index on `(profile_id, fee_tx)` (contract v1.9) |
 
 Also created: trigger/helper functions (`apply_review_event`,
 `review_events_immutable`, `is_reviewer`, `preapproval_fee_usdc`,
