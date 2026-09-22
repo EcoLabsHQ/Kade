@@ -39,3 +39,23 @@ Week 2 contract; the process is `docs/DEVELOPMENT_CONTRACT.md`.
 
 Both blockers are implemented up to the boundary and then STOP, per the shared
 front rules. They are recorded here as required.
+
+## Integration notes (not blockers)
+
+- **Nav entry.** `apps/web/src/components/shell/nav.ts` is integration-owned, so
+  this front did not edit it. The Residency step is reachable from the shell via
+  the **Start Residency** action on Overview. The integration owner may add a
+  `Residency` nav item pointing at `/residency`.
+- **Service-fee rail keys.** On the testnet configuration the rail reuses
+  `TREASURY_ADDRESS` and `SEPOLIA_RPC_URL`. On a mainnet configuration it reads
+  `MAINNET_TREASURY_ADDRESS` and `ETHEREUM_RPC_URL`, which the mainnet-config
+  front owns; when they are absent the rail reports `not-configured` rather than
+  sending to a Sepolia address on mainnet. Only the Sepolia chain is wired in
+  the payment control today.
+- **Self keys.** The gated Self path reads `KADE_SELF_APP_ID`,
+  `KADE_SELF_SCOPE`, `KADE_SELF_VERIFIER_ADDRESS` and `KADE_SELF_CHAIN_ID`; the
+  env schema is owned by the mainnet-config front.
+- **Permit gate keys.** `KADE_PERMIT_ISSUANCE_APPROVED`,
+  `KADE_PERMIT_ISSUANCE_APPROVED_BY`, `KADE_PERMIT_ISSUANCE_APPROVED_AT` record
+  the Onchain-gate approval. Issuance still needs an attester key and a
+  broadcast path, which this front deliberately does not add.
