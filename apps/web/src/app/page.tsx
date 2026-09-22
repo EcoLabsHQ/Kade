@@ -147,21 +147,44 @@ export default async function OverviewPage() {
               payouts and borrowing unlock once intake review completes.
             </p>
           </div>
-          <Link
-            href="/onboarding"
-            style={{
-              border: `1px solid ${tokens.border}`,
-              borderRadius: '999px',
-              padding: '11px 18px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              color: tokens.ink,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Replay setup
-          </Link>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {/*
+              The Residency step (D16) is reachable from the shell here. The nav
+              entry is owned by the integration front; this link does not edit
+              `nav.ts` (see docs/planning/week-2-todo-05-residency.md).
+            */}
+            <Link
+              href="/residency"
+              style={{
+                border: 0,
+                borderRadius: '999px',
+                background: tokens.action,
+                padding: '11px 18px',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                color: '#fff',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Start Residency
+            </Link>
+            <Link
+              href="/onboarding"
+              style={{
+                border: `1px solid ${tokens.border}`,
+                borderRadius: '999px',
+                padding: '11px 18px',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                color: tokens.ink,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Replay setup
+            </Link>
+          </div>
         </div>
 
         <div
