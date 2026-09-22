@@ -84,6 +84,7 @@ function renderStep(
       network="Ethereum Sepolia"
       paymentConfigured
       treasuryAddress="0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A"
+      chainId={11155111}
       usdcAddress="0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
       explorerUrl="https://sepolia.etherscan.io"
       {...props}

@@ -44,6 +44,8 @@ const PENDING_POLL_MS = 4_000;
 export interface ServiceFeePaymentProps {
   /** The server-resolved service fee, as a whole-USDC decimal string. */
   readonly amountUsdc: string;
+  /** The chain the server resolved for the rail. Only Sepolia is wired today. */
+  readonly chainId: number;
   readonly treasuryAddress: `0x${string}`;
   readonly usdcAddress: `0x${string}`;
   readonly explorerUrl: string;
@@ -84,6 +86,7 @@ type ServerState =
 
 export function ServiceFeePayment({
   amountUsdc,
+  chainId: targetChainId,
   treasuryAddress,
   usdcAddress,
   explorerUrl,
@@ -91,7 +94,7 @@ export function ServiceFeePayment({
 }: ServiceFeePaymentProps) {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
-  const { chainId, switchNetwork } = useAppKitNetwork();
+  const { chainId: walletChainId, switchNetwork } = useAppKitNetwork();
   const { data: hash, writeContract, isPending, error: writeError, reset } =
     useWriteContract();
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
@@ -103,7 +106,11 @@ export function ServiceFeePayment({
   const handledRef = useRef<Hex | null>(null);
 
   const amountUnits = useMemo(() => parseUnits(amountUsdc, 6), [amountUsdc]);
-  const onSepolia = Number(chainId) === sepolia.id;
+  const onSepolia = Number(walletChainId) === sepolia.id;
+  // Only the testnet settlement chain is wired today. A mainnet configuration
+  // resolved by the server must not be paid through this Sepolia control, so
+  // the component refuses rather than sending to the wrong chain.
+  const supported = targetChainId === sepolia.id;
 
   const verify = useCallback(
     async (submitted: Hex, payer: string) => {
@@ -157,6 +164,15 @@ export function ServiceFeePayment({
       functionName: 'transfer',
       args: [treasuryAddress, amountUnits],
     });
+  }
+
+  // Placed after every hook so the hook order stays unconditional.
+  if (!supported) {
+    return (
+      <p style={statusText}>
+        Payment on this chain is not configured in this build.
+      </p>
+    );
   }
 
   if (!isConnected) {

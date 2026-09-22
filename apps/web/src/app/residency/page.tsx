@@ -67,6 +67,7 @@ export default async function ResidencyPage() {
             network={network}
             paymentConfigured={walletConfigured && isResidencyServiceFeeConfigured()}
             treasuryAddress={feeConfig?.treasury ?? null}
+            chainId={feeConfig?.chainId ?? 0}
             usdcAddress={usdcAddress}
             explorerUrl={explorerUrl}
           />
