@@ -4,6 +4,7 @@ import {
   chainByChainId,
   chainsForEnv,
   deferredChains,
+  MAINNET_CHAINS,
   productChainKeys,
   TESTNET_CHAINS,
 } from '../src/index.js';
@@ -58,5 +59,34 @@ describe('chain registry', () => {
       expect(chain.kadeLockAddress.value).toBeNull();
       expect(chain.kadeLockAddress.provenance).toBe('arbitrary');
     }
+  });
+});
+
+describe('mainnet chain registry (iteration 2)', () => {
+  it('defines Ethereum chain id 1 and leaves Arbitrum deferred', () => {
+    const ethereum = MAINNET_CHAINS.find((c) => c.chainId === CHAIN_IDS.ethereum);
+    expect(ethereum?.env).toBe('mainnet');
+    expect(ethereum?.active).toBe(true);
+    expect(ethereum?.name).toBe('Ethereum');
+    // Arbitrum stays defined but switched off (week-2 contract section 2.2).
+    expect(deferredChains('mainnet').map((c) => c.chainId)).toContain(
+      CHAIN_IDS.arbitrum,
+    );
+  });
+
+  it('sources the Ethereum mainnet USDC address externally, not locally', () => {
+    const ethereum = chainByChainId(CHAIN_IDS.ethereum);
+    expect(ethereum?.usdcAddress.value).toBe(
+      '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    );
+    expect(ethereum?.usdcAddress.provenance).toBe('external');
+  });
+
+  it('does not claim a mainnet EAS address that Week 1 did not verify', () => {
+    // The mainnet EAS/registry addresses stay [arbitrary] until verified; the
+    // config agent must not invent one (week-2 contract Appendix C1).
+    const ethereum = chainByChainId(CHAIN_IDS.ethereum);
+    expect(ethereum?.easAddress.provenance).toBe('arbitrary');
+    expect(ethereum?.schemaRegistryAddress.provenance).toBe('arbitrary');
   });
 });
