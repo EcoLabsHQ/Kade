@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import type { Hex } from 'viem';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
+import { Modal } from '@/components/ui/Modal';
 import { tokens } from '@/components/ui/tokens';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
 import { FeePayment } from './FeePayment';
@@ -60,6 +62,24 @@ export function FeeStep({
   onEnter,
   onBack,
 }: FeeStepProps) {
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function closeDeposit() {
+    setDepositOpen(false);
+    setCopied(false);
+  }
+
+  async function copyAddress(address: string) {
+    try {
+      if (!navigator.clipboard) return;
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+    } catch {
+      // Clipboard access can be denied; the address stays visible to copy by hand.
+    }
+  }
+
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
       <div style={eyebrow}>Step 4 of 4</div>
@@ -247,6 +267,61 @@ export function FeeStep({
                 Payment is not configured in this environment.
               </p>
             ) : (
+              <button
+                type="button"
+                onClick={() => setDepositOpen(true)}
+                style={{ ...primaryButton, width: '100%' }}
+              >
+                Deposit
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {breakdown && paymentConfigured && treasuryAddress ? (
+        <Modal
+          open={depositOpen}
+          onClose={closeDeposit}
+          title="Deposit the pre-approval fee"
+        >
+          <div style={{ padding: '0 24px 24px' }}>
+            <p style={modalLead}>
+              Send the fee to the Kade deposit address below on Ethereum
+              Sepolia. The amount is resolved on the server and verified from
+              the transaction receipt.
+            </p>
+
+            <dl style={detailList}>
+              <div style={detailRow}>
+                <dt style={detailLabel}>Amount due</dt>
+                <dd style={detailValue}>{usdc(breakdown.totalUsdc)}</dd>
+              </div>
+              <div style={detailRow}>
+                <dt style={detailLabel}>Network</dt>
+                <dd style={detailValue}>Ethereum Sepolia</dd>
+              </div>
+              <div style={detailRow}>
+                <dt style={detailLabel}>Token</dt>
+                <dd style={detailValue}>USDC</dd>
+              </div>
+              <div style={detailRow}>
+                <dt style={detailLabel}>Deposit address</dt>
+                <dd style={{ ...detailValue, ...addressValue }}>
+                  <code style={addressCode}>{treasuryAddress}</code>
+                  <button
+                    type="button"
+                    aria-label="Copy deposit address"
+                    onClick={() => void copyAddress(treasuryAddress)}
+                    style={copyButton}
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </dd>
+              </div>
+            </dl>
+
+            <div style={payPanel}>
               <FeePayment
                 amountUsdc={String(breakdown.totalUsdc)}
                 treasuryAddress={treasuryAddress as `0x${string}`}
@@ -254,10 +329,10 @@ export function FeeStep({
                 explorerUrl={explorerUrl}
                 onPaid={onPaid}
               />
-            )}
+            </div>
           </div>
-        </div>
-      </div>
+        </Modal>
+      ) : null}
 
       <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
         <button type="button" onClick={onBack} style={secondaryButton}>
@@ -345,4 +420,77 @@ const secondaryButton: React.CSSProperties = {
   fontSize: '15px',
   fontWeight: 600,
   cursor: 'pointer',
+};
+
+const modalLead: React.CSSProperties = {
+  margin: '10px 0 0',
+  fontSize: '13px',
+  lineHeight: 1.5,
+  color: tokens.muted,
+};
+
+const detailList: React.CSSProperties = {
+  margin: '14px 0 0',
+  borderTop: `1px solid ${tokens.border}`,
+};
+
+const detailRow: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'baseline',
+  gap: '12px',
+  padding: '10px 0',
+  borderBottom: `1px solid ${tokens.border}`,
+};
+
+const detailLabel: React.CSSProperties = {
+  margin: 0,
+  fontSize: '12.5px',
+  fontWeight: 500,
+  color: tokens.muted,
+};
+
+const detailValue: React.CSSProperties = {
+  margin: 0,
+  fontSize: '13.5px',
+  fontWeight: 600,
+  color: tokens.ink,
+  textAlign: 'right',
+};
+
+const addressValue: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: '8px',
+  flexWrap: 'wrap',
+};
+
+const addressCode: React.CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '12px',
+  fontWeight: 500,
+  color: tokens.ink,
+  wordBreak: 'break-all',
+};
+
+const copyButton: React.CSSProperties = {
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '999px',
+  background: '#fff',
+  color: tokens.brandPrimary,
+  fontFamily: 'inherit',
+  fontSize: '12px',
+  fontWeight: 600,
+  padding: '4px 10px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+
+const payPanel: React.CSSProperties = {
+  marginTop: '16px',
+  background: tokens.ink,
+  borderRadius: '16px',
+  padding: '18px 20px',
+  color: '#fff',
 };

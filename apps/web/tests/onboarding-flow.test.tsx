@@ -671,6 +671,8 @@ describe('pre-registration flow', () => {
       />,
     );
     await reachFeeStep({ connected: false });
+    // The deposit control now lives in the modal, so open it first.
+    fireEvent.click(screen.getByRole('button', { name: /^deposit$/i }));
     expect(
       await screen.findByRole('button', { name: /connect wallet/i }),
     ).toBeInTheDocument();
