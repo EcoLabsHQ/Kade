@@ -101,6 +101,20 @@ describe('recordFeePayment', () => {
     });
   });
 
+  it('records an already-mined receipt that is deeply confirmed', async () => {
+    applicationRow(null);
+    // The receipt is far behind the chain tip, as it is once a payment has
+    // settled; it must still resolve to paid rather than staying pending.
+    hoisted.blockNumber.mockResolvedValue(1_000_000n);
+
+    const result = await recordFeePayment('user-1', TX, SENDER);
+
+    expect(result).toEqual({ status: 'paid', txHash: TX });
+    expect(hoisted.rpc).toHaveBeenCalledWith('record_preapproval_fee_tx', {
+      p_tx_hash: TX,
+    });
+  });
+
   it('replaces an earlier claim when a real payment is submitted', async () => {
     // A fabricated hash was recorded first; the real payment must still land.
     applicationRow(OTHER_TX);

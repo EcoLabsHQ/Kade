@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useAppKit,
   useAppKitAccount,
@@ -48,6 +48,8 @@ export interface FeePaymentProps {
   readonly usdcAddress: `0x${string}`;
   readonly explorerUrl: string;
   readonly onPaid: (txHash: Hex) => void;
+  /** Closes the host modal; shown next to the receipt on completion. */
+  readonly onClose?: () => void;
 }
 
 function messageFor(result: RecordFeeResult): string {
@@ -108,12 +110,86 @@ function recoveryFor(status: RecordFeeResult['status']): {
   }
 }
 
+/** How long a verification may run before the resident is offered a re-check. */
+const VERIFY_TIMEOUT_MS = 15_000;
+
+/**
+ * Race a server verification against a deadline.
+ *
+ * The underlying request is not cancelled, but the screen stops waiting on it
+ * and falls back to an explicit re-check, so a slow or wedged verification can
+ * never leave the resident on "Confirming…" forever.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('verification timed out')),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * The pending-fee hash has to outlive the deposit modal that hosts this
+ * component. `Modal` unmounts its children when it closes, which destroys both
+ * wagmi's local hash and the receipt watcher, so the hash is mirrored into
+ * `sessionStorage` and re-verified whenever the component mounts again.
+ *
+ * The key names the treasury, so a hash recorded against one deposit address is
+ * never resumed against another. Every read is defensive: `sessionStorage` can
+ * throw (private mode) or hold junk, and either way the component starts idle.
+ */
+const PENDING_TX_PREFIX = 'kade:preapproval-fee:pending-tx:';
+
+function pendingTxKey(treasuryAddress: string): string {
+  return `${PENDING_TX_PREFIX}${treasuryAddress.toLowerCase()}`;
+}
+
+function readPendingHash(treasuryAddress: string): Hex | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(pendingTxKey(treasuryAddress));
+    return raw && /^0x[0-9a-fA-F]{64}$/.test(raw) ? (raw as Hex) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingHash(treasuryAddress: string, hash: Hex): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(pendingTxKey(treasuryAddress), hash);
+  } catch {
+    // Private mode or a full store: this mount still holds the hash in memory.
+  }
+}
+
+function clearPendingHash(treasuryAddress: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(pendingTxKey(treasuryAddress));
+  } catch {
+    // Nothing to clear.
+  }
+}
+
 export function FeePayment({
   amountUsdc,
   treasuryAddress,
   usdcAddress,
   explorerUrl,
   onPaid,
+  onClose,
 }: FeePaymentProps) {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
@@ -125,10 +201,20 @@ export function FeePayment({
     error: writeError,
     reset,
   } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
     hash,
   });
   const [server, setServer] = useState<ServerState>({ kind: 'idle' });
+  // Set once the server has verified the receipt; drives the completed state.
+  const [paid, setPaid] = useState(false);
+
+  // A hash sent in an earlier mount, restored from storage. The modal unmounts
+  // this component when it closes, so this is what lets the payment resume
+  // instead of starting from idle with no memory of the submitted transfer.
+  const [resumedHash, setResumedHash] = useState<Hex | null>(() =>
+    readPendingHash(treasuryAddress),
+  );
+  const txHash = hash ?? resumedHash ?? null;
 
   // Keep the latest callback without re-running the confirmation effect.
   const onPaidRef = useRef(onPaid);
@@ -144,68 +230,78 @@ export function FeePayment({
 
   const onSepolia = Number(chainId) === sepolia.id;
 
+  // Persist the hash the moment it exists, not only once the receipt confirms,
+  // so closing the modal mid-confirmation cannot lose an in-flight payment.
   useEffect(() => {
-    if (!isSuccess || !hash || !address) return;
-    if (handledRef.current === hash) return;
-    handledRef.current = hash;
+    if (hash) writePendingHash(treasuryAddress, hash);
+  }, [hash, treasuryAddress]);
 
-    let active = true;
-    setServer({ kind: 'verifying' });
-    recordPreapprovalFeePayment(hash, address)
-      .then((result) => {
-        if (!active) return;
+  /**
+   * Verify a hash against the server, which re-reads the Sepolia receipt.
+   *
+   * The server is the source of truth, so this runs as soon as there is a hash
+   * and an address rather than waiting on the wagmi watcher: a resumed hash may
+   * already be mined with no watcher left. A timeout guarantees the resident
+   * gets a re-check rather than an indefinite "Confirming…".
+   */
+  const verify = useCallback(
+    async (submitted: Hex, payer: string) => {
+      setServer({ kind: 'verifying' });
+      try {
+        const result = await withTimeout(
+          recordPreapprovalFeePayment(submitted, payer),
+          VERIFY_TIMEOUT_MS,
+        );
         if (result.status === 'paid') {
-          onPaidRef.current(hash);
+          clearPendingHash(treasuryAddress);
+          setResumedHash(null);
+          setPaid(true);
+          onPaidRef.current(submitted);
           return;
+        }
+        if (result.status === 'pending') {
+          // Still confirming: keep the hash so a later mount (or the watcher
+          // confirming now) can retry, and allow the effect to run again.
+          handledRef.current = null;
+        } else {
+          // Every other outcome is final, so the hash is no longer resumable.
+          clearPendingHash(treasuryAddress);
+          setResumedHash(null);
         }
         setServer({
           kind: 'error',
           message: messageFor(result),
           ...recoveryFor(result.status),
         });
-      })
-      .catch(() => {
-        if (active) {
-          setServer({
-            kind: 'error',
-            message: 'We could not confirm the payment. Please try again.',
-            canRecheck: true,
-            canRetryPayment: false,
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [isSuccess, hash, address]);
+      } catch {
+        setServer({
+          kind: 'error',
+          message: 'We could not confirm the payment. Please try again.',
+          canRecheck: true,
+          canRetryPayment: false,
+        });
+      }
+    },
+    [treasuryAddress],
+  );
+
+  useEffect(() => {
+    if (!txHash || !address) return;
+    if (handledRef.current === txHash) return;
+    handledRef.current = txHash;
+    void verify(txHash, address);
+  }, [txHash, address, verify]);
 
   async function checkAgain() {
-    if (!hash || !address) return;
-    setServer({ kind: 'verifying' });
-    try {
-      const result = await recordPreapprovalFeePayment(hash, address);
-      if (result.status === 'paid') {
-        onPaidRef.current(hash);
-        return;
-      }
-      setServer({
-        kind: 'error',
-        message: messageFor(result),
-        ...recoveryFor(result.status),
-      });
-    } catch {
-      setServer({
-        kind: 'error',
-        message: 'We could not confirm the payment. Please try again.',
-        canRecheck: true,
-        canRetryPayment: false,
-      });
-    }
+    if (!txHash || !address) return;
+    await verify(txHash, address);
   }
 
   /** Send the fee to the treasury. */
   function pay() {
     handledRef.current = null;
+    setResumedHash(null);
+    setPaid(false);
     setServer({ kind: 'idle' });
     reset();
     writeContract({
@@ -255,7 +351,7 @@ export function FeePayment({
   if (server.kind === 'error') {
     return (
       <div>
-        <p style={{ ...statusText, color: '#FECDCA' }}>{server.message}</p>
+        <p style={{ ...statusText, color: tokens.danger }}>{server.message}</p>
         <div style={actions}>
           {server.canRecheck ? (
             <button type="button" onClick={() => void checkAgain()} style={primaryButton}>
@@ -263,9 +359,38 @@ export function FeePayment({
             </button>
           ) : null}
           {server.canRetryPayment ? (
-            <button type="button" onClick={pay} style={secondaryButtonDark}>
+            <button type="button" onClick={pay} style={secondaryButton}>
               Try the payment again
             </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // The receipt has been verified: offer to close the modal and to inspect the
+  // transaction, both as proper buttons rather than a bare underlined link.
+  if (paid) {
+    return (
+      <div data-testid="fee-complete-actions">
+        <p style={statusText}>
+          Payment confirmed. Your file is open for pre-approval.
+        </p>
+        <div style={actions}>
+          {onClose ? (
+            <button type="button" onClick={onClose} style={primaryButton}>
+              Close
+            </button>
+          ) : null}
+          {txHash ? (
+            <a
+              href={`${explorerUrl}/tx/${txHash}`}
+              target="_blank"
+              rel="noreferrer"
+              style={linkButton}
+            >
+              View transaction
+            </a>
           ) : null}
         </div>
       </div>
@@ -285,7 +410,19 @@ export function FeePayment({
 
   return (
     <div>
-      <p style={statusText}>{status}</p>
+      {busy ? (
+        <div role="status" aria-live="polite" style={loaderRow}>
+          <span
+            role="progressbar"
+            aria-label="Confirming payment"
+            className="kade-spinner"
+            style={spinner}
+          />
+          <span style={{ ...statusText, margin: 0 }}>{status}</span>
+        </div>
+      ) : (
+        <p style={statusText}>{status}</p>
+      )}
 
       <button
         type="button"
@@ -298,21 +435,25 @@ export function FeePayment({
           cursor: busy ? 'wait' : 'pointer',
         }}
       >
-        {isPending ? 'Waiting for your wallet…' : `Pay ${amountUsdc} USDC`}
+        {isPending
+          ? 'Waiting for your wallet…'
+          : busy
+            ? 'Confirming…'
+            : `Pay ${amountUsdc} USDC`}
       </button>
 
-      {hash ? (
+      {txHash ? (
         <a
-          href={`${explorerUrl}/tx/${hash}`}
+          href={`${explorerUrl}/tx/${txHash}`}
           target="_blank"
           rel="noreferrer"
-          style={hashLink}
+          style={{ ...linkButton, marginTop: '10px' }}
         >
           View transaction
         </a>
       ) : null}
       {writeError ? (
-        <p style={{ ...statusText, color: '#FECDCA', marginTop: '8px' }}>
+        <p style={{ ...statusText, color: tokens.danger, marginTop: '8px' }}>
           The wallet rejected or could not send the payment.
         </p>
       ) : null}
@@ -324,7 +465,23 @@ const statusText: React.CSSProperties = {
   margin: '0 0 12px',
   fontSize: '13.5px',
   lineHeight: 1.5,
-  color: '#D0D5DD',
+  color: tokens.muted,
+};
+
+const loaderRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  margin: '0 0 12px',
+};
+
+const spinner: React.CSSProperties = {
+  width: '16px',
+  height: '16px',
+  flexShrink: 0,
+  border: '2px solid rgba(16,24,40,.16)',
+  borderTopColor: tokens.action,
+  borderRadius: '999px',
 };
 
 const actions: React.CSSProperties = {
@@ -346,23 +503,33 @@ const primaryButton: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const secondaryButtonDark: React.CSSProperties = {
+const secondaryButton: React.CSSProperties = {
   height: '46px',
   padding: '0 22px',
-  border: '1px solid #667085',
+  border: `1px solid ${tokens.border}`,
   borderRadius: '999px',
-  background: 'transparent',
-  color: '#fff',
+  background: '#fff',
+  color: tokens.ink,
   fontFamily: 'inherit',
   fontSize: '15px',
   fontWeight: 600,
   cursor: 'pointer',
 };
 
-const hashLink: React.CSSProperties = {
-  display: 'inline-block',
-  marginTop: '10px',
-  fontSize: '12.5px',
-  color: '#98C5FF',
-  textDecoration: 'underline',
+/** A link styled as a button, for the explorer receipt. */
+const linkButton: React.CSSProperties = {
+  height: '46px',
+  padding: '0 22px',
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '999px',
+  background: '#fff',
+  color: tokens.brandPrimary,
+  fontFamily: 'inherit',
+  fontSize: '15px',
+  fontWeight: 600,
+  textDecoration: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
 };

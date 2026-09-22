@@ -77,6 +77,7 @@ function renderPayment() {
   return {
     onPaid,
     rerender: () => view.rerender(element()),
+    unmount: () => view.unmount(),
   };
 }
 
@@ -105,6 +106,8 @@ beforeEach(() => {
   hoisted.write.error = null;
   hoisted.receipt.isLoading = false;
   hoisted.receipt.isSuccess = false;
+  // The in-flight hash is persisted here, so one test must not inherit it.
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -229,5 +232,41 @@ describe('FeePayment', () => {
     expect(
       screen.queryByRole('button', { name: /check again/i }),
     ).toBeNull();
+  });
+
+  it('resumes a confirmed payment after the modal remounts the control', async () => {
+    // The first attempt reads the receipt as pending (a transient read), so the
+    // control neither resolves nor forgets the hash.
+    hoisted.record.mockReset();
+    let attempt = 0;
+    hoisted.record.mockImplementation(async () => {
+      attempt += 1;
+      return attempt === 1
+        ? { status: 'pending' as const }
+        : { status: 'paid' as const, txHash: TX };
+    });
+
+    const first = renderPayment();
+    fireEvent.click(payButton());
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    first.rerender();
+
+    expect(
+      await screen.findByRole('button', { name: /check again/i }),
+    ).toBeInTheDocument();
+
+    // The modal closes: FeePayment unmounts and wagmi forgets the in-flight
+    // hash. Without a persisted hash a reopen would start from idle.
+    first.unmount();
+    hoisted.write.data = undefined;
+    hoisted.receipt.isSuccess = false;
+
+    // Reopening mounts a fresh control with no wagmi hash; the persisted hash
+    // must still be re-verified and the confirmed payment must resolve to paid.
+    const second = renderPayment();
+
+    await waitFor(() => expect(second.onPaid).toHaveBeenCalledWith(TX));
+    expect(hoisted.record).toHaveBeenLastCalledWith(TX, CONNECTED);
   });
 });
