@@ -30,7 +30,7 @@ import type {
 } from '@/lib/onboarding/persistence';
 import { OnboardingWizard } from './OnboardingWizard';
 import { FeeStep, type FileRow } from './FeeStep';
-import { MOCK_WALLETS, WealthStep } from './WealthStep';
+import { WealthStep } from './WealthStep';
 import { AccountSetupStep } from './AccountSetupStep';
 
 /** The account phase creates the passkey; 2-4 are the pre-registration steps. */
@@ -79,6 +79,8 @@ export interface OnboardingFlowProps {
   /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
   readonly usdcAddress: string;
   readonly explorerUrl: string;
+  /** True when the WalletConnect project id is configured for this environment. */
+  readonly walletConfigured: boolean;
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
@@ -136,6 +138,7 @@ export function OnboardingFlow({
   treasuryAddress,
   usdcAddress,
   explorerUrl,
+  walletConfigured,
 }: OnboardingFlowProps) {
   const router = useRouter();
   // The passkey is created before the pre-registration steps, as the reference's
@@ -146,7 +149,12 @@ export function OnboardingFlow({
   const [step, setStep] = useState<Step>(
     initialCredentialId ? 2 : 'account',
   );
-  const [connected, setConnected] = useState<readonly string[]>([]);
+  // The connected wallet is reported by the panel, which owns the AppKit
+  // hooks; only its address and USD figure matter here, for the tier total.
+  const [connectedWallet, setConnectedWallet] = useState<{
+    readonly address: string;
+    readonly usd: number | null;
+  } | null>(null);
   const [bitcoinAddresses, setBitcoinAddresses] = useState<
     readonly BitcoinAddressRecord[]
   >(initialBitcoinAddresses);
@@ -201,8 +209,6 @@ export function OnboardingFlow({
   const tierName = tier?.name ?? '3-year';
   const tierMinimum = tier?.minUsdc ?? 280000;
 
-  const linked = MOCK_WALLETS.filter((w) => connected.includes(w.key));
-  const demoTotal = linked.reduce((sum, w) => sum + w.value, 0);
   const bitcoinTotal = bitcoinAddresses.reduce(
     (sum, record) => sum + (record.usd ?? 0),
     0,
@@ -211,7 +217,8 @@ export function OnboardingFlow({
     (sum, record) => sum + (record.usd ?? 0),
     0,
   );
-  const wealthTotal = demoTotal + bitcoinTotal + evmTotal;
+  const walletTotal = connectedWallet?.usd ?? 0;
+  const wealthTotal = bitcoinTotal + evmTotal + walletTotal;
 
   // The Bitcoin actions both read and write on the server. The browser only
   // shows the record the server returns, so a read that failed is presented as
@@ -262,8 +269,8 @@ export function OnboardingFlow({
       .join(' · ') ?? '—';
     const names = snapshot?.members.map((m) => m.name.split(' ')[0]).join(', ') ?? '';
     const sources: string[] = [];
-    if (linked.length > 0) {
-      sources.push(`${linked.length} wallet${linked.length === 1 ? '' : 's'}`);
+    if (connectedWallet) {
+      sources.push('1 connected wallet');
     }
     if (bitcoinAddresses.length > 0) {
       sources.push(
@@ -311,13 +318,9 @@ export function OnboardingFlow({
         value: `${sources.length > 0 ? sources.join(' · ') : 'No sources'} · $${wealthTotal.toLocaleString('en-US')}`,
         status: wealthTotal >= tierMinimum ? 'Meets tier' : 'Below tier',
         tone: wealthTotal >= tierMinimum ? 'success' : 'warning',
-        // All-demo only when every counted source is a demo wallet. Once a real
-        // bitcoin or wallet-address read is in the total, the row drops the
-        // blanket Demo chip and names its sources instead.
-        demo:
-          bitcoinAddresses.length === 0 &&
-          evmAddresses.length === 0 &&
-          linked.length > 0,
+        // Every source is a real public read now, so the row never carries a
+        // demo chip; it names its sources instead.
+        demo: false,
       },
     ];
   }, [
@@ -325,7 +328,7 @@ export function OnboardingFlow({
     householdSize,
     tierName,
     tierMinimum,
-    linked.length,
+    connectedWallet,
     wealthTotal,
     bitcoinAddresses.length,
     evmAddresses.length,
@@ -377,10 +380,11 @@ export function OnboardingFlow({
           />
         ) : step === 3 ? (
           <WealthStep
-            connected={connected}
-            onConnect={(key) =>
-              setConnected((current) =>
-                current.includes(key) ? current : [...current, key],
+            walletConfigured={walletConfigured}
+            connectedWallet={connectedWallet}
+            onWalletChange={(state) =>
+              setConnectedWallet(
+                state ? { address: state.address, usd: state.usd } : null,
               )
             }
             onContinue={() => setStep(4)}

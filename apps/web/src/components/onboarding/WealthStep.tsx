@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ComponentType } from 'react';
+import { useState } from 'react';
 import { TIERS } from '@kade/shared';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
@@ -11,10 +11,14 @@ import {
   type BitcoinAddressRecord,
   type EvmAddressRecord,
 } from '@/lib/wealth/types';
-import { WalletGlyph } from '@/components/icons/WalletGlyph';
-import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
 import { BitcoinGlyph } from '@/components/icons/BitcoinGlyph';
 import { EvmAddressGlyph } from '@/components/icons/EvmAddressGlyph';
+import {
+  ConnectedWalletPanel,
+  type ConnectedWalletState,
+} from '@/components/wallet/ConnectedWalletPanel';
+import { chainColor } from '@/lib/wealth/chain-colors';
+import { shortAddress, usd } from '@/lib/wealth/format';
 
 /** The widest qualifying figure, used only to scale the progress track. */
 const TIER_SCALE_MAX = Math.max(...TIERS.map((tier) => tier.minUsdc));
@@ -24,83 +28,24 @@ const BITCOIN_ORANGE = '#F7931A';
 /**
  * Step 3 — show proof of wealth.
  *
- * Two kinds of row carry two different meanings, and the screen says which is
- * which. The browser-extension and WalletConnect rows are DEMO: connecting
- * attaches the reference's seed balances, they are labelled `Demo`, and nothing
- * is signed. Bitcoin and pasted EVM ("wallet address") rows are watch-only: the
- * server reads the balance from a public source (Bitcoin on-chain; Ethereum and
- * Base for 0x addresses) with no signature, no wallet connection and no proof of
- * ownership, so every such row says so.
+ * Three sources, and the screen says which is which. Browser extension and
+ * WalletConnect are REAL: they open the Reown AppKit modal, and the connected
+ * account's balance is read from the same public provider (Ethereum and Base)
+ * that everything else uses. Bitcoin and pasted EVM ("wallet address") rows are
+ * watch-only: the server reads the balance from a public source with no
+ * signature and no ownership proof, so those rows say so. Nothing here is
+ * mocked, and no path here gives Kade authority over the resident Safe.
  */
 
-const CHAIN_COLORS: Record<string, string> = {
-  Ethereum: '#627EEA',
-  Base: '#0052FF',
-  Arbitrum: '#2D374B',
-  Optimism: '#FF0420',
-  Celo: '#FCFF52',
-};
-
-export interface MockChainBalance {
-  readonly chain: keyof typeof CHAIN_COLORS | string;
-  readonly amount: string;
-  readonly value: number;
-}
-
-export interface MockWallet {
-  readonly key: string;
-  readonly name: string;
-  readonly subtitle: string;
-  readonly color: string;
-  readonly address: string;
-  readonly assets: string;
-  readonly value: number;
-  readonly chains: readonly MockChainBalance[];
-}
-
-export const MOCK_WALLETS: readonly MockWallet[] = [
-  {
-    key: 'ext',
-    name: 'Browser extension',
-    subtitle: 'MetaMask, Rabby · EVM',
-    color: '#E8831D',
-    address: '0x71C9…2fA1',
-    assets: '25 ETH across 5 chains',
-    value: 49575,
-    chains: [
-      { chain: 'Ethereum', amount: '14.20 ETH', value: 28150 },
-      { chain: 'Base', amount: '6.10 ETH', value: 12093 },
-      { chain: 'Arbitrum', amount: '3.40 ETH', value: 6740 },
-      { chain: 'Optimism', amount: '1.05 ETH', value: 2082 },
-      { chain: 'Celo', amount: '0.25 ETH', value: 510 },
-    ],
-  },
-  {
-    key: 'wc',
-    name: 'WalletConnect',
-    subtitle: 'Scan with a mobile wallet',
-    color: '#3B99FC',
-    address: '0x3aD0…77b2',
-    assets: '150,000 USDC across 5 chains',
-    value: 150000,
-    chains: [
-      { chain: 'Ethereum', amount: '84,200 USDC', value: 84200 },
-      { chain: 'Base', amount: '41,500 USDC', value: 41500 },
-      { chain: 'Arbitrum', amount: '18,800 USDC', value: 18800 },
-      { chain: 'Optimism', amount: '4,100 USDC', value: 4100 },
-      { chain: 'Celo', amount: '1,400 USDC', value: 1400 },
-    ],
-  },
-];
-
-const WALLET_GLYPHS: Record<string, ComponentType<{ size?: number }>> = {
-  ext: WalletGlyph,
-  wc: WalletConnectGlyph,
-};
-
 export interface WealthStepProps {
-  readonly connected: readonly string[];
-  readonly onConnect: (key: string) => void;
+  /** False when no WalletConnect project id is configured for this environment. */
+  readonly walletConfigured: boolean;
+  /** The connected wallet, reported by the panel; null while disconnected. */
+  readonly connectedWallet: {
+    readonly address: string;
+    readonly usd: number | null;
+  } | null;
+  readonly onWalletChange: (state: ConnectedWalletState | null) => void;
   readonly onContinue: () => void;
   readonly onBack: () => void;
   readonly tierName: string;
@@ -113,24 +58,14 @@ export interface WealthStepProps {
   readonly onRemoveWalletAddress: (address: string) => Promise<void> | void;
 }
 
-function usd(value: number): string {
-  return `$${Math.round(value).toLocaleString('en-US')}`;
-}
-
 function btc(value: string | null): string {
   return value === null ? '—' : `${value} BTC`;
 }
 
-/** Shorten a long address for display; the full value stays on `title`. */
-function shortAddress(address: string): string {
-  return address.length <= 16
-    ? address
-    : `${address.slice(0, 8)}…${address.slice(-6)}`;
-}
-
 export function WealthStep({
-  connected,
-  onConnect,
+  walletConfigured,
+  connectedWallet,
+  onWalletChange,
   onContinue,
   onBack,
   tierName,
@@ -152,10 +87,6 @@ export function WealthStep({
   const [evmError, setEvmError] = useState<string | null>(null);
   const [evmOpen, setEvmOpen] = useState(false);
 
-  const linked = MOCK_WALLETS.filter((wallet) =>
-    connected.includes(wallet.key),
-  );
-  const demoTotal = linked.reduce((sum, wallet) => sum + wallet.value, 0);
   const bitcoinTotal = bitcoinAddresses.reduce(
     (sum, record) => sum + (record.usd ?? 0),
     0,
@@ -164,12 +95,16 @@ export function WealthStep({
     (sum, record) => sum + (record.usd ?? 0),
     0,
   );
-  const total = demoTotal + bitcoinTotal + evmTotal;
+  const walletTotal = connectedWallet?.usd ?? 0;
+  const total = bitcoinTotal + evmTotal + walletTotal;
   const shortfall = Math.max(0, tierMinimum - total);
   const progress = Math.min(100, (total / TIER_SCALE_MAX) * 100);
   const targetMark = Math.min(100, (tierMinimum / TIER_SCALE_MAX) * 100);
 
-  const hasRealRead = bitcoinAddresses.length > 0 || evmAddresses.length > 0;
+  const hasRealRead =
+    bitcoinAddresses.length > 0 ||
+    evmAddresses.length > 0 ||
+    connectedWallet !== null;
 
   const atCap = bitcoinAddresses.length >= MAX_BITCOIN_ADDRESSES;
   const confirmDisabled = addressInput.trim() === '' || atCap || adding;
@@ -180,7 +115,7 @@ export function WealthStep({
   const canContinue =
     bitcoinAddresses.length > 0 ||
     evmAddresses.length > 0 ||
-    connected.length > 0;
+    connectedWallet !== null;
 
   async function handleConfirm() {
     const address = addressInput.trim();
@@ -225,13 +160,13 @@ export function WealthStep({
       <div style={eyebrow}>Step 3 of 4</div>
       <h1 style={heading}>Show proof of wealth</h1>
       <p style={lead}>
-        The browser-extension and WalletConnect rows are demo: connecting shows
-        example balances and signs nothing. Bitcoin and pasted wallet addresses
-        are read-only — you paste an address and its balance is read from a
-        public source (Bitcoin on-chain; Ethereum and Base for 0x addresses). No
-        signature is used, no wallet is connected, and a public read is not
-        proof of ownership. This only shows you can meet the tier; moving funds
-        into a qualified vault happens inside the platform.
+        Connect a wallet or paste an address. The browser-extension and
+        WalletConnect rows open a real wallet connection and read that account&rsquo;s
+        balances from a public source on Ethereum and Base. Bitcoin and pasted
+        wallet addresses are read-only in the same way. Nothing is signed, the
+        connection gives Kade no authority over your Safe, and a public read is
+        not proof of ownership. This only shows you can meet the tier; moving
+        funds into a qualified vault happens inside the platform.
       </p>
 
       <div
@@ -243,48 +178,10 @@ export function WealthStep({
         }}
       >
         <div style={{ display: 'grid', gap: '10px' }}>
-          {MOCK_WALLETS.map((wallet) => {
-            const isSigned = connected.includes(wallet.key);
-            const Glyph = WALLET_GLYPHS[wallet.key] ?? WalletGlyph;
-            return (
-              <Card key={wallet.key} padding="14px 16px">
-                <div style={rowHeaderStyle}>
-                  <span
-                    aria-hidden
-                    style={{ ...badgeStyle, background: wallet.color }}
-                  >
-                    <Glyph size={22} />
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      <span style={{ fontSize: '15px', fontWeight: 600 }}>
-                        {wallet.name}
-                      </span>
-                      <Chip tone="muted">Demo</Chip>
-                    </div>
-                    <div style={rowSubtitleStyle}>{wallet.subtitle}</div>
-                  </div>
-                  {isSigned ? (
-                    <SignedState />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onConnect(wallet.key)}
-                      style={connectButton}
-                    >
-                      Connect
-                    </button>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+          <ConnectedWalletPanel
+            configured={walletConfigured}
+            onChange={onWalletChange}
+          />
 
           <Card padding="14px 16px">
             <div style={rowHeaderStyle}>
@@ -591,7 +488,7 @@ export function WealthStep({
                             height: '10px',
                             borderRadius: '2px',
                             background:
-                              CHAIN_COLORS[chain.name] ?? tokens.muted,
+                              chainColor(chain.name),
                             flex: '0 0 auto',
                           }}
                         />
@@ -666,7 +563,7 @@ export function WealthStep({
           >
             <div style={eyebrow}>Proof of wealth</div>
             <Chip tone="muted">
-              {hasRealRead ? 'Demo + network' : 'Demo balances'}
+              {hasRealRead ? 'Read from public sources' : 'No sources yet'}
             </Chip>
           </div>
           <div
@@ -684,15 +581,23 @@ export function WealthStep({
           <div
             style={{ fontSize: '13px', color: tokens.muted, marginTop: '4px' }}
           >
-            {linked.length === 0 &&
-            bitcoinAddresses.length === 0 &&
-            evmAddresses.length === 0
+            {!hasRealRead
               ? 'Connect a wallet or add an address to begin'
-              : `${linked.length} wallet${linked.length === 1 ? '' : 's'} · ${bitcoinAddresses.length} bitcoin address${
-                  bitcoinAddresses.length === 1 ? '' : 'es'
-                } · ${evmAddresses.length} wallet address${
-                  evmAddresses.length === 1 ? '' : 'es'
-                }`}
+              : [
+                  connectedWallet ? '1 connected wallet' : null,
+                  bitcoinAddresses.length > 0
+                    ? `${bitcoinAddresses.length} bitcoin address${
+                        bitcoinAddresses.length === 1 ? '' : 'es'
+                      }`
+                    : null,
+                  evmAddresses.length > 0
+                    ? `${evmAddresses.length} wallet address${
+                        evmAddresses.length === 1 ? '' : 'es'
+                      }`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
           </div>
 
           <div style={{ position: 'relative', marginTop: '18px' }}>
@@ -731,77 +636,6 @@ export function WealthStep({
               ? `${tierName} tier met`
               : `${usd(shortfall)} short of ${tierName} tier`}
           </div>
-
-          {linked.map((wallet) => (
-            <div key={wallet.key} style={{ marginTop: '18px' }}>
-              <div
-                style={{
-                  borderTop: `1px solid ${tokens.border}`,
-                  paddingTop: '14px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                }}
-              >
-                <span style={{ fontSize: '14px', fontWeight: 600 }}>
-                  {wallet.name}
-                </span>
-                <span
-                  style={{
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {usd(wallet.value)}
-                </span>
-              </div>
-              <div
-                style={{
-                  fontSize: '12.5px',
-                  color: tokens.muted,
-                  marginTop: '2px',
-                }}
-              >
-                {wallet.address} · {wallet.assets}
-              </div>
-              {wallet.chains.map((chain) => (
-                <div
-                  key={chain.chain}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    marginTop: '6px',
-                    fontSize: '13px',
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: '10px',
-                      height: '10px',
-                      borderRadius: '2px',
-                      background: CHAIN_COLORS[chain.chain] ?? tokens.muted,
-                      flex: '0 0 auto',
-                    }}
-                  />
-                  <span style={{ color: tokens.muted }}>
-                    {chain.chain} · {chain.amount}
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontVariantNumeric: 'tabular-nums',
-                      color: tokens.muted,
-                    }}
-                  >
-                    {usd(chain.value)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ))}
 
           {bitcoinAddresses.map((record) => (
             <div key={record.id} style={{ marginTop: '18px' }}>
@@ -889,7 +723,7 @@ export function WealthStep({
                       width: '10px',
                       height: '10px',
                       borderRadius: '2px',
-                      background: CHAIN_COLORS[chain.name] ?? tokens.muted,
+                      background: chainColor(chain.name),
                       flex: '0 0 auto',
                     }}
                   />
@@ -938,9 +772,10 @@ export function WealthStep({
               lineHeight: 1.6,
             }}
           >
-            {hasRealRead
-              ? 'Demo wallet balances shown are demo data. Bitcoin and pasted wallet-address balances are read from a public source, are not proof of ownership, and involve no signature and no wallet connection.'
-              : 'Browser-extension and WalletConnect balances shown are demo data. Connecting is simulated: nothing is signed and no real wallet is connected.'}
+            Every figure here is read from a public source on Ethereum and Base.
+            Connecting a wallet or pasting an address involves no signature, and
+            a public read is not proof of ownership. The wallet connection is
+            read-only and gives Kade no authority over your Safe.
           </p>
         </Card>
       </div>
@@ -971,20 +806,10 @@ export function WealthStep({
   );
 }
 
-/** The state a row shows once it carries at least one confirmed source. */
-function SignedState() {
-  return (
-    <span style={signedStyle}>
-      <span style={signedDot} />
-      Signed
-    </span>
-  );
-}
-
 /**
  * The state a watch-only row shows once an address is stored. Deliberately not
- * "Signed": no signature was produced and no wallet was connected — the balance
- * was read from a public source.
+ * "Signed": no signature was produced, and the balance was read from a public
+ * source.
  */
 function ReadState() {
   return (
