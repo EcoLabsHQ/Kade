@@ -1,7 +1,7 @@
 # Kade MVP — Week 1 Delivery Contract
 
 **Status:** Frozen v1.10 — human decisions recorded 16 September 2026; ten
-amendments recorded in sections 8.1-8.9  
+amendments recorded in sections 8.1-8.10  
 **Delivery window:** 14–20 September 2026  
 **Execution allocation:** 20 human development/orchestration hours (parallel agent execution, not combined effort)  
 **Parent plan:** 80-hour MVP execution plan  
@@ -613,9 +613,9 @@ existing `applications.fee_tx` column — already the documented "on-chain payme
 transaction hash, server-written". `authenticated` has no column privilege on
 it and the owner may update only `applications.tier`, so a new `SECURITY DEFINER`
 function scoped to `profile_id = auth.uid()` writes exactly that column for the
-caller's own application, once. The stored hash is a **claim, not a proof**: the
-paid state is derived by re-reading the Sepolia receipt, never from the presence
-of `fee_tx`. A resident who writes a fabricated hash gains no capability, because
+caller's own application, replacing the recorded value rather than refusing a
+different one. The stored hash is a **claim, not a proof**: the paid state is
+derived by re-reading the Sepolia receipt, never from the presence of `fee_tx`. A resident who writes a fabricated hash gains no capability, because
 the read path re-verifies the chain. No service-role key is involved.
 `applications.status` is not changed; it remains trigger-only through
 `review_events`.
