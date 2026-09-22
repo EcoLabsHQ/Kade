@@ -37,6 +37,8 @@ export interface ResidencyStepProps {
   readonly paymentConfigured: boolean;
   /** The Kade treasury, resolved on the server; null when unconfigured. */
   readonly treasuryAddress: string | null;
+  /** The chain the server resolved for the rail; 0 when unconfigured. */
+  readonly chainId: number;
   readonly usdcAddress: string;
   readonly explorerUrl: string;
 }
@@ -100,6 +102,7 @@ export function ResidencyStep({
   network,
   paymentConfigured,
   treasuryAddress,
+  chainId,
   usdcAddress,
   explorerUrl,
 }: ResidencyStepProps) {
@@ -225,6 +228,7 @@ export function ResidencyStep({
             ) : (
               <ServiceFeePayment
                 amountUsdc={String(snapshot.serviceFeeAmountUsdc)}
+                chainId={chainId}
                 treasuryAddress={treasuryAddress as `0x${string}`}
                 usdcAddress={usdcAddress as `0x${string}`}
                 explorerUrl={explorerUrl}
