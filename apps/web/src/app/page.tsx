@@ -6,8 +6,15 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
+import { ReviewGateWatcher } from '@/components/review/ReviewGateWatcher';
 import { hasCompletedOnboarding } from '@/lib/onboarding/state';
-import { getSessionUser } from '@/lib/supabase/server';
+import { isAuthConfigured, readAuthEnv } from '@/lib/env';
+import {
+  createSupabaseServerClient,
+  getSessionUser,
+} from '@/lib/supabase/server';
+import { loadResidentReviewState } from '@/lib/review/queue';
+import { residentGate, type ResidentGate } from '@/lib/review/gate';
 import { loadShellSafe } from '@/lib/safe/shell';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +78,43 @@ const STAGES: readonly Stage[] = [
   },
 ];
 
+/**
+ * The intake-review stage reflects the real application status, which the
+ * reviewer's action flips through `review_events`. The other stages remain the
+ * reference's demo state, still labelled as demo at the foot of the page.
+ */
+function buildStages(gate: ResidentGate): readonly Stage[] {
+  return STAGES.map((stage) => {
+    if (stage.title !== 'Intake review') return stage;
+    switch (gate) {
+      case 'approved':
+        return {
+          ...stage,
+          meta: 'Admin review · approved',
+          status: 'Approved',
+          state: 'done',
+        };
+      case 'blocked':
+        return {
+          ...stage,
+          meta: 'Admin review · blocked, action needed',
+          status: 'Blocked',
+          state: 'active',
+        };
+      case 'pending':
+        return {
+          ...stage,
+          meta: 'Admin review · in progress',
+          status: 'In progress',
+          state: 'active',
+        };
+      case 'unknown':
+      default:
+        return stage;
+    }
+  });
+}
+
 const NEXT_STEPS: readonly { label: string; note?: string }[] = [
   { label: 'Move funds into the qualified vault' },
   { label: 'Order Onchain Island Card', note: 'Unlocks after review' },
@@ -91,6 +135,23 @@ export default async function OverviewPage() {
     redirect('/onboarding');
   }
 
+  // The review gate, read from the application the reviewer's action flips. A
+  // failed read degrades to `unknown` rather than claiming a status.
+  let reviewGate: ResidentGate = 'unknown';
+  if (isAuthConfigured(readAuthEnv())) {
+    try {
+      const client = await createSupabaseServerClient();
+      const state = await loadResidentReviewState(client, session.userId);
+      reviewGate = residentGate(state.status);
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not read the resident review state:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }
+  const stages = buildStages(reviewGate);
+
   return (
     <AppShell
       email={session.email}
@@ -99,6 +160,7 @@ export default async function OverviewPage() {
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
     >
+      <ReviewGateWatcher userId={session.userId} />
       <div
         className="kade-announce"
         style={{
@@ -214,7 +276,7 @@ export default async function OverviewPage() {
             </div>
 
             <div style={{ marginTop: '10px' }}>
-              {STAGES.map((stage, index) => (
+              {stages.map((stage, index) => (
                 <div
                   key={stage.title}
                   style={{
