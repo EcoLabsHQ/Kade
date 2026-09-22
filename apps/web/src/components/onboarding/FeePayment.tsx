@@ -17,15 +17,31 @@ import { tokens } from '@/components/ui/tokens';
  * The connect-and-pay control for the pre-approval fee (contract 8.9).
  *
  * The resident connects a browser wallet or WalletConnect, switches to
- * Ethereum Sepolia and sends USDC to the Kade treasury. The browser only
- * sends; the server independently verifies the receipt before the step is
- * marked paid, so nothing here can assert a payment that did not happen.
+ * Ethereum Sepolia and pays the fee in two explicit steps:
+ *
+ *   1. Approve — the wallet grants the Kade treasury an allowance for the fee.
+ *   2. Send — the wallet transfers the fee to the Kade treasury.
+ *
+ * Send is only enabled once the approve receipt has confirmed. The browser only
+ * sends; the server independently verifies the final `transfer` receipt before
+ * the step is marked paid, so nothing here can assert a payment that did not
+ * happen and the recorded `fee_tx` is the transfer hash, never the approval.
  *
  * The amount, the treasury and the token are all supplied by the server. This
  * component holds no fee value and no recipient default.
  */
 
 const USDC_ABI = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'value', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
   {
     type: 'function',
     name: 'transfer',
@@ -107,6 +123,14 @@ function recoveryFor(status: RecordFeeResult['status']): {
   }
 }
 
+/** The two writes this control submits, in order. */
+type WriteKind = 'approve' | 'send';
+
+const STEPS: readonly { readonly id: WriteKind; readonly title: string }[] = [
+  { id: 'approve', title: 'Approve' },
+  { id: 'send', title: 'Send' },
+];
+
 export function FeePayment({
   amountUsdc,
   treasuryAddress,
@@ -128,10 +152,16 @@ export function FeePayment({
     hash,
   });
   const [server, setServer] = useState<ServerState>({ kind: 'idle' });
+  /** Which write the latest wallet submission belongs to. */
+  const [submitted, setSubmitted] = useState<WriteKind | null>(null);
+  const [approveConfirmed, setApproveConfirmed] = useState(false);
 
   // Keep the latest callback without re-running the confirmation effect.
   const onPaidRef = useRef(onPaid);
   onPaidRef.current = onPaid;
+
+  // The hash already acted on, so a single confirmed receipt is processed once.
+  const handledRef = useRef<Hex | null>(null);
 
   const amountUnits = useMemo(
     () => parseUnits(amountUsdc, 6),
@@ -139,9 +169,21 @@ export function FeePayment({
   );
 
   const onSepolia = Number(chainId) === sepolia.id;
+  const currentStep: WriteKind = approveConfirmed ? 'send' : 'approve';
 
   useEffect(() => {
     if (!isSuccess || !hash || !address) return;
+    if (submitted !== 'approve' && submitted !== 'send') return;
+    if (handledRef.current === hash) return;
+    handledRef.current = hash;
+
+    // Step 1's receipt only unlocks step 2. The fee is never verified from the
+    // approval; only the transfer receipt can be recorded.
+    if (submitted === 'approve') {
+      setApproveConfirmed(true);
+      return;
+    }
+
     let active = true;
     setServer({ kind: 'verifying' });
     recordPreapprovalFeePayment(hash, address)
@@ -170,7 +212,7 @@ export function FeePayment({
     return () => {
       active = false;
     };
-  }, [isSuccess, hash, address]);
+  }, [isSuccess, hash, address, submitted]);
 
   async function checkAgain() {
     if (!hash || !address) return;
@@ -196,9 +238,26 @@ export function FeePayment({
     }
   }
 
-  function pay() {
-    reset();
+  /** Step 1: grant the treasury an allowance for the fee. */
+  function approveFee() {
+    handledRef.current = null;
+    setApproveConfirmed(false);
     setServer({ kind: 'idle' });
+    setSubmitted('approve');
+    reset();
+    writeContract({
+      abi: USDC_ABI,
+      address: usdcAddress,
+      functionName: 'approve',
+      args: [treasuryAddress, amountUnits],
+    });
+  }
+
+  /** Step 2: transfer the fee to the treasury. Only reachable once approved. */
+  function sendFee() {
+    setServer({ kind: 'idle' });
+    setSubmitted('send');
+    reset();
     writeContract({
       abi: USDC_ABI,
       address: usdcAddress,
@@ -207,28 +266,13 @@ export function FeePayment({
     });
   }
 
-  if (server.kind === 'verifying' || isConfirming) {
-    return <p style={statusText}>Confirming your payment on Sepolia…</p>;
-  }
-
-  if (server.kind === 'error') {
-    return (
-      <div>
-        <p style={{ ...statusText, color: '#FECDCA' }}>{server.message}</p>
-        <div style={actions}>
-          {server.canRecheck ? (
-            <button type="button" onClick={() => void checkAgain()} style={primaryButton}>
-              Check again
-            </button>
-          ) : null}
-          {server.canRetryPayment ? (
-            <button type="button" onClick={pay} style={secondaryButtonDark}>
-              Try the payment again
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
+  /** Start the two-step flow over from the approval. */
+  function retryPayment() {
+    handledRef.current = null;
+    setApproveConfirmed(false);
+    setServer({ kind: 'idle' });
+    setSubmitted(null);
+    reset();
   }
 
   if (!isConnected) {
@@ -267,29 +311,108 @@ export function FeePayment({
     );
   }
 
+  if (server.kind === 'error') {
+    return (
+      <div>
+        <p style={{ ...statusText, color: '#FECDCA' }}>{server.message}</p>
+        <div style={actions}>
+          {server.canRecheck ? (
+            <button type="button" onClick={() => void checkAgain()} style={primaryButton}>
+              Check again
+            </button>
+          ) : null}
+          {server.canRetryPayment ? (
+            <button type="button" onClick={retryPayment} style={secondaryButtonDark}>
+              Try the payment again
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const approveBusy = submitted === 'approve' && (isPending || isConfirming);
+  const transferBusy = submitted === 'send' && (isPending || isConfirming);
+  const serverVerifying = server.kind === 'verifying';
+  const busy = approveBusy || transferBusy || serverVerifying;
+  const sendEnabled = approveConfirmed && !busy;
+
+  const status = serverVerifying
+    ? 'Confirming your payment on Sepolia…'
+    : transferBusy
+      ? isPending
+        ? 'Confirm the payment in your wallet…'
+        : 'Confirming your payment on Sepolia…'
+      : approveBusy
+        ? isPending
+          ? 'Confirm the approval in your wallet…'
+          : 'Confirming your approval on Sepolia…'
+        : `Approve Kade to move ${amountUsdc} USDC, then send it to the treasury on Ethereum Sepolia. Testnet funds only.`;
+
   return (
     <div>
-      {isPending ? (
-        <p style={statusText}>Confirm the payment in your wallet…</p>
-      ) : (
-        <p style={statusText}>
-          Sends {amountUsdc} USDC to Kade on Ethereum Sepolia. Testnet funds
-          only.
-        </p>
-      )}
+      <div style={stepList}>
+        {STEPS.map((step, index) => {
+          const done = step.id === 'approve' && approveConfirmed;
+          const active = currentStep === step.id && !done;
+          const lit = active || done;
+          return (
+            <div key={step.id} style={{ ...stepRow, opacity: lit ? 1 : 0.55 }}>
+              <span
+                style={{
+                  ...stepBadge,
+                  background: lit ? tokens.action : 'transparent',
+                  borderColor: lit ? tokens.action : '#475467',
+                }}
+              >
+                {done ? '✓' : index + 1}
+              </span>
+              <span style={{ ...stepTitle, color: lit ? '#fff' : '#98A2B3' }}>
+                {step.title}
+                {done ? ' · done' : active ? ' · active' : ''}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={statusText}>{status}</p>
+
       <button
         type="button"
-        onClick={pay}
-        disabled={isPending}
+        onClick={approveFee}
+        disabled={approveConfirmed || busy}
         style={{
           ...primaryButton,
           width: '100%',
-          opacity: isPending ? 0.6 : 1,
-          cursor: isPending ? 'wait' : 'pointer',
+          opacity: approveConfirmed || busy ? 0.6 : 1,
+          cursor: approveConfirmed || busy ? 'default' : 'pointer',
         }}
       >
-        {isPending ? 'Waiting for your wallet…' : `Pay ${amountUsdc} USDC`}
+        {approveConfirmed
+          ? 'Approved'
+          : approveBusy && isPending
+            ? 'Waiting for your wallet…'
+            : `Approve ${amountUsdc} USDC`}
       </button>
+
+      <button
+        type="button"
+        onClick={sendFee}
+        disabled={!sendEnabled}
+        style={{
+          ...(sendEnabled ? primaryButton : secondaryButtonDark),
+          width: '100%',
+          marginTop: '10px',
+          opacity: sendEnabled ? 1 : 0.5,
+          cursor: sendEnabled ? 'pointer' : 'not-allowed',
+        }}
+      >
+        {transferBusy && isPending
+          ? 'Waiting for your wallet…'
+          : `Send ${amountUsdc} USDC`}
+      </button>
+
       {hash ? (
         <a
           href={`${explorerUrl}/tx/${hash}`}
@@ -320,6 +443,36 @@ const actions: React.CSSProperties = {
   display: 'flex',
   gap: '8px',
   flexWrap: 'wrap',
+};
+
+const stepList: React.CSSProperties = {
+  display: 'flex',
+  gap: '18px',
+  marginBottom: '12px',
+};
+
+const stepRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+};
+
+const stepBadge: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '20px',
+  height: '20px',
+  border: '1px solid',
+  borderRadius: '999px',
+  fontSize: '12px',
+  fontWeight: 700,
+  color: '#fff',
+};
+
+const stepTitle: React.CSSProperties = {
+  fontSize: '13px',
+  fontWeight: 600,
 };
 
 const primaryButton: React.CSSProperties = {
