@@ -55,6 +55,8 @@ function messageFor(result: RecordFeeResult): string {
       return `That payment was ${result.receivedUsdc} USDC but the fee is ${result.requiredUsdc} USDC.`;
     case 'no-transfer':
       return 'We could not find a USDC transfer to the Kade treasury in that transaction.';
+    case 'wrong-sender':
+      return 'That payment was sent from a different wallet than the one connected. Connect the wallet that paid and check again.';
     case 'failed':
       return 'That transaction failed on chain, so nothing was paid.';
     case 'pending':
@@ -113,7 +115,7 @@ export function FeePayment({
   onPaid,
 }: FeePaymentProps) {
   const { open } = useAppKit();
-  const { isConnected } = useAppKitAccount();
+  const { address, isConnected } = useAppKitAccount();
   const { chainId, switchNetwork } = useAppKitNetwork();
   const {
     data: hash,
@@ -139,10 +141,10 @@ export function FeePayment({
   const onSepolia = Number(chainId) === sepolia.id;
 
   useEffect(() => {
-    if (!isSuccess || !hash) return;
+    if (!isSuccess || !hash || !address) return;
     let active = true;
     setServer({ kind: 'verifying' });
-    recordPreapprovalFeePayment(hash)
+    recordPreapprovalFeePayment(hash, address)
       .then((result) => {
         if (!active) return;
         if (result.status === 'paid') {
@@ -168,13 +170,13 @@ export function FeePayment({
     return () => {
       active = false;
     };
-  }, [isSuccess, hash]);
+  }, [isSuccess, hash, address]);
 
   async function checkAgain() {
-    if (!hash) return;
+    if (!hash || !address) return;
     setServer({ kind: 'verifying' });
     try {
-      const result = await recordPreapprovalFeePayment(hash);
+      const result = await recordPreapprovalFeePayment(hash, address);
       if (result.status === 'paid') {
         onPaidRef.current(hash);
         return;

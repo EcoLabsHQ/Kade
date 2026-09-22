@@ -12,6 +12,8 @@
  * keep passing.
  */
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Address, Hex } from 'viem';
 import {
@@ -72,5 +74,29 @@ describe('the pre-approval fee is proved from the receipt, not the hash', () => 
     expect((await verify([transferLog(TREASURY, FEE_UNITS - 1n)])).status).not.toBe(
       'paid',
     );
+  });
+});
+
+/**
+ * The claim row must not be a cross-resident lock.
+ *
+ * The migration originally carried a GLOBAL unique index on `fee_tx` alone.
+ * Because a resident can write a hash through `record_preapproval_fee_tx`, a
+ * resident who claimed another resident's treasury transfer — or merely claimed
+ * a hash first — locked the real payer out of recording that same transaction.
+ * This does not load the migration into a database; it pins the declaration so
+ * the global index cannot quietly return.
+ */
+const ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const migration = readFileSync(
+  `${ROOT}supabase/migrations/20260921000003_record_preapproval_fee_tx.sql`,
+  'utf8',
+);
+
+describe('a fee claim is unique per resident, not globally', () => {
+  it('declares unique (profile_id, fee_tx) rather than unique fee_tx', () => {
+    expect(migration).toContain('on public.applications (profile_id, fee_tx)');
+    expect(migration).not.toContain('applications_fee_tx_key');
+    expect(migration).not.toContain('applications (fee_tx)');
   });
 });

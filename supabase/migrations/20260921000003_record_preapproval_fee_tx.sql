@@ -82,11 +82,16 @@ begin
 end;
 $$;
 
--- One transaction proves at most one application's fee, so a real treasury
--- payment cannot be counted twice across residents. A resident can still
--- replace their own claim; only a hash already held by another row collides.
-create unique index if not exists applications_fee_tx_key
-  on public.applications (fee_tx);
+-- Uniqueness is scoped per resident, not global. A global unique index on
+-- fee_tx alone let one resident's claim of a hash lock every other resident out
+-- of recording it — including the real payer, who was then unable to record
+-- their own transfer. Scoping to (profile_id, fee_tx) keeps a resident from
+-- storing the same claim on more than one of their own applications without
+-- letting a claim reach across residents. Binding the transfer to the payer is
+-- the server's job (recordFeePayment); this index must not be the thing that
+-- enforces it.
+create unique index if not exists applications_profile_fee_tx_key
+  on public.applications (profile_id, fee_tx);
 
 comment on function public.record_preapproval_fee_tx(text) is
   'Records the pre-approval fee payment transaction hash on the calling '
@@ -96,9 +101,10 @@ comment on function public.record_preapproval_fee_tx(text) is
   'general write capability. The hash is a claim, not a proof: the read path '
   're-verifies the Sepolia receipt. The claim is replaceable, never immutable, '
   'so a fabricated first claim cannot lock the resident out of recording a real '
-  'payment. A unique index on applications.fee_tx keeps one transaction from '
-  'proving two applications. Replaces the service-role client this write would '
-  'otherwise require (week-1 contract v1.9, section 8.9).';
+  'payment. A unique index on (profile_id, fee_tx) keeps one claim per resident '
+  'without letting one resident''s claim block another''s. Replaces the '
+  'service-role client this write would otherwise require (week-1 contract '
+  'v1.9, section 8.9).';
 
 revoke all on function public.record_preapproval_fee_tx(text) from public, anon;
 grant execute on function public.record_preapproval_fee_tx(text)
