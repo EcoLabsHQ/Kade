@@ -45,7 +45,12 @@ not edited here because the shell is shared across fronts.
   - `npm test --workspace @kade/web` → **419 passed (48 files)**.
   - pgTAP against a disposable `postgres:16` with the shim, all migrations and
     the seed: `supabase/tests/0003_admin_review.test.sql` → **22/22 ok, psql exit 0**.
-- **verify.sh:** see the branch report (run after the final commit).
+- **verify.sh:** `./scripts/verify.sh` → **exit 0; all gates PASS** —
+  ENVIRONMENT, TYPECHECK, LINT (0 errors), UNIT TESTS **419 passed (48 files)**,
+  ACCEPTANCE TESTS **12 passed**, REGRESSION TESTS **14 passed**, BUILD,
+  FORGE BUILD, FORGE TEST **45 passed**. Two consecutive runs passed; one
+  earlier run hit the pre-existing jsdom 5s-timeout flake in the heavy
+  onboarding component tests (they pass in isolation and on re-run).
 - **Runtime proof:** migration `20260922000060_admin_review.sql` applies cleanly
   and the pgTAP suite proves the DB path: a reviewer INSERT into `review_events`
   flips `applications.status` for approve → `approved`, block → `blocked`,
