@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { EvmAddressRecord } from '@/lib/wealth/types';
 
 /**
  * The proof-of-wealth wallet rows.
@@ -25,6 +27,8 @@ const hoisted = vi.hoisted(() => ({
   }>,
   disconnect: vi.fn(),
   readAddressBalances: vi.fn(),
+  addWalletAddress: vi.fn(),
+  removeWalletAddress: vi.fn(),
 }));
 
 vi.mock('@reown/appkit/react', () => ({
@@ -36,6 +40,8 @@ vi.mock('wagmi', () => ({
 }));
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   readAddressBalances: hoisted.readAddressBalances,
+  addWalletAddress: hoisted.addWalletAddress,
+  removeWalletAddress: hoisted.removeWalletAddress,
 }));
 
 import { ConnectedWalletPanel } from '@/components/wallet/ConnectedWalletPanel';
@@ -92,6 +98,10 @@ beforeEach(() => {
   hoisted.readAddressBalances.mockImplementation(async (address: string) =>
     address === ADDRESS_2 ? RECORD_2 : RECORD,
   );
+  hoisted.addWalletAddress.mockImplementation(async (address: string) =>
+    address === ADDRESS_2 ? RECORD_2 : RECORD,
+  );
+  hoisted.removeWalletAddress.mockResolvedValue(undefined);
 });
 
 afterEach(cleanup);
@@ -236,5 +246,144 @@ describe('ConnectedWalletPanel', () => {
       screen.getByText(/wallet connection is not configured/i),
     ).toBeInTheDocument();
     expect(hoisted.open).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The panel with the step's save handler wired in, plus the shared saved list
+ * the row lands in. The handler mirrors `OnboardingFlow.handleAddWalletAddress`:
+ * it calls the same server action a pasted address uses and keeps the records
+ * by address, so a repeat never renders twice.
+ */
+function SavedAddressesHarness({ atCap = false }: { atCap?: boolean }) {
+  const [addresses, setAddresses] = useState<readonly EvmAddressRecord[]>([]);
+
+  async function add(address: string) {
+    const record = await hoisted.addWalletAddress(address);
+    setAddresses((current) =>
+      current.some((existing) => existing.address === record.address)
+        ? current.map((existing) =>
+            existing.address === record.address ? record : existing,
+          )
+        : [...current, record],
+    );
+  }
+
+  async function remove(address: string) {
+    await hoisted.removeWalletAddress(address);
+    setAddresses((current) =>
+      current.filter((record) => record.address !== address),
+    );
+  }
+
+  return (
+    <>
+      <ConnectedWalletPanel
+        configured
+        onChange={() => {}}
+        onAddWalletAddress={add}
+        atCap={atCap}
+      />
+      {addresses.map((record) => (
+        <div key={record.address}>
+          <span title={record.address}>{record.address}</span>
+          <button
+            type="button"
+            aria-label={`Remove wallet address ${record.address}`}
+            onClick={() => void remove(record.address)}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+describe('ConnectedWalletPanel saves connected wallets', () => {
+  it('stores the address through addWalletAddress and disconnects', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    render(<SavedAddressesHarness />);
+
+    await waitFor(() =>
+      expect(hoisted.addWalletAddress).toHaveBeenCalledWith(ADDRESS),
+    );
+    // The same action the pasted address row uses; the panel adds no write of
+    // its own.
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+    // Back to the Connect state: no live row is left, only the saved one.
+    expect(
+      screen.getAllByRole('button', { name: 'Connect' }),
+    ).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
+  });
+
+  it('adds a second row when a second wallet is connected', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const view = render(<SavedAddressesHarness />);
+
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
+
+    hoisted.connections = [
+      { connector: META_MASK, accounts: [ADDRESS] },
+      { connector: WALLET_CONNECT, accounts: [ADDRESS_2] },
+    ];
+    view.rerender(<SavedAddressesHarness />);
+
+    expect(await screen.findByText(ADDRESS_2)).toBeInTheDocument();
+    expect(screen.getByText(ADDRESS)).toBeInTheDocument();
+    expect(hoisted.addWalletAddress).toHaveBeenCalledWith(ADDRESS_2);
+    expect(
+      screen.getAllByRole('button', { name: 'Connect' }),
+    ).toHaveLength(2);
+  });
+
+  it('disables Connect when the shared cap is reached', () => {
+    render(<SavedAddressesHarness atCap />);
+
+    const buttons = screen.getAllByRole('button', { name: 'Connect' });
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it('surfaces the server cap message and keeps the live wallet on a rejected save', async () => {
+    hoisted.addWalletAddress.mockRejectedValue(
+      new Error(
+        'You can save at most 5 EVM addresses. Remove one before adding another.',
+      ),
+    );
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    render(<SavedAddressesHarness />);
+
+    expect(
+      await screen.findByText(/you can save at most 5 evm addresses/i),
+    ).toBeInTheDocument();
+    // A failed save keeps the connection, so the resident can remove or retry
+    // rather than being left with a half-saved row.
+    expect(
+      screen.getByRole('button', { name: 'Disconnect' }),
+    ).toBeInTheDocument();
+  });
+
+  it('removes a saved row through removeWalletAddress', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    render(<SavedAddressesHarness />);
+
+    await screen.findByText(ADDRESS);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Remove wallet address ${ADDRESS}`,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(hoisted.removeWalletAddress).toHaveBeenCalledWith(ADDRESS),
+    );
+    await waitFor(() => expect(screen.queryByText(ADDRESS)).toBeNull());
   });
 });

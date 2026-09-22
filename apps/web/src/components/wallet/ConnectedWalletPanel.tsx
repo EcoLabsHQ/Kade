@@ -10,7 +10,10 @@ import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
 import { WalletGlyph } from '@/components/icons/WalletGlyph';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import { shortAddress, usd } from '@/lib/wealth/format';
-import type { EvmChainBalance } from '@/lib/wealth/types';
+import {
+  MAX_WALLET_ADDRESSES,
+  type EvmChainBalance,
+} from '@/lib/wealth/types';
 
 /**
  * The two real wallet rows of the proof-of-wealth step.
@@ -32,10 +35,20 @@ import type { EvmChainBalance } from '@/lib/wealth/types';
  * The same address connected twice, or connected and also pasted, is one wallet:
  * the reported list is deduplicated by address so nothing is summed twice.
  *
- * The connection is used only to **read**. It confers no authority over the
- * resident Safe, and it is not proof the server can verify: the address comes
- * from the browser, so the screen says the balances were read from a public
- * source rather than claiming verified ownership.
+ * When the step supplies `onAddWalletAddress`, a connected account is also
+ * **saved** as a watch-only row through the same server action the pasted path
+ * uses, then the connection is torn down: the saved row is what remains and the
+ * next connect starts clean. The saved row is indistinguishable from a pasted
+ * one on purpose (same action, same `provider`, `verified_at` NULL), so it is
+ * shown by the shared saved list and survives a reload. A store failure keeps
+ * the connection in place and surfaces the server's own message (the 5-address
+ * cap, for example), so the resident is not left with a half-saved wallet.
+ *
+ * The connection is used only to **read** (and, once saved, to hand the address
+ * to that same read-only action). It confers no authority over the resident
+ * Safe, and it is not proof the server can verify: the address comes from the
+ * browser, so the screen says the balances were read from a public source
+ * rather than claiming verified ownership.
  *
  * Every AppKit and wagmi hook lives in `ConfiguredWalletPanel`, which is mounted
  * only when a WalletConnect project id is configured and `WalletProvider` has
@@ -60,6 +73,16 @@ export interface ConnectedWalletPanelProps {
   readonly configured: boolean;
   /** The distinct connected wallets; null when none is connected. */
   readonly onChange: (states: readonly ConnectedWalletState[] | null) => void;
+  /**
+   * Save a connected address as a watch-only row, through the same server
+   * action the pasted path uses (`addWalletAddress`). When supplied, a
+   * successful save tears the connection down so the panel returns to its
+   * Connect state and the next connect starts clean; the saved row is what
+   * remains. When omitted the panel only tracks live connections.
+   */
+  readonly onAddWalletAddress?: (address: string) => Promise<void> | void;
+  /** True when the shared EVM-address cap is already reached. */
+  readonly atCap?: boolean;
 }
 
 const ROWS = [
@@ -129,12 +152,20 @@ function dedupeByAddress(entries: readonly WalletEntry[]): WalletEntry[] {
 export function ConnectedWalletPanel({
   configured,
   onChange,
+  onAddWalletAddress,
+  atCap = false,
 }: ConnectedWalletPanelProps) {
   // Gate the hooks on configuration, exactly as FeeStep gates FeePayment on
   // `paymentConfigured`: a component that calls the wallet hooks is never
   // mounted unless WagmiProvider/createAppKit are actually present.
   if (!configured) return <UnconfiguredWalletPanel />;
-  return <ConfiguredWalletPanel onChange={onChange} />;
+  return (
+    <ConfiguredWalletPanel
+      onChange={onChange}
+      onAddWalletAddress={onAddWalletAddress}
+      atCap={atCap}
+    />
+  );
 }
 
 /**
@@ -222,7 +253,13 @@ function UnconfiguredWalletPanel() {
 /** The configured path: the only place the AppKit and wagmi hooks are called. */
 function ConfiguredWalletPanel({
   onChange,
-}: Readonly<{ onChange: (states: readonly ConnectedWalletState[] | null) => void }>) {
+  onAddWalletAddress,
+  atCap,
+}: Readonly<{
+  onChange: (states: readonly ConnectedWalletState[] | null) => void;
+  onAddWalletAddress?: (address: string) => Promise<void> | void;
+  atCap: boolean;
+}>) {
   const { open } = useAppKit();
   const connections = useConnections();
   const { disconnect } = useDisconnect();
@@ -231,11 +268,26 @@ function ConfiguredWalletPanel({
   // removed only by an explicit Disconnect, so a wallet that the browser drops
   // on its own stays visible (and counted) until the resident removes it.
   const [wallets, setWallets] = useState<readonly WalletEntry[]>([]);
+  // A failed store is shown in place; a successful one leaves no trace here.
+  const [storeError, setStoreError] = useState<string | null>(null);
 
   // Keep the latest callback without re-running the report effect on every
   // render of the parent, which would re-read the provider in a loop.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  // The save handler is optional: without it the panel is the original
+  // read-only tracker, with no write path. The ref keeps the effect below from
+  // re-running when the parent passes a new closure.
+  const addWalletAddressRef = useRef(onAddWalletAddress);
+  addWalletAddressRef.current = onAddWalletAddress;
+
+  const disconnectRef = useRef(disconnect);
+  disconnectRef.current = disconnect;
+
+  // Addresses already saved this session, keyed by connector and address, so a
+  // connector wagmi still reports cannot be saved or shown a second time.
+  const storedKeys = useRef(new Set<string>());
 
   // One read per connector, even across effect re-runs.
   const readsInFlight = useRef(new Set<string>());
@@ -253,6 +305,18 @@ function ConfiguredWalletPanel({
   // Add every live connection (and address changes) to the list. It never
   // removes here: removal is the Disconnect button's job.
   useEffect(() => {
+    // A wallet whose address is already saved must not be saved again; if the
+    // resident reconnects it, tear the fresh connection down rather than leave
+    // it live behind a panel that is back in its Connect state.
+    for (const connection of connections) {
+      const address = connection.accounts[0];
+      if (!address) continue;
+      const key = `${connection.connector.uid}:${address.toLowerCase()}`;
+      if (storedKeys.current.has(key)) {
+        disconnectRef.current({ connector: connection.connector });
+      }
+    }
+
     setWallets((current) => {
       const byUid = new Map(current.map((entry) => [entry.uid, entry]));
       let changed = false;
@@ -260,6 +324,8 @@ function ConfiguredWalletPanel({
         const address = connection.accounts[0];
         if (!address) continue;
         const uid = connection.connector.uid;
+        // A wallet already saved is not re-added: the saved row is its record.
+        if (storedKeys.current.has(`${uid}:${address.toLowerCase()}`)) continue;
         const existing = byUid.get(uid);
         if (!existing) {
           byUid.set(uid, {
@@ -293,12 +359,17 @@ function ConfiguredWalletPanel({
   // Read the balance of every wallet that still needs one, from the same public
   // provider a pasted address uses. A read failure becomes that wallet's
   // `readError` rather than dropping it from the list.
+  //
+  // When the step supplies a save handler, a completed read is also saved as a
+  // watch-only row and the connection is then torn down. The save is attempted
+  // once per read; a failure keeps the live row (and shows the server's
+  // message) instead of silently losing the wallet.
   useEffect(() => {
     for (const wallet of wallets) {
       if (!wallet.reading || readsInFlight.current.has(wallet.uid)) continue;
       readsInFlight.current.add(wallet.uid);
       readAddressBalances(wallet.address)
-        .then((record) => {
+        .then(async (record) => {
           if (!mounted.current) return;
           setWallets((current) =>
             current.map((entry) =>
@@ -312,6 +383,31 @@ function ConfiguredWalletPanel({
                   }
                 : entry,
             ),
+          );
+
+          const add = addWalletAddressRef.current;
+          if (!add) return;
+          try {
+            await add(wallet.address);
+          } catch (cause) {
+            if (!mounted.current) return;
+            setStoreError(
+              cause instanceof Error
+                ? cause.message
+                : 'The address could not be saved as a watch-only row.',
+            );
+            return;
+          }
+          if (!mounted.current) return;
+          // Saved. Drop the live entry and tear the connection down: the saved
+          // row is what remains, and the next connect starts clean.
+          storedKeys.current.add(
+            `${wallet.uid}:${wallet.address.toLowerCase()}`,
+          );
+          setStoreError(null);
+          disconnectRef.current({ connector: wallet.connector });
+          setWallets((current) =>
+            current.filter((entry) => entry.uid !== wallet.uid),
           );
         })
         .catch((cause: unknown) => {
@@ -354,6 +450,8 @@ function ConfiguredWalletPanel({
   }, [wallets]);
 
   function connect(key: (typeof ROWS)[number]['key']) {
+    // A fresh attempt starts without the previous store's error on screen.
+    setStoreError(null);
     if (key === 'extension') {
       // The connector list: the browser wallets the visitor already has.
       void open({ view: 'Connect' });
@@ -419,8 +517,17 @@ function ConfiguredWalletPanel({
                 <button
                   type="button"
                   onClick={() => connect(row.key)}
-                  title={`Connect with ${row.title}`}
-                  style={connectButton}
+                  disabled={atCap}
+                  title={
+                    atCap
+                      ? `Up to ${MAX_WALLET_ADDRESSES} addresses`
+                      : `Connect with ${row.title}`
+                  }
+                  style={{
+                    ...connectButton,
+                    opacity: atCap ? 0.5 : 1,
+                    cursor: atCap ? 'not-allowed' : 'pointer',
+                  }}
                 >
                   Connect
                 </button>
@@ -429,6 +536,18 @@ function ConfiguredWalletPanel({
           />
         );
       })}
+
+      {storeError ? (
+        <div role="alert" style={errorText}>
+          {storeError}
+        </div>
+      ) : null}
+
+      <div style={mutedNote}>
+        A connected account&rsquo;s balances are read from a public source on
+        Ethereum and Base. The connection is read-only, is not proof of
+        ownership, and gives Kade no authority over your Safe.
+      </div>
 
       {reported.map((wallet) => (
         <Card key={wallet.address} padding="14px 16px">
