@@ -1,4 +1,3 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
@@ -145,10 +144,8 @@ export default async function OnboardingPage() {
   const usdcAddress = sepolia?.usdcAddress.value ?? '';
   const explorerUrl = sepolia?.explorerUrl ?? 'https://sepolia.etherscan.io';
 
-  const cookieHeader = (await headers()).get('cookie');
-
   return (
-    <WalletProvider cookies={cookieHeader}>
+    <WalletProvider>
       <OnboardingFlow
         userId={session.userId}
         mode={feeMode}
