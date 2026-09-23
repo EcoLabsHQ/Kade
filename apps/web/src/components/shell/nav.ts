@@ -16,7 +16,11 @@ export interface NavGroupConfig {
  * Week 2 unlocks the Residency step, Holdings and Invest — they are in scope per
  * `docs/week-2-frozen-delivery-contract.md` (D16–D18). Vote and the Finance
  * rails stay locked: the Week 2 contract defers them to the end of the
- * programme (§2.1). Locked destinations still render (the shell matches the
+ * programme (§2.1).
+ *
+ * Residency setup (onboarding) and Account & passkey are deliberately **not**
+ * nav items: the flow is reached from the Overview, and account settings from the
+ * gear on the Safe card. Locked destinations still render (the shell matches the
  * baseline) rather than being removed.
  */
 export const RESIDENT_NAV: readonly NavGroupConfig[] = [
@@ -26,9 +30,7 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
   {
     label: 'Residency',
     items: [
-      { href: '/onboarding', label: 'Residency setup' },
       { href: '/residency', label: 'Residency' },
-      { href: '/account', label: 'Account & passkey' },
       {
         href: '/vote',
         label: 'Vote',
