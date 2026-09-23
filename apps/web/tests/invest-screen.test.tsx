@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestPoolSummary } from '@/app/invest/actions';
 
 /**
- * The Invest screen (D18 / EXE-014).
+ * The Invest screen (D18 / EXE-014), laid out to match the deployed baseline.
  *
  * The server action is mocked so the screen is exercised against recorded server
  * outcomes, but the assertions are about what the screen must never do: it must
@@ -44,6 +51,14 @@ const UNCONFIGURED_POOL: InvestPoolSummary = {
   marketId: null,
 };
 
+const REFERENCE_INSTRUMENTS = [
+  'Aqualectra 2025–2032 · AQUA-A1',
+  'Staatsolie 2025–2033 · SOMS-25-A1',
+  'Ondo USDY',
+  'Morpho USDC vault · Base',
+  'LATAM EM Fund · Portfolio B',
+];
+
 function renderScreen(overrides: {
   pool?: InvestPoolSummary;
   safeAddress?: string | null;
@@ -62,8 +77,14 @@ function renderScreen(overrides: {
   );
 }
 
-function allocateButton() {
-  return screen.getByRole('button', { name: /^allocate/i });
+/** The reference's "Allocate" button carries the instrument name for a11y. */
+function allocateInto(name: string) {
+  return screen.getByRole('button', { name: new RegExp(`allocate into ${name}`, 'i') });
+}
+
+function openDialog(name: string) {
+  fireEvent.click(allocateInto(name));
+  return screen.getByRole('dialog');
 }
 
 afterEach(() => {
@@ -79,59 +100,99 @@ beforeEach(() => {
   });
 });
 
-describe('InvestScreen configuration', () => {
-  it('shows the configured pool address and market id from props, not literals', () => {
+describe('InvestScreen reference layout', () => {
+  it('renders the reference heading, subtitle and the instrument table', () => {
     renderScreen();
-    expect(screen.getByText(MORPHO)).toBeInTheDocument();
-    expect(screen.getByText(USDC)).toBeInTheDocument();
-    expect(screen.getByText(MARKET_ID)).toBeInTheDocument();
-    expect(screen.getByText('Ethereum mainnet')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Invest' })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Allocate from the vault into qualifying instruments/i),
+    ).toBeInTheDocument();
+    for (const name of REFERENCE_INSTRUMENTS) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    expect(
+      screen.getAllByRole('button', { name: /allocate into/i }),
+    ).toHaveLength(REFERENCE_INSTRUMENTS.length);
   });
 
-  it('says the pool is not configured and shows no address when it is absent', () => {
+  it('renders the two baseline stat cards', () => {
+    renderScreen();
+    expect(screen.getByText('Vault USDC available')).toBeInTheDocument();
+    expect(screen.getByText('Allocated this session')).toBeInTheDocument();
+  });
+});
+
+describe('InvestScreen configuration', () => {
+  it('shows the configured pool values from props, not literals', () => {
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault · Base');
+    expect(within(dialog).getByText(MORPHO)).toBeInTheDocument();
+    expect(within(dialog).getByText(USDC)).toBeInTheDocument();
+    expect(within(dialog).getByText(MARKET_ID)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(`Ethereum · ${CONFIGURED_POOL.chainId}`),
+    ).toBeInTheDocument();
+  });
+
+  it('says the pool is not configured and cannot allocate', () => {
     renderScreen({ pool: UNCONFIGURED_POOL });
     expect(screen.getByText(/pool not configured/i)).toBeInTheDocument();
-    expect(screen.queryByText(MORPHO)).toBeNull();
-  });
-
-  it('locks Allocate when the pool is not configured', () => {
-    renderScreen({ pool: UNCONFIGURED_POOL });
-    expect(allocateButton()).toBeDisabled();
+    const dialog = openDialog('Morpho USDC vault · Base');
+    expect(within(dialog).queryByText(MORPHO)).toBeNull();
+    expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
+    expect(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    ).toBeDisabled();
   });
 
   it('locks Allocate when the resident has no Safe', () => {
     renderScreen({ safeAddress: null, safeDeployed: false });
-    expect(allocateButton()).toBeDisabled();
+    const dialog = openDialog('Morpho USDC vault · Base');
+    expect(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    ).toBeDisabled();
   });
 
   it('locks Allocate when the Safe is not deployed', () => {
     renderScreen({ safeDeployed: false });
-    expect(allocateButton()).toBeDisabled();
+    const dialog = openDialog('Morpho USDC vault · Base');
+    expect(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    ).toBeDisabled();
   });
 
   it('locks Allocate for a malformed or zero amount', () => {
     renderScreen();
-    const input = screen.getByLabelText(/amount to allocate/i);
+    const dialog = openDialog('Morpho USDC vault · Base');
+    const input = within(dialog).getByLabelText(/amount to allocate/i);
+    const confirm = () =>
+      within(dialog).getByRole('button', { name: /build the deposit/i });
 
     for (const bad of ['0', '-5', 'abc', '1.1234567', '']) {
       fireEvent.change(input, { target: { value: bad } });
-      expect(allocateButton()).toBeDisabled();
+      expect(confirm()).toBeDisabled();
     }
   });
 
   it('enables Allocate when the pool, Safe and amount are all present', () => {
     renderScreen();
-    expect(allocateButton()).toBeEnabled();
+    const dialog = openDialog('Morpho USDC vault · Base');
+    expect(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    ).toBeEnabled();
   });
 });
 
 describe('InvestScreen building', () => {
   it('asks the server to build the deposit with the resolved inputs', async () => {
     renderScreen();
-    fireEvent.change(screen.getByLabelText(/amount to allocate/i), {
+    const dialog = openDialog('Morpho USDC vault · Base');
+    fireEvent.change(within(dialog).getByLabelText(/amount to allocate/i), {
       target: { value: '1500.5' },
     });
-    fireEvent.click(allocateButton());
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    );
 
     await waitFor(() => expect(hoisted.buildDeposit).toHaveBeenCalledTimes(1));
     expect(hoisted.buildDeposit).toHaveBeenCalledWith({
@@ -145,11 +206,15 @@ describe('InvestScreen building', () => {
 
   it('reports a gated outcome without claiming anything was sent', async () => {
     renderScreen();
-    fireEvent.click(allocateButton());
+    const dialog = openDialog('Morpho USDC vault · Base');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    );
 
-    const notice = await screen.findByText(/deposit gated/i);
-    expect(notice).toBeInTheDocument();
-    expect(screen.getByText(/nothing was signed or sent/i)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/deposit gated/i)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/nothing was signed or sent/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the built calls and states plainly that nothing was sent', async () => {
@@ -164,12 +229,25 @@ describe('InvestScreen building', () => {
       amountUsdc: '25000',
     });
     renderScreen();
-    fireEvent.click(allocateButton());
+    const dialog = openDialog('Morpho USDC vault · Base');
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /build the deposit/i }),
+    );
 
-    const notice = await screen.findByText(/deposit built · not sent/i);
-    expect(notice).toBeInTheDocument();
-    expect(screen.getByText(/nothing has been sent/i)).toBeInTheDocument();
-    expect(screen.getByText('Call 1 · approve')).toBeInTheDocument();
-    expect(screen.getByText('Call 2 · supply')).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText(/deposit built · not sent/i),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/nothing has been sent/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('Call 1 · approve')).toBeInTheDocument();
+    expect(within(dialog).getByText('Call 2 · supply')).toBeInTheDocument();
+  });
+
+  it('marks an instrument with no execution path as not wired', () => {
+    renderScreen();
+    const dialog = openDialog('Ondo USDY');
+    expect(
+      within(dialog).getByText(/only the morpho pool is wired/i),
+    ).toBeInTheDocument();
+    expect(hoisted.buildDeposit).not.toHaveBeenCalled();
   });
 });
