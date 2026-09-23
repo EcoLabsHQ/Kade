@@ -140,7 +140,8 @@ describe('ConnectedWalletPanel', () => {
     await waitFor(() =>
       expect(hoisted.readAddressBalances).toHaveBeenCalledWith(ADDRESS),
     );
-    expect(await screen.findByText(/Ethereum · 1\.000000 ETH · 10\.000000 USDC/)).toBeInTheDocument();
+    // The balance is reported upward; the panel no longer renders its own copy
+    // of the per-wallet breakdown (the step's summary is the single list).
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         expect.arrayContaining([
@@ -161,9 +162,10 @@ describe('ConnectedWalletPanel', () => {
 
     render(<ConnectedWalletPanel configured onChange={onChange} />);
 
-    expect(await screen.findByTitle(ADDRESS)).toBeInTheDocument();
-    expect(await screen.findByTitle(ADDRESS_2)).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Disconnect' })).toHaveLength(2);
+    // Both methods stay live, each with its own Disconnect control.
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Disconnect' })).toHaveLength(2),
+    );
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
         expect.arrayContaining([
@@ -204,7 +206,8 @@ describe('ConnectedWalletPanel', () => {
     view.rerender(<ConnectedWalletPanel configured onChange={onChange} />);
 
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument();
-    expect(screen.getByTitle(ADDRESS)).toBeInTheDocument();
+    // The row still shows the dropped wallet's short address until Disconnect.
+    expect(screen.getByText('0x5aAeb6…1BeAed')).toBeInTheDocument();
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith([
         expect.objectContaining({ address: ADDRESS }),
@@ -231,8 +234,9 @@ describe('ConnectedWalletPanel', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('button', { name: 'Disconnect' })).toHaveLength(1),
     );
-    expect(screen.getByTitle(ADDRESS_2)).toBeInTheDocument();
-    expect(screen.queryByTitle(ADDRESS)).toBeNull();
+    // Only the WalletConnect row remains, showing its own address.
+    expect(screen.getByText('0x222222…222222')).toBeInTheDocument();
+    expect(screen.queryByText('0x5aAeb6…1BeAed')).toBeNull();
   });
 
   it('degrades honestly when no project id is configured', () => {

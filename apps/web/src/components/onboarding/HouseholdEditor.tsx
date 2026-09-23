@@ -1,4 +1,10 @@
-import type { Country, CountryCode } from '@kade/shared';
+import {
+  householdMemberDob,
+  latestDobForAge,
+  type Country,
+  type CountryCode,
+} from '@kade/shared';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { tokens } from '@/components/ui/tokens';
 import type { HouseholdMemberDraft } from '@/lib/onboarding/draft';
 import { InitialsBadge } from './InitialsBadge';
@@ -34,6 +40,22 @@ const controlStyle = {
   color: tokens.ink,
   outline: 'none',
 } as const;
+
+/** The latest date of birth that still makes a household member an adult. */
+const MAX_MEMBER_DOB = latestDobForAge(18);
+/** The calendar cannot navigate past this year: everyone here is 18+. */
+const MAX_MEMBER_DOB_YEAR = Number(MAX_MEMBER_DOB.slice(0, 4));
+
+/**
+ * The shared 18+ message for an entered date of birth, or null when it is empty
+ * or valid. The rule lives in `@kade/shared`; this only reads its message, so
+ * the form cannot disagree with the schema that blocks Continue.
+ */
+function memberDobError(dob: string): string | null {
+  if (dob === '') return null;
+  const parsed = householdMemberDob.safeParse(dob);
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? null);
+}
 
 /**
  * Household member rows.
@@ -160,16 +182,16 @@ export function HouseholdEditor({
                 style={controlStyle}
               />
             </label>
-            <label style={{ display: 'block' }}>
-              <span style={labelStyle}>Date of birth</span>
-              <input
-                type="date"
-                aria-label={`Household member ${index + 1} date of birth`}
-                value={member.dob}
-                onChange={(event) => onUpdate(index, { dob: event.target.value })}
-                style={controlStyle}
-              />
-            </label>
+            <DatePicker
+              id={`household-member-${index + 1}-dob`}
+              label="Date of birth"
+              triggerAriaLabel={`Household member ${index + 1} date of birth`}
+              value={member.dob}
+              invalid={memberDobError(member.dob) !== null}
+              error={memberDobError(member.dob) ?? undefined}
+              toYear={MAX_MEMBER_DOB_YEAR}
+              onChange={(iso) => onUpdate(index, { dob: iso })}
+            />
             <label style={{ display: 'block', gridColumn: 'span 2' }}>
               <span style={labelStyle}>Citizenship</span>
               <select

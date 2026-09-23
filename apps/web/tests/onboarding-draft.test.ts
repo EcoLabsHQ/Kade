@@ -71,7 +71,7 @@ describe('household size and the configured fee', () => {
     const withMember = updateMember(addMember(base), 0, {
       name: 'Grace',
       relation: 'Daughter',
-      dob: '2015-05-05',
+      dob: '1992-05-05',
       citizenship: 'DE',
     });
     expect(evaluateDraft(withMember, 'demo').householdSize).toBe(2);
@@ -176,17 +176,17 @@ describe('field-level errors', () => {
   });
 });
 
+/** `iso` plus `days`, as a `YYYY-MM-DD` string. */
+function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year!, month! - 1, day! + days);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${mm}-${dd}`;
+}
+
 describe('applicant age — at least 18', () => {
   const ADULT_DOB_MESSAGE = 'You must be at least 18 years old.';
-
-  /** `iso` plus `days`, as a `YYYY-MM-DD` string. */
-  function addDays(iso: string, days: number): string {
-    const [year, month, day] = iso.split('-').map(Number);
-    const date = new Date(year!, month! - 1, day! + days);
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    return `${date.getFullYear()}-${mm}-${dd}`;
-  }
 
   it('accepts a date of birth exactly 18 years ago and rejects one day short', () => {
     const cutoff = latestDobForAge(18);
@@ -211,6 +211,39 @@ describe('applicant age — at least 18', () => {
   it('accepts a clearly adult date of birth on the dob field', () => {
     expect(draftFieldErrors(validDraft(), 'demo').dob).toBeUndefined();
     expect(evaluateDraft(validDraft(), 'demo').canContinue).toBe(true);
+  });
+});
+
+describe('household member age — at least 18', () => {
+  const HOUSEHOLD_ADULT_MESSAGE =
+    'Household members must be at least 18 years old.';
+
+  function withMember(dob: string): OnboardingDraft {
+    return updateMember(addMember(validDraft()), 0, {
+      name: 'Grace',
+      relation: 'Daughter',
+      dob,
+      citizenship: 'DE',
+    });
+  }
+
+  it('blocks Continue for a household member under 18, and shows why', () => {
+    const draft = withMember('2015-05-05');
+    const evaluation = evaluateDraft(draft, 'demo');
+    expect(evaluation.canContinue).toBe(false);
+    expect(evaluation.blockers).toContain(HOUSEHOLD_ADULT_MESSAGE);
+    expect(draftFieldErrors(draft, 'demo').members).toBe(HOUSEHOLD_ADULT_MESSAGE);
+  });
+
+  it('accepts a household member who is exactly 18', () => {
+    expect(evaluateDraft(withMember(latestDobForAge(18)), 'demo').canContinue).toBe(
+      true,
+    );
+  });
+
+  it('rejects a household member one day short of 18', () => {
+    const oneDayShort = addDays(latestDobForAge(18), 1);
+    expect(evaluateDraft(withMember(oneDayShort), 'demo').canContinue).toBe(false);
   });
 });
 

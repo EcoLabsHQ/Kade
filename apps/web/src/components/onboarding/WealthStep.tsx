@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { TIERS } from '@kade/shared';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
+import { Modal } from '@/components/ui/Modal';
 import { tokens } from '@/components/ui/tokens';
 import {
   MAX_BITCOIN_ADDRESSES,
@@ -89,6 +90,9 @@ export function WealthStep({
   const [evmAdding, setEvmAdding] = useState(false);
   const [evmError, setEvmError] = useState<string | null>(null);
   const [evmOpen, setEvmOpen] = useState(false);
+  // The address awaiting the resident's confirmation, or null when none is.
+  // Nothing is persisted until this is confirmed.
+  const [pendingEvm, setPendingEvm] = useState<string | null>(null);
 
   const summary = summarizeWealth({
     connectedWallets,
@@ -135,15 +139,30 @@ export function WealthStep({
     }
   }
 
-  async function handleEvmConfirm() {
+  /**
+   * Stage the pasted address for confirmation. The address joins the total only
+   * after the resident confirms it in the dialog; this click persists nothing.
+   */
+  function requestEvmAdd() {
     const address = evmInput.trim();
     if (address === '' || evmAtCap || evmAdding) return;
+    setEvmError(null);
+    setPendingEvm(address);
+  }
+
+  /** The confirmed add: read the address from a public source and store it. */
+  async function confirmEvmAdd() {
+    const address = pendingEvm;
+    if (address === null || evmAdding) return;
     setEvmAdding(true);
     setEvmError(null);
     try {
       await onAddWalletAddress(address);
       setEvmInput('');
+      setPendingEvm(null);
     } catch (cause) {
+      // Keep the dialog open with the server's own message so the resident can
+      // retry or cancel rather than losing the address they confirmed.
       setEvmError(
         cause instanceof Error
           ? cause.message
@@ -389,14 +408,14 @@ export function WealthStep({
                   <button
                     type="button"
                     aria-label="Confirm wallet address"
-                    onClick={handleEvmConfirm}
+                    onClick={requestEvmAdd}
                     disabled={evmConfirmDisabled}
                     title={
                       evmAtCap
                         ? `Up to ${MAX_WALLET_ADDRESSES} addresses`
                         : evmInput.trim() === ''
                           ? 'Paste a 0x address first'
-                          : 'Read this address from a public source'
+                          : 'Confirm this address before it is added'
                     }
                     style={{
                       ...confirmButton,
@@ -405,15 +424,9 @@ export function WealthStep({
                     }}
                   >
                     <CheckGlyph />
-                    {evmAdding ? 'Reading…' : 'Confirm'}
+                    Confirm
                   </button>
                 </div>
-
-                {evmError ? (
-                  <div role="alert" style={errorText}>
-                    {evmError}
-                  </div>
-                ) : null}
 
                 {evmAtCap ? (
                   <div style={{ ...mutedNote, marginTop: '8px' }}>
@@ -424,106 +437,10 @@ export function WealthStep({
                 <p style={{ ...mutedNote, marginTop: '10px' }}>
                   Balances are read from a public source on Ethereum and Base
                   and are not proof of ownership: nothing is signed and no
-                  wallet is connected.
+                  wallet is connected. You confirm each address before it is
+                  added, and every saved address is listed in the Proof of
+                  wealth summary on the right.
                 </p>
-
-                {evmAddresses.map((record) => (
-                  <div key={record.address} style={addressRowStyle}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        gap: '10px',
-                      }}
-                    >
-                      <span
-                        title={record.address}
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          fontFamily:
-                            'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                          fontSize: '12.5px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {shortAddress(record.address)}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          fontVariantNumeric: 'tabular-nums',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {record.usd === null ? '—' : usd(record.usd)}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Remove wallet address ${record.address}`}
-                        onClick={() => onRemoveWalletAddress(record.address)}
-                        style={removeButton}
-                      >
-                        Remove
-                      </button>
-                    </div>
-
-                    {record.chains.map((chain) => (
-                      <div
-                        key={chain.chainId}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginTop: '6px',
-                          fontSize: '13px',
-                        }}
-                      >
-                        <span
-                          aria-hidden
-                          style={{
-                            width: '10px',
-                            height: '10px',
-                            borderRadius: '2px',
-                            background:
-                              chainColor(chain.name),
-                            flex: '0 0 auto',
-                          }}
-                        />
-                        <span style={{ color: tokens.muted }}>
-                          {chain.name} · {chain.nativeAmount} {chain.nativeSymbol}
-                          {chain.usdc
-                            ? ` · ${chain.usdc.amount} ${chain.usdc.symbol}`
-                            : ''}
-                        </span>
-                        <span
-                          style={{
-                            marginLeft: 'auto',
-                            fontVariantNumeric: 'tabular-nums',
-                            color: tokens.muted,
-                          }}
-                        >
-                          {chain.usd === null ? '—' : usd(chain.usd)}
-                        </span>
-                      </div>
-                    ))}
-
-                    <div style={{ ...mutedNote, marginTop: '4px' }}>
-                      Read from a public source — not proof of ownership.
-                    </div>
-                    {record.readError ? (
-                      <div
-                        role="alert"
-                        style={{ ...errorText, marginTop: '4px' }}
-                      >
-                        {record.readError}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
               </div>
             ) : null}
           </Card>
@@ -702,12 +619,28 @@ export function WealthStep({
                 </span>
                 <span
                   style={{
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    fontVariantNumeric: 'tabular-nums',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: '12px',
                   }}
                 >
-                  {record.usd === null ? '—' : usd(record.usd)}
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {record.usd === null ? '—' : usd(record.usd)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove wallet address ${record.address}`}
+                    onClick={() => onRemoveWalletAddress(record.address)}
+                    style={removeButton}
+                  >
+                    Remove
+                  </button>
                 </span>
               </div>
 
@@ -807,6 +740,65 @@ export function WealthStep({
           Continue
         </button>
       </div>
+
+      <Modal
+        open={pendingEvm !== null}
+        onClose={() => {
+          if (!evmAdding) setPendingEvm(null);
+        }}
+        title="Add this address?"
+      >
+        <div style={{ padding: '6px 24px 20px' }}>
+          <p
+            style={{
+              margin: '0 0 10px',
+              fontSize: '13.5px',
+              color: tokens.muted,
+              lineHeight: 1.6,
+            }}
+          >
+            Add this wallet address as a read-only proof-of-wealth source? Its
+            balances are read from a public source on Ethereum and Base; nothing
+            is signed and no wallet is connected.
+          </p>
+          <div style={pendingAddressStyle}>{pendingEvm}</div>
+          {evmError ? (
+            <div role="alert" style={errorText}>
+              {evmError}
+            </div>
+          ) : null}
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'flex-end',
+              marginTop: '18px',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setPendingEvm(null)}
+              disabled={evmAdding}
+              style={{ ...secondaryButton, opacity: evmAdding ? 0.5 : 1 }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmEvmAdd}
+              disabled={evmAdding}
+              style={{
+                ...primaryButton,
+                background: tokens.action,
+                cursor: evmAdding ? 'wait' : 'pointer',
+                opacity: evmAdding ? 0.7 : 1,
+              }}
+            >
+              {evmAdding ? 'Reading…' : 'Add address'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -957,12 +949,6 @@ const bitcoinRowStyle: React.CSSProperties = {
   paddingTop: '10px',
 };
 
-const addressRowStyle: React.CSSProperties = {
-  marginTop: '10px',
-  borderTop: `1px solid ${tokens.border}`,
-  paddingTop: '10px',
-};
-
 const removeButton: React.CSSProperties = {
   border: 0,
   background: 'transparent',
@@ -973,6 +959,18 @@ const removeButton: React.CSSProperties = {
   cursor: 'pointer',
   padding: 0,
   whiteSpace: 'nowrap',
+};
+
+/** The address shown in the add-confirmation dialog, in full and monospaced. */
+const pendingAddressStyle: React.CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+  fontSize: '13px',
+  wordBreak: 'break-all',
+  background: '#F8FAFC',
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '10px',
+  padding: '10px 12px',
+  color: tokens.ink,
 };
 
 const mutedNote: React.CSSProperties = {

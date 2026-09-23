@@ -134,6 +134,38 @@ describe('Step 2 wizard', () => {
     expect(document.querySelector('input[type="date"]')).toBeNull();
   });
 
+  it('renders a household date of birth as the styled calendar, not a native input', () => {
+    const withMember: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Grace', relation: 'Daughter', dob: '1992-05-05', citizenship: 'DE' },
+      ],
+    };
+    renderWizard(makeStore().store, 'supabase', withMember);
+
+    const dob = screen.getByLabelText('Household member 1 date of birth');
+    expect(dob).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it('blocks an under-18 household member with the shared message', () => {
+    const withChild: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Grace', relation: 'Daughter', dob: '2015-05-05', citizenship: 'DE' },
+      ],
+    };
+    const { store, save } = makeStore();
+    renderWizard(store, 'supabase', withChild);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(save).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Household members must be at least 18 years old.'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps the draft ISO while the chosen date shows dd/mm/yyyy', () => {
     renderWizard(makeStore().store);
 

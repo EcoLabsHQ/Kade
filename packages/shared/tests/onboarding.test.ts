@@ -4,6 +4,7 @@ import {
   citizenshipList,
   COUNTRIES,
   COUNTRY_CODES,
+  householdMemberDob,
   householdSize,
   isApplicantAdult,
   latestDobForAge,
@@ -21,6 +22,8 @@ import {
 } from '../src/index.js';
 
 const ADULT_DOB_MESSAGE = 'You must be at least 18 years old.';
+const HOUSEHOLD_ADULT_MESSAGE =
+  'Household members must be at least 18 years old.';
 
 /** `iso` plus `days`, as a `YYYY-MM-DD` string, without a date library. */
 function addDays(iso: string, days: number): string {
@@ -224,10 +227,12 @@ describe('applicant age — at least 18', () => {
   });
 });
 
+// Every member is an adult: the household-member form carries the same 18+ rule
+// as the applicant, so a member's date of birth must be at least 18 years back.
 const threeMembers: HouseholdMember[] = [
   { name: 'Ada', relation: 'spouse', dob: '1990-01-01', citizenship: 'NL' },
-  { name: 'Grace', relation: 'child', dob: '2015-05-05', citizenship: 'DE' },
-  { name: 'Alan', relation: 'child', dob: '2018-08-08', citizenship: 'US' },
+  { name: 'Grace', relation: 'sibling', dob: '1992-05-05', citizenship: 'DE' },
+  { name: 'Alan', relation: 'sibling', dob: '1988-08-08', citizenship: 'US' },
 ];
 
 describe('step one — profile, citizenships, residence history', () => {
@@ -303,5 +308,23 @@ describe('step two — tier and household, with the live fee', () => {
     });
     expect(status.complete).toBe(false);
     expect(status.householdSize).toBe(2);
+  });
+
+  it('requires every household member to be at least 18', () => {
+    const memberDob = householdMemberDob.safeParse('2015-05-05');
+    expect(memberDob.success).toBe(false);
+    expect(memberDob.error?.issues[0]?.message).toBe(HOUSEHOLD_ADULT_MESSAGE);
+
+    expect(householdMemberDob.safeParse(latestDobForAge(18)).success).toBe(true);
+
+    const tooYoung = stepTwoComplete({
+      mode: 'demo',
+      tier: 0,
+      members: [
+        { name: 'Grace', relation: 'child', dob: '2015-05-05', citizenship: 'DE' },
+      ],
+    });
+    expect(tooYoung.complete).toBe(false);
+    expect(tooYoung.blockers).toContain(HOUSEHOLD_ADULT_MESSAGE);
   });
 });

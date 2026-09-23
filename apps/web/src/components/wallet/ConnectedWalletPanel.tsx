@@ -8,8 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
 import { WalletGlyph } from '@/components/icons/WalletGlyph';
-import { chainColor } from '@/lib/wealth/chain-colors';
-import { shortAddress, usd } from '@/lib/wealth/format';
+import { shortAddress } from '@/lib/wealth/format';
 import {
   MAX_WALLET_ADDRESSES,
   type EvmChainBalance,
@@ -116,14 +115,6 @@ interface WalletEntry {
   readonly usd: number | null;
   readonly readError: string | null;
   readonly reading: boolean;
-}
-
-function totalUsd(chains: readonly EvmChainBalance[]): number | null {
-  const values = chains
-    .map((chain) => chain.usd)
-    .filter((value): value is number => value !== null);
-  if (values.length === 0) return null;
-  return values.reduce((sum, value) => sum + value, 0);
 }
 
 /** WalletConnect is the only connector whose name/id is not an injected wallet. */
@@ -484,8 +475,6 @@ function ConfiguredWalletPanel({
     }
   }
 
-  const reported = dedupeByAddress(wallets);
-
   return (
     <div style={{ display: 'grid', gap: '10px' }}>
       {ROWS.map((row) => {
@@ -548,92 +537,6 @@ function ConfiguredWalletPanel({
         Ethereum and Base. The connection is read-only, is not proof of
         ownership, and gives Kade no authority over your Safe.
       </div>
-
-      {reported.map((wallet) => (
-        <Card key={wallet.address} padding="14px 16px">
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              justifyContent: 'space-between',
-              gap: '10px',
-            }}
-          >
-            <span
-              title={wallet.address}
-              style={{
-                fontFamily:
-                  'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                fontSize: '13px',
-                fontWeight: 600,
-              }}
-            >
-              {shortAddress(wallet.address)}
-            </span>
-            <span
-              style={{
-                fontSize: '14px',
-                fontWeight: 600,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {wallet.reading
-                ? '…'
-                : wallet.readError
-                  ? '—'
-                  : usd(totalUsd(wallet.chains) ?? 0)}
-            </span>
-          </div>
-
-          {wallet.chains.map((chain) => (
-            <div
-              key={chain.chainId}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginTop: '6px',
-                fontSize: '13px',
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '2px',
-                  background: chainColor(chain.name),
-                  flex: '0 0 auto',
-                }}
-              />
-              <span style={{ color: tokens.muted }}>
-                {chain.name} · {chain.nativeAmount} {chain.nativeSymbol}
-                {chain.usdc ? ` · ${chain.usdc.amount} ${chain.usdc.symbol}` : ''}
-              </span>
-              <span
-                style={{
-                  marginLeft: 'auto',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: tokens.muted,
-                }}
-              >
-                {chain.usd === null ? '—' : usd(chain.usd)}
-              </span>
-            </div>
-          ))}
-
-          <div style={{ ...mutedNote, marginTop: '6px' }}>
-            Connected as {wallet.method}. Balances are read from a public source
-            on Ethereum and Base, are not proof of ownership, and the connection
-            gives Kade no authority over your Safe.
-          </div>
-          {wallet.readError ? (
-            <div role="alert" style={errorText}>
-              {wallet.readError}
-            </div>
-          ) : null}
-        </Card>
-      ))}
     </div>
   );
 }

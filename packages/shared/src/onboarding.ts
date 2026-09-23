@@ -365,6 +365,17 @@ export type ResidenceList = z.infer<typeof residenceList>;
 export const tierIndex = z.union([z.literal(0), z.literal(1), z.literal(2)]);
 
 /**
+ * A household member's date of birth, carrying the same 18+ rule as the
+ * applicant: every permit holder listed here must be an adult. Kept separate
+ * from `applicantDob` so the message names the household member rather than the
+ * principal applicant.
+ */
+export const householdMemberDob = z.iso.date().refine(
+  (value) => isApplicantAdult(value),
+  { message: 'Household members must be at least 18 years old.' },
+);
+
+/**
  * A household member. Column mapping (household_members): name → name,
  * relation → relation, dob → dob, citizenship → citizenship.
  *
@@ -372,11 +383,14 @@ export const tierIndex = z.union([z.literal(0), z.literal(1), z.literal(2)]);
  * the handoff presents every member row as fully filled, so the form schema is
  * stricter than the table. That is compatible: these columns accept the
  * validated values.
+ *
+ * The date of birth carries the 18+ rule: a household member, like the
+ * applicant, must be an adult to hold a dependent permit.
  */
 export const householdMember = z.object({
   name: z.string().trim().min(1, 'Household member name is required.'),
   relation: z.string().trim().min(1, 'Household member relation is required.'),
-  dob: z.iso.date(),
+  dob: householdMemberDob,
   citizenship,
 });
 

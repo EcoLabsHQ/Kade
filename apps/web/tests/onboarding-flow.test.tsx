@@ -254,16 +254,25 @@ const PASTED_RECORD = {
   readError: null,
 };
 
-/** Satisfy step 3 by pasting an address, leaving the wallet disconnected. */
-async function passStep3WithPastedAddress() {
-  hoisted.addWalletAddress.mockResolvedValue(PASTED_RECORD);
-  fireEvent.click(screen.getByRole('button', { name: /wallet address/i }));
-  fireEvent.change(screen.getByLabelText('Wallet address'), {
-    target: { value: PASTED_RECORD.address },
-  });
+/**
+ * Confirm a pasted wallet address. A pasted address is staged in a dialog and
+ * joins the total only after the resident clicks "Add address".
+ */
+function confirmPastedWalletAddress() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Confirm wallet address' }),
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Add address' }));
+}
+
+/** Satisfy step 3 by pasting an address, leaving the wallet disconnected. */
+async function passStep3WithPastedAddress() {
+  hoisted.addWalletAddress.mockResolvedValue(PASTED_RECORD);
+  openEvmPaste();
+  fireEvent.change(screen.getByLabelText('Wallet address'), {
+    target: { value: PASTED_RECORD.address },
+  });
+  confirmPastedWalletAddress();
   await screen.findAllByText(/Ethereum · 0\.100000 ETH/);
 }
 
@@ -343,6 +352,47 @@ function pickApplicantDob() {
   fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
 }
 
+/**
+ * Pick a household member's date of birth through the styled calendar, the same
+ * control the applicant uses. The native date input is gone, so the test drives
+ * the picker the way a resident would.
+ */
+function pickHouseholdDob(index: number, dob: string) {
+  const [year, month, day] = dob.split('-').map(Number);
+  fireEvent.click(
+    screen.getByLabelText(`Household member ${index} date of birth`),
+  );
+
+  // The picker opens on today's month; move to the target month first.
+  const now = new Date();
+  let viewMonth = now.getMonth();
+  const targetMonth = month! - 1;
+  while (viewMonth > targetMonth) {
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    viewMonth -= 1;
+  }
+  while (viewMonth < targetMonth) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    viewMonth += 1;
+  }
+
+  // The calendar opens clamped to the 18+ ceiling (currentYear - 18), so step
+  // back one year at a time to the target year.
+  let viewYear = new Date().getFullYear() - 18;
+  while (viewYear > year!) {
+    fireEvent.click(screen.getByRole('button', { name: 'Previous year' }));
+    viewYear -= 1;
+  }
+  while (viewYear < year!) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next year' }));
+    viewYear += 1;
+  }
+
+  const mm = String(month!).padStart(2, '0');
+  const dd = String(day!).padStart(2, '0');
+  fireEvent.click(screen.getByRole('button', { name: `${year}-${mm}-${dd}` }));
+}
+
 function addHouseholdMember(
   name: string,
   relation: string,
@@ -353,7 +403,7 @@ function addHouseholdMember(
   const index = screen.getAllByLabelText(/household member \d+ name/i).length;
   setField(`Household member ${index} name`, name);
   setField(`Household member ${index} relation`, relation);
-  setField(`Household member ${index} date of birth`, dob);
+  pickHouseholdDob(index, dob);
   fireEvent.change(screen.getByLabelText(`Household member ${index} citizenship`), {
     target: { value: citizenship },
   });
@@ -394,7 +444,8 @@ function fillStep2Wizard() {
   fireEvent.click(screen.getByRole('radio', { name: /3-year/ }));
 
   addHouseholdMember('Lena Feldt', 'Spouse', '1985-07-22', 'NL');
-  addHouseholdMember('Emil Feldt', 'Son', '2015-05-03', 'DE');
+  // Every household member is an adult: this form also carries the 18+ rule.
+  addHouseholdMember('Emil Feldt', 'Son', '1988-05-03', 'DE');
 }
 
 describe('step 1, the transaction passkey', () => {
@@ -603,7 +654,11 @@ describe('step 1, the transaction passkey', () => {
 });
 
 describe('pre-registration flow', () => {
-  it('walks from the saved profile through proof of wealth to the fee', async () => {
+  // This walks the full step 2 → 4 path, driving two calendar pickers, so it
+  // runs longer than the default timeout under a fully loaded test run.
+  it(
+    'walks from the saved profile through proof of wealth to the fee',
+    async () => {
     const { store, save } = makeStore();
     renderFlow(store, true);
 
@@ -643,7 +698,9 @@ describe('pre-registration flow', () => {
     // Payment is not configured in this render, so the step says so rather
     // than offering a control that could only fail.
     expect(screen.getByText(/payment is not configured/i)).toBeInTheDocument();
-  });
+    },
+    15000,
+  );
 
   it('opens the platform when the server restored a paid fee', async () => {
     connectWallet();
@@ -835,13 +892,13 @@ const RESTORED_SNAPSHOT: OnboardingSnapshot = {
     {
       name: 'Grace Lovelace',
       relation: 'Daughter',
-      dob: '2015-05-05',
+      dob: '1992-05-05',
       citizenship: 'DE',
     },
     {
       name: 'Alan Lovelace',
       relation: 'Son',
-      dob: '2017-01-01',
+      dob: '1990-01-01',
       citizenship: 'DE',
     },
   ],
@@ -986,7 +1043,9 @@ function openBitcoinPaste() {
 
 /** Opens the collapsed wallet-address row's paste flow. */
 function openEvmPaste() {
-  fireEvent.click(screen.getByRole('button', { name: /wallet address/i }));
+  fireEvent.click(
+    screen.getByRole('button', { name: /^add (a )?wallet address$/i }),
+  );
 }
 
 describe('the Bitcoin address is read for real, not demoed', () => {
@@ -1201,24 +1260,30 @@ describe('the pasted wallet address is read for real, not demoed', () => {
     fireEvent.change(screen.getByLabelText('Wallet address'), {
       target: { value: EVM_RECORD.address },
     });
+    // Confirm stages the address; nothing is saved until the dialog is answered.
     fireEvent.click(confirm);
+    expect(hoisted.addWalletAddress).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('dialog', { name: 'Add this address?' }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add address' }));
 
     await waitFor(() =>
       expect(hoisted.addWalletAddress).toHaveBeenCalledWith(EVM_RECORD.address),
     );
-    // The asset breakdown appears twice per chain: in the expanded row and in
-    // the summary card, which now lists what was read for the address.
+    // The asset breakdown appears once per chain, in the Proof of wealth
+    // summary card that is now the single list of saved wallets.
     expect(
       (await screen.findAllByText(/Ethereum · 0\.512300 ETH/)).length,
-    ).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText(/Base · 0\.250000 ETH/).length).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Base · 0\.250000 ETH/).length).toBeGreaterThanOrEqual(1);
     // USDC is read too, on both chains, not just the native coin.
     expect(
       screen.getAllByText(/Ethereum · .* · 183\.500000 USDC/).length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.getAllByText(/Base · .* · 89\.100000 USDC/).length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
     // A confirmed source flips the row's right side to the Read state.
     expect(screen.getByText('Read')).toBeInTheDocument();
   });
@@ -1233,9 +1298,7 @@ describe('the pasted wallet address is read for real, not demoed', () => {
       fireEvent.change(screen.getByLabelText('Wallet address'), {
         target: { value: EVM_RECORD.address },
       });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Confirm wallet address' }),
-      );
+      confirmPastedWalletAddress();
       await waitFor(() =>
         expect(hoisted.addWalletAddress).toHaveBeenCalledTimes(index + 1),
       );

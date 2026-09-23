@@ -15,6 +15,12 @@ export interface DatePickerProps {
   readonly hint?: string;
   readonly fromYear?: number; // default 1900
   readonly toYear?: number; // default current year
+  /**
+   * An accessible name for the trigger, for repeated pickers that share the
+   * same visible label (e.g. one date of birth per household member). When
+   * omitted the trigger is named by its `<label>`.
+   */
+  readonly triggerAriaLabel?: string;
 }
 
 const MONTHS = [
@@ -94,6 +100,7 @@ export function DatePicker({
   hint,
   fromYear = 1900,
   toYear = new Date().getFullYear(),
+  triggerAriaLabel,
 }: DatePickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<{ year: number; month: number }>(() => {
@@ -226,6 +233,7 @@ export function DatePicker({
         ref={triggerRef}
         id={id}
         type="button"
+        aria-label={triggerAriaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-invalid={invalid || undefined}
