@@ -3,6 +3,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { HoldingsScreen } from '@/components/holdings/HoldingsScreen';
 import { LinkedWalletSection } from '@/components/holdings/LinkedWalletSection';
+import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { readWalletConnectProjectId } from '@/lib/env';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
@@ -16,6 +17,10 @@ import { beginWalletLink, completeWalletLink } from './link-actions';
  * wallets and only those. Pasted addresses are excluded structurally, before the
  * aggregate (see `@/lib/wealth/holdings` and `./data`). The link panel proves a
  * new wallet by signing a server-issued challenge through front 03's interface.
+ *
+ * The wallet context is required: the link panel uses wagmi hooks, so the page
+ * wraps the shell in `WalletProvider` exactly as the onboarding and residency
+ * steps do.
  */
 export const dynamic = 'force-dynamic';
 
@@ -33,25 +38,27 @@ export default async function HoldingsPage() {
   const walletConfigured = readWalletConnectProjectId() !== null;
 
   return (
-    <AppShell
-      email={session.email}
-      safeAddress={shellSafe.address}
-      safeDeployed={shellSafe.deployed}
-      safeStatus={shellSafe.status}
-      explorerUrl={shellSafe.explorerUrl}
-    >
-      <ContentContainer>
-        <HoldingsScreen
-          aggregate={aggregate}
-          linkPanel={
-            <LinkedWalletSection
-              configured={walletConfigured}
-              onBegin={beginWalletLink}
-              onComplete={completeWalletLink}
-            />
-          }
-        />
-      </ContentContainer>
-    </AppShell>
+    <WalletProvider>
+      <AppShell
+        email={session.email}
+        safeAddress={shellSafe.address}
+        safeDeployed={shellSafe.deployed}
+        safeStatus={shellSafe.status}
+        explorerUrl={shellSafe.explorerUrl}
+      >
+        <ContentContainer>
+          <HoldingsScreen
+            aggregate={aggregate}
+            linkPanel={
+              <LinkedWalletSection
+                configured={walletConfigured}
+                onBegin={beginWalletLink}
+                onComplete={completeWalletLink}
+              />
+            }
+          />
+        </ContentContainer>
+      </AppShell>
+    </WalletProvider>
   );
 }
