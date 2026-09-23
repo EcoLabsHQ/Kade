@@ -1,0 +1,55 @@
+iteration: iteration-connected-wallets
+profile: NORMAL
+known_good: 8affd96c41d8c18c3d00ed071ee61cda8db2a4ad
+candidate: 0f36c065daf52f2cd2330419077fe451b308795d
+mode: resume
+reviewed_scopes:
+  holdings: complete
+  onboarding: complete
+  admin-review: complete
+  database: complete
+  docs: complete
+active_findings: [F3, F5, F6, F7]
+resolved_findings: [F1, F2, F4]
+next_finding_id: F8
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 0
+  F4: 1
+  F5: 0
+  F6: 0
+  F7: 0
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 0f36c065daf52f2cd2330419077fe451b308795d
+  note: >-
+    Recorded by the orchestrator on the exact candidate HEAD; not re-run by the
+    reviewer. The pgTAP suites remain outside this gate (WARN F6).
+headline: >-
+  Week-2 contract v1.2: a wallet connected in onboarding Step 3 is persisted
+  with provider 'connected-wallet' and shown in Holdings as an unverified wallet
+  excluded from the total, while pasted rows remain excluded by construction and
+  the signature stays the only verified marker. Holdings can now link any live
+  wallet, not just the first connection. DISCOVERY raised 2 blockers (F1 a
+  contract contradiction, F2 a reachable paste-then-connect defect); both were
+  fixed at the root and closed in RECHECK, and the invalidated database/docs
+  scopes were closed in RESUME.
+escalation: >-
+  Cleared. The F2 root-cause fix required a database-security change; the owner
+  approved the column-scoped `grant update (provider)` plus the sticky conflict
+  clause, delivered as migration 28. Open WARNs F3, F5, F6 and F7 are
+  non-blocking.
+open_warnings:
+  F3: "OnboardingFlow.tsx modified outside the task's declared allowed paths (mechanical, needed for a prop rename)"
+  F5: "The widened Holdings query has no live-PostgREST coverage (fake client only)"
+  F6: "pgTAP suite 0004 is the only mechanical evidence for F2 and is not run by any gate"
+  F7: "D9's status line still reads 'is not the source of Holdings' (reconcilable wording)"
+live_dependency: >-
+  Migrations 27 (comment-only) and 28 (DDL: column-scoped grant + sticky
+  connected-wallet encoding) are committed but NOT applied to the live Supabase
+  project. Until 28 is applied, live paste-then-connect still leaves the row
+  'pasted-address' and the wallet is absent from Holdings.

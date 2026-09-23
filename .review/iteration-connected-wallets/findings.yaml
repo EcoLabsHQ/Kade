@@ -1,0 +1,77 @@
+- id: F1
+  severity: FAIL
+  scope: docs
+  title: "Frozen contract 4.1 D9 still stated the reversed v1.1 pasted-address encoding"
+  evidence: "docs/week-2-frozen-delivery-contract.md:139-143, docs/week-2-frozen-delivery-contract.md:417"
+  failure_mode: "A reviewer validating D9 read that a connected account persists with provider='pasted-address' (excluded from Holdings), the opposite of v1.2 and of the delivered code."
+  materiality: "Factually false claim about delivered behaviour in the authoritative frozen contract."
+  status: resolved
+  introduced_by: cd0c7f549c61a0f4e619db7429afe6fee49c1584
+  resolved_by: f50f1f1157e3696bdfafce917b2a02d395c7a0d2
+  recheck_attempts: 1
+- id: F2
+  severity: FAIL
+  scope: onboarding
+  title: "Connected-wallet save no-opped over an existing pasted row, so the wallet never reached Holdings"
+  evidence: "supabase/migrations/20260923000002_connected_wallet_sticky.sql:58,108-124, supabase/tests/0004_connected_wallet_sticky.test.sql:103-136"
+  failure_mode: "A resident pasted 0xABC then connected the same address: record_wallet_address conflicted and did nothing, leaving provider 'pasted-address', so the wallet was absent from Holdings. The connected write now re-encodes the unverified row."
+  materiality: "Explicit v1.2 contract requirement silently unmet for a reachable ordering; on-screen copy became false."
+  status: resolved
+  introduced_by: cd0c7f549c61a0f4e619db7429afe6fee49c1584
+  resolved_by: 3a5c91e175ca5fbb3579f07257ab03cc859b4c3a
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: onboarding
+  title: "OnboardingFlow.tsx modified outside the task's allowed paths"
+  evidence: "apps/web/src/components/onboarding/OnboardingFlow.tsx:278-289, apps/web/src/components/onboarding/OnboardingFlow.tsx:427"
+  failure_mode: "None behavioural; required by the WealthStep prop rename."
+  materiality: "Declared-path scope slip, not a false claim, weakened test, or security regression."
+  status: open
+  introduced_by: cd0c7f549c61a0f4e619db7429afe6fee49c1584
+  resolved_by: null
+  recheck_attempts: 0
+- id: F4
+  severity: WARN
+  scope: docs
+  title: "Contract section 10 still labelled the freeze v1.1"
+  evidence: "docs/week-2-frozen-delivery-contract.md:437, docs/week-2-frozen-delivery-contract.md:457"
+  failure_mode: "A reader skimming section 10 could mis-state the frozen version."
+  materiality: "Stale version label."
+  status: resolved
+  introduced_by: cd0c7f549c61a0f4e619db7429afe6fee49c1584
+  resolved_by: f50f1f1157e3696bdfafce917b2a02d395c7a0d2
+  recheck_attempts: 1
+- id: F5
+  severity: WARN
+  scope: holdings
+  title: "Widened Holdings query has no live-PostgREST coverage"
+  evidence: "apps/web/src/app/holdings/data.ts:74-77, apps/web/tests/holdings-loader.test.ts:42-64"
+  failure_mode: "A PostgREST-version-specific filter regression would surface only in a live environment."
+  materiality: "Coverage gap, not a demonstrated defect."
+  status: open
+  introduced_by: cd0c7f549c61a0f4e619db7429afe6fee49c1584
+  resolved_by: null
+  recheck_attempts: 0
+- id: F6
+  severity: WARN
+  scope: database
+  title: "pgTAP suite 0004 (the only mechanical evidence for F2) is not executed by any gate"
+  evidence: "scripts/verify.sh, scripts/verify-full.sh, supabase/tests/README.md:22-41, supabase/tests/0004_connected_wallet_sticky.test.sql"
+  failure_mode: "The only mechanical evidence for F2 is a manual container run; a later regression in the sticky clause or the provider grant would pass the gate unnoticed."
+  materiality: "Coverage gap, not a demonstrated defect."
+  status: open
+  introduced_by: 0f36c065daf52f2cd2330419077fe451b308795d
+  resolved_by: null
+  recheck_attempts: 0
+- id: F7
+  severity: WARN
+  scope: docs
+  title: "D9 status line still says the path is not the source of Holdings"
+  evidence: "docs/week-2-frozen-delivery-contract.md:145-146, docs/week-2-frozen-delivery-contract.md:139-143"
+  failure_mode: "A reviewer validating D9 could read the status line as excluding the connected row from the Holdings screen entirely."
+  materiality: "Reconcilable wording (the connected row is displayed but excluded from the total); non-blocking."
+  status: open
+  introduced_by: 0f36c065daf52f2cd2330419077fe451b308795d
+  resolved_by: null
+  recheck_attempts: 0
