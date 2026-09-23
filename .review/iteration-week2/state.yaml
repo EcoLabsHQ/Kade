@@ -1,14 +1,14 @@
 iteration: iteration-week2
 known_good: ef81b65
-candidate: cc2bd86
-mode: discovery
+candidate: 26796bb
+mode: recheck
 verify:
   command: ./scripts/verify.sh
   result: passed
-  head: cc2bd86
+  head: 26796bb
   note: >-
-    Passed on the second run; the first run failed only on the pre-existing,
-    intermittent onboarding-flow jsdom flake, unrelated to this diff.
+    Consumed from the orchestrator's record; not re-run by the reviewer. The
+    pre-existing intermittent onboarding-flow jsdom flake is unrelated.
 scope:
   unit_a: week-2 front 00 mainnet config
   unit_b: week-2 front 01 signer createSigner path
@@ -27,27 +27,30 @@ reviewed_scopes:
   unit_f: complete
   unit_g: complete
   unit_h: complete
-active_findings: [F1, F2, F3, F4, F5, F6, F7]
-resolved_findings: []
-next_finding_id: F8
+active_findings: [F4, F5, F6, F7, F8, F9]
+resolved_findings: [F1, F2, F3]
+next_finding_id: F10
 recheck_attempts:
-  F1: 0
-  F2: 0
-  F3: 0
+  F1: 1
+  F2: 1
+  F3: 1
   F4: 0
   F5: 0
   F6: 0
   F7: 0
-review_complete: false
-verdict: review_failed
+  F8: 0
+  F9: 0
+review_complete: true
+verdict: review_passed
 headline: >-
-  Week 2 iteration. Security boundaries hold (no send path, gated attestation,
-  SECURITY DEFINER scoping, structural pasted-row exclusion), but three
-  material honesty/frozen-scope regressions on the surface (F1 pre-approved
-  banner, F2 fabricated residency document/submission state, F3 Morpho
-  instrument labelled Base while the wired pool is mainnet) plus four warnings.
+  Week 2 iteration. F1-F3 resolved at the root by 31c4265/dba9ca6/26796bb: the
+  pre-approved banner is state-aware (hidden with no application or a cleared
+  review) and uses the resident's own ref; the residency heading/submission
+  states are gated on kade.permit.v1 existing and documents report 0 of 6; the
+  wired Morpho instrument is labelled Ethereum and matches the dialog. No new
+  blocker. F4-F7 warnings remain open; F8/F9 added.
 escalation: >-
-  F1 and F2 implement explicit owner instructions (banner always visible;
-  baseline copy) that conflict with the repo's no-false-claims rule and the
-  week-2 contract's "real state" criteria. Needs an owner change-control
-  decision before they are corrected. known-good NOT moved.
+  F4 is a frozen-contract divergence (week-2 section 4.1 D9 says a connected
+  wallet writes no row; the delivered code saves a watch-only row). It confers
+  no authority, so it is not blocking; the owner should amend D9 via change
+  control or revert the auto-save.
