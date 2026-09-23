@@ -56,6 +56,17 @@ interface Instrument {
  */
 const INSTRUMENTS: readonly Instrument[] = [
   {
+    key: 'morpho',
+    name: 'Morpho USDC vault · Base',
+    venue: 'Morpho Blue · Base vault',
+    type: 'Lending vault',
+    terms: '4.62% APY · variable',
+    minimum: '$100',
+    chain: 'Base',
+    chainColor: '#0052FF',
+    wired: true,
+  },
+  {
     key: 'aqua',
     name: 'Aqualectra 2025–2032 · AQUA-A1',
     venue: 'DCSX · feeder',
@@ -87,17 +98,6 @@ const INSTRUMENTS: readonly Instrument[] = [
     chain: 'Arbitrum',
     chainColor: '#2D374B',
     wired: false,
-  },
-  {
-    key: 'morpho',
-    name: 'Morpho USDC vault · Base',
-    venue: 'Morpho Blue · Base vault',
-    type: 'Lending vault',
-    terms: '4.62% APY · variable',
-    minimum: '$100',
-    chain: 'Base',
-    chainColor: '#0052FF',
-    wired: true,
   },
   {
     key: 'latam',
@@ -216,14 +216,6 @@ export function InvestScreen({
         </p>
       </div>
 
-      {!pool.configured ? (
-        <Notice tone="warning" title="Pool not configured">
-          The Morpho pool address and market parameters are supplied by the
-          project and are not present in this environment. Allocating cannot be
-          built or executed until they are.
-        </Notice>
-      ) : null}
-
       <div
         style={{
           background: tokens.surface,
@@ -319,16 +311,22 @@ export function InvestScreen({
                   type="button"
                   aria-label={`Allocate into ${instrument.name}`}
                   onClick={() => openInstrument(instrument)}
+                  disabled={!instrument.wired}
+                  title={
+                    instrument.wired
+                      ? undefined
+                      : 'Only the Morpho pool is wired in this iteration.'
+                  }
                   style={{
                     height: '32px',
                     border: 0,
                     borderRadius: '999px',
-                    background: tokens.ink,
-                    color: '#fff',
+                    background: instrument.wired ? tokens.ink : tokens.chipBg,
+                    color: instrument.wired ? '#fff' : tokens.locked,
                     fontFamily: 'inherit',
                     fontSize: '12px',
                     fontWeight: 600,
-                    cursor: 'pointer',
+                    cursor: instrument.wired ? 'pointer' : 'not-allowed',
                   }}
                 >
                   Allocate

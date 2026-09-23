@@ -134,9 +134,8 @@ describe('InvestScreen configuration', () => {
     ).toBeInTheDocument();
   });
 
-  it('says the pool is not configured and cannot allocate', () => {
+  it('cannot allocate when the pool is not configured', () => {
     renderScreen({ pool: UNCONFIGURED_POOL });
-    expect(screen.getByText(/pool not configured/i)).toBeInTheDocument();
     const dialog = openDialog('Morpho USDC vault · Base');
     expect(within(dialog).queryByText(MORPHO)).toBeNull();
     expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
@@ -242,12 +241,13 @@ describe('InvestScreen building', () => {
     expect(within(dialog).getByText('Call 2 · supply')).toBeInTheDocument();
   });
 
-  it('marks an instrument with no execution path as not wired', () => {
+  it('puts Morpho first and disables the instruments with no execution path', () => {
     renderScreen();
-    const dialog = openDialog('Ondo USDY');
-    expect(
-      within(dialog).getByText(/only the morpho pool is wired/i),
-    ).toBeInTheDocument();
-    expect(hoisted.buildDeposit).not.toHaveBeenCalled();
+    const buttons = screen.getAllByRole('button', { name: /allocate into/i });
+    expect(buttons[0]).toHaveAccessibleName(/allocate into morpho usdc vault/i);
+    expect(buttons[0]).toBeEnabled();
+    for (const button of buttons.slice(1)) {
+      expect(button).toBeDisabled();
+    }
   });
 });
