@@ -60,6 +60,14 @@ export interface WealthStepProps {
   readonly evmAddresses: readonly EvmAddressRecord[];
   readonly onAddWalletAddress: (address: string) => Promise<void> | void;
   readonly onRemoveWalletAddress: (address: string) => Promise<void> | void;
+  /**
+   * Persist a wallet connected through the browser extension or WalletConnect.
+   * Writes the distinct `connected-wallet` provider, so the row appears in
+   * Holdings as unverified and is excluded from the total. Separate from
+   * `onAddWalletAddress`, which is the pasted path and stays excluded by
+   * construction.
+   */
+  readonly onSaveConnectedWallet: (address: string) => Promise<void> | void;
 }
 
 function btc(value: string | null): string {
@@ -80,6 +88,7 @@ export function WealthStep({
   evmAddresses,
   onAddWalletAddress,
   onRemoveWalletAddress,
+  onSaveConnectedWallet,
 }: WealthStepProps) {
   const [addressInput, setAddressInput] = useState('');
   const [adding, setAdding] = useState(false);
@@ -183,8 +192,10 @@ export function WealthStep({
         balances from a public source on Ethereum and Base. Bitcoin and pasted
         wallet addresses are read-only in the same way. Nothing is signed, the
         connection gives Kade no authority over your Safe, and a public read is
-        not proof of ownership. This only shows you can meet the tier; moving
-        funds into a qualified vault happens inside the platform.
+        not proof of ownership. A connected wallet is saved and will appear in
+        Holdings as an <strong>unverified</strong> wallet, outside the total &mdash;
+        it is not proof that you control it. This only shows you can meet the
+        tier; moving funds into a qualified vault happens inside the platform.
       </p>
 
       <div
@@ -199,7 +210,7 @@ export function WealthStep({
           <ConnectedWalletPanel
             configured={walletConfigured}
             onChange={onWalletChange}
-            onAddWalletAddress={onAddWalletAddress}
+            onSaveConnectedWallet={onSaveConnectedWallet}
             atCap={evmAtCap}
           />
 
@@ -712,8 +723,9 @@ export function WealthStep({
           >
             Every figure here is read from a public source on Ethereum and Base.
             Connecting a wallet or pasting an address involves no signature, and
-            a public read is not proof of ownership. The wallet connection is
-            read-only and gives Kade no authority over your Safe.
+            a public read is not proof of ownership. A connected wallet is saved
+            and shown in Holdings as unverified, excluded from the total; the
+            connection is read-only and gives Kade no authority over your Safe.
           </p>
         </Card>
       </div>

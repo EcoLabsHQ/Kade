@@ -28,6 +28,8 @@ import { loadVerifiedHoldings } from '@/app/holdings/data';
 
 const VERIFIED = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const PASTED = '0x2222222222222222222222222222222222222222';
+const CONNECTED = '0x3333333333333333333333333333333333333333';
+const CONNECTED_PROVIDER = 'connected-wallet';
 
 interface Row {
   readonly id: number;
@@ -38,7 +40,7 @@ interface Row {
 }
 
 function createFakeClient(rows: readonly Row[], listError = false) {
-  const filters: Array<[string, string, unknown]> = [];
+  const filters: Array<[string, string]> = [];
   const builder = {
     select() {
       return builder;
@@ -46,8 +48,8 @@ function createFakeClient(rows: readonly Row[], listError = false) {
     eq() {
       return builder;
     },
-    not(column: string, op: string, value: unknown) {
-      filters.push([column, op, value]);
+    or(expression: string) {
+      filters.push(['or', expression]);
       return builder;
     },
     order() {
@@ -79,13 +81,17 @@ beforeEach(() => {
 });
 
 describe('loadVerifiedHoldings', () => {
-  it('selects only rows with a verified_at proof', async () => {
+  it('selects verified rows and connected-wallet rows in one query', async () => {
     const { client, filters } = createFakeClient([]);
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
 
     await loadVerifiedHoldings('user-1');
 
-    expect(filters).toContainEqual(['verified_at', 'is', null]);
+    // The widened predicate: a signature proof OR the connected encoding.
+    const or = filters.find(([kind]) => kind === 'or');
+    expect(or).toBeDefined();
+    expect(String(or?.[1])).toContain('verified_at.not.is.null');
+    expect(String(or?.[1])).toContain(`provider.eq.${CONNECTED_PROVIDER}`);
   });
 
   it('drops a pasted row even when the query returns one', async () => {
@@ -111,9 +117,43 @@ describe('loadVerifiedHoldings', () => {
 
     expect(aggregate.walletCount).toBe(1);
     expect(aggregate.wallets[0]!.address).toBe(VERIFIED);
+    expect(aggregate.unverifiedCount).toBe(0);
     expect(hoisted.readEvmBalances).toHaveBeenCalledTimes(1);
     expect(hoisted.readEvmBalances).toHaveBeenCalledWith(VERIFIED);
     expect(hoisted.readEvmBalances).not.toHaveBeenCalledWith(PASTED);
+  });
+
+  it('shows a connected row unverified and excludes it from the total', async () => {
+    const { client } = createFakeClient([
+      {
+        id: 1,
+        address: VERIFIED,
+        chain: 1,
+        provider: 'siwe',
+        verified_at: '2026-09-22T10:00:00.000Z',
+      },
+      {
+        id: 2,
+        address: CONNECTED,
+        chain: 1,
+        provider: CONNECTED_PROVIDER,
+        verified_at: null,
+      },
+    ]);
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+    hoisted.readEvmBalances.mockImplementation(async (address: string) => [
+      chain(address === VERIFIED ? 2500 : 1250),
+    ]);
+
+    const aggregate = await loadVerifiedHoldings('user-1');
+
+    // The connected wallet is read and shown, but the total and the verified
+    // counts stay on the signature-verified wallet alone.
+    expect(aggregate.total).toBe(2500);
+    expect(aggregate.walletCount).toBe(1);
+    expect(aggregate.unverifiedCount).toBe(1);
+    expect(aggregate.unverifiedWallets[0]!.address).toBe(CONNECTED);
+    expect(aggregate.unverifiedWallets[0]!.usd).toBe(1250);
   });
 
   it('totals the balances the shared provider returns', async () => {

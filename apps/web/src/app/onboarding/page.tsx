@@ -84,9 +84,9 @@ export default async function OnboardingPage() {
     }
   }
 
-  // Pasted EVM addresses, read server-side for the same reason. A failed,
-  // unconfigured or unauthenticated read degrades to none rather than
-  // fabricating an address.
+  // Watch-only EVM addresses (pasted and connected), read server-side for the
+  // same reason. A failed, unconfigured or unauthenticated read degrades to
+  // none rather than fabricating an address.
   let initialEvmAddresses: readonly EvmAddressRecord[] = [];
   if (configured) {
     try {

@@ -63,6 +63,7 @@ vi.mock('@/app/onboarding/wealth-actions', () => ({
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   listWalletAddresses: hoisted.listWalletAddresses,
   addWalletAddress: vi.fn(),
+  addConnectedWallet: vi.fn(),
   removeWalletAddress: vi.fn(),
 }));
 vi.mock('@/lib/env', () => ({

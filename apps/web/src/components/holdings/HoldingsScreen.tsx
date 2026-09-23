@@ -9,11 +9,13 @@ import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import type { EvmChainBalance } from '@/lib/wealth/types';
 
 /**
- * Holdings — the aggregate over signature-verified linked wallets.
+ * Holdings — the aggregate over signature-verified linked wallets, plus a
+ * separate, clearly labelled section for connected-but-unverified wallets.
  *
  * Presentational only: it renders the aggregate and the per-wallet breakdown
  * that `aggregateHoldings` produced, and it is explicit that a pasted address
- * never appears here because it never entered the aggregate. The link/verify
+ * never appears here because it never entered the aggregate. Connected wallets
+ * appear in their own section and are never added to `total`. The link/verify
  * panel is passed in as `linkPanel`, so this component stays free of the wallet
  * connection and signature machinery and can be rendered directly in tests.
  */
@@ -69,7 +71,15 @@ function chainRow(chain: EvmChainBalance) {
 }
 
 export function HoldingsScreen({ aggregate, linkPanel }: HoldingsScreenProps) {
-  const { total, walletCount, valuedCount, unvaluedCount, wallets } = aggregate;
+  const {
+    total,
+    walletCount,
+    valuedCount,
+    unvaluedCount,
+    wallets,
+    unverifiedWallets,
+    unverifiedCount,
+  } = aggregate;
 
   return (
     <div>
@@ -92,10 +102,11 @@ export function HoldingsScreen({ aggregate, linkPanel }: HoldingsScreenProps) {
           textWrap: 'pretty',
         }}
       >
-        Every wallet here was proven by signing a server-issued challenge.
-        Balances are read from the same public provider used across the
-        platform. A pasted address is registration-only and never contributes a
-        holding: it cannot enter this total.
+        Every wallet in the total was proven by signing a server-issued
+        challenge. Balances are read from the same public provider used across
+        the platform. A pasted address is registration-only and never
+        contributes a holding: it cannot enter this total. A wallet connected
+        during onboarding is shown below, unverified and outside the total.
       </p>
 
       <div
@@ -255,6 +266,126 @@ export function HoldingsScreen({ aggregate, linkPanel }: HoldingsScreenProps) {
           </div>
         )}
       </Card>
+
+      {unverifiedCount > 0 ? (
+        <Card radius={14} style={{ marginTop: '16px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: '12px',
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 600 }}>
+              Unverified connected wallets
+            </h2>
+            <Chip tone="warning">Unverified</Chip>
+          </div>
+          <p
+            style={{
+              margin: '10px 0 0',
+              fontSize: '13.5px',
+              color: tokens.muted,
+              maxWidth: '66ch',
+            }}
+          >
+            Connected during onboarding through the browser extension or
+            WalletConnect. A connection is not a signature, so these wallets are
+            not evidence of control and are <strong>not counted</strong> in the
+            total above.
+          </p>
+
+          <div style={{ marginTop: '10px' }}>
+            {unverifiedWallets.map((wallet) => (
+              <div
+                key={wallet.address}
+                style={{
+                  borderTop: `1px solid ${tokens.border}`,
+                  paddingTop: '12px',
+                  marginTop: '12px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                  }}
+                >
+                  <span
+                    title={wallet.address}
+                    style={{
+                      fontFamily:
+                        'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {shortAddress(wallet.address)}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {wallet.readError
+                      ? '—'
+                      : wallet.usd === null
+                        ? '—'
+                        : usd(wallet.usd)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '6px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <Chip tone="warning" dot>
+                    Unverified
+                  </Chip>
+                  <span style={{ fontSize: '12px', color: tokens.muted }}>
+                    Connected wallet · chains {wallet.chainIds.join(', ')}
+                  </span>
+                </div>
+
+                {wallet.chains.map(chainRow)}
+
+                <div
+                  style={{
+                    fontSize: '12px',
+                    color: tokens.muted,
+                    marginTop: '6px',
+                  }}
+                >
+                  Read from a public source. Not evidence of control; excluded
+                  from the total.
+                </div>
+                {wallet.readError ? (
+                  <div
+                    role="alert"
+                    style={{
+                      marginTop: '6px',
+                      fontSize: '12.5px',
+                      color: tokens.danger,
+                    }}
+                  >
+                    {wallet.readError}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <p
         style={{

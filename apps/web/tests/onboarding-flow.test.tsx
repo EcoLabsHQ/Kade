@@ -20,6 +20,7 @@ const hoisted = vi.hoisted(() => ({
   addBitcoinAddress: vi.fn(),
   removeBitcoinAddress: vi.fn(),
   addWalletAddress: vi.fn(),
+  addConnectedWallet: vi.fn(),
   removeWalletAddress: vi.fn(),
   // Wallet + fee payment. The hooks are mocked so the flow is exercised
   // against recorded wallet state, with no AppKit modal or provider.
@@ -73,6 +74,7 @@ vi.mock('@/app/onboarding/wealth-actions', () => ({
 // against recorded outcomes, with no database or provider.
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   addWalletAddress: hoisted.addWalletAddress,
+  addConnectedWallet: hoisted.addConnectedWallet,
   removeWalletAddress: hoisted.removeWalletAddress,
   readAddressBalances: hoisted.readAddressBalances,
 }));
@@ -168,6 +170,7 @@ afterEach(() => {
   hoisted.addBitcoinAddress.mockReset();
   hoisted.removeBitcoinAddress.mockReset();
   hoisted.addWalletAddress.mockReset();
+  hoisted.addConnectedWallet.mockReset();
   hoisted.removeWalletAddress.mockReset();
   hoisted.open.mockReset();
   hoisted.switchNetwork.mockReset();
@@ -230,9 +233,9 @@ function connectWallet() {
     },
   ];
   hoisted.readAddressBalances.mockResolvedValue(CONNECTED_RECORD);
-  // A connected wallet is saved as a watch-only row through the same action a
-  // pasted address uses, so the flow has a record to store.
-  hoisted.addWalletAddress.mockResolvedValue(CONNECTED_RECORD);
+  // A connected wallet is saved with the connected-wallet provider through its
+  // own action, so the flow has a record to store.
+  hoisted.addConnectedWallet.mockResolvedValue(CONNECTED_RECORD);
 }
 
 /** A pasted address, used when a test needs step 3 satisfied but disconnected. */
@@ -1377,8 +1380,8 @@ describe('a wallet is counted once however it arrives', () => {
   it('counts an address that is both connected and pasted exactly once', async () => {
     const { store } = makeStore();
     // `EVM_RECORD.address` is the same address `connectWallet` connects. The
-    // connected read is now saved through the same action a pasted address
-    // uses, so it replaces the pasted duplicate rather than adding to it.
+    // connected read is saved through the connected-wallet action, so it
+    // replaces the pasted duplicate rather than adding to it.
     renderRestoredFlow(store, undefined, [EVM_RECORD], true);
     // The restored snapshot already fills step 2, so it advances directly.
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
@@ -1395,6 +1398,22 @@ describe('a wallet is counted once however it arrives', () => {
     });
     expect(screen.queryByText('$4,890')).toBeNull();
     expect(screen.queryByText('1 connected wallet')).toBeNull();
+  });
+
+  it('persists a connected wallet through addConnectedWallet, not the pasted action', async () => {
+    const { store } = makeStore();
+    renderRestoredFlow(store, undefined, undefined, true);
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(
+        CONNECTED_ADDRESS,
+      ),
+    );
+    // The connected address never takes the pasted path: that would write the
+    // wrong provider and keep it out of the unverified Holdings section.
+    expect(hoisted.addWalletAddress).not.toHaveBeenCalled();
   });
 });
 
