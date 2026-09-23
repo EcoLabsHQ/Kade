@@ -104,6 +104,9 @@ export function ResidencyStep({
   const serviceFee = view.checks.find((c) => c.id === 'service-fee');
 
   const serviceFeeMet = serviceFee?.state === 'met';
+  // "Submitted" is real only when the kade.permit.v1 attestation exists; a
+  // verified service fee alone is not a submission.
+  const submitted = view.permitIssued;
   const serviceFeeUnlocked = snapshot.preapprovalPaid && view.serviceFeeUnlocked;
   const tierLabel = snapshot.tier ?? '5-year';
 
@@ -130,7 +133,8 @@ export function ResidencyStep({
     {
       key: 'documents',
       title: 'Documents complete',
-      meta: '5 of 6 uploaded · hashed & pinned',
+      // Documents are not collected in this build, so the count is the real one.
+      meta: '0 of 6 uploaded · hashed & pinned',
       done: false,
       action: 'Upload',
       onClick: () => {},
@@ -175,9 +179,9 @@ export function ResidencyStep({
         }}
       >
         <div>
-          <h1 style={heading}>{serviceFeeMet ? 'Residency' : 'Start Residency'}</h1>
+          <h1 style={heading}>{submitted ? 'Residency' : 'Start Residency'}</h1>
           <p style={lead}>
-            {serviceFeeMet
+            {submitted
               ? 'Your package is with the Immigration Service — every stage is attested onchain.'
               : 'Clear all four checks, pay the service fee, and we submit your full package.'}
           </p>
@@ -185,8 +189,8 @@ export function ResidencyStep({
         <span
           style={{
             ...pill,
-            background: serviceFeeMet ? '#EAF6F0' : '#FDF6E7',
-            color: serviceFeeMet ? tokens.success : '#B7791F',
+            background: submitted ? '#EAF6F0' : '#FDF6E7',
+            color: submitted ? tokens.success : '#B7791F',
           }}
         >
           <span
@@ -194,10 +198,10 @@ export function ResidencyStep({
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: serviceFeeMet ? tokens.success : '#B7791F',
+              background: submitted ? tokens.success : '#B7791F',
             }}
           />
-          {serviceFeeMet ? 'Submitted · in review' : `${readyCount} of 4 ready`}
+          {submitted ? 'Submitted · in review' : `${readyCount} of 4 ready`}
         </span>
       </div>
 

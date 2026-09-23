@@ -136,7 +136,17 @@ describe('ResidencyStep — reference layout', () => {
     expect(screen.getByRole('button', { name: 'Verify with Self' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Move funds' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+    expect(screen.getByText(/0 of 6 uploaded/)).toBeInTheDocument();
     expect(screen.getByText('Residency service fee')).toBeInTheDocument();
+  });
+
+  it('does not claim a submission before the permit exists', () => {
+    renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
+    expect(screen.getByRole('heading', { name: 'Start Residency' })).toBeInTheDocument();
+    expect(screen.queryByText(/submitted · in review/i)).toBeNull();
+    expect(
+      screen.queryByText(/your package is with the immigration service/i),
+    ).toBeNull();
   });
 
   it('counts readiness and locks the fee until the checks are green', () => {
