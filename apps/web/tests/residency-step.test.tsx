@@ -5,20 +5,23 @@ import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks
 import type { ResidencySnapshot } from '@/lib/residency/server';
 
 /**
- * The Residency step renders the four checks, the service-fee gate, the permit
- * status and the tracker from the snapshot the server derived. The payment
- * control and the server actions are mocked, so the component's own gating and
- * copy are what is under test.
+ * The Residency step (D16 / EXE-012), laid out to match the deployed baseline.
+ *
+ * The four readiness rows, the readiness pill and the service-fee card are the
+ * reference's. The state behind each row is derived from the snapshot the server
+ * assembled, and the payment control and server actions are mocked, so the
+ * component's own gating and copy are what is under test.
  */
 
 const hoisted = vi.hoisted(() => ({
   refresh: vi.fn(),
+  push: vi.fn(),
   startSelf: vi.fn(),
   issuePermit: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: hoisted.refresh }),
+  useRouter: () => ({ refresh: hoisted.refresh, push: hoisted.push }),
 }));
 vi.mock('@/app/residency/actions', () => ({
   startSelfVerificationAction: hoisted.startSelf,
@@ -52,6 +55,17 @@ function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
   };
 }
 
+/** The not-yet-ready state: nothing green, the fee unpaid. */
+function pendingFacts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
+  return facts({
+    identity: null,
+    qualifiedUsd: 0,
+    review: 'pending',
+    serviceFee: { recorded: false, verified: false, amountUsdc: 10 },
+    ...overrides,
+  });
+}
+
 function snapshot(
   f: ResidencyFacts = facts(),
   overrides: Partial<ResidencySnapshot> = {},
@@ -64,6 +78,7 @@ function snapshot(
     view: deriveResidencyView(f, true),
     preapprovalPaid: true,
     serviceFeeAmountUsdc: f.serviceFee.amountUsdc,
+    preapprovalUsdc: 447,
     serviceFeeConfigured: true,
     selfConfigured: false,
     permit: {
@@ -104,91 +119,107 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('ResidencyStep — checks', () => {
-  it('shows all four checks as ready from record-backed facts', () => {
-    renderStep();
-    expect(screen.getByText('Identity (Self)')).toBeInTheDocument();
-    expect(screen.getByText('Qualified holdings')).toBeInTheDocument();
-    // These titles also label a tracker stage, so both are expected.
-    expect(screen.getAllByText('Intake review').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Residency service fee').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Ready')).toHaveLength(4);
-  });
-
-  it('shows identity as pending when no attestation is recorded', () => {
-    renderStep(facts({ identity: null }));
+describe('ResidencyStep — reference layout', () => {
+  it('renders the heading, the readiness rows and the service-fee card', () => {
+    renderStep(pendingFacts());
+    expect(screen.getByRole('heading', { name: 'Start Residency' })).toBeInTheDocument();
     expect(
-      screen.getAllByText(/identity verification has not started/i).length,
-    ).toBeGreaterThan(0);
+      screen.getByText(/clear all four checks, pay the service fee/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Before you can start')).toBeInTheDocument();
+    expect(screen.getByText('Identity verified')).toBeInTheDocument();
+    expect(
+      screen.getByText('Qualified holdings meet 3-year tier'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Documents complete')).toBeInTheDocument();
+    expect(screen.getByText('Intake review cleared')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Verify with Self' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Move funds' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument();
+    expect(screen.getByText('Residency service fee')).toBeInTheDocument();
   });
 
-  it('shows a below-tier balance as pending', () => {
-    renderStep(facts({ qualifiedUsd: 100 }));
-    expect(screen.getAllByText(/of \$280,000/).length).toBeGreaterThan(0);
+  it('counts readiness and locks the fee until the checks are green', () => {
+    renderStep(pendingFacts());
+    expect(screen.getAllByText('0 of 4 ready').length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole('button', { name: /complete the checks above to unlock/i }),
+    ).toBeDisabled();
   });
 
-  it('shows the pre-approval banner until the fee verifies', () => {
-    renderStep(facts(), { snapshot: snapshot(facts(), { preapprovalPaid: false }) });
-    expect(screen.getByText(/pre-approval pending/i)).toBeInTheDocument();
+  it('marks a row Ready when its record is present', () => {
+    renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
+    expect(screen.getAllByText('Ready')).toHaveLength(3);
+    expect(screen.getAllByText('3 of 4 ready').length).toBeGreaterThan(0);
+  });
+
+  it('shows the below-tier shortfall in the baseline wording', () => {
+    renderStep(pendingFacts());
+    expect(
+      screen.getByText(/\$0 of \$280,000 · \$280,000 to go/),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the fee amount and the pre-approval paid line', () => {
+    renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
+    expect(screen.getByText('10 USDC')).toBeInTheDocument();
+    expect(
+      screen.getByText(/pre-approval fee already paid: 447 USDC/i),
+    ).toBeInTheDocument();
   });
 });
 
 describe('ResidencyStep — service fee gate', () => {
-  it('locks the service fee while a prerequisite is not green', () => {
-    renderStep(
-      facts({
-        identity: null,
-        serviceFee: { recorded: false, verified: false, amountUsdc: 10 },
-      }),
-    );
-    expect(
-      screen.getAllByText(
-        /unlocks when identity, qualified holdings and intake review are green/i,
-      ).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByTestId('service-fee-payment')).toBeNull();
-  });
-
   it('offers the payment control once the prerequisites are green', () => {
     renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
     expect(screen.getByTestId('service-fee-payment')).toHaveTextContent('Send 10 USDC');
   });
 
-  it('keeps the service fee locked until the pre-approval fee is verified', () => {
+  it('keeps the fee locked until the pre-approval fee is verified', () => {
     const f = facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } });
     renderStep(f, { snapshot: snapshot(f, { preapprovalPaid: false }) });
     expect(screen.queryByTestId('service-fee-payment')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /complete the checks above to unlock/i }),
+    ).toBeDisabled();
   });
 
-  it('shows the fee as verified instead of a payment control when paid', () => {
+  it('shows the fee as verified and offers permit issuance when paid', () => {
     renderStep();
     expect(screen.getAllByText(/service fee verified/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /issue permit/i })).toBeEnabled();
     expect(screen.queryByTestId('service-fee-payment')).toBeNull();
   });
 
-  it('says when the service fee is not configured', () => {
-    renderStep(
-      facts({ serviceFee: { recorded: false, verified: false, amountUsdc: null } }),
-      { snapshot: snapshot(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: null } })) },
-    );
-    expect(screen.getByText(/configured service fee could not be read/i)).toBeInTheDocument();
-  });
-
-  it('says payment is unconfigured rather than offering a broken control', () => {
+  it('falls back to the locked control when payment is unconfigured', () => {
     renderStep(
       facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }),
       { paymentConfigured: false },
     );
-    expect(screen.getByText(/payment is not configured in this environment/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /complete the checks above to unlock/i }),
+    ).toBeDisabled();
   });
 });
 
-describe('ResidencyStep — Self and permit actions', () => {
-  it('reports the Self gate instead of a fabricated result', async () => {
-    hoisted.startSelf.mockResolvedValue({ status: 'not-configured' });
-    renderStep();
+describe('ResidencyStep — actions', () => {
+  it('Move funds navigates to holdings', () => {
+    renderStep(pendingFacts());
+    fireEvent.click(screen.getByRole('button', { name: 'Move funds' }));
+    expect(hoisted.push).toHaveBeenCalledWith('/holdings');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /verify with self/i }));
+  it('opens the Self dialog and reports the gate instead of a fabricated result', async () => {
+    hoisted.startSelf.mockResolvedValue({ status: 'not-configured' });
+    renderStep(pendingFacts());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verify with Self' }));
+    expect(
+      screen.getByRole('dialog', { name: /verify your identity/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Powered by Self')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /i completed the scan in self/i }));
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(/self is not configured/i),
@@ -196,37 +227,12 @@ describe('ResidencyStep — Self and permit actions', () => {
     expect(hoisted.startSelf).toHaveBeenCalled();
   });
 
-  it('disables permit issuance until identity and service fee are met', () => {
-    renderStep(facts({ identity: null }));
-    expect(screen.getByRole('button', { name: /issue permit/i })).toBeDisabled();
-  });
-
-  it('attempts permit issuance when the checks are green and reports the gate', async () => {
+  it('attempts permit issuance when paid and reports the gate', async () => {
     renderStep();
-    const button = screen.getByRole('button', { name: /issue permit/i });
-    expect(button).toBeEnabled();
-
-    fireEvent.click(button);
-
+    fireEvent.click(screen.getByRole('button', { name: /issue permit/i }));
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(/no permit issuance approval/i),
     );
     expect(hoisted.issuePermit).toHaveBeenCalled();
-  });
-});
-
-describe('ResidencyStep — tracker', () => {
-  it('renders all six stages derived from records', () => {
-    renderStep();
-    for (const title of [
-      'Pre-approval fee',
-      'Identity verified',
-      'Qualified holdings funded',
-      'Intake review',
-      'Residency service fee',
-      'Permit issued',
-    ]) {
-      expect(screen.getAllByText(title).length).toBeGreaterThan(0);
-    }
   });
 });

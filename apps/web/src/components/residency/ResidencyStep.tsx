@@ -3,14 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Hex } from 'viem';
-import { Card } from '@/components/ui/Card';
-import { Chip, type ChipTone } from '@/components/ui/Chip';
-import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
-import type {
-  ResidencyCheckState,
-  ResidencyStageState,
-} from '@/lib/residency/checks';
+import type { ResidencyCheck } from '@/lib/residency/checks';
 import type { ResidencySnapshot } from '@/lib/residency/server';
 import type { SelfVerificationOutcome } from '@/lib/residency/self';
 import type { PermitIssuanceResult } from '@/lib/residency/permit';
@@ -19,15 +13,17 @@ import {
   startSelfVerificationAction,
 } from '@/app/residency/actions';
 import { ServiceFeePayment } from './ServiceFeePayment';
+import { SelfVerificationModal } from './SelfVerificationModal';
 
 /**
- * The Residency step (D16 / EXE-012).
+ * The Residency step (D16 / EXE-012), laid out to match the deployed baseline.
  *
- * Renders the four checks (identity, funds, review, service fee), the
- * service-fee card, the permit status and the six-stage tracker, all from the
- * `snapshot` the server derived from records. It invents no state: a check it
- * cannot prove stays pending, and the Self and permit actions surface the gate
- * they hit rather than a fabricated success.
+ * The header, the readiness pill, the "Before you can start" card and the
+ * service-fee card are the reference's. The readiness rows derive their state
+ * from the records the server assembled; documents are not tracked in this
+ * iteration, so that row mirrors the baseline and Upload is a no-op. The service
+ * fee is the real server-resolved amount, payable only once the prerequisites
+ * are green.
  */
 
 export interface ResidencyStepProps {
@@ -42,32 +38,6 @@ export interface ResidencyStepProps {
   readonly usdcAddress: string;
   readonly explorerUrl: string;
 }
-
-const CHECK_TONES: Record<ResidencyCheckState, ChipTone> = {
-  met: 'success',
-  pending: 'warning',
-  blocked: 'danger',
-};
-
-const CHECK_LABELS: Record<ResidencyCheckState, string> = {
-  met: 'Ready',
-  pending: 'Pending',
-  blocked: 'Blocked',
-};
-
-const STAGE_TONES: Record<ResidencyStageState, ChipTone> = {
-  done: 'success',
-  active: 'brand',
-  queued: 'muted',
-  blocked: 'danger',
-};
-
-const STAGE_LABELS: Record<ResidencyStageState, string> = {
-  done: 'Done',
-  active: 'In progress',
-  queued: 'Queued',
-  blocked: 'Blocked',
-};
 
 function selfMessage(outcome: SelfVerificationOutcome): string {
   switch (outcome.status) {
@@ -97,6 +67,23 @@ function permitMessage(result: PermitIssuanceResult): string {
   }
 }
 
+/**
+ * The funds row meta in the baseline's wording: "$X of $Y · $Z to go". The
+ * numbers come from the derived check, which formats them as "$X of $Y."; the
+ * shortfall is recomputed here so the copy matches the reference.
+ */
+function fundsMeta(check: ResidencyCheck | undefined): string {
+  if (!check) return 'No qualifying tier is set.';
+  const match = check.detail.match(/^\$([\d,]+) of \$([\d,]+)\.$/);
+  if (!match) return check.detail;
+  const haveRaw = match[1] ?? '0';
+  const needRaw = match[2] ?? '0';
+  const have = Number(haveRaw.replace(/,/g, ''));
+  const need = Number(needRaw.replace(/,/g, ''));
+  const toGo = Math.max(0, need - have);
+  return `$${haveRaw} of $${needRaw} · $${toGo.toLocaleString('en-US')} to go`;
+}
+
 export function ResidencyStep({
   snapshot,
   network,
@@ -108,14 +95,65 @@ export function ResidencyStep({
 }: ResidencyStepProps) {
   const router = useRouter();
   const [notice, setNotice] = useState<string | null>(null);
-  const { view, permit } = snapshot;
+  const [selfOpen, setSelfOpen] = useState(false);
+  const { view } = snapshot;
+
+  const identity = view.checks.find((c) => c.id === 'identity');
+  const funds = view.checks.find((c) => c.id === 'funds');
+  const review = view.checks.find((c) => c.id === 'review');
+  const serviceFee = view.checks.find((c) => c.id === 'service-fee');
+
+  const serviceFeeMet = serviceFee?.state === 'met';
+  const serviceFeeUnlocked = snapshot.preapprovalPaid && view.serviceFeeUnlocked;
+  const tierLabel = snapshot.tier ?? '5-year';
+
+  // Documents are not tracked in this iteration; the row mirrors the baseline.
+  const readiness = [
+    {
+      key: 'identity',
+      title: 'Identity verified',
+      meta: identity?.state === 'met'
+        ? 'Self proof · kade.kyc.v1 issued'
+        : 'Passport scan with Self · zero-knowledge',
+      done: identity?.state === 'met',
+      action: 'Verify with Self',
+      onClick: () => setSelfOpen(true),
+    },
+    {
+      key: 'funds',
+      title: `Qualified holdings meet ${tierLabel} tier`,
+      meta: fundsMeta(funds),
+      done: funds?.state === 'met',
+      action: 'Move funds',
+      onClick: () => router.push('/holdings'),
+    },
+    {
+      key: 'documents',
+      title: 'Documents complete',
+      meta: '5 of 6 uploaded · hashed & pinned',
+      done: false,
+      action: 'Upload',
+      onClick: () => {},
+    },
+    {
+      key: 'review',
+      title: 'Intake review cleared',
+      meta: 'Admin reviews within 3 days — nothing to do',
+      done: review?.state === 'met',
+      action: null,
+      onClick: null,
+    },
+  ] as const;
+
+  const readyCount = readiness.filter((row) => row.done).length;
 
   const handlePaid = (_txHash: Hex) => {
     void _txHash;
     router.refresh();
   };
 
-  async function verifyWithSelf() {
+  async function confirmSelf() {
+    setSelfOpen(false);
     const outcome = await startSelfVerificationAction();
     setNotice(selfMessage(outcome));
   }
@@ -125,229 +163,187 @@ export function ResidencyStep({
     setNotice(permitMessage(result));
   }
 
-  const serviceFeeCheck = view.checks.find((c) => c.id === 'service-fee');
-  const identityCheck = view.checks.find((c) => c.id === 'identity');
-  const permitReady = identityCheck?.state === 'met' && serviceFeeCheck?.state === 'met';
-  // Pre-approval gates the whole step: even green readiness checks cannot open
-  // the service fee before the pre-approval fee has been verified.
-  const serviceFeeUnlocked = snapshot.preapprovalPaid && view.serviceFeeUnlocked;
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div>
-        <div style={eyebrow}>Residency</div>
-        <h1 style={heading}>Start Residency</h1>
-        <p style={lead}>
-          Four readiness checks stand between your pre-approval and your
-          residency application. The service fee unlocks only when identity,
-          qualified holdings and intake review are green.
-        </p>
+    <div style={{ animation: 'fadeUp .2s ease-out' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          gap: '24px',
+          marginBottom: '24px',
+        }}
+      >
+        <div>
+          <h1 style={heading}>{serviceFeeMet ? 'Residency' : 'Start Residency'}</h1>
+          <p style={lead}>
+            {serviceFeeMet
+              ? 'Your package is with the Immigration Service — every stage is attested onchain.'
+              : 'Clear all four checks, pay the service fee, and we submit your full package.'}
+          </p>
+        </div>
+        <span
+          style={{
+            ...pill,
+            background: serviceFeeMet ? '#EAF6F0' : '#FDF6E7',
+            color: serviceFeeMet ? tokens.success : '#B7791F',
+          }}
+        >
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: serviceFeeMet ? tokens.success : '#B7791F',
+            }}
+          />
+          {serviceFeeMet ? 'Submitted · in review' : `${readyCount} of 4 ready`}
+        </span>
       </div>
 
-      {!snapshot.preapprovalPaid ? (
-        <Card background="#FDF6E7" style={{ borderColor: '#F2D9A8' }}>
-          <strong style={{ color: tokens.warning }}>Pre-approval pending.</strong>{' '}
-          <span style={{ color: tokens.chipFg, fontSize: '13.5px' }}>
-            Verify your pre-approval fee before starting residency. Use the
-            Residency setup page to complete it.
-          </span>
-        </Card>
-      ) : null}
-
-      <div className="kade-grid-dashboard" style={{ gap: '16px', alignItems: 'start' }}>
-        <Card>
-          <h2 style={cardHeading}>Readiness checks</h2>
-          <div style={{ marginTop: '8px' }}>
-            {view.checks.map((check) => (
+      <div className="kade-grid-dashboard" style={{ gap: '16px', alignItems: 'stretch' }}>
+        <div style={card}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+            }}
+          >
+            <h2 style={cardHeading}>Before you can start</h2>
+            <span style={{ fontSize: '12.5px', color: tokens.muted }}>
+              {readyCount} of 4 ready
+            </span>
+          </div>
+          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column' }}>
+            {readiness.map((row) => (
               <div
-                key={check.id}
+                key={row.key}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr auto',
-                  gap: '12px',
+                  gridTemplateColumns: '26px 1fr auto',
+                  gap: '14px',
                   alignItems: 'center',
                   padding: '12px 0',
                   borderTop: `1px solid ${tokens.border}`,
                 }}
               >
+                <span
+                  aria-hidden
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: row.done ? tokens.brandPrimary : tokens.chipBg,
+                    color: row.done ? '#fff' : tokens.muted,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {row.done ? '✓' : ''}
+                </span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600 }}>
-                    {check.label}
-                  </div>
-                  <div style={{ fontSize: '12px', color: tokens.muted }}>
-                    {check.detail}
-                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 600 }}>{row.title}</div>
+                  <div style={{ fontSize: '12px', color: tokens.muted }}>{row.meta}</div>
                 </div>
-                <Chip tone={CHECK_TONES[check.state]} dot>
-                  {CHECK_LABELS[check.state]}
-                </Chip>
+                {row.done ? (
+                  <span
+                    style={{ fontSize: '11.5px', fontWeight: 600, color: tokens.success }}
+                  >
+                    Ready
+                  </span>
+                ) : row.action && row.onClick ? (
+                  <button type="button" onClick={row.onClick} style={rowButton}>
+                    {row.action}
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>
-        </Card>
-
-        <div style={{ display: 'grid', gap: '16px' }}>
-          <div
-            style={{
-              background: tokens.ink,
-              borderRadius: '16px',
-              padding: '22px 24px',
-              color: '#fff',
-            }}
-          >
-            <div style={darkEyebrow}>Residency service fee</div>
-            <div style={{ marginTop: '8px', fontSize: '28px', fontWeight: 700 }}>
-              {snapshot.serviceFeeAmountUsdc === null
-                ? '—'
-                : `${snapshot.serviceFeeAmountUsdc} USDC`}
-            </div>
-            <p style={{ margin: '8px 0 16px', fontSize: '13px', color: '#D0D5DD' }}>
-              {serviceFeeCheck?.state === 'met'
-                ? 'Paid and verified on chain.'
-                : serviceFeeUnlocked
-                  ? `Send the service fee on ${network} to submit your residency application.`
-                  : 'Unlocks when identity, qualified holdings and intake review are green.'}
-            </p>
-
-            {serviceFeeCheck?.state === 'met' ? (
-              <Chip tone="success" dot>
-                Service fee verified
-              </Chip>
-            ) : !serviceFeeUnlocked ? (
-              <p style={{ margin: 0, fontSize: '13px', color: '#98A2B3' }}>
-                Locked
-              </p>
-            ) : snapshot.serviceFeeAmountUsdc === null ? (
-              <p style={{ margin: 0, fontSize: '13px', color: '#FECDCA' }}>
-                The configured service fee could not be read.
-              </p>
-            ) : !paymentConfigured || !treasuryAddress ? (
-              <p style={{ margin: 0, fontSize: '13px', color: '#D0D5DD' }}>
-                Payment is not configured in this environment.
-              </p>
-            ) : (
-              <ServiceFeePayment
-                amountUsdc={String(snapshot.serviceFeeAmountUsdc)}
-                chainId={chainId}
-                treasuryAddress={treasuryAddress as `0x${string}`}
-                usdcAddress={usdcAddress as `0x${string}`}
-                explorerUrl={explorerUrl}
-                onPaid={handlePaid}
-              />
-            )}
-          </div>
-
-          <Card>
-            <h2 style={cardHeading}>Self identity proof</h2>
-            <p style={cardBody}>
-              {snapshot.selfConfigured
-                ? 'Self is configured. Start verification to prove your passport.'
-                : 'Self is not configured in this environment, so identity verification is unavailable.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => void verifyWithSelf()}
-              style={{ ...primaryButton, width: '100%' }}
-            >
-              Verify with Self
-            </button>
-          </Card>
-
-          <Card>
-            <h2 style={cardHeading}>Permit</h2>
-            <p style={cardBody}>
-              {view.permitIssued
-                ? 'Your kade.permit.v1 attestation has been issued.'
-                : 'Issued once the checks are green.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => void issuePermit()}
-              disabled={!permitReady}
-              style={{
-                ...secondaryButton,
-                width: '100%',
-                opacity: permitReady ? 1 : 0.55,
-                cursor: permitReady ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Issue permit
-            </button>
-            {permit.status !== 'issued' ? (
-              <p style={{ ...cardBody, marginTop: '8px', fontSize: '12px' }}>
-                {permitMessage(permit)}
-              </p>
-            ) : null}
-          </Card>
         </div>
-      </div>
 
-      <Card>
-        <h2 style={cardHeading}>Residency tracker</h2>
-        <div style={{ marginTop: '8px' }}>
-          {view.tracker.map((stage, index) => (
-            <div
-              key={stage.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '24px 1fr auto',
-                gap: '12px',
-                alignItems: 'center',
-                padding: '10px 0',
-                borderTop: `1px solid ${tokens.border}`,
-              }}
-            >
+        <div style={{ ...card, display: 'flex', flexDirection: 'column' }}>
+          <div style={feeEyebrow}>Residency service fee</div>
+          <div style={feeAmount}>
+            {snapshot.serviceFeeAmountUsdc === null
+              ? '—'
+              : `${snapshot.serviceFeeAmountUsdc.toLocaleString('en-US')} USDC`}
+          </div>
+          <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}>
+            Payable once — only when all four checks are ready
+          </div>
+          <div style={feeBody}>
+            Covers compilation and submission of your full package, household
+            permits, biometrics scheduling and Kranshi registration. Pre-approval
+            fee already paid:{' '}
+            {snapshot.preapprovalUsdc === null
+              ? '—'
+              : `${snapshot.preapprovalUsdc.toLocaleString('en-US')}`}{' '}
+            USDC.
+          </div>
+          <div style={{ flex: 1 }} />
+
+          {serviceFeeMet ? (
+            <div>
               <span
-                aria-hidden
                 style={{
-                  width: '22px',
-                  height: '22px',
-                  borderRadius: '50%',
-                  background:
-                    stage.state === 'done' ? tokens.brandPrimary : tokens.chipBg,
-                  color: stage.state === 'done' ? '#fff' : tokens.muted,
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  fontWeight: 700,
+                  gap: '6px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  color: tokens.success,
                 }}
               >
-                {stage.state === 'done' ? '✓' : index + 1}
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: tokens.success,
+                  }}
+                />
+                Service fee verified
               </span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '13.5px', fontWeight: 600 }}>
-                  {stage.title}
-                </div>
-                <div style={{ fontSize: '12px', color: tokens.muted }}>
-                  {stage.meta}
-                </div>
-              </div>
-              <Chip tone={STAGE_TONES[stage.state]}>{STAGE_LABELS[stage.state]}</Chip>
+              <button
+                type="button"
+                onClick={() => void issuePermit()}
+                style={{ ...rowButton, width: '100%', marginTop: '12px', height: '40px' }}
+              >
+                Issue permit
+              </button>
             </div>
-          ))}
+          ) : serviceFeeUnlocked &&
+            paymentConfigured &&
+            treasuryAddress &&
+            snapshot.serviceFeeAmountUsdc !== null ? (
+            <ServiceFeePayment
+              amountUsdc={String(snapshot.serviceFeeAmountUsdc)}
+              chainId={chainId}
+              treasuryAddress={treasuryAddress as `0x${string}`}
+              usdcAddress={usdcAddress as `0x${string}`}
+              explorerUrl={explorerUrl}
+              onPaid={handlePaid}
+            />
+          ) : (
+            <button type="button" disabled style={lockedButton}>
+              Complete the checks above to unlock
+            </button>
+          )}
         </div>
-      </Card>
-
-      <div className="kade-grid-4" style={{ gap: '14px' }}>
-        <StatCard
-          label="Application"
-          value={snapshot.applicationRef ?? '—'}
-          sub={snapshot.tier ? `Tier ${snapshot.tier}` : 'Tier not set'}
-        />
-        <StatCard
-          label="Checks ready"
-          value={`${view.checks.filter((c) => c.state === 'met').length} / ${view.checks.length}`}
-        />
-        <StatCard
-          label="Service fee"
-          value={view.permitIssued ? 'Submitted' : serviceFeeUnlocked ? 'Unlocked' : 'Locked'}
-        />
-        <StatCard label="Permit" value={view.permitIssued ? 'Issued' : 'Pending'} />
       </div>
 
+      <SelfVerificationModal
+        open={selfOpen}
+        onClose={() => setSelfOpen(false)}
+        onConfirm={() => void confirmSelf()}
+      />
+
       {notice ? (
-        <p role="status" style={{ ...cardBody, color: tokens.chipFg }}>
+        <p role="status" style={{ ...feeBody, color: tokens.chipFg, marginTop: '16px' }}>
           {notice}
         </p>
       ) : null}
@@ -355,31 +351,37 @@ export function ResidencyStep({
   );
 }
 
-const eyebrow: React.CSSProperties = {
-  fontSize: '11px',
-  fontWeight: 700,
-  letterSpacing: '.08em',
-  textTransform: 'uppercase',
-  color: tokens.muted,
-};
-
-const darkEyebrow: React.CSSProperties = {
-  ...eyebrow,
-  color: '#98A2B3',
-};
-
 const heading: React.CSSProperties = {
-  margin: '8px 0 6px',
-  fontSize: '32px',
+  margin: 0,
+  fontSize: '36px',
+  lineHeight: 1.1,
   fontWeight: 700,
   letterSpacing: '-.02em',
 };
 
 const lead: React.CSSProperties = {
-  margin: 0,
+  margin: '10px 0 0',
   color: tokens.muted,
-  maxWidth: '62ch',
+  maxWidth: '64ch',
   textWrap: 'pretty',
+};
+
+const pill: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  fontSize: '11px',
+  fontWeight: 700,
+  padding: '5px 10px',
+  borderRadius: '999px',
+  whiteSpace: 'nowrap',
+};
+
+const card: React.CSSProperties = {
+  background: tokens.surface,
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '14px',
+  padding: '22px 24px',
 };
 
 const cardHeading: React.CSSProperties = {
@@ -388,35 +390,52 @@ const cardHeading: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const cardBody: React.CSSProperties = {
-  margin: '8px 0 12px',
-  fontSize: '13px',
-  lineHeight: 1.5,
-  color: tokens.muted,
-};
-
-const primaryButton: React.CSSProperties = {
-  height: '46px',
-  padding: '0 22px',
-  border: 0,
-  borderRadius: '999px',
-  background: tokens.action,
-  color: '#fff',
-  fontFamily: 'inherit',
-  fontSize: '15px',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const secondaryButton: React.CSSProperties = {
-  height: '46px',
-  padding: '0 22px',
+const rowButton: React.CSSProperties = {
+  height: '32px',
+  padding: '0 14px',
   border: `1px solid ${tokens.border}`,
   borderRadius: '999px',
   background: '#fff',
-  color: tokens.ink,
   fontFamily: 'inherit',
-  fontSize: '15px',
+  fontSize: '12.5px',
   fontWeight: 600,
   cursor: 'pointer',
+  color: tokens.ink,
+  whiteSpace: 'nowrap',
+};
+
+const feeEyebrow: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '.08em',
+  textTransform: 'uppercase',
+  color: tokens.muted,
+};
+
+const feeAmount: React.CSSProperties = {
+  fontSize: '30px',
+  fontWeight: 700,
+  marginTop: '8px',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const feeBody: React.CSSProperties = {
+  fontSize: '13.5px',
+  lineHeight: 1.7,
+  marginTop: '14px',
+  color: tokens.chipFg,
+};
+
+const lockedButton: React.CSSProperties = {
+  marginTop: '18px',
+  width: '100%',
+  height: '46px',
+  border: 0,
+  borderRadius: '999px',
+  background: tokens.locked,
+  color: '#fff',
+  fontFamily: 'inherit',
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'not-allowed',
 };

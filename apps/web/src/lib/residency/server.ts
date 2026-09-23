@@ -44,6 +44,7 @@ export interface ApplicationResidencyRow {
   readonly status: string | null;
   readonly service_tx: string | null;
   readonly service_uid: string | null;
+  readonly preapproval_usdc: number | null;
 }
 
 export interface ResidencySnapshot {
@@ -54,6 +55,8 @@ export interface ResidencySnapshot {
   readonly view: ResidencyView;
   readonly preapprovalPaid: boolean;
   readonly serviceFeeAmountUsdc: number | null;
+  /** The recorded pre-approval fee, shown in the service-fee card copy. */
+  readonly preapprovalUsdc: number | null;
   /** True when the service-fee rail has a treasury, token and RPC. */
   readonly serviceFeeConfigured: boolean;
   readonly selfConfigured: boolean;
@@ -93,7 +96,7 @@ export async function loadApplicationResidencyRow(
   const client = await createSupabaseServerClient();
   const { data, error } = await client
     .from('applications')
-    .select('id, ref, tier, status, service_tx, service_uid')
+    .select('id, ref, tier, status, service_tx, service_uid, preapproval_usdc')
     .eq('profile_id', profileId)
     .maybeSingle();
   if (error) {
@@ -220,6 +223,7 @@ export async function loadResidencySnapshot(
     view,
     preapprovalPaid: preapproval.status === 'paid',
     serviceFeeAmountUsdc,
+    preapprovalUsdc: row.preapproval_usdc,
     serviceFeeConfigured: isResidencyServiceFeeConfigured(),
     selfConfigured: isSelfVerificationConfigured(),
     permit: issuePermit(readPermitIssuanceGate()),
