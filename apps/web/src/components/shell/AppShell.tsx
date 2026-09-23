@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
+import { PreApprovedBanner } from './PreApprovedBanner';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import { readChainEnv } from '@/lib/env';
@@ -73,6 +74,7 @@ export function AppShell({
           flexDirection: 'column',
         }}
       >
+        <PreApprovedBanner />
         {children}
       </main>
     </div>
