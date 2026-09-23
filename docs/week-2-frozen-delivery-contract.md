@@ -139,7 +139,8 @@ public source; the screen states the balance is not evidence of control; pasted
 rows **and a connected wallet's account** persist to `public.wallets` with
 `siwe_sig`/`verified_at` NULL, an owner-only policy and the 5-address cap. A
 connected account is saved as a watch-only row with `provider =
-'pasted-address'` (amendment v1.1).
+'connected-wallet'` (amendment v1.2, superseding v1.1) and is shown in Holdings
+unverified and excluded from the total.
 
 Status: **Built on testnet read paths.** This path is for registration only and
 is not the source of Holdings (D17). Evidence: migrations
@@ -413,6 +414,7 @@ Affected clauses:
 | Clause | Before | After |
 |---|---|---|
 | §2.2 item 3 | only signature-verified wallets feed Holdings | a connected wallet also feeds Holdings, unverified and excluded from the total |
+| §4.1, D9 | a connected account persists as a `pasted-address` watch-only row | a connected account persists with `provider = 'connected-wallet'` and is shown unverified in Holdings |
 | §4.2, D17 | Holdings shows signature-verified wallets only | signature-verified wallets **plus** unverified connected wallets, in a separate labelled section |
 | §8.1 v1.1 | a connected account persists as a watch-only `pasted-address` row | a connected account persists with `provider = 'connected-wallet'` and is shown unverified in Holdings |
 
@@ -432,7 +434,7 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.1:
+Freeze status at v1.2:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
@@ -452,7 +454,7 @@ Freeze status at v1.1:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.1** with the open items above tracked under change
+This contract is **Frozen v1.2** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
