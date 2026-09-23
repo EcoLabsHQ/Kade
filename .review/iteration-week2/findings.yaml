@@ -1,0 +1,87 @@
+- id: F1
+  severity: FAIL
+  scope: shell
+  title: "Unconditional 'Pre-approved' banner with a fabricated reference"
+  evidence: >-
+    apps/web/src/components/shell/AppShell.tsx:77 renders PreApprovedBanner with
+    no status prop; PreApprovedBanner.tsx:23-30 asserts 'Pre-approved' and a
+    fixed 'Ref CW-2026-0409'. Overview renders a second, demo-labelled banner.
+  failure_mode: >-
+    Every authenticated screen claims a pre-approved status and a reference that
+    matches no record, even when the fee is unpaid or the application is blocked.
+  materiality: "Factually false account status; contradicts the review gate."
+  status: open
+  owner_instruction: "The owner asked for this banner to be visible at all times."
+
+- id: F2
+  severity: FAIL
+  scope: residency
+  title: "Residency fabricates a document intake and submission state"
+  evidence: >-
+    ResidencyStep.tsx:133 '5 of 6 uploaded · hashed & pinned' with a no-op
+    Upload; :178-182 'Your package is with the Immigration Service'; :200,256
+    'Submitted · in review' / 'Ready' from gated/nonexistent states.
+  failure_mode: >-
+    Tells the resident documents are uploaded and the package is with the
+    Immigration Service when neither happened and permit issuance is blocked.
+  materiality: "Misrepresents real-world action the contract says must be real."
+  status: open
+  owner_instruction: "The owner asked for the baseline copy/visual to be identical."
+
+- id: F3
+  severity: FAIL
+  scope: invest
+  title: "Wired Morpho instrument labelled Base, contradicting the mainnet decision"
+  evidence: >-
+    InvestScreen.tsx:60-67 Morpho row chain 'Base' with wired: true;
+    morpho-config.ts:113 chainId is CHAIN_IDS.ethereum; dialog shows
+    'Pool chain Ethereum · 1' (InvestScreen.tsx:453).
+  failure_mode: >-
+    A depositor is told the wired instrument is a Base vault while the call path
+    is Ethereum mainnet, and the screen claims Arbitrum/Base support.
+  materiality: "The chain of a deposit is material and is misstated."
+  status: open
+  owner_instruction: "The owner asked to keep the baseline instrument list."
+
+- id: F4
+  severity: WARN
+  scope: shell/onboarding
+  title: "Connected wallet persisted as a watch-only row"
+  evidence: >-
+    ConnectedWalletPanel.tsx:388-411 (wired from WealthStep.tsx:180-184)
+    contradicts week-2 §4.1 D9 ('a connected wallet writes no row') and the
+    component docstrings.
+  failure_mode: "Frozen acceptance criterion and copy are now inaccurate."
+  materiality: "No authority conferred (verified_at NULL)."
+  status: open
+
+- id: F5
+  severity: WARN
+  scope: docs
+  title: "known-gaps/gates say 22 migrations; the repo now has 26"
+  evidence: >-
+    docs/known-gaps.md:52 and docs/gates/foundation.md:19 say '22 committed
+    migrations'; supabase/migrations/ has 26 (30/40/41/60 added).
+  failure_mode: "An operator concludes the new tables/RLS are applied when the docs never say so."
+  materiality: "Documentation drift."
+  status: open
+
+- id: F6
+  severity: WARN
+  scope: database
+  title: "record_wallet_ownership cannot recompute the signature"
+  evidence: >-
+    supabase/migrations/20260922000030_wallet_ownership_proof.sql:30-42,103-196.
+  failure_mode: >-
+    A resident can call the RPC with a fabricated signature for their own row.
+  materiality: "Declared; own rows only; no capability. D17's 'proven by a signature' is TS-layer only."
+  status: open
+
+- id: F7
+  severity: WARN
+  scope: invest
+  title: "buildDeposit trusts client-supplied gate booleans"
+  evidence: "apps/web/src/app/invest/actions.ts:57-72"
+  failure_mode: "A caller can force 'ready-to-execute' while the real gates are closed."
+  materiality: "No execute callback exists, so nothing can be sent today."
+  status: open
