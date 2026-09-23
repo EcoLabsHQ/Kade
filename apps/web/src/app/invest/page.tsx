@@ -48,6 +48,7 @@ export default async function InvestPage() {
       explorerUrl={shellSafe.explorerUrl}
       showReviewBar={reviewBar.show}
       reviewReference={reviewBar.reference}
+        isReviewer={reviewBar.isReviewer}
     >
       <ContentContainer>
         <InvestScreen

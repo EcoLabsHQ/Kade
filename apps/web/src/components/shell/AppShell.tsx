@@ -26,6 +26,8 @@ export interface AppShellProps {
   readonly showReviewBar?: boolean;
   /** The resident's own application reference for the banner, or null. */
   readonly reviewReference?: string | null;
+  /** Whether the user has a reviewers row, so the shell can offer /admin. */
+  readonly isReviewer?: boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export function AppShell({
   stepper,
   showReviewBar = false,
   reviewReference = null,
+  isReviewer = false,
 }: AppShellProps) {
   return (
     <div
@@ -75,6 +78,7 @@ export function AppShell({
         safeStatus={safeStatus}
         explorerUrl={explorerUrl}
         email={email}
+        isReviewer={isReviewer}
       />
       <main
         style={{

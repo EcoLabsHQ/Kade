@@ -21,7 +21,7 @@ vi.mock('@/lib/safe/shell', () => ({
   })),
 }));
 vi.mock('@/lib/review/review-bar', () => ({
-  loadReviewBar: vi.fn(async () => ({ show: false, reference: null })),
+  loadReviewBar: vi.fn(async () => ({ show: false, reference: null, isReviewer: false })),
 }));
 vi.mock('@/lib/env', () => ({
   readWalletConnectProjectId: () => 'project-id',

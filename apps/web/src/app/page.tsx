@@ -163,6 +163,7 @@ export default async function OverviewPage() {
       explorerUrl={shellSafe.explorerUrl}
       showReviewBar={reviewBar.show}
       reviewReference={reviewBar.reference}
+        isReviewer={reviewBar.isReviewer}
     >
       <ReviewGateWatcher userId={session.userId} />
       <ContentContainer>

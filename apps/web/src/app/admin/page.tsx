@@ -67,7 +67,7 @@ export default async function AdminPage() {
   }
 
   return (
-    <AppShell email={session.email} nav={ADMIN_NAV}>
+    <AppShell email={session.email} nav={ADMIN_NAV} isReviewer={isReviewer}>
       <ContentContainer>
         <h1
           style={{

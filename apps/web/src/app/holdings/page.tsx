@@ -49,6 +49,7 @@ export default async function HoldingsPage() {
         explorerUrl={shellSafe.explorerUrl}
         showReviewBar={reviewBar.show}
         reviewReference={reviewBar.reference}
+        isReviewer={reviewBar.isReviewer}
       >
         <ContentContainer>
           <HoldingsScreen

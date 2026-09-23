@@ -32,6 +32,7 @@ export default async function AccountPage() {
       explorerUrl={shellSafe.explorerUrl}
       showReviewBar={reviewBar.show}
       reviewReference={reviewBar.reference}
+        isReviewer={reviewBar.isReviewer}
     >
       <ContentContainer>
         <h1

@@ -64,6 +64,7 @@ export default async function ResidencyPage() {
         network={network}
         showReviewBar={reviewBar.show}
         reviewReference={reviewBar.reference}
+        isReviewer={reviewBar.isReviewer}
       >
         <ContentContainer footer={<SiteFooter />}>
           <ResidencyStep

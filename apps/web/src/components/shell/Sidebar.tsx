@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
 import { Logo } from './Logo';
 import { NavDrawerControls } from './NavDrawerControls';
@@ -26,6 +27,8 @@ export interface SidebarProps {
   readonly safeStatus?: SafeDeploymentStatus | null;
   readonly explorerUrl?: string | null;
   readonly email: string | null;
+  /** Whether the user has a reviewers row, so the Admin switch links to /admin. */
+  readonly isReviewer?: boolean;
 }
 
 /**
@@ -41,6 +44,7 @@ export function Sidebar({
   safeStatus = null,
   explorerUrl = null,
   email,
+  isReviewer = false,
 }: SidebarProps) {
   const pathname = usePathname();
 
@@ -123,26 +127,44 @@ export function Sidebar({
           >
             Resident
           </span>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Admin review UI is out of Week 1 scope (contract section 9)"
-            style={{
-              flex: 1,
-              padding: '8px 6px',
-              border: 0,
-              borderRadius: '9px',
-              fontFamily: 'inherit',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              background: 'transparent',
-              color: tokens.locked,
-              cursor: 'not-allowed',
-            }}
-          >
-            Admin
-          </button>
+          {isReviewer ? (
+            <Link
+              href="/admin"
+              title="Open the review queue."
+              style={{
+                flex: 1,
+                padding: '8px 6px',
+                borderRadius: '9px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: pathname.startsWith('/admin')
+                  ? tokens.activeNavBg
+                  : 'transparent',
+                color: tokens.brandPrimary,
+                textDecoration: 'none',
+              }}
+            >
+              Admin
+            </Link>
+          ) : (
+            <span
+              aria-disabled="true"
+              title="Admin access requires a reviewers row."
+              style={{
+                flex: 1,
+                padding: '8px 6px',
+                borderRadius: '9px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                textAlign: 'center',
+                color: tokens.locked,
+                cursor: 'not-allowed',
+              }}
+            >
+              Admin
+            </span>
+          )}
         </div>
 
         <SidebarFooter email={email} />
