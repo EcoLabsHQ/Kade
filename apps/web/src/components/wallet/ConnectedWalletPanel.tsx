@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAppKit } from '@reown/appkit/react';
 import { useConnections, useDisconnect } from 'wagmi';
 import { readAddressBalances } from '@/app/onboarding/wallet-actions';
@@ -293,6 +293,24 @@ function ConfiguredWalletPanel({
     };
   }, []);
 
+  // A ref mirror so the save path can report the settled list synchronously,
+  // rather than depending on the report effect's re-run timing.
+  const walletsRef = useRef<readonly WalletEntry[]>(wallets);
+  walletsRef.current = wallets;
+
+  // Report the deduplicated list upward. An empty list is reported as null, the
+  // "nothing is connected" shape the step already understood.
+  const report = useCallback((list: readonly WalletEntry[]) => {
+    const reported = dedupeByAddress(list).map((entry) => ({
+      address: entry.address,
+      method: entry.method,
+      chains: entry.chains,
+      usd: entry.usd,
+      readError: entry.readError,
+    }));
+    onChangeRef.current(reported.length > 0 ? reported : null);
+  }, []);
+
   // Add every live connection (and address changes) to the list. It never
   // removes here: removal is the Disconnect button's job.
   useEffect(() => {
@@ -397,9 +415,14 @@ function ConfiguredWalletPanel({
           );
           setStoreError(null);
           disconnectRef.current({ connector: wallet.connector });
-          setWallets((current) =>
-            current.filter((entry) => entry.uid !== wallet.uid),
+          // Drop the live entry and report the settled list in the same step, so
+          // the parent's summary cannot observe a transient "still connected"
+          // state while the report effect waits for the next render.
+          const remaining = walletsRef.current.filter(
+            (entry) => entry.uid !== wallet.uid,
           );
+          setWallets(remaining);
+          report(remaining);
         })
         .catch((cause: unknown) => {
           if (!mounted.current) return;
@@ -425,20 +448,13 @@ function ConfiguredWalletPanel({
           readsInFlight.current.delete(wallet.uid);
         });
     }
-  }, [wallets]);
+  }, [wallets, report]);
 
   // Report the deduplicated list upward. An empty list is reported as null, the
   // "nothing is connected" shape the step already understood.
   useEffect(() => {
-    const reported = dedupeByAddress(wallets).map((entry) => ({
-      address: entry.address,
-      method: entry.method,
-      chains: entry.chains,
-      usd: entry.usd,
-      readError: entry.readError,
-    }));
-    onChangeRef.current(reported.length > 0 ? reported : null);
-  }, [wallets]);
+    report(wallets);
+  }, [wallets, report]);
 
   function connect(key: (typeof ROWS)[number]['key']) {
     // A fresh attempt starts without the previous store's error on screen.
