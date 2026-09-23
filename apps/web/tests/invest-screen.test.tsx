@@ -55,7 +55,7 @@ const REFERENCE_INSTRUMENTS = [
   'Aqualectra 2025–2032 · AQUA-A1',
   'Staatsolie 2025–2033 · SOMS-25-A1',
   'Ondo USDY',
-  'Morpho USDC vault · Base',
+  'Morpho USDC vault',
   'LATAM EM Fund · Portfolio B',
 ];
 
@@ -125,7 +125,7 @@ describe('InvestScreen reference layout', () => {
 describe('InvestScreen configuration', () => {
   it('shows the configured pool values from props, not literals', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     expect(within(dialog).getByText(MORPHO)).toBeInTheDocument();
     expect(within(dialog).getByText(USDC)).toBeInTheDocument();
     expect(within(dialog).getByText(MARKET_ID)).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('InvestScreen configuration', () => {
 
   it('cannot allocate when the pool is not configured', () => {
     renderScreen({ pool: UNCONFIGURED_POOL });
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     expect(within(dialog).queryByText(MORPHO)).toBeNull();
     expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
     expect(
@@ -146,7 +146,7 @@ describe('InvestScreen configuration', () => {
 
   it('locks Allocate when the resident has no Safe', () => {
     renderScreen({ safeAddress: null, safeDeployed: false });
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     expect(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
     ).toBeDisabled();
@@ -154,7 +154,7 @@ describe('InvestScreen configuration', () => {
 
   it('locks Allocate when the Safe is not deployed', () => {
     renderScreen({ safeDeployed: false });
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     expect(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
     ).toBeDisabled();
@@ -162,7 +162,7 @@ describe('InvestScreen configuration', () => {
 
   it('locks Allocate for a malformed or zero amount', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     const input = within(dialog).getByLabelText(/amount to allocate/i);
     const confirm = () =>
       within(dialog).getByRole('button', { name: /build the deposit/i });
@@ -175,7 +175,7 @@ describe('InvestScreen configuration', () => {
 
   it('enables Allocate when the pool, Safe and amount are all present', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     expect(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
     ).toBeEnabled();
@@ -185,7 +185,7 @@ describe('InvestScreen configuration', () => {
 describe('InvestScreen building', () => {
   it('asks the server to build the deposit with the resolved inputs', async () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     fireEvent.change(within(dialog).getByLabelText(/amount to allocate/i), {
       target: { value: '1500.5' },
     });
@@ -205,7 +205,7 @@ describe('InvestScreen building', () => {
 
   it('reports a gated outcome without claiming anything was sent', async () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     fireEvent.click(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
     );
@@ -228,7 +228,7 @@ describe('InvestScreen building', () => {
       amountUsdc: '25000',
     });
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault · Base');
+    const dialog = openDialog('Morpho USDC vault');
     fireEvent.click(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
     );
