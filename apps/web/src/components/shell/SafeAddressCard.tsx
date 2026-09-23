@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
+import { GearGlyph } from '@/components/icons/GearGlyph';
 import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 import { SafeRetryButton } from './SafeRetryButton';
 
@@ -114,6 +116,24 @@ export function SafeAddressCard({
         </div>
         {hasAddress && !deployed ? <SafeRetryButton /> : null}
       </div>
+      <Link
+        href="/account"
+        aria-label="Account settings"
+        title="Account settings"
+        style={{
+          flex: '0 0 auto',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '28px',
+          height: '28px',
+          borderRadius: '8px',
+          color: tokens.muted,
+          textDecoration: 'none',
+        }}
+      >
+        <GearGlyph size={16} />
+      </Link>
     </div>
   );
 }
