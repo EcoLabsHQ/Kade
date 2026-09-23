@@ -6,6 +6,7 @@ import { tokens } from '@/components/ui/tokens';
 import { PasskeyEnrolmentPanel } from '@/components/passkey/PasskeyEnrolmentPanel';
 import { providerLabel } from '@/lib/auth/provider-label';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadPasskeyCredential } from './passkey-actions';
@@ -20,6 +21,7 @@ export default async function AccountPage() {
   const configured = isAuthConfigured(readAuthEnv());
   const shellSafe = await loadShellSafe(session.userId);
   const storedCredential = await loadPasskeyCredential();
+  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <AppShell
@@ -28,6 +30,8 @@ export default async function AccountPage() {
       safeDeployed={shellSafe.deployed}
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
+      showReviewBar={reviewBar.show}
+      reviewReference={reviewBar.reference}
     >
       <ContentContainer>
         <h1

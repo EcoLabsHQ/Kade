@@ -15,6 +15,7 @@ import {
 } from '@/lib/supabase/server';
 import { loadResidentReviewState } from '@/lib/review/queue';
 import { residentGate, type ResidentGate } from '@/lib/review/gate';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 
 export const dynamic = 'force-dynamic';
@@ -151,6 +152,7 @@ export default async function OverviewPage() {
     }
   }
   const stages = buildStages(reviewGate);
+  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <AppShell
@@ -159,26 +161,10 @@ export default async function OverviewPage() {
       safeDeployed={shellSafe.deployed}
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
+      showReviewBar={reviewBar.show}
+      reviewReference={reviewBar.reference}
     >
       <ReviewGateWatcher userId={session.userId} />
-      <div
-        className="kade-announce"
-        style={{
-          background: '#FDF6E7',
-          color: '#8A5A12',
-          fontSize: '13px',
-        }}
-      >
-        <span>
-          <strong>Pre-approved.</strong> Use the platform now — card issuance,
-          bank payouts and borrowing unlock once intake review completes.
-        </span>
-        <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-          Ref CW-2026-0409 ·{' '}
-          <span style={{ fontWeight: 600 }}>demo data</span>
-        </span>
-      </div>
-
       <ContentContainer>
         <div
           className="kade-dashboard-header"

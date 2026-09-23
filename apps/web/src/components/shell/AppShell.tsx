@@ -18,6 +18,14 @@ export interface AppShellProps {
   readonly nav?: readonly NavGroupConfig[];
   /** When present, the sidebar shows the pre-registration stepper instead of nav. */
   readonly stepper?: readonly StepperItem[];
+  /**
+   * Whether to show the pre-approved banner. Resolved by the page from the
+   * application's review state (`@/lib/review/review-bar`); the shell never
+   * shows it unconditionally.
+   */
+  readonly showReviewBar?: boolean;
+  /** The resident's own application reference for the banner, or null. */
+  readonly reviewReference?: string | null;
 }
 
 /**
@@ -47,6 +55,8 @@ export function AppShell({
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
   stepper,
+  showReviewBar = false,
+  reviewReference = null,
 }: AppShellProps) {
   return (
     <div
@@ -74,7 +84,7 @@ export function AppShell({
           flexDirection: 'column',
         }}
       >
-        <PreApprovedBanner />
+        {showReviewBar ? <PreApprovedBanner reference={reviewReference} /> : null}
         {children}
       </main>
     </div>

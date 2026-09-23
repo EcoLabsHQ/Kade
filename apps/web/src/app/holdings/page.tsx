@@ -5,6 +5,7 @@ import { HoldingsScreen } from '@/components/holdings/HoldingsScreen';
 import { LinkedWalletSection } from '@/components/holdings/LinkedWalletSection';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { readWalletConnectProjectId } from '@/lib/env';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadVerifiedHoldings } from './data';
@@ -36,6 +37,7 @@ export default async function HoldingsPage() {
   ]);
 
   const walletConfigured = readWalletConnectProjectId() !== null;
+  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <WalletProvider>
@@ -45,6 +47,8 @@ export default async function HoldingsPage() {
         safeDeployed={shellSafe.deployed}
         safeStatus={shellSafe.status}
         explorerUrl={shellSafe.explorerUrl}
+        showReviewBar={reviewBar.show}
+        reviewReference={reviewBar.reference}
       >
         <ContentContainer>
           <HoldingsScreen

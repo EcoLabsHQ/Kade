@@ -29,6 +29,9 @@ vi.mock('@/lib/residency/server', () => ({
 vi.mock('@/lib/safe/shell', () => ({
   loadShellSafe: hoisted.loadShellSafe,
 }));
+vi.mock('@/lib/review/review-bar', () => ({
+  loadReviewBar: vi.fn(async () => ({ show: false, reference: null })),
+}));
 vi.mock('@/lib/env', () => ({
   readChainEnv: () => 'testnet',
   readFeeMode: () => 'demo',
