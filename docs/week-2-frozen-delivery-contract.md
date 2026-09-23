@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.0 — human decisions recorded 22 September 2026  
+**Status:** Frozen v1.1 — human decisions recorded 22 September 2026; one amendment recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -133,8 +133,10 @@ mainnet deployment.
 Accepted when a signed-in resident can add up to 5 Bitcoin addresses, up to 5
 pasted EVM addresses, or connect a wallet; the server reads balances from a
 public source; the screen states the balance is not evidence of control; pasted
-rows persist to `public.wallets` with `siwe_sig`/`verified_at` NULL, an
-owner-only policy and the 5-address cap; a connected wallet writes no row.
+rows **and a connected wallet's account** persist to `public.wallets` with
+`siwe_sig`/`verified_at` NULL, an owner-only policy and the 5-address cap. A
+connected account is saved as a watch-only row with `provider =
+'pasted-address'` (amendment v1.1).
 
 Status: **Built on testnet read paths.** This path is for registration only and
 is not the source of Holdings (D17). Evidence: migrations
@@ -348,6 +350,34 @@ for Holdings only, overrides the build guide's Invest chain to Ethereum mainnet,
 and moves Vote and the Finance rails to the end. It references the Week 1
 amendments v1.7–v1.10 (which delivered D9–D11) rather than duplicating them.
 
+**v1.1 — 22 September 2026. Approved by the project owner.**
+
+A connected wallet is persisted as a watch-only row. Step 3's browser-extension
+and WalletConnect rows save the connected account to `public.wallets` through
+`record_wallet_address` with `provider = 'pasted-address'` and
+`siwe_sig`/`verified_at` NULL, so the proof-of-wealth row survives a reload. This
+narrows D9's "a connected wallet writes no row".
+
+What this does **not** change:
+
+- the connected account is not verified (`verified_at` NULL) and is not proof of
+  ownership;
+- it confers no Safe authority and is not a login;
+- the row is excluded from Holdings by construction (D17 requires a signature);
+- the 5-address cap and the owner-only policy are unchanged.
+
+Rationale, for the record: a connected wallet that vanished on reload read as a
+lost address, so persisting it as a watch-only row keeps the screen stable. The
+row is indistinguishable from a pasted address at the schema level because the
+schema has no connected-wallet provider encoding; adding one is a change-control
+item.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| §4.1, D9 | pasted rows persist; a connected wallet writes no row | pasted rows **and a connected account** persist as watch-only rows (`verified_at` NULL) |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
@@ -364,7 +394,7 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.0:
+Freeze status at v1.1:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
@@ -383,7 +413,7 @@ Freeze status at v1.0:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.0** with the open items above tracked under change
+This contract is **Frozen v1.1** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
