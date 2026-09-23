@@ -34,14 +34,15 @@ import {
  * The same address connected twice, or connected and also pasted, is one wallet:
  * the reported list is deduplicated by address so nothing is summed twice.
  *
- * When the step supplies `onAddWalletAddress`, a connected account is also
- * **saved** as a watch-only row through the same server action the pasted path
- * uses, then the connection is torn down: the saved row is what remains and the
- * next connect starts clean. The saved row is indistinguishable from a pasted
- * one on purpose (same action, same `provider`, `verified_at` NULL), so it is
- * shown by the shared saved list and survives a reload. A store failure keeps
- * the connection in place and surfaces the server's own message (the 5-address
- * cap, for example), so the resident is not left with a half-saved wallet.
+ * When the step supplies `onSaveConnectedWallet`, a connected account is also
+ * **saved** through the connected-wallet server action (`addConnectedWallet`),
+ * then the connection is torn down: the saved row is what remains and the next
+ * connect starts clean. The row is persisted with the distinct `connected-wallet`
+ * provider and `verified_at` NULL, so it survives a reload and is shown in
+ * Holdings as an unverified connected wallet, excluded from the total. A store
+ * failure keeps the connection in place and surfaces the server's own message
+ * (the 5-address cap, for example), so the resident is not left with a
+ * half-saved wallet.
  *
  * The connection is used only to **read** (and, once saved, to hand the address
  * to that same read-only action). It confers no authority over the resident
@@ -73,13 +74,14 @@ export interface ConnectedWalletPanelProps {
   /** The distinct connected wallets; null when none is connected. */
   readonly onChange: (states: readonly ConnectedWalletState[] | null) => void;
   /**
-   * Save a connected address as a watch-only row, through the same server
-   * action the pasted path uses (`addWalletAddress`). When supplied, a
-   * successful save tears the connection down so the panel returns to its
+   * Save a connected address as a persistence row through the connected-wallet
+   * server action (`addConnectedWallet`), so it is stored with the distinct
+   * `connected-wallet` provider and shown unverified in Holdings. When supplied,
+   * a successful save tears the connection down so the panel returns to its
    * Connect state and the next connect starts clean; the saved row is what
    * remains. When omitted the panel only tracks live connections.
    */
-  readonly onAddWalletAddress?: (address: string) => Promise<void> | void;
+  readonly onSaveConnectedWallet?: (address: string) => Promise<void> | void;
   /** True when the shared EVM-address cap is already reached. */
   readonly atCap?: boolean;
 }
@@ -143,7 +145,7 @@ function dedupeByAddress(entries: readonly WalletEntry[]): WalletEntry[] {
 export function ConnectedWalletPanel({
   configured,
   onChange,
-  onAddWalletAddress,
+  onSaveConnectedWallet,
   atCap = false,
 }: ConnectedWalletPanelProps) {
   // Gate the hooks on configuration, exactly as FeeStep gates FeePayment on
@@ -153,7 +155,7 @@ export function ConnectedWalletPanel({
   return (
     <ConfiguredWalletPanel
       onChange={onChange}
-      onAddWalletAddress={onAddWalletAddress}
+      onSaveConnectedWallet={onSaveConnectedWallet}
       atCap={atCap}
     />
   );
@@ -244,11 +246,11 @@ function UnconfiguredWalletPanel() {
 /** The configured path: the only place the AppKit and wagmi hooks are called. */
 function ConfiguredWalletPanel({
   onChange,
-  onAddWalletAddress,
+  onSaveConnectedWallet,
   atCap,
 }: Readonly<{
   onChange: (states: readonly ConnectedWalletState[] | null) => void;
-  onAddWalletAddress?: (address: string) => Promise<void> | void;
+  onSaveConnectedWallet?: (address: string) => Promise<void> | void;
   atCap: boolean;
 }>) {
   const { open } = useAppKit();
@@ -270,8 +272,8 @@ function ConfiguredWalletPanel({
   // The save handler is optional: without it the panel is the original
   // read-only tracker, with no write path. The ref keeps the effect below from
   // re-running when the parent passes a new closure.
-  const addWalletAddressRef = useRef(onAddWalletAddress);
-  addWalletAddressRef.current = onAddWalletAddress;
+  const addWalletAddressRef = useRef(onSaveConnectedWallet);
+  addWalletAddressRef.current = onSaveConnectedWallet;
 
   const disconnectRef = useRef(disconnect);
   disconnectRef.current = disconnect;
@@ -504,7 +506,7 @@ function ConfiguredWalletPanel({
         // disabled Connect rather than a manual Disconnect. A failed save keeps
         // the connection live, so the manual control returns for recovery.
         const awaitingSave =
-          connectedHere && onAddWalletAddress !== undefined && !storeError;
+          connectedHere && onSaveConnectedWallet !== undefined && !storeError;
         const needsManualDisconnect = connectedHere && !awaitingSave;
 
         return (

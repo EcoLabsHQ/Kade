@@ -72,5 +72,17 @@ export interface EvmAddressRecord {
 /** [arbitrary] encoding of the provider in public.wallets.provider. */
 export const EVM_PROVIDER = 'pasted-address';
 
+/**
+ * [arbitrary] encoding of the provider in public.wallets.provider for a wallet
+ * the resident connected through the browser extension or WalletConnect.
+ *
+ * Week-2 contract v1.2: a connected wallet is persisted (so it survives a
+ * reload) but is never signature-verified — `verified_at` stays NULL. It is
+ * therefore shown in Holdings as an unverified connected wallet, in its own
+ * labelled section, and is **excluded from the Holdings total**. Pasting an
+ * address continues to write `pasted-address` and is excluded by construction.
+ */
+export const CONNECTED_WALLET_PROVIDER = 'connected-wallet';
+
 /** Maximum watch-only EVM addresses a resident may store. */
 export const MAX_WALLET_ADDRESSES = 5;

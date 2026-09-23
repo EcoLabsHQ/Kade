@@ -9,6 +9,7 @@ import {
 } from '@/lib/wealth/evm';
 import {
   BITCOIN_CHAIN_ID,
+  CONNECTED_WALLET_PROVIDER,
   EVM_PROVIDER,
   MAX_WALLET_ADDRESSES,
   type EvmAddressRecord,
@@ -16,15 +17,21 @@ import {
 } from '@/lib/wealth/types';
 
 /**
- * Pasted EVM addresses, managed on the server.
+ * EVM watch-only addresses, managed on the server.
  *
  * The browser never calls the balance provider and never writes the database:
- * both go through these server actions. A pasted address is validated, read from
- * the provider, then persisted through the SECURITY INVOKER RPCs in migration
+ * both go through these server actions. An address is validated, read from the
+ * provider, then persisted through the SECURITY INVOKER RPCs in migration
  * 20260921000001/20260921000002, so row level security still applies as the
  * resident and the write never originates in the browser. Only the address is
  * stored, and it is stored once per chain `readEvmBalances` reads it on; the
  * balances are read fresh on every call, so the screen shows current values.
+ *
+ * Two encodings share that machinery: `addWalletAddress` writes the pasted
+ * `pasted-address` provider, and `addConnectedWallet` writes
+ * `connected-wallet`. Neither sets `verified_at`: the pasted row is excluded
+ * from Holdings by construction, and the connected row is shown there only as
+ * unverified and excluded from the total.
  *
  * A provider failure is not a persistence failure. A valid address is saved, its
  * record carries `readError`, and the figures stay null rather than being
@@ -106,11 +113,20 @@ async function readAddressRecord(address: string): Promise<EvmAddressRecord> {
 }
 
 /**
- * Save a pasted EVM address for the signed-in resident and return its freshly
- * read record. The 6th distinct address is refused with a clear message.
+ * Save a pasted or connected EVM address for the signed-in resident and return
+ * its freshly read record.
+ *
+ * The only difference between the two callers is the `provider` that is written:
+ * `pasted-address` for a hand-pasted address, `connected-wallet` for a wallet
+ * connected through the browser extension or WalletConnect. Both go through the
+ * same `record_wallet_address` RPC, the same validation and the same
+ * distinct-address cap, and neither sets `verified_at` — that column belongs to
+ * `record_wallet_ownership` alone. The 6th distinct address is refused with a
+ * clear message.
  */
-export async function addWalletAddress(
+async function saveEvmAddress(
   address: string,
+  provider: string,
 ): Promise<EvmAddressRecord> {
   // Canonicalise before validating and persisting, so the same address pasted in
   // another case is the same row rather than a second one.
@@ -165,7 +181,7 @@ export async function addWalletAddress(
     const { error } = await client.rpc('record_wallet_address', {
       p_address: normalized,
       p_chain: chainId,
-      p_provider: EVM_PROVIDER,
+      p_provider: provider,
     });
     if (error) {
       throw new Error(`Saving the EVM address failed: ${error.message}`);
@@ -180,6 +196,35 @@ export async function addWalletAddress(
     readError,
   };
 }
+
+/**
+ * Save a **pasted** EVM address for the signed-in resident.
+ *
+ * Writes `pasted-address` with `verified_at` NULL, so the row is excluded from
+ * Holdings by construction. Kept exactly as it was; the connected path is the
+ * sibling below.
+ */
+export async function addWalletAddress(
+  address: string,
+): Promise<EvmAddressRecord> {
+  return saveEvmAddress(address, EVM_PROVIDER);
+}
+
+/**
+ * Save a **connected** EVM address (browser extension or WalletConnect).
+ *
+ * Week-2 contract v1.2: the connected account is persisted so it survives a
+ * reload, with the distinct provider `connected-wallet` and `verified_at` NULL.
+ * It is shown in Holdings as an unverified wallet and excluded from the total;
+ * it is never marked verified, because a browser connection is not a signature.
+ * Same validation, same RPC and same 5-address cap as the pasted path.
+ */
+export async function addConnectedWallet(
+  address: string,
+): Promise<EvmAddressRecord> {
+  return saveEvmAddress(address, CONNECTED_WALLET_PROVIDER);
+}
+
 
 /**
  * Read one address's balances for a connected wallet, without persisting

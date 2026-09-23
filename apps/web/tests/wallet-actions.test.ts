@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  CONNECTED_WALLET_PROVIDER,
   EVM_PROVIDER,
   MAX_WALLET_ADDRESSES,
 } from '@/lib/wealth/types';
@@ -40,6 +41,7 @@ vi.mock('@/lib/wealth/evm', async (importOriginal) => {
 });
 
 import {
+  addConnectedWallet,
   addWalletAddress,
   listWalletAddresses,
   removeWalletAddress,
@@ -223,6 +225,80 @@ describe('addWalletAddress', () => {
     expect(record.chains).toEqual([]);
     expect(record.usd).toBeNull();
     expect(record.readAt).toBeNull();
+    expect(record.readError).toMatch(/provider down/);
+  });
+});
+
+describe('addConnectedWallet', () => {
+  it('requires an authenticated session', async () => {
+    const { client, rpcCalls } = createFakeClient({ user: null });
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    await expect(addConnectedWallet(ADDRESS)).rejects.toThrow(
+      /signed-in session/i,
+    );
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('writes one row per chain with the connected-wallet provider, not the pasted one', async () => {
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const record = await addConnectedWallet(ADDRESS);
+
+    expect(rpcCalls).toHaveLength(EVM_READ_CHAINS.length);
+    expect(rpcCalls.map((call) => call.name)).toEqual(
+      EVM_READ_CHAINS.map(() => 'record_wallet_address'),
+    );
+    for (const call of rpcCalls) {
+      expect(call.args.p_address).toBe(ADDRESS);
+      expect(call.args.p_provider).toBe(CONNECTED_WALLET_PROVIDER);
+    }
+    // The action never sends verified_at: only record_wallet_ownership sets it.
+    const payload = JSON.stringify(rpcCalls);
+    expect(payload).not.toMatch(/verified_at/);
+    expect(record.address).toBe(ADDRESS);
+    expect(record.usd).toBe(4500);
+    expect(record.readError).toBeNull();
+  });
+
+  it('refuses an address that is not a recognised EVM address', async () => {
+    hoisted.normalizeEvmAddress.mockImplementation(() => {
+      throw new EvmReadError('nope');
+    });
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    await expect(addConnectedWallet('not-an-address')).rejects.toThrow(
+      /not a recognised EVM address/i,
+    );
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('enforces the same distinct-address cap as the pasted path', async () => {
+    const wallets = Array.from({ length: MAX_WALLET_ADDRESSES }, (_, i) => ({
+      id: i + 1,
+      address: `0x${String(i).padStart(40, '0')}`,
+    }));
+    const { client, rpcCalls } = createFakeClient({ wallets });
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    await expect(addConnectedWallet(ADDRESS)).rejects.toThrow(
+      new RegExp(`at most ${MAX_WALLET_ADDRESSES}`, 'i'),
+    );
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('survives a provider failure with a record carrying readError and still persists', async () => {
+    hoisted.readEvmBalances.mockRejectedValue(new Error('provider down'));
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const record = await addConnectedWallet(ADDRESS);
+
+    expect(rpcCalls).toHaveLength(EVM_READ_CHAINS.length);
+    expect(record.chains).toEqual([]);
+    expect(record.usd).toBeNull();
     expect(record.readError).toMatch(/provider down/);
   });
 });

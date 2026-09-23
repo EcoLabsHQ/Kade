@@ -28,6 +28,7 @@ const hoisted = vi.hoisted(() => ({
   disconnect: vi.fn(),
   readAddressBalances: vi.fn(),
   addWalletAddress: vi.fn(),
+  addConnectedWallet: vi.fn(),
   removeWalletAddress: vi.fn(),
 }));
 
@@ -41,6 +42,7 @@ vi.mock('wagmi', () => ({
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   readAddressBalances: hoisted.readAddressBalances,
   addWalletAddress: hoisted.addWalletAddress,
+  addConnectedWallet: hoisted.addConnectedWallet,
   removeWalletAddress: hoisted.removeWalletAddress,
 }));
 
@@ -98,7 +100,7 @@ beforeEach(() => {
   hoisted.readAddressBalances.mockImplementation(async (address: string) =>
     address === ADDRESS_2 ? RECORD_2 : RECORD,
   );
-  hoisted.addWalletAddress.mockImplementation(async (address: string) =>
+  hoisted.addConnectedWallet.mockImplementation(async (address: string) =>
     address === ADDRESS_2 ? RECORD_2 : RECORD,
   );
   hoisted.removeWalletAddress.mockResolvedValue(undefined);
@@ -260,15 +262,15 @@ describe('ConnectedWalletPanel', () => {
 
 /**
  * The panel with the step's save handler wired in, plus the shared saved list
- * the row lands in. The handler mirrors `OnboardingFlow.handleAddWalletAddress`:
- * it calls the same server action a pasted address uses and keeps the records
- * by address, so a repeat never renders twice.
+ * the row lands in. The handler mirrors `OnboardingFlow.handleAddConnectedWallet`:
+ * it calls the connected-wallet server action and keeps the records by address,
+ * so a repeat never renders twice.
  */
 function SavedAddressesHarness({ atCap = false }: { atCap?: boolean }) {
   const [addresses, setAddresses] = useState<readonly EvmAddressRecord[]>([]);
 
   async function add(address: string) {
-    const record = await hoisted.addWalletAddress(address);
+    const record = await hoisted.addConnectedWallet(address);
     setAddresses((current) =>
       current.some((existing) => existing.address === record.address)
         ? current.map((existing) =>
@@ -290,7 +292,7 @@ function SavedAddressesHarness({ atCap = false }: { atCap?: boolean }) {
       <ConnectedWalletPanel
         configured
         onChange={() => {}}
-        onAddWalletAddress={add}
+        onSaveConnectedWallet={add}
         atCap={atCap}
       />
       {addresses.map((record) => (
@@ -310,15 +312,14 @@ function SavedAddressesHarness({ atCap = false }: { atCap?: boolean }) {
 }
 
 describe('ConnectedWalletPanel saves connected wallets', () => {
-  it('stores the address through addWalletAddress and disconnects', async () => {
+  it('stores the address through addConnectedWallet and disconnects', async () => {
     hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
     render(<SavedAddressesHarness />);
 
     await waitFor(() =>
-      expect(hoisted.addWalletAddress).toHaveBeenCalledWith(ADDRESS),
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
     );
-    // The same action the pasted address row uses; the panel adds no write of
-    // its own.
+    // Saved through the connected-wallet action, distinct from the pasted one.
     await waitFor(() =>
       expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
     );
@@ -344,7 +345,7 @@ describe('ConnectedWalletPanel saves connected wallets', () => {
 
     expect(await screen.findByText(ADDRESS_2)).toBeInTheDocument();
     expect(screen.getByText(ADDRESS)).toBeInTheDocument();
-    expect(hoisted.addWalletAddress).toHaveBeenCalledWith(ADDRESS_2);
+    expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS_2);
     expect(
       screen.getAllByRole('button', { name: 'Connect' }),
     ).toHaveLength(2);
@@ -361,7 +362,7 @@ describe('ConnectedWalletPanel saves connected wallets', () => {
   });
 
   it('surfaces the server cap message and keeps the live wallet on a rejected save', async () => {
-    hoisted.addWalletAddress.mockRejectedValue(
+    hoisted.addConnectedWallet.mockRejectedValue(
       new Error(
         'You can save at most 5 EVM addresses. Remove one before adding another.',
       ),
@@ -399,7 +400,7 @@ describe('ConnectedWalletPanel saves connected wallets', () => {
   it('disables Connect while the wallet is read and saved, then re-enables it', async () => {
     // Hold the save open so the in-flight state is observable.
     let releaseSave: ((record: unknown) => void) | undefined;
-    hoisted.addWalletAddress.mockImplementation(
+    hoisted.addConnectedWallet.mockImplementation(
       () =>
         new Promise((resolve) => {
           releaseSave = resolve;

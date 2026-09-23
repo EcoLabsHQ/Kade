@@ -10,6 +10,7 @@ import {
   removeBitcoinAddress,
 } from '@/app/onboarding/wealth-actions';
 import {
+  addConnectedWallet,
   addWalletAddress,
   removeWalletAddress,
 } from '@/app/onboarding/wallet-actions';
@@ -268,6 +269,23 @@ export function OnboardingFlow({
     );
   }
 
+  /**
+   * Persist a wallet connected in the panel. It is written with the distinct
+   * `connected-wallet` provider (not `pasted-address`), so Holdings shows it
+   * unverified and excluded from the total. For the Step 3 summary it is just
+   * another read source, so it is merged into the same saved list.
+   */
+  async function handleAddConnectedWallet(address: string) {
+    const record = await addConnectedWallet(address);
+    setEvmAddresses((current) =>
+      current.some((existing) => existing.address === record.address)
+        ? current.map((existing) =>
+            existing.address === record.address ? record : existing,
+          )
+        : [...current, record],
+    );
+  }
+
   const fileRows = useMemo<readonly FileRow[]>(() => {
     const cits = snapshot?.citizenships.join(' / ') ?? '—';
     const residences = snapshot?.residences
@@ -406,6 +424,7 @@ export function OnboardingFlow({
             evmAddresses={evmAddresses}
             onAddWalletAddress={handleAddWalletAddress}
             onRemoveWalletAddress={handleRemoveWalletAddress}
+            onSaveConnectedWallet={handleAddConnectedWallet}
           />
         ) : (
           <FeeStep

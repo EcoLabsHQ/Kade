@@ -48,8 +48,39 @@ function aggregate(overrides: Partial<HoldingsAggregate> = {}): HoldingsAggregat
         readError: 'The explorer returned HTTP 503.',
       },
     ],
+    unverifiedWallets: [],
+    unverifiedCount: 0,
     ...overrides,
   };
+}
+
+const CONNECTED_ADDRESS = '0x9999999999999999999999999999999999999999';
+
+/** An aggregate whose only extra is one connected, unverified wallet. */
+function aggregateWithConnectedWallet(): HoldingsAggregate {
+  return aggregate({
+    unverifiedWallets: [
+      {
+        address: CONNECTED_ADDRESS,
+        provider: 'connected-wallet',
+        chainIds: [1],
+        chains: [
+          {
+            chainId: 1,
+            name: 'Ethereum',
+            nativeSymbol: 'ETH',
+            nativeAmount: '0.500000',
+            nativeUsd: 1250,
+            usdc: null,
+            usd: 1250,
+          },
+        ],
+        usd: 1250,
+        readError: null,
+      },
+    ],
+    unverifiedCount: 1,
+  });
 }
 
 describe('HoldingsScreen', () => {
@@ -112,5 +143,35 @@ describe('HoldingsScreen', () => {
     );
 
     expect(screen.getByText('link panel slot')).toBeInTheDocument();
+  });
+
+  it('shows a connected wallet in a separate unverified section, outside the total', () => {
+    render(<HoldingsScreen aggregate={aggregateWithConnectedWallet()} />);
+
+    // Its own labelled section, honestly marked unverified.
+    expect(
+      screen.getByText('Unverified connected wallets'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Unverified').length).toBeGreaterThan(0);
+    expect(screen.getByTitle(CONNECTED_ADDRESS)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/not evidence of control/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/excluded from the total/i).length,
+    ).toBeGreaterThan(0);
+
+    // The verified total is unchanged: the connected $1,250 is not added, so
+    // neither the sum nor the verified counts move.
+    expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('$4,530')).toBeNull();
+    expect(screen.getByText('2 signed wallets')).toBeInTheDocument();
+  });
+
+  it('omits the unverified section when no wallet is connected', () => {
+    render(<HoldingsScreen aggregate={aggregate()} />);
+
+    expect(screen.queryByText('Unverified connected wallets')).toBeNull();
+    expect(screen.queryByText('Unverified')).toBeNull();
   });
 });
