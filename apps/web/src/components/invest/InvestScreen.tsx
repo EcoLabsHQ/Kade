@@ -57,13 +57,13 @@ interface Instrument {
 const INSTRUMENTS: readonly Instrument[] = [
   {
     key: 'morpho',
-    name: 'Morpho USDC vault · Base',
-    venue: 'Morpho Blue · Base vault',
+    name: 'Morpho USDC vault',
+    venue: 'Morpho Blue · Ethereum vault',
     type: 'Lending vault',
     terms: '4.62% APY · variable',
     minimum: '$100',
-    chain: 'Base',
-    chainColor: '#0052FF',
+    chain: 'Ethereum',
+    chainColor: '#627EEA',
     wired: true,
   },
   {
