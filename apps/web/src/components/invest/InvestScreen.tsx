@@ -369,7 +369,13 @@ export function InvestScreen({
         maxWidth={460}
       >
         {selected ? (
-          <div style={{ fontSize: '13px', color: tokens.chipFg }}>
+          <div
+            style={{
+              fontSize: '13px',
+              color: tokens.chipFg,
+              padding: '0 24px 24px',
+            }}
+          >
             <div style={{ fontSize: '12.5px', color: tokens.muted }}>
               {selected.venue} · {selected.chain} · {selected.type} ·{' '}
               {selected.terms} · min {selected.minimum}
@@ -586,10 +592,11 @@ function Row({
         borderTop: `1px solid ${tokens.border}`,
       }}
     >
-      <span style={{ color: tokens.muted }}>{label}</span>
+      <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>
       <span
         style={{
           fontWeight: 600,
+          minWidth: 0,
           fontFamily: mono
             ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
             : undefined,
