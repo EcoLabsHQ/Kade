@@ -1385,14 +1385,15 @@ describe('a wallet is counted once however it arrives', () => {
     await screen.findByRole('heading', { name: /show proof of wealth/i });
 
     // The connected read is saved ($2,510); the pasted duplicate ($2,380) is
-    // replaced, not summed on top of it.
-    await waitFor(() =>
-      expect(screen.getAllByText('$2,510').length).toBeGreaterThan(0),
-    );
+    // replaced, not summed on top of it. The save and the teardown of the live
+    // connection are two asynchronous steps, so wait for the settled summary:
+    // the saved value present, and the source count no longer joined with a
+    // still-live connection. Either step alone can be observed transiently.
+    await waitFor(() => {
+      expect(screen.getAllByText('$2,510').length).toBeGreaterThan(0);
+      expect(screen.getByText('1 wallet address')).toBeInTheDocument();
+    });
     expect(screen.queryByText('$4,890')).toBeNull();
-    // The source counts describe the same set: one saved wallet address, and no
-    // separate live connection once it has been stored.
-    expect(screen.getByText('1 wallet address')).toBeInTheDocument();
     expect(screen.queryByText('1 connected wallet')).toBeNull();
   });
 });
