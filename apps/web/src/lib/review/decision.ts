@@ -1,4 +1,5 @@
 import type { ReviewAction } from './attestation';
+import { CONNECTED_WALLET_PROVIDER } from '@/lib/wealth/types';
 
 /**
  * Pure derivations for the Admin review queue (D19).
@@ -108,13 +109,47 @@ export interface WealthState {
   readonly total: number;
   /** Rows with `verified_at` set — the only rows an ownership proof produced. */
   readonly verified: number;
-  /** Pasted, watch-only rows: proof of wealth for Step 3, never a holding. */
+  /**
+   * Connected, unverified rows (`verified_at` NULL, provider
+   * `connected-wallet`, week-2 contract v1.2). A connection is not a signature:
+   * these are never counted as verified wealth.
+   */
+  readonly connected: number;
+  /**
+   * Pasted, watch-only rows: proof of wealth for Step 3, never a holding. This
+   * is the residual — every row that is neither verified nor connected.
+   */
   readonly pasted: number;
 }
 
+/**
+ * The three-way class of one stored wallet row, exactly.
+ *
+ * `verified_at` remains the only verified marker; a connected wallet is
+ * classified by its distinct provider and is never VERIFIED.
+ */
+export type WalletClass = 'verified' | 'connected' | 'pasted';
+
+export function walletClass(wallet: ReviewWallet): WalletClass {
+  if (wallet.verifiedAt !== null) return 'verified';
+  if (wallet.provider === CONNECTED_WALLET_PROVIDER) return 'connected';
+  return 'pasted';
+}
+
 export function wealthState(wallets: readonly ReviewWallet[]): WealthState {
-  const verified = wallets.filter((wallet) => wallet.verifiedAt !== null).length;
-  return { total: wallets.length, verified, pasted: wallets.length - verified };
+  let verified = 0;
+  let connected = 0;
+  for (const wallet of wallets) {
+    const kind = walletClass(wallet);
+    if (kind === 'verified') verified += 1;
+    else if (kind === 'connected') connected += 1;
+  }
+  return {
+    total: wallets.length,
+    verified,
+    connected,
+    pasted: wallets.length - verified - connected,
+  };
 }
 
 export interface ResidencyState {
