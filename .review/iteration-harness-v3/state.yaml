@@ -1,0 +1,44 @@
+iteration: iteration-harness-v3
+profile: NORMAL
+known_good: 687b5e5f11b0bde091629de3a47abb7697bf428d
+candidate: 2c33d90b739fd5502ae85c64bb625c175e7ec891
+mode: recheck
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 2c33d90b739fd5502ae85c64bb625c175e7ec891
+reviewed_scopes:
+  opencode-config: complete
+  permissions-boundary: complete
+  harness-docs: complete
+  worktree-helper: complete
+  regression-guard: complete
+  contract-and-review-lifecycle: complete
+active_findings: []
+resolved_findings: [F1, F2, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+review_complete: true
+verdict: review_passed
+headline: >-
+  Harness v3. DISCOVERY on 7342742 returned REVIEW PASSED with three WARN
+  findings (F1-F3). The corrective batch 2c33d90 resolved all three; the RECHECK
+  returned REVIEW INCOMPLETE only because the three touched scopes were
+  re-marked partial for the corrective diff.
+human_acceptance: >-
+  The RESUME that would have re-marked permissions-boundary, harness-docs and
+  regression-guard complete was cancelled by the human, who accepted the
+  rechecked state. The RECHECK already re-examined exactly those three scopes
+  and found no open finding, and no other scope was invalidated by 2c33d90, so
+  the session is recorded complete by human acceptance.
+promotion: >-
+  Squashed into the single harness-update commit; its content is identical to
+  the reviewed candidate 2c33d90.
+scenarios: >-
+  The worktree helper was exercised mechanically in a throwaway clone:
+  single-worker isolation (A), dependency base (C), failure isolation (D) and
+  conflict detection (E) all passed; removal refused uncommitted and
+  unintegrated work with exit 1 and only --force overrode it.

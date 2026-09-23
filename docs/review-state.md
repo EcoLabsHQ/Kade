@@ -33,9 +33,10 @@ directory is tracked in Git and committed with the promotion.
 
 ```yaml
 iteration: iteration-42
+profile: NORMAL           # NORMAL | QUICKFIX (docs/iteration-profiles.md)
 known_good: 5f5ab9d
 candidate: def4567        # exact HEAD under review
-mode: discovery           # discovery | recheck | resume
+mode: discovery           # discovery | recheck | resume | targeted
 reviewed_scopes:
   auth: complete
   database: complete
@@ -56,9 +57,10 @@ Field notes:
 
 | Field | Meaning |
 |---|---|
+| `profile` | Iteration profile the session belongs to (`NORMAL` or `QUICKFIX`). |
 | `known_good` | Baseline tag SHA the session is measured against. |
 | `candidate` | Exact HEAD SHA currently under review. |
-| `mode` | Mode of the most recent reviewer run. |
+| `mode` | Mode of the most recent reviewer run. `targeted` is the bounded QUICKFIX mode. |
 | `reviewed_scopes` | `complete`, `partial`, or `not_applicable` per scope. |
 | `active_findings` | Open finding ids in the current batch. |
 | `resolved_findings` | Findings closed by a later recheck. |
@@ -126,3 +128,20 @@ Rules:
    scope remains invalidated by later corrective work.
 6. Promotion requires a completed session *and* a final mechanical verification
    on the exact promoted HEAD.
+
+## TARGETED mode
+
+`TARGETED` is the bounded review mode for a `QUICKFIX` iteration
+(`docs/iteration-profiles.md`). It is not a replacement for `DISCOVERY` on a
+NORMAL iteration.
+
+- It examines the quickfix diff, directly affected behavior, and immediately
+  adjacent effects only.
+- It records a single bounded scope (for example `quickfix`) in
+  `reviewed_scopes`; it must not enumerate or re-audit the whole repository.
+- It may produce blocking findings; corrections follow targeted recheck
+  semantics (`RECHECK` limited to the batch, then `TARGETED` again).
+- If the diff proves not to be bounded, the reviewer stops and reports that
+  escalation to NORMAL is required; the orchestrator must not silently upgrade.
+- The verdicts are unchanged: `review_passed`, `review_failed`,
+  `review_incomplete`. Only the reviewer lead issues them.

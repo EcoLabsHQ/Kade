@@ -42,6 +42,21 @@ Do not stack patches on top of a suspected broken foundation. Follow the
 regression investigation and recovery protocol defined in the development
 contract.
 
+## Delegated execution
+
+Implementation is delegated to isolated workers; the orchestrator coordinates.
+Operational mechanics:
+
+```text
+docs/orchestration.md      tasks, DAG, worktrees, background workers, integration
+docs/iteration-profiles.md NORMAL and QUICKFIX lifecycles, TARGETED review
+```
+
+Normative invariants for delegated execution are in
+`docs/DEVELOPMENT_CONTRACT.md` section 17. Runtime orchestration state under
+`.orchestration/` and task worktrees under `.worktrees/` are ephemeral and
+git-ignored; do not commit them.
+
 ## Project scope
 
 The product scope for the current iteration is frozen in:

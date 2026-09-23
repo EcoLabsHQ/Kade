@@ -1,27 +1,61 @@
 ---
 description: Scoped, read-only subreviewer invoked by the reviewer for one narrow risk domain. Returns evidence-backed findings or NO_FINDINGS_IN_SCOPE. Never issues a review verdict.
 mode: subagent
-temperature: 0.1
-permission:
-  edit: deny
-  task: deny
-  bash:
-    "*": ask
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git rev-parse*": allow
-    "ls*": allow
-    "rg*": allow
-    "cat*": allow
-    "git push*": deny
-    "git commit*": deny
-    "git tag -f*": deny
-    "git reset*": deny
-    "git rebase*": deny
-    "cast send*": deny
-    "forge script*--broadcast*": deny
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: ask
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "git rev-parse *"
+    effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
+    resource: "git push *"
+    effect: deny
+  - action: shell
+    resource: "git commit *"
+    effect: deny
+  - action: shell
+    resource: "git tag -f *"
+    effect: deny
+  - action: shell
+    resource: "git reset *"
+    effect: deny
+  - action: shell
+    resource: "git rebase *"
+    effect: deny
+  - action: shell
+    resource: "cast send *"
+    effect: deny
+  - action: shell
+    resource: "forge script *--broadcast*"
+    effect: deny
 ---
 
 # Subreviewer

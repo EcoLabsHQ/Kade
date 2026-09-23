@@ -1,0 +1,29 @@
+- id: F1
+  severity: WARN
+  scope: regression-guard
+  title: "Regression guard tested rule presence, not V2 last-match-wins ordering"
+  status: resolved
+  resolved_by: 2c33d90b739fd5502ae85c64bb625c175e7ec891
+  resolution: >-
+    The guard now parses the permission rules and evaluates the effective effect
+    under last-match-wins; reordering the rules fails the test.
+
+- id: F2
+  severity: WARN
+  scope: harness-docs
+  title: "Docs claimed an executable guard for the runtime harness scenarios"
+  status: resolved
+  resolved_by: 2c33d90b739fd5502ae85c64bb625c175e7ec891
+  resolution: >-
+    docs/orchestration.md now states the guard covers configuration invariants
+    and does not execute the runtime scenarios.
+
+- id: F3
+  severity: WARN
+  scope: permissions-boundary
+  title: "Reviewer could launch any subagent, including an editing one"
+  status: resolved
+  resolved_by: 2c33d90b739fd5502ae85c64bb625c175e7ec891
+  resolution: >-
+    reviewer.md now denies subagent "*" and allows only "subreviewer", closing
+    the indirect write path.

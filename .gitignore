@@ -27,6 +27,10 @@ coverage/
 supabase/.temp/
 .supabase/
 
+# harness runtime state (ephemeral; docs/orchestration.md)
+.orchestration/
+.worktrees/
+
 # editor / os
 .DS_Store
 *.log

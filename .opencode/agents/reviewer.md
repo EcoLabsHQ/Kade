@@ -1,29 +1,70 @@
 ---
-description: Risk-based adversarial reviewer acting as review lead. Read-only. Runs in DISCOVERY, RECHECK, or RESUME mode against git diff known-good...HEAD and reports at most three blocking findings per discovery batch.
+description: Risk-based adversarial reviewer acting as review lead. Read-only. Runs in DISCOVERY, RECHECK, RESUME, or TARGETED mode against git diff known-good...HEAD and reports at most three blocking findings per discovery batch.
 mode: subagent
-temperature: 0.1
-permission:
-  edit: deny
-  task: allow
-  bash:
-    "*": ask
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git tag*": allow
-    "git branch*": allow
-    "git rev-parse*": allow
-    "ls*": allow
-    "rg*": allow
-    "cat*": allow
-    "git push*": deny
-    "git commit*": deny
-    "git tag -f*": deny
-    "git reset*": deny
-    "git rebase*": deny
-    "cast send*": deny
-    "forge script*--broadcast*": deny
+permissions:
+  - action: edit
+    resource: "*"
+    effect: deny
+  - action: shell
+    resource: "*"
+    effect: ask
+  - action: shell
+    resource: "git status *"
+    effect: allow
+  - action: shell
+    resource: "git diff *"
+    effect: allow
+  - action: shell
+    resource: "git log *"
+    effect: allow
+  - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
+    resource: "git tag *"
+    effect: allow
+  - action: shell
+    resource: "git branch *"
+    effect: allow
+  - action: shell
+    resource: "git rev-parse *"
+    effect: allow
+  - action: shell
+    resource: "ls *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "cat *"
+    effect: allow
+  - action: shell
+    resource: "git push *"
+    effect: deny
+  - action: shell
+    resource: "git commit *"
+    effect: deny
+  - action: shell
+    resource: "git tag -f *"
+    effect: deny
+  - action: shell
+    resource: "git reset *"
+    effect: deny
+  - action: shell
+    resource: "git rebase *"
+    effect: deny
+  - action: shell
+    resource: "cast send *"
+    effect: deny
+  - action: shell
+    resource: "forge script *--broadcast*"
+    effect: deny
+  - action: subagent
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: subreviewer
+    effect: allow
 ---
 
 # Reviewer
@@ -68,11 +109,11 @@ The orchestrator (or the human) provides:
 
 - `known_good` — the baseline tag SHA;
 - `candidate` — the HEAD SHA under review;
-- `MODE` — `DISCOVERY`, `RECHECK`, or `RESUME`;
+- `MODE` — `DISCOVERY`, `RECHECK`, `RESUME`, or `TARGETED`;
 - the recorded mechanical verification result for the exact candidate;
 - the task requirements / frozen contract;
 - for `RECHECK`: the finding ids in the batch (`FINDINGS=F1,F2,F3`);
-- for `RECHECK`/`RESUME`: the review state path, e.g.
+- for `RECHECK`/`RESUME`/`TARGETED`: the review state path, e.g.
   `.review/<iteration>/state.yaml` and `findings.yaml`.
 
 If any of these are missing, say so and stop. Do not guess the mode.
@@ -111,6 +152,25 @@ Continue discovery from where the session paused.
   `complete` unless the corrective diff invalidated them (see *Invalidation*).
 - Cover the scopes still `partial` or `not reviewed`.
 - The three-blocker batch limit applies again.
+
+### MODE=TARGETED
+
+Bounded review of a `QUICKFIX` diff (`docs/iteration-profiles.md`). This mode is
+for a change the human approved as narrow; it is **not** repository-wide
+`DISCOVERY`.
+
+- Examine only the quickfix diff, the directly affected behavior, and the
+  immediately adjacent effects.
+- Record a single bounded scope (for example `quickfix`) in `reviewed_scopes`.
+  Do not enumerate or re-audit the rest of the repository.
+- You may still report blocking findings, with the same evidence and materiality
+  requirements. Corrections follow targeted recheck semantics: a `RECHECK`
+  limited to the batch, then `TARGETED` again.
+- If the diff proves not to be bounded — cross-cutting impact, architecture or
+  public-interface change, schema or security implications, a large diff,
+  multiple independent root causes — stop and report that escalation to `NORMAL`
+  is required. Do not silently widen the review.
+- The verdicts are unchanged and only you issue them.
 
 ## Risk tiering and scope
 

@@ -1105,3 +1105,122 @@ NEW KNOWN_GOOD
 The objective is not to prevent agents from making mistakes. The objective is to
 ensure that mistakes are detectable, attributable, reversible, and prevented
 from becoming the foundation for further work.
+
+## 17. Delegated Execution and Isolation (Harness v3)
+
+This section is normative. It preserves every guarantee in sections 1–16 and
+adds the invariants that govern delegated, isolated development. Operational
+mechanics live in `docs/orchestration.md` and `docs/iteration-profiles.md`; those
+documents must not weaken these invariants.
+
+### 17.1 Implementation isolation
+
+Every delegated implementation task executes in isolated state:
+
+```text
+1 delegated implementation task = 1 branch = 1 worktree
+```
+
+The orchestrator owns worktree creation, base selection, and cleanup. Workers do
+not create their own execution environments and do not operate on the
+integration workspace.
+
+A task worktree begins from the commit containing all of its satisfied
+dependencies, which may be newer than `known-good`.
+
+### 17.2 Orchestrator integration ownership
+
+Workers never integrate themselves. Only the orchestrator inspects a completed
+worker, checks its acceptance criteria, chooses an integration strategy
+(cherry-pick or merge), and integrates. Workers must not:
+
+- integrate another worker's branch;
+- modify the integration workspace;
+- push or deploy without authorization;
+- perform irreversible actions outside the existing human gates;
+- silently expand scope beyond their task contract.
+
+### 17.3 `known-good` immutability
+
+A worker can never move `known-good`. The tag moves only at the promotion gate in
+section 15, after mechanical verification and a complete review session.
+
+### 17.4 Delegation default
+
+Substantial product implementation is delegated by default. The orchestrator may
+directly perform integration, bookkeeping, task-state maintenance, trivial
+harness operations, and tiny mechanical corrections where delegation would cost
+more than the work. It should not directly perform substantial product
+implementation.
+
+### 17.5 Verification ownership
+
+Verification ownership is unchanged from section 10. Workers may run focused
+tests for their own task and never establish repository trust. The orchestrator
+runs `./scripts/verify.sh`. The reviewer consumes the recorded result and does
+not re-run mechanical verification. The exact HEAD being promoted must pass
+`./scripts/verify.sh`.
+
+### 17.6 Review independence
+
+Review independence is preserved. The `reviewer` remains the independent review
+lead and the sole owner of the verdict. `subreviewer` agents remain read-only,
+bounded, evidence-producing, and non-verdict. Delegation must reduce effort, not
+multiply it.
+
+The review session gains one bounded mode, `TARGETED`, used for QUICKFIX diffs.
+`TARGETED` examines the quickfix diff, directly affected behavior, and
+immediately adjacent effects. It must not become repository-wide `DISCOVERY`. A
+`TARGETED` review may still produce blocking findings.
+
+### 17.7 Iteration profiles
+
+```text
+ITERATION_PROFILE=NORMAL     default
+ITERATION_PROFILE=QUICKFIX   narrow human-directed correction
+```
+
+QUICKFIX is not a shortcut past verification or review. It requires all of:
+
+1. eligibility (narrow scope, clear behavior, small/local diff, no architecture
+   change, no substantial schema migration, no security-boundary change, no
+   public-contract change, no new feature);
+2. explicit human approval of the profile;
+3. a human result checkpoint before integration;
+4. a bounded `TARGETED` review;
+5. a final `./scripts/verify.sh` PASS on the exact promotion HEAD.
+
+When eligibility is uncertain, the profile is NORMAL.
+
+### 17.8 QUICKFIX escalation
+
+The orchestrator must not silently upgrade QUICKFIX to NORMAL. If the change
+reveals cross-cutting impact, an architecture or public-interface change, schema
+or security implications, a large diff, multiple independent root causes, or
+significant unrelated cleanup, the orchestrator stops, reports the evidence, and
+asks the human to approve escalation. Useful worker state is preserved where
+safe after approval.
+
+### 17.9 Human steering
+
+The human may steer, stop, reject, or continue delegated work. The orchestrator
+forwards steering to the same child session when OpenCode supports it, rather
+than spawning a fresh worker with lost context. If steering materially changes
+architecture, task dependencies, public interfaces, scope, or security
+assumptions, the orchestrator recomputes the affected task dependencies before
+continuing.
+
+### 17.10 Failure isolation
+
+A failed worker must not corrupt `known-good`, the integration workspace, or
+another worker. The orchestrator prefers explicit failure over speculative
+continuation: a blocked worker is reported or investigated, an ambiguous
+dependency does not launch dependent work, a semantic integration conflict is
+returned to a worker or the human, and a suspected broken foundation triggers the
+recovery protocol in sections 5–7.
+
+### 17.11 Runtime state
+
+Runtime orchestration state is lightweight and ephemeral, is ignored by Git, and
+is not a substitute for commits. Transitions are not individually versioned. A
+compact final iteration summary may be retained for observability.
