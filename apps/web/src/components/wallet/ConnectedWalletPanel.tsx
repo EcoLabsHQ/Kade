@@ -483,6 +483,13 @@ function ConfiguredWalletPanel({
           (entry) => entry.usesWalletConnect === rowWalletConnect,
         );
         const connectedHere = rowWallets.length > 0;
+        // With a save handler the panel reads the balance, saves the address and
+        // then tears the connection down itself, so a live wallet shows a
+        // disabled Connect rather than a manual Disconnect. A failed save keeps
+        // the connection live, so the manual control returns for recovery.
+        const awaitingSave =
+          connectedHere && onAddWalletAddress !== undefined && !storeError;
+        const needsManualDisconnect = connectedHere && !awaitingSave;
 
         return (
           <WalletRow
@@ -494,7 +501,7 @@ function ConfiguredWalletPanel({
                 : row.subtitle
             }
             action={
-              connectedHere ? (
+              needsManualDisconnect ? (
                 <button
                   type="button"
                   onClick={() => disconnectMethod(rowWalletConnect)}
@@ -505,17 +512,20 @@ function ConfiguredWalletPanel({
               ) : (
                 <button
                   type="button"
-                  onClick={() => connect(row.key)}
-                  disabled={atCap}
+                  onClick={awaitingSave ? undefined : () => connect(row.key)}
+                  disabled={awaitingSave || atCap}
                   title={
-                    atCap
-                      ? `Up to ${MAX_WALLET_ADDRESSES} addresses`
-                      : `Connect with ${row.title}`
+                    awaitingSave
+                      ? 'Reading the balance, saving the address and disconnecting for you.'
+                      : atCap
+                        ? `Up to ${MAX_WALLET_ADDRESSES} addresses`
+                        : `Connect with ${row.title}`
                   }
                   style={{
                     ...connectButton,
-                    opacity: atCap ? 0.5 : 1,
-                    cursor: atCap ? 'not-allowed' : 'pointer',
+                    opacity: awaitingSave || atCap ? 0.5 : 1,
+                    cursor: awaitingSave || atCap ? 'not-allowed' : 'pointer',
+                    transition: 'opacity .25s ease',
                   }}
                 >
                   Connect
@@ -531,12 +541,6 @@ function ConfiguredWalletPanel({
           {storeError}
         </div>
       ) : null}
-
-      <div style={mutedNote}>
-        A connected account&rsquo;s balances are read from a public source on
-        Ethereum and Base. The connection is read-only, is not proof of
-        ownership, and gives Kade no authority over your Safe.
-      </div>
     </div>
   );
 }

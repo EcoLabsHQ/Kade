@@ -113,6 +113,11 @@ describe('ConnectedWalletPanel', () => {
     expect(screen.getByText('Browser extension')).toBeInTheDocument();
     expect(screen.getByText('WalletConnect')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2);
+    // The local "read from a public source" note was removed from the panel;
+    // the step's own summary carries the disclaimer.
+    expect(
+      screen.queryByText(/read from a public source on Ethereum and Base/i),
+    ).toBeNull();
   });
 
   it('opens the connector list for the browser extension and the WalletConnect QR for WalletConnect', () => {
@@ -389,5 +394,40 @@ describe('ConnectedWalletPanel saves connected wallets', () => {
       expect(hoisted.removeWalletAddress).toHaveBeenCalledWith(ADDRESS),
     );
     await waitFor(() => expect(screen.queryByText(ADDRESS)).toBeNull());
+  });
+
+  it('disables Connect while the wallet is read and saved, then re-enables it', async () => {
+    // Hold the save open so the in-flight state is observable.
+    let releaseSave: ((record: unknown) => void) | undefined;
+    hoisted.addWalletAddress.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseSave = resolve;
+        }),
+    );
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    render(<SavedAddressesHarness />);
+
+    // The live wallet is being handled automatically: Connect is disabled and
+    // there is no manual Disconnect to press.
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole('button', { name: 'Connect' })
+          .some((button) => (button as HTMLButtonElement).disabled),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+
+    releaseSave?.(RECORD);
+
+    // Saved and disconnected: Connect is usable again.
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole('button', { name: 'Connect' })
+          .every((button) => !(button as HTMLButtonElement).disabled),
+      ).toBe(true),
+    );
   });
 });
