@@ -8,6 +8,7 @@ import {
   availableActions,
   feeState,
   residencyState,
+  walletClass,
   wealthState,
   type ApplicationStatus,
   type ReviewQueueItem,
@@ -181,12 +182,27 @@ export function ReviewQueue({ items }: ReviewQueueProps) {
                 <dd style={{ margin: '4px 0 0', fontWeight: 600 }}>
                   {wealth.total === 0
                     ? 'No addresses'
-                    : `${wealth.verified} verified · ${wealth.pasted} pasted`}
+                    : [
+                        `${wealth.verified} verified`,
+                        wealth.connected > 0
+                          ? `${wealth.connected} connected (unverified)`
+                          : null,
+                        `${wealth.pasted} pasted`,
+                      ]
+                        .filter((part): part is string => part !== null)
+                        .join(' · ')}
                 </dd>
                 <div style={{ color: tokens.muted, fontSize: '11.5px' }}>
                   {item.wallets
-                    .map((wallet) => `${shorten(wallet.address, 8, 4)} (${chainLabel(wallet.chain)})`)
+                    .map(
+                      (wallet) =>
+                        `${shorten(wallet.address, 8, 4)} (${chainLabel(wallet.chain)}, ${walletClass(wallet)})`,
+                    )
                     .join(', ') || '—'}
+                </div>
+                <div style={{ color: tokens.muted, fontSize: '11.5px' }}>
+                  Connected wallets are unverified: not signature-verified and
+                  never counted as verified wealth.
                 </div>
               </div>
 

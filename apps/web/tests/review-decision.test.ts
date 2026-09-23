@@ -4,10 +4,12 @@ import {
   availableActions,
   feeState,
   residencyState,
+  walletClass,
   wealthState,
   type ReviewQueueItem,
 } from '@/lib/review/decision';
 import { residentGate, residentGateLabel } from '@/lib/review/gate';
+import { CONNECTED_WALLET_PROVIDER } from '@/lib/wealth/types';
 
 /**
  * Pure derivations behind the Admin queue and the resident gate.
@@ -68,7 +70,70 @@ describe('queue derivations', () => {
         { address: 'a', chain: 1, provider: null, verifiedAt: null },
         { address: 'b', chain: 1, provider: null, verifiedAt: '2026-09-01' },
       ]),
-    ).toEqual({ total: 2, verified: 1, pasted: 1 });
+    ).toEqual({ total: 2, verified: 1, connected: 0, pasted: 1 });
+  });
+
+  it('classifies verified, connected and pasted rows exactly', () => {
+    const state = wealthState([
+      { address: 'v', chain: 1, provider: 'pasted-address', verifiedAt: '2026-09-01' },
+      { address: 'c', chain: 1, provider: CONNECTED_WALLET_PROVIDER, verifiedAt: null },
+      { address: 'p', chain: 1, provider: 'pasted-address', verifiedAt: null },
+      { address: 'b', chain: 0, provider: 'bitcoin-address', verifiedAt: null },
+      { address: 'n', chain: 1, provider: null, verifiedAt: null },
+    ]);
+
+    expect(state).toEqual({ total: 5, verified: 1, connected: 1, pasted: 3 });
+  });
+
+  it('never counts a connected row as pasted or verified', () => {
+    expect(
+      wealthState([
+        {
+          address: '0xconnected',
+          chain: 1,
+          provider: CONNECTED_WALLET_PROVIDER,
+          verifiedAt: null,
+        },
+      ]),
+    ).toEqual({ total: 1, verified: 0, connected: 1, pasted: 0 });
+  });
+
+  it('counts a connected wallet that was later signature-verified as verified only', () => {
+    expect(
+      wealthState([
+        {
+          address: '0xconnected',
+          chain: 1,
+          provider: CONNECTED_WALLET_PROVIDER,
+          verifiedAt: '2026-09-22T10:00:00.000Z',
+        },
+      ]),
+    ).toEqual({ total: 1, verified: 1, connected: 0, pasted: 0 });
+  });
+
+  it('labels one row with exactly one class', () => {
+    expect(
+      walletClass({ address: 'a', chain: 1, provider: null, verifiedAt: '2026-09-01' }),
+    ).toBe('verified');
+    expect(
+      walletClass({
+        address: 'a',
+        chain: 1,
+        provider: CONNECTED_WALLET_PROVIDER,
+        verifiedAt: null,
+      }),
+    ).toBe('connected');
+    expect(
+      walletClass({
+        address: 'a',
+        chain: 1,
+        provider: CONNECTED_WALLET_PROVIDER,
+        verifiedAt: '2026-09-22T10:00:00.000Z',
+      }),
+    ).toBe('verified');
+    expect(
+      walletClass({ address: 'a', chain: 1, provider: 'pasted-address', verifiedAt: null }),
+    ).toBe('pasted');
   });
 
   it('derives the four residency checks from real rows', () => {
