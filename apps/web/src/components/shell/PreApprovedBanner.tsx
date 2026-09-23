@@ -1,11 +1,12 @@
 /**
  * The pre-approved banner from the deployed baseline.
  *
- * Rendered at the top of the shell's main column so it is visible on every
- * screen, exactly as the reference does. The copy and colours are the
- * reference's; the reference number is the demo one it shows.
+ * Shown by the shell only while the resident has an application whose intake
+ * review is not cleared (see `@/lib/review/review-bar`), matching the
+ * reference's `showReviewBar`. The copy and colours are the reference's; the
+ * reference number is the resident's own application ref, not a literal.
  */
-export function PreApprovedBanner() {
+export function PreApprovedBanner({ reference }: { reference?: string | null }) {
   return (
     <div
       style={{
@@ -23,11 +24,13 @@ export function PreApprovedBanner() {
         <strong>Pre-approved.</strong> Use the platform now — card issuance,
         bank payouts and borrowing unlock once intake review completes.
       </span>
-      <span
-        style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
-      >
-        Ref CW-2026-0409
-      </span>
+      {reference ? (
+        <span
+          style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+        >
+          Ref {reference}
+        </span>
+      ) : null}
     </div>
   );
 }

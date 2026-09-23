@@ -7,6 +7,7 @@ import { ResidencyStep } from '@/components/residency/ResidencyStep';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { getSessionUser } from '@/lib/supabase/server';
 import { readChainEnv, readWalletConnectProjectId } from '@/lib/env';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadResidencySnapshot } from '@/lib/residency/server';
 import {
@@ -50,6 +51,7 @@ export default async function ResidencyPage() {
   const walletConfigured = readWalletConnectProjectId() !== null;
   const usdcAddress = settlement?.usdcAddress.value ?? '';
   const explorerUrl = settlement?.explorerUrl ?? 'https://sepolia.etherscan.io';
+  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <WalletProvider>
@@ -60,6 +62,8 @@ export default async function ResidencyPage() {
         safeStatus={shellSafe.status}
         explorerUrl={shellSafe.explorerUrl}
         network={network}
+        showReviewBar={reviewBar.show}
+        reviewReference={reviewBar.reference}
       >
         <ContentContainer footer={<SiteFooter />}>
           <ResidencyStep

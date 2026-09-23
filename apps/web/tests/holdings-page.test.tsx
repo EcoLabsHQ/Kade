@@ -20,6 +20,9 @@ vi.mock('@/lib/safe/shell', () => ({
     explorerUrl: null,
   })),
 }));
+vi.mock('@/lib/review/review-bar', () => ({
+  loadReviewBar: vi.fn(async () => ({ show: false, reference: null })),
+}));
 vi.mock('@/lib/env', () => ({
   readWalletConnectProjectId: () => 'project-id',
 }));

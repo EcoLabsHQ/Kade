@@ -5,6 +5,7 @@ import { InvestScreen } from '@/components/invest/InvestScreen';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { readChainEnv } from '@/lib/env';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import {
   isMorphoConfigured,
   morphoChainId,
@@ -36,6 +37,7 @@ export default async function InvestPage() {
   // absent or malformed, so a misconfigured environment degrades rather than
   // taking the route down.
   const config = readMorphoPoolConfig();
+  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <AppShell
@@ -44,6 +46,8 @@ export default async function InvestPage() {
       safeDeployed={shellSafe.deployed}
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
+      showReviewBar={reviewBar.show}
+      reviewReference={reviewBar.reference}
     >
       <ContentContainer>
         <InvestScreen
