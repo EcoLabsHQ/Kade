@@ -76,6 +76,7 @@ const SNAPSHOT = {
   },
   preapprovalPaid: true,
   serviceFeeAmountUsdc: 10,
+  preapprovalUsdc: 447,
   serviceFeeConfigured: true,
   selfConfigured: false,
   permit: { status: 'not-configured', reason: 'no gate' },
