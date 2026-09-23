@@ -19,6 +19,14 @@ import { shortAddress } from '@/lib/wealth/format';
  * the Holdings page, so this component holds no proof logic and its tests never
  * need 03.
  *
+ * wagmi keeps a map of live connections, one per connector, so connecting a
+ * second wallet ADDS to the list instead of replacing the first. The panel lists
+ * every distinct connected address and gives each its own action, so the
+ * resident chooses which address to sign: the address signed is always the row
+ * they clicked, never an implicit `connections[0]`. Addresses are deduplicated
+ * case-insensitively, and each row keeps its own busy / error / linked state so
+ * one failure leaves the others usable.
+ *
  * The signature confers no Safe authority and is not a login. The panel only
  * obtains proof; the server (03) is the authority on whether it verifies.
  *
@@ -91,6 +99,38 @@ function UnconfiguredLinkPanel() {
   );
 }
 
+/** One live wagmi connection, as `useConnections` reports it. */
+type WalletConnection = ReturnType<typeof useConnections>[number];
+
+/** The account type wagmi reports for a connection (a checksummed address). */
+type WalletAddress = WalletConnection['accounts'][number];
+
+/**
+ * The distinct addresses across every live connection, in connection order.
+ * The first occurrence of an address wins, and addresses that differ only by
+ * case are one wallet, so a duplicated connection is not offered twice.
+ */
+function liveAddresses(
+  connections: readonly WalletConnection[],
+): WalletAddress[] {
+  const seen = new Set<string>();
+  const addresses: WalletAddress[] = [];
+  for (const connection of connections) {
+    for (const account of connection.accounts) {
+      const key = account.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      addresses.push(account);
+    }
+  }
+  return addresses;
+}
+
+/** The case-insensitive key that identifies an address across renders. */
+function addressKey(address: string): string {
+  return address.trim().toLowerCase();
+}
+
 function ConfiguredLinkForm({
   onBegin,
   onComplete,
@@ -100,17 +140,25 @@ function ConfiguredLinkForm({
   const connections = useConnections();
   const { signMessageAsync } = useSignMessage();
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [linked, setLinked] = useState(false);
+  // Each row owns its state, keyed by the case-insensitive address, so a busy or
+  // failed row never blocks another.
+  const [busyKeys, setBusyKeys] = useState<readonly string[]>([]);
+  const [linkedKeys, setLinkedKeys] = useState<readonly string[]>([]);
+  const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
 
-  const address = connections[0]?.accounts[0] ?? null;
+  const addresses = liveAddresses(connections);
+  const onlyAddress = addresses.length === 1 ? addresses[0] ?? null : null;
 
-  async function handleLink() {
-    if (!address || busy) return;
-    setBusy(true);
-    setError(null);
-    setLinked(false);
+  async function handleLink(address: WalletAddress) {
+    const key = addressKey(address);
+    if (busyKeys.includes(key)) return;
+    setBusyKeys((current) => [...current, key]);
+    setErrors((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     try {
       const challenge = await onBegin(address);
       const signature = await signMessageAsync({
@@ -127,60 +175,36 @@ function ConfiguredLinkForm({
           'The signature did not verify; the wallet was not linked.',
         );
       }
-      setLinked(true);
+      setLinkedKeys((current) =>
+        current.includes(key) ? current : [...current, key],
+      );
       onLinked();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'The wallet could not be linked. Nothing was saved.',
-      );
+      setErrors((current) => ({
+        ...current,
+        [key]:
+          cause instanceof Error
+            ? cause.message
+            : 'The wallet could not be linked. Nothing was saved.',
+      }));
     } finally {
-      setBusy(false);
+      setBusyKeys((current) => current.filter((item) => item !== key));
     }
   }
 
   return (
     <Card padding="14px 16px">
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '15px', fontWeight: 600 }}>Link a wallet</div>
-          <div
-            style={{
-              fontSize: '13px',
-              color: tokens.muted,
-              fontFamily: address ? 'ui-monospace, Menlo, monospace' : undefined,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {address
-              ? `Sign a challenge for ${shortAddress(address)}`
-              : 'Connect a wallet, then sign a challenge to prove control.'}
-          </div>
-        </div>
-        {address ? (
-          <button
-            type="button"
-            onClick={handleLink}
-            disabled={busy}
-            style={{
-              ...actionButton,
-              opacity: busy ? 0.6 : 1,
-              cursor: busy ? 'progress' : 'pointer',
-            }}
-          >
-            {busy ? 'Signing…' : 'Sign to link'}
-          </button>
-        ) : (
+      <div style={{ fontSize: '15px', fontWeight: 600 }}>Link a wallet</div>
+      <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '2px' }}>
+        {addresses.length === 0
+          ? 'Connect a wallet, then sign a challenge to prove control.'
+          : onlyAddress
+            ? 'Prove control of this connected wallet with a signature.'
+            : 'Choose which connected wallet to prove control of.'}
+      </div>
+
+      {addresses.length === 0 ? (
+        <div style={{ marginTop: '12px' }}>
           <button
             type="button"
             onClick={() => void open({ view: 'Connect' })}
@@ -188,22 +212,59 @@ function ConfiguredLinkForm({
           >
             Connect wallet
           </button>
-        )}
-      </div>
-
-      {linked ? (
-        <div style={{ marginTop: '10px' }}>
-          <Chip tone="success" dot>
-            Linked · verified signature
-          </Chip>
         </div>
-      ) : null}
-
-      {error ? (
-        <div role="alert" style={{ ...errorText }}>
-          {error}
-        </div>
-      ) : null}
+      ) : (
+        <ul style={addressList}>
+          {addresses.map((address) => {
+            const key = addressKey(address);
+            const busy = busyKeys.includes(key);
+            const isLinked = linkedKeys.includes(key);
+            const error = errors[key];
+            return (
+              <li key={key} style={addressRow}>
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    title={address}
+                    style={{
+                      fontFamily: 'ui-monospace, Menlo, monospace',
+                      fontSize: '13px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {shortAddress(address)}
+                  </div>
+                  {isLinked ? (
+                    <div style={{ marginTop: '6px' }}>
+                      <Chip tone="success" dot>
+                        Linked · verified signature
+                      </Chip>
+                    </div>
+                  ) : null}
+                  {error ? (
+                    <div role="alert" style={errorText}>
+                      {error}
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleLink(address)}
+                  disabled={busy}
+                  style={{
+                    ...actionButton,
+                    opacity: busy ? 0.6 : 1,
+                    cursor: busy ? 'progress' : 'pointer',
+                  }}
+                >
+                  {busy ? 'Signing…' : 'Sign to link'}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       <p style={mutedNote}>
         You sign a message, not a transaction. The signature proves you control
@@ -224,6 +285,21 @@ const actionButton: React.CSSProperties = {
   fontWeight: 600,
   cursor: 'pointer',
   flex: '0 0 auto',
+};
+
+const addressList: React.CSSProperties = {
+  listStyle: 'none',
+  margin: '12px 0 0',
+  padding: 0,
+  display: 'grid',
+  gap: '8px',
+};
+
+const addressRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '12px',
 };
 
 const mutedNote: React.CSSProperties = {
