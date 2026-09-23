@@ -10,6 +10,8 @@ export interface ButtonProps {
   readonly disabled?: boolean;
   readonly onClick?: () => void;
   readonly title?: string;
+  /** An explicit accessible name, when the visible text is not stable enough. */
+  readonly ariaLabel?: string;
   readonly style?: CSSProperties;
   readonly fullWidth?: boolean;
   /** Associates the button with a form it is not nested inside. */
@@ -56,6 +58,7 @@ export function Button({
   disabled,
   onClick,
   title,
+  ariaLabel,
   style,
   fullWidth,
   form,
@@ -66,6 +69,7 @@ export function Button({
       disabled={disabled}
       onClick={onClick}
       title={title}
+      aria-label={ariaLabel}
       form={form}
       style={{
         ...base,

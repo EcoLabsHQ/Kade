@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
+import { PreApprovedBanner } from './PreApprovedBanner';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import { readChainEnv } from '@/lib/env';
@@ -17,6 +18,14 @@ export interface AppShellProps {
   readonly nav?: readonly NavGroupConfig[];
   /** When present, the sidebar shows the pre-registration stepper instead of nav. */
   readonly stepper?: readonly StepperItem[];
+  /**
+   * Whether to show the pre-approved banner. Resolved by the page from the
+   * application's review state (`@/lib/review/review-bar`); the shell never
+   * shows it unconditionally.
+   */
+  readonly showReviewBar?: boolean;
+  /** The resident's own application reference for the banner, or null. */
+  readonly reviewReference?: string | null;
 }
 
 /**
@@ -46,6 +55,8 @@ export function AppShell({
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
   stepper,
+  showReviewBar = false,
+  reviewReference = null,
 }: AppShellProps) {
   return (
     <div
@@ -73,6 +84,7 @@ export function AppShell({
           flexDirection: 'column',
         }}
       >
+        {showReviewBar ? <PreApprovedBanner reference={reviewReference} /> : null}
         {children}
       </main>
     </div>

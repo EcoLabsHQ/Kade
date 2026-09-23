@@ -1,0 +1,56 @@
+iteration: iteration-week2
+known_good: ef81b65
+candidate: 26796bb
+mode: recheck
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 26796bb
+  note: >-
+    Consumed from the orchestrator's record; not re-run by the reviewer. The
+    pre-existing intermittent onboarding-flow jsdom flake is unrelated.
+scope:
+  unit_a: week-2 front 00 mainnet config
+  unit_b: week-2 front 01 signer createSigner path
+  unit_c: week-2 front 02 invest (Morpho call path, baseline Invest layout)
+  unit_d: week-2 front 03 wallet ownership proof
+  unit_e: week-2 front 04 holdings
+  unit_f: week-2 front 05 residency (baseline Start Residency screen)
+  unit_g: week-2 front 06 admin review
+  unit_h: shell (nav, pre-approved banner, holdings wallet context)
+reviewed_scopes:
+  unit_a: complete
+  unit_b: complete
+  unit_c: complete
+  unit_d: complete
+  unit_e: complete
+  unit_f: complete
+  unit_g: complete
+  unit_h: complete
+active_findings: [F4, F5, F6, F7, F8, F9]
+resolved_findings: [F1, F2, F3]
+next_finding_id: F10
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+  F4: 0
+  F5: 0
+  F6: 0
+  F7: 0
+  F8: 0
+  F9: 0
+review_complete: true
+verdict: review_passed
+headline: >-
+  Week 2 iteration. F1-F3 resolved at the root by 31c4265/dba9ca6/26796bb: the
+  pre-approved banner is state-aware (hidden with no application or a cleared
+  review) and uses the resident's own ref; the residency heading/submission
+  states are gated on kade.permit.v1 existing and documents report 0 of 6; the
+  wired Morpho instrument is labelled Ethereum and matches the dialog. No new
+  blocker. F4-F7 warnings remain open; F8/F9 added.
+escalation: >-
+  F4 is a frozen-contract divergence (week-2 section 4.1 D9 says a connected
+  wallet writes no row; the delivered code saves a watch-only row). It confers
+  no authority, so it is not blocking; the owner should amend D9 via change
+  control or revert the auto-save.

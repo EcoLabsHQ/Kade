@@ -6,8 +6,16 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
+import { ReviewGateWatcher } from '@/components/review/ReviewGateWatcher';
 import { hasCompletedOnboarding } from '@/lib/onboarding/state';
-import { getSessionUser } from '@/lib/supabase/server';
+import { isAuthConfigured, readAuthEnv } from '@/lib/env';
+import {
+  createSupabaseServerClient,
+  getSessionUser,
+} from '@/lib/supabase/server';
+import { loadResidentReviewState } from '@/lib/review/queue';
+import { residentGate, type ResidentGate } from '@/lib/review/gate';
+import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +79,43 @@ const STAGES: readonly Stage[] = [
   },
 ];
 
+/**
+ * The intake-review stage reflects the real application status, which the
+ * reviewer's action flips through `review_events`. The other stages remain the
+ * reference's demo state, still labelled as demo at the foot of the page.
+ */
+function buildStages(gate: ResidentGate): readonly Stage[] {
+  return STAGES.map((stage) => {
+    if (stage.title !== 'Intake review') return stage;
+    switch (gate) {
+      case 'approved':
+        return {
+          ...stage,
+          meta: 'Admin review · approved',
+          status: 'Approved',
+          state: 'done',
+        };
+      case 'blocked':
+        return {
+          ...stage,
+          meta: 'Admin review · blocked, action needed',
+          status: 'Blocked',
+          state: 'active',
+        };
+      case 'pending':
+        return {
+          ...stage,
+          meta: 'Admin review · in progress',
+          status: 'In progress',
+          state: 'active',
+        };
+      case 'unknown':
+      default:
+        return stage;
+    }
+  });
+}
+
 const NEXT_STEPS: readonly { label: string; note?: string }[] = [
   { label: 'Move funds into the qualified vault' },
   { label: 'Order Onchain Island Card', note: 'Unlocks after review' },
@@ -91,6 +136,24 @@ export default async function OverviewPage() {
     redirect('/onboarding');
   }
 
+  // The review gate, read from the application the reviewer's action flips. A
+  // failed read degrades to `unknown` rather than claiming a status.
+  let reviewGate: ResidentGate = 'unknown';
+  if (isAuthConfigured(readAuthEnv())) {
+    try {
+      const client = await createSupabaseServerClient();
+      const state = await loadResidentReviewState(client, session.userId);
+      reviewGate = residentGate(state.status);
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not read the resident review state:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    }
+  }
+  const stages = buildStages(reviewGate);
+  const reviewBar = await loadReviewBar(session.userId);
+
   return (
     <AppShell
       email={session.email}
@@ -98,25 +161,10 @@ export default async function OverviewPage() {
       safeDeployed={shellSafe.deployed}
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
+      showReviewBar={reviewBar.show}
+      reviewReference={reviewBar.reference}
     >
-      <div
-        className="kade-announce"
-        style={{
-          background: '#FDF6E7',
-          color: '#8A5A12',
-          fontSize: '13px',
-        }}
-      >
-        <span>
-          <strong>Pre-approved.</strong> Use the platform now — card issuance,
-          bank payouts and borrowing unlock once intake review completes.
-        </span>
-        <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-          Ref CW-2026-0409 ·{' '}
-          <span style={{ fontWeight: 600 }}>demo data</span>
-        </span>
-      </div>
-
+      <ReviewGateWatcher userId={session.userId} />
       <ContentContainer>
         <div
           className="kade-dashboard-header"
@@ -147,21 +195,44 @@ export default async function OverviewPage() {
               payouts and borrowing unlock once intake review completes.
             </p>
           </div>
-          <Link
-            href="/onboarding"
-            style={{
-              border: `1px solid ${tokens.border}`,
-              borderRadius: '999px',
-              padding: '11px 18px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              color: tokens.ink,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Replay setup
-          </Link>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {/*
+              The Residency step (D16) is reachable from the shell here. The nav
+              entry is owned by the integration front; this link does not edit
+              `nav.ts` (see docs/planning/week-2-todo-05-residency.md).
+            */}
+            <Link
+              href="/residency"
+              style={{
+                border: 0,
+                borderRadius: '999px',
+                background: tokens.action,
+                padding: '11px 18px',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                color: '#fff',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Start Residency
+            </Link>
+            <Link
+              href="/onboarding"
+              style={{
+                border: `1px solid ${tokens.border}`,
+                borderRadius: '999px',
+                padding: '11px 18px',
+                fontSize: '13.5px',
+                fontWeight: 600,
+                color: tokens.ink,
+                textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Replay setup
+            </Link>
+          </div>
         </div>
 
         <div
@@ -214,7 +285,7 @@ export default async function OverviewPage() {
             </div>
 
             <div style={{ marginTop: '10px' }}>
-              {STAGES.map((stage, index) => (
+              {stages.map((stage, index) => (
                 <div
                   key={stage.title}
                   style={{

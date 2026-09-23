@@ -13,9 +13,15 @@ export interface NavGroupConfig {
 /**
  * Resident navigation.
  *
- * Only Overview, Residency setup and Account are in Week 1 scope. The asset
- * and finance destinations are contract section 9 exclusions, so they render
- * locked rather than being removed (the shell must still match the baseline).
+ * Week 2 unlocks the Residency step, Holdings and Invest — they are in scope per
+ * `docs/week-2-frozen-delivery-contract.md` (D16–D18). Vote and the Finance
+ * rails stay locked: the Week 2 contract defers them to the end of the
+ * programme (§2.1).
+ *
+ * Residency setup (onboarding) and Account & passkey are deliberately **not**
+ * nav items: the flow is reached from the Overview, and account settings from the
+ * gear on the Safe card. Locked destinations still render (the shell matches the
+ * baseline) rather than being removed.
  */
 export const RESIDENT_NAV: readonly NavGroupConfig[] = [
   {
@@ -24,31 +30,21 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
   {
     label: 'Residency',
     items: [
-      { href: '/onboarding', label: 'Residency setup' },
-      { href: '/account', label: 'Account & passkey' },
+      { href: '/residency', label: 'Residency' },
       {
         href: '/vote',
         label: 'Vote',
         locked: true,
-        lockReason: 'Vote (Snapshot) is out of Week 1 scope (contract section 9)',
+        lockReason:
+          'Vote is deferred to the end of the programme (week-2 contract §2.1)',
       },
     ],
   },
   {
     label: 'Assets',
     items: [
-      {
-        href: '/holdings',
-        label: 'Holdings',
-        locked: true,
-        lockReason: 'Holdings are Week 2+ scope (contract section 9)',
-      },
-      {
-        href: '/invest',
-        label: 'Invest',
-        locked: true,
-        lockReason: 'Invest is out of Week 1 scope (contract section 9)',
-      },
+      { href: '/holdings', label: 'Holdings' },
+      { href: '/invest', label: 'Invest' },
     ],
   },
   {
@@ -58,13 +54,15 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
         href: '/bank',
         label: 'Bank ↔ Crypto',
         locked: true,
-        lockReason: 'Bank ↔ Crypto is out of Week 1 scope (contract section 9)',
+        lockReason:
+          'Bank ↔ Crypto is deferred to the end of the programme (week-2 contract §2.1)',
       },
       {
         href: '/card',
         label: 'Card & Banking',
         locked: true,
-        lockReason: 'Card & Banking is out of Week 1 scope (contract section 9)',
+        lockReason:
+          'Card & Banking is deferred to the end of the programme (week-2 contract §2.1)',
       },
     ],
   },
