@@ -1005,12 +1005,6 @@ const convertChipAccent: CSSProperties = {
   color: tokens.brandPrimary,
 };
 
-const demoNote: CSSProperties = {
-  margin: '12px 0 0',
-  fontSize: '12px',
-  color: tokens.muted,
-};
-
 const reflectPanel: CSSProperties = {
   background: tokens.surface,
   border: `1px solid ${tokens.border}`,
