@@ -39,7 +39,8 @@ const BITCOIN_ORANGE = '#F7931A';
  * account's balance is read from the same public provider (Ethereum and Base)
  * that everything else uses. Bitcoin and pasted EVM ("wallet address") rows are
  * watch-only: the server reads the balance from a public source with no
- * signature and no ownership proof, so those rows say so. Nothing here is
+ * signature and no ownership proof. A connected wallet is signed after it is
+ * saved, so it appears verified in Holdings; these watch-only rows say so. Nothing here is
  * mocked, and no path here gives Kade authority over the resident Safe.
  */
 
@@ -198,8 +199,9 @@ export function WealthStep({
         Connect a wallet or paste an address. The browser-extension and
         WalletConnect rows open a real wallet connection and read that account&rsquo;s
         balances from a public source on Ethereum and Base. Bitcoin and pasted
-        wallet addresses are read-only in the same way. Nothing is signed, the
-        connection gives Kade no authority over your Safe, and a public read is
+        wallet addresses are read-only in the same way. Connecting a wallet also
+        signs a challenge, which marks it verified for Holdings; the connection
+        gives Kade no authority over your Safe, and a public read is
         not proof of ownership. A connected wallet is saved and will appear in
         Holdings as an <strong>unverified</strong> wallet, outside the total &mdash;
         it is not proof that you control it. This only shows you can meet the
@@ -302,7 +304,8 @@ export function WealthStep({
 
                 <p style={{ ...mutedNote, marginTop: '10px' }}>
                   Bitcoin is read from the network: balances come from a public
-                  source, are not proof of ownership, and nothing is signed.
+                  source, are not proof of ownership, and cannot be verified by
+                  a wallet signature.
                 </p>
 
                 <div style={{ marginTop: '6px' }}>
@@ -456,8 +459,8 @@ export function WealthStep({
 
                 <p style={{ ...mutedNote, marginTop: '10px' }}>
                   Balances are read from a public source on Ethereum and Base
-                  and are not proof of ownership: nothing is signed and no
-                  wallet is connected. You confirm each address before it is
+                  and are not proof of ownership: no signature is asked for a
+                  pasted address. You confirm each address before it is
                   added, and every saved address is listed in the Proof of
                   wealth summary on the right.
                 </p>
@@ -731,7 +734,8 @@ export function WealthStep({
             }}
           >
             Every figure here is read from a public source on Ethereum and Base.
-            Connecting a wallet or pasting an address involves no signature, and
+            Connecting a wallet also signs a challenge, so that wallet is
+            verified for Holdings; pasting an address involves no signature, and
             a public read is not proof of ownership. A connected wallet is saved
             and shown in Holdings as unverified, excluded from the total; the
             connection is read-only and gives Kade no authority over your Safe.
@@ -779,8 +783,9 @@ export function WealthStep({
             }}
           >
             Add this wallet address as a read-only proof-of-wealth source? Its
-            balances are read from a public source on Ethereum and Base; nothing
-            is signed and no wallet is connected.
+            balances are read from a public source on Ethereum and Base; pasting
+            asks for no signature. You can verify it later from Holdings by
+            connecting the wallet that controls it.
           </p>
           <div style={pendingAddressStyle}>{pendingEvm}</div>
           {evmError ? (
@@ -826,8 +831,8 @@ export function WealthStep({
 
 /**
  * The state a watch-only row shows once an address is stored. Deliberately not
- * "Signed": no signature was produced, and the balance was read from a public
- * source.
+ * "Signed": no signature was produced for this row, and the balance was read
+ * from a public source.
  */
 function ReadState() {
   return (
