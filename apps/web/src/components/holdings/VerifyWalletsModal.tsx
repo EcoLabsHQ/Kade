@@ -59,7 +59,7 @@ export function VerifyWalletsModal(props: VerifyWalletsModalProps) {
         className="kade-control"
         style={openButton}
       >
-        Verify wallets
+        Link &amp; verify wallets
       </button>
       {open ? (
         <ModalShell onClose={() => setOpen(false)} configured={props.configured}>

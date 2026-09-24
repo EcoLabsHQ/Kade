@@ -264,31 +264,25 @@ describe('HoldingsScreen', () => {
     ).toBeInTheDocument();
   });
 
-  it('puts a signed and an unsigned wallet in the same list', () => {
+  it('counts only the signed wallets in the table and the footer', () => {
     render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
 
     expect(screen.getByText('In linked wallets')).toBeInTheDocument();
-    // All three wallets appear as rows of the one list.
+    // Only the signed wallet has rows; the pending ones are not rendered here.
     expect(screen.getAllByTitle(ADDRESS).length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle(CONNECTED_ADDRESS).length).toBeGreaterThan(0);
-    expect(screen.getAllByTitle(PASTED_ADDRESS).length).toBeGreaterThan(0);
+    expect(screen.queryAllByTitle(CONNECTED_ADDRESS)).toHaveLength(0);
+    expect(screen.queryAllByTitle(PASTED_ADDRESS)).toHaveLength(0);
     expect(
       screen.getByText('2 wallets signed · balances read-only across 5 chains'),
     ).toBeInTheDocument();
   });
 
-  it('marks the unsigned rows with their provenance and excludes them from the total', () => {
+  it('excludes the pending wallets from the total', () => {
     render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
 
-    expect(
-      screen.getAllByText(/Connected wallet · unverified/).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText(/Pasted address · unverified/).length,
-    ).toBeGreaterThan(0);
-
-    // Neither unsigned balance is added, so neither the sum nor the count moves.
-    expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
+    // The signed wallet's own figure is present; neither pending balance is
+    // added, so neither the sum nor the count moves.
+    expect(screen.getAllByText('$3,280').length).toBeGreaterThan(0);
     expect(screen.queryByText('$4,530')).toBeNull();
     expect(screen.queryByText('$3,980')).toBeNull();
     expect(screen.queryByText('$5,230')).toBeNull();
@@ -308,30 +302,29 @@ describe('HoldingsScreen', () => {
     expect(title).toMatch(/not deployed/i);
   });
 
-  it('marks every unsigned holding with its own Unverified chip and no row action', () => {
+  it('does not render pending wallets as rows; verification is the modal’s job', () => {
     render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
 
-    // One chip per unverified row (connected + pasted), and no per-row action:
-    // verification lives in the modal, not on the row.
-    expect(screen.getAllByText('Unverified')).toHaveLength(2);
-    expect(
-      screen.queryByRole('button', { name: /Connect & sign/ }),
-    ).toBeNull();
-    expect(screen.queryByRole('button', { name: /Verify in modal/ })).toBeNull();
+    // A pending wallet is not a table row: the table shows what counts.
+    expect(screen.queryByText(/Pasted address/)).toBeNull();
+    expect(screen.queryByText(/Connected wallet/)).toBeNull();
+    // No per-row action on the unverified side, and no chip either.
+    expect(screen.queryByRole('button', { name: /Connect & sign/ })).toBeNull();
+    expect(screen.queryByText('Unverified')).toBeNull();
   });
 
-  it('renders the injected Verify wallets control when supplied', () => {
+  it('renders the injected Link & verify wallets control when supplied', () => {
     render(
       <HoldingsScreen
         aggregate={aggregateWithUnverified()}
         renderVerifyWallets={() => (
-          <button type="button">Verify wallets</button>
+          <button type="button">Link &amp; verify wallets</button>
         )}
       />,
     );
 
     expect(
-      screen.getByRole('button', { name: 'Verify wallets' }),
+      screen.getByRole('button', { name: 'Link & verify wallets' }),
     ).toBeInTheDocument();
   });
 

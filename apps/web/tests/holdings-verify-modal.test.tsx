@@ -106,7 +106,9 @@ function renderModal(overrides: Partial<{
 
 /** Open the modal from its control. */
 function openModal() {
-  fireEvent.click(screen.getByRole('button', { name: 'Verify wallets' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Link & verify wallets' }),
+  );
 }
 
 beforeEach(() => {

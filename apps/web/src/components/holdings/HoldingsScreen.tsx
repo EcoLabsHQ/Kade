@@ -218,13 +218,6 @@ function verifiedProvenance(wallet: HoldingWallet): string {
   return `${shortAddress(wallet.address)} · signature-verified`;
 }
 
-/** The provenance line for a displayed-but-unverified wallet. */
-function unverifiedProvenance(wallet: UnverifiedHoldingWallet): string {
-  return `${shortAddress(wallet.address)} · ${provenanceLabel(
-    wallet.provider,
-  )} · unverified`;
-}
-
 /**
  * Turn one wallet's real reads into the table's per-holding rows.
  *
@@ -304,12 +297,19 @@ function assetRows(
   return rows;
 }
 
-/** Every verified then unverified wallet's holdings, flattened into table rows. */
+/**
+ * Every verified wallet's holdings, flattened into table rows.
+ *
+ * Unverified wallets are deliberately NOT rows here: the table shows the
+ * wallets that count, and verification is the modal's job (opened from the
+ * table footer). A pending wallet is listed in the modal, not rendered in the
+ * table.
+ */
 function linkedRows(aggregate: HoldingsAggregate): LinkedRow[] {
   const rows: LinkedRow[] = [];
 
   const push = (
-    wallet: HoldingWallet | UnverifiedHoldingWallet,
+    wallet: HoldingWallet,
     verified: boolean,
     provenance: string,
   ) => {
@@ -319,9 +319,7 @@ function linkedRows(aggregate: HoldingsAggregate): LinkedRow[] {
         ...holding,
         address: wallet.address,
         verified,
-        unverifiedWallet: verified
-          ? null
-          : (wallet as UnverifiedHoldingWallet),
+        unverifiedWallet: null,
         readError: index === 0 ? wallet.readError : null,
       });
     });
@@ -329,9 +327,6 @@ function linkedRows(aggregate: HoldingsAggregate): LinkedRow[] {
 
   for (const wallet of aggregate.wallets) {
     push(wallet, true, verifiedProvenance(wallet));
-  }
-  for (const wallet of aggregate.unverifiedWallets) {
-    push(wallet, false, unverifiedProvenance(wallet));
   }
 
   return rows;
@@ -529,10 +524,6 @@ export function HoldingsScreen({
                     >
                       Move to vault
                     </LockedAction>
-                  ) : row.unverifiedWallet ? (
-                    <Chip tone="warning" dot>
-                      Unverified
-                    </Chip>
                   ) : null}
                 </span>
                 {row.readError ? (
