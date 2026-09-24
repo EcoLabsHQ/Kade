@@ -43,6 +43,7 @@ const hoisted = vi.hoisted(() => ({
 vi.mock('@reown/appkit/react', () => ({
   createAppKit: hoisted.createAppKit,
   useAppKit: () => ({ open: hoisted.open }),
+  useAppKitState: () => ({ open: false }),
 }));
 
 vi.mock('@reown/appkit-adapter-wagmi', () => ({
