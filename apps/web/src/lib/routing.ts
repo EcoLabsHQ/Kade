@@ -5,8 +5,22 @@
  * testable. `src/middleware.ts` supplies the session state.
  */
 
-/** Routes reachable without an application session. */
-export const PUBLIC_PATHS = ['/login', '/auth/callback', '/auth/signout'] as const;
+/**
+ * Routes reachable without an application session.
+ *
+ * `/api/webhooks` is public because a provider calls it server-to-server: it
+ * carries no resident session and authenticates with its own signed payload
+ * (see `src/app/api/webhooks/self/route.ts`). Without this, `middleware.ts`
+ * would redirect the provider to `/login` and the event would never arrive.
+ * The prefix is deliberately narrow: only the webhook subtree is exposed, not
+ * `/api` at large.
+ */
+export const PUBLIC_PATHS = [
+  '/login',
+  '/auth/callback',
+  '/auth/signout',
+  '/api/webhooks',
+] as const;
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(

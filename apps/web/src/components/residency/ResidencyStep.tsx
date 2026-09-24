@@ -6,14 +6,17 @@ import type { Hex } from 'viem';
 import { tokens } from '@/components/ui/tokens';
 import type { ResidencyCheck } from '@/lib/residency/checks';
 import type { ResidencySnapshot } from '@/lib/residency/server';
-import type { SelfVerificationOutcome } from '@/lib/residency/self';
 import type { PermitIssuanceResult } from '@/lib/residency/permit';
 import {
+  createSelfSessionAction,
   issueResidencyPermitAction,
-  startSelfVerificationAction,
+  type SelfSessionActionOutcome,
 } from '@/app/residency/actions';
 import { ServiceFeePayment } from './ServiceFeePayment';
-import { SelfVerificationModal } from './SelfVerificationModal';
+import {
+  SelfVerificationModal,
+  type SelfModalState,
+} from './SelfVerificationModal';
 
 /**
  * The Residency step (D16 / EXE-012), laid out to match the deployed baseline.
@@ -39,16 +42,16 @@ export interface ResidencyStepProps {
   readonly explorerUrl: string;
 }
 
-function selfMessage(outcome: SelfVerificationOutcome): string {
+function toSelfModalState(outcome: SelfSessionActionOutcome): SelfModalState {
   switch (outcome.status) {
+    case 'created':
+      return { status: 'created', verificationUrl: outcome.verificationUrl };
     case 'not-configured':
-      return 'Self is not configured in this environment, so identity cannot be verified yet.';
+      return { status: 'not-configured' };
     case 'unavailable':
-      return outcome.reason;
+      return { status: 'unavailable', reason: outcome.reason };
     case 'unauthenticated':
-      return 'Your session expired. Sign in again.';
-    default:
-      return 'Identity verification is unavailable.';
+      return { status: 'unauthenticated' };
   }
 }
 
@@ -96,6 +99,7 @@ export function ResidencyStep({
   const router = useRouter();
   const [notice, setNotice] = useState<string | null>(null);
   const [selfOpen, setSelfOpen] = useState(false);
+  const [selfState, setSelfState] = useState<SelfModalState | null>(null);
   const { view } = snapshot;
 
   const identity = view.checks.find((c) => c.id === 'identity');
@@ -116,11 +120,11 @@ export function ResidencyStep({
       key: 'identity',
       title: 'Identity verified',
       meta: identity?.state === 'met'
-        ? 'Self proof · kade.kyc.v1 issued'
-        : 'Passport scan with Self · zero-knowledge',
+        ? 'Verified with Self onchain'
+        : 'Passport scan with Self · onchain proof',
       done: identity?.state === 'met',
       action: 'Verify with Self',
-      onClick: () => setSelfOpen(true),
+      onClick: () => void openSelf(),
     },
     {
       key: 'funds',
@@ -156,10 +160,11 @@ export function ResidencyStep({
     router.refresh();
   };
 
-  async function confirmSelf() {
-    setSelfOpen(false);
-    const outcome = await startSelfVerificationAction();
-    setNotice(selfMessage(outcome));
+  async function openSelf() {
+    setSelfOpen(true);
+    setSelfState(null);
+    const outcome = await createSelfSessionAction();
+    setSelfState(toSelfModalState(outcome));
   }
 
   async function issuePermit() {
@@ -343,7 +348,7 @@ export function ResidencyStep({
       <SelfVerificationModal
         open={selfOpen}
         onClose={() => setSelfOpen(false)}
-        onConfirm={() => void confirmSelf()}
+        state={selfState}
       />
 
       {notice ? (
