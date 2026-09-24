@@ -15,6 +15,10 @@ import { isFeePaymentConfigured, loadFeePayment } from '@/lib/payments/server';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { listBitcoinAddresses } from '@/app/onboarding/wealth-actions';
 import { listWalletAddresses } from '@/app/onboarding/wallet-actions';
+import {
+  beginWalletLink,
+  completeWalletLink,
+} from '@/app/holdings/link-actions';
 import { loadOnboardingSnapshot } from '@/lib/onboarding/server';
 import { resolvePreapprovalFeeBreakdown } from '@/lib/onboarding/fee-server';
 import type { PreapprovalFeeBreakdown } from '@/lib/onboarding/fee';
@@ -163,6 +167,8 @@ export default async function OnboardingPage() {
         walletConfigured={walletConfigured}
         network={activeNetworkLabel()}
         accountState={{ kind: 'pending' }}
+        onBegin={beginWalletLink}
+        onComplete={completeWalletLink}
       />
     </WalletProvider>
   );

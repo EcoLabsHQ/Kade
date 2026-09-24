@@ -40,6 +40,10 @@ const hoisted = vi.hoisted(() => ({
     connector: { uid: string; id?: string; name?: string };
     accounts: string[];
   }>,
+  // The ownership signer the Step 3 panel uses when the page supplies the
+  // proof callbacks. Only the wallet half is mocked; the server half is the
+  // injected callback in each test.
+  signMessageAsync: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: hoisted.push, refresh: hoisted.refresh }),
@@ -100,6 +104,7 @@ vi.mock('wagmi', () => ({
   useAccount: () => ({ connector: hoisted.connector }),
   useConnections: () => hoisted.connections,
   useDisconnect: () => ({ disconnect: hoisted.disconnect }),
+  useSignMessage: () => ({ signMessageAsync: hoisted.signMessageAsync }),
 }));
 // The fee payment write is a server action; it is mocked so the fee step is
 // exercised against a recorded server outcome.
@@ -181,6 +186,7 @@ afterEach(() => {
   hoisted.account.address = undefined;
   hoisted.readAddressBalances.mockReset();
   hoisted.disconnect.mockReset();
+  hoisted.signMessageAsync.mockReset();
   hoisted.connector = undefined;
   hoisted.connections = [];
   hoisted.network.chainId = 11155111;
@@ -912,6 +918,14 @@ function renderRestoredFlow(
   initialBitcoinAddresses?: readonly BitcoinAddressRecord[],
   initialEvmAddresses?: readonly EvmAddressRecord[],
   connected = false,
+  ownership?: {
+    onBegin: (address: string) => Promise<{ message: string }>;
+    onComplete: (input: {
+      address: string;
+      message: string;
+      signature: string;
+    }) => Promise<{ ok: boolean }>;
+  },
 ) {
   if (connected) connectWallet();
   return render(
@@ -934,6 +948,8 @@ function renderRestoredFlow(
       store={store}
       initialBitcoinAddresses={initialBitcoinAddresses}
       initialEvmAddresses={initialEvmAddresses}
+      onBegin={ownership?.onBegin}
+      onComplete={ownership?.onComplete}
     />,
   );
 }
@@ -1414,6 +1430,79 @@ describe('a wallet is counted once however it arrives', () => {
     // The connected address never takes the pasted path: that would write the
     // wrong provider and keep it out of the unverified Holdings section.
     expect(hoisted.addWalletAddress).not.toHaveBeenCalled();
+  });
+});
+
+describe('Step 3 signs a connected wallet when the page supplies the proof callbacks', () => {
+  it('saves and signs the connected wallet, and never gates Continue on it', async () => {
+    const { store } = makeStore();
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
+    const onComplete = vi.fn(async () => ({ ok: true }));
+    hoisted.signMessageAsync.mockResolvedValue('0xsignature');
+    renderRestoredFlow(store, undefined, undefined, true, {
+      onBegin,
+      onComplete,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    // The wallet is saved first, then the server challenge is signed.
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(CONNECTED_ADDRESS),
+    );
+    await waitFor(() => expect(onBegin).toHaveBeenCalledWith(CONNECTED_ADDRESS));
+    expect(hoisted.signMessageAsync).toHaveBeenCalledWith({
+      account: CONNECTED_ADDRESS,
+      message: `challenge:${CONNECTED_ADDRESS}`,
+    });
+    await waitFor(() =>
+      expect(onComplete).toHaveBeenCalledWith({
+        address: CONNECTED_ADDRESS,
+        message: `challenge:${CONNECTED_ADDRESS}`,
+        signature: '0xsignature',
+      }),
+    );
+
+    // A signature is never required to proceed: the saved row still satisfies
+    // Step 3 and Continue stays available.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled(),
+    );
+  });
+
+  it('never signs a pasted Bitcoin address', async () => {
+    const { store } = makeStore();
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
+    hoisted.addBitcoinAddress.mockResolvedValue(BITCOIN_RECORD);
+    renderRestoredFlow(store, undefined, undefined, false, {
+      onBegin,
+      onComplete: vi.fn(async () => ({ ok: true })),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+    await screen.findByRole('heading', { name: /show proof of wealth/i });
+
+    openBitcoinPaste();
+    fireEvent.change(screen.getByLabelText('Bitcoin address'), {
+      target: { value: BITCOIN_RECORD.address },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm Bitcoin address' }),
+    );
+    await screen.findByText(BITCOIN_RECORD.address);
+
+    expect(hoisted.addBitcoinAddress).toHaveBeenCalledWith(
+      BITCOIN_RECORD.address,
+    );
+    // A pasted Bitcoin address has nothing an EVM connection can sign, so the
+    // ownership path is never reached.
+    expect(onBegin).not.toHaveBeenCalled();
+    expect(hoisted.signMessageAsync).not.toHaveBeenCalled();
   });
 });
 

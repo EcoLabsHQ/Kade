@@ -30,6 +30,9 @@ const hoisted = vi.hoisted(() => ({
   addWalletAddress: vi.fn(),
   addConnectedWallet: vi.fn(),
   removeWalletAddress: vi.fn(),
+  // Ownership signing: the server half is injected per test, the wallet half is
+  // this recorded signer.
+  signMessageAsync: vi.fn(),
 }));
 
 vi.mock('@reown/appkit/react', () => ({
@@ -38,6 +41,7 @@ vi.mock('@reown/appkit/react', () => ({
 vi.mock('wagmi', () => ({
   useConnections: () => hoisted.connections,
   useDisconnect: () => ({ disconnect: hoisted.disconnect }),
+  useSignMessage: () => ({ signMessageAsync: hoisted.signMessageAsync }),
 }));
 vi.mock('@/app/onboarding/wallet-actions', () => ({
   readAddressBalances: hoisted.readAddressBalances,
@@ -104,6 +108,7 @@ beforeEach(() => {
     address === ADDRESS_2 ? RECORD_2 : RECORD,
   );
   hoisted.removeWalletAddress.mockResolvedValue(undefined);
+  hoisted.signMessageAsync.mockResolvedValue('0xsignature');
 });
 
 afterEach(cleanup);
@@ -430,5 +435,176 @@ describe('ConnectedWalletPanel saves connected wallets', () => {
           .every((button) => !(button as HTMLButtonElement).disabled),
       ).toBe(true),
     );
+  });
+});
+
+/**
+ * The panel with the step's save handler AND the page's ownership callbacks
+ * wired in, plus the shared saved list. This is the Step 3 shape:
+ * connect → read → save → sign → disconnect, with a skippable signature.
+ */
+function SigningAddressesHarness({
+  atCap = false,
+  onBegin,
+  onComplete,
+  onLinked,
+}: {
+  atCap?: boolean;
+  onBegin: (address: string) => Promise<{ message: string }>;
+  onComplete: (input: {
+    address: string;
+    message: string;
+    signature: string;
+  }) => Promise<{ ok: boolean }>;
+  onLinked?: () => void;
+}) {
+  const [addresses, setAddresses] = useState<readonly EvmAddressRecord[]>([]);
+
+  async function add(address: string) {
+    const record = await hoisted.addConnectedWallet(address);
+    setAddresses((current) =>
+      current.some((existing) => existing.address === record.address)
+        ? current.map((existing) =>
+            existing.address === record.address ? record : existing,
+          )
+        : [...current, record],
+    );
+  }
+
+  return (
+    <>
+      <ConnectedWalletPanel
+        configured
+        onChange={() => {}}
+        onSaveConnectedWallet={add}
+        ownership={{ onBegin, onComplete, onLinked }}
+        atCap={atCap}
+      />
+      {addresses.map((record) => (
+        <div key={record.address}>
+          <span title={record.address}>{record.address}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
+  it('saves, signs the server challenge, verifies and disconnects', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
+    const onComplete = vi.fn(async () => ({ ok: true }));
+    const onLinked = vi.fn();
+
+    render(
+      <SigningAddressesHarness
+        onBegin={onBegin}
+        onComplete={onComplete}
+        onLinked={onLinked}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    await waitFor(() => expect(onBegin).toHaveBeenCalledWith(ADDRESS));
+    expect(hoisted.signMessageAsync).toHaveBeenCalledWith({
+      account: ADDRESS,
+      message: `challenge:${ADDRESS}`,
+    });
+    await waitFor(() =>
+      expect(onComplete).toHaveBeenCalledWith({
+        address: ADDRESS,
+        message: `challenge:${ADDRESS}`,
+        signature: '0xsignature',
+      }),
+    );
+    expect(onLinked).toHaveBeenCalledTimes(1);
+
+    // Persist runs before the signature, so the row always exists first.
+    expect(
+      hoisted.addConnectedWallet.mock.invocationCallOrder[0],
+    ).toBeLessThan(onBegin.mock.invocationCallOrder[0]!);
+
+    // Torn down and back to Connect; the saved row remains.
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2),
+    );
+  });
+
+  it('keeps the address saved and unverified when the signature is skipped', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    // The wallet prompt never settles, so the skip control stays available.
+    hoisted.signMessageAsync.mockImplementation(() => new Promise(() => {}));
+    const onComplete = vi.fn(async () => ({ ok: true }));
+
+    render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={onComplete}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
+
+    // No verification, but the row was persisted and the connection is gone.
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2),
+    );
+  });
+
+  it('keeps the address saved and unverified when the signature fails', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    hoisted.signMessageAsync.mockRejectedValue(new Error('User rejected'));
+    const onComplete = vi.fn(async () => ({ ok: true }));
+
+    render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={onComplete}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Connect' })).toHaveLength(2),
+    );
+  });
+
+  it('keeps the address saved and unverified when the server rejects the signature', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const onLinked = vi.fn();
+
+    render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: false })}
+        onLinked={onLinked}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+    expect(onLinked).not.toHaveBeenCalled();
+    expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
   });
 });

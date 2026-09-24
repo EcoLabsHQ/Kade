@@ -2,13 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAppKit } from '@reown/appkit/react';
-import { useConnections, useDisconnect } from 'wagmi';
+import { useConnections, useDisconnect, useSignMessage } from 'wagmi';
 import { readAddressBalances } from '@/app/onboarding/wallet-actions';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
 import { WalletGlyph } from '@/components/icons/WalletGlyph';
 import { shortAddress } from '@/lib/wealth/format';
+import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
+import {
+  useConnectPersistSign,
+  type SignMessageAsync,
+} from '@/components/wallet/useConnectPersistSign';
 import {
   MAX_WALLET_ADDRESSES,
   type EvmChainBalance,
@@ -44,19 +49,28 @@ import {
  * (the 5-address cap, for example), so the resident is not left with a
  * half-saved wallet.
  *
- * The connection is used only to **read** (and, once saved, to hand the address
- * to that same read-only action). It confers no authority over the resident
- * Safe, and it is not proof the server can verify: the address comes from the
- * browser, so the screen says the balances were read from a public source
- * rather than claiming verified ownership.
+ * When the step also supplies the ownership callbacks, the saved address is
+ * **signed** in the same pass (through the shared `useConnectPersistSign`), so
+ * the row appears verified in Holdings without a second trip to its modal. The
+ * signature is optional: "Skip for now" is offered while it is requested, and a
+ * skip or a failure leaves exactly the persisted, unverified row above. The
+ * store always happens first, so no attempt can lose the row. Only a real
+ * connection signs — a pasted Bitcoin or EVM address never reaches this panel
+ * and never produces a signature.
  *
- * Every AppKit and wagmi hook lives in `ConfiguredWalletPanel`, which is mounted
- * only when a WalletConnect project id is configured and `WalletProvider` has
- * therefore mounted a `WagmiProvider`. Calling those hooks without a provider
- * throws, and the route has no error boundary, so the unconfigured environment
- * renders `UnconfiguredWalletPanel` instead: pure static markup with no hooks,
- * an honest "not configured" notice, and no way to reach a modal that does not
- * exist.
+ * The connection is used only to **read** and, once saved, to sign the
+ * server-issued challenge. It confers no authority over the resident Safe: the
+ * address comes from the browser, and only the server's verification of the
+ * signature sets `verified_at`.
+ *
+ * Every AppKit and wagmi hook lives in `ConfiguredWalletPanel` (and, only when
+ * the ownership callbacks are supplied, its `SigningConfiguredWalletPanel`
+ * wrapper). Both are mounted only when a WalletConnect project id is configured
+ * and `WalletProvider` has therefore mounted a `WagmiProvider`. Calling those
+ * hooks without a provider throws, and the route has no error boundary, so the
+ * unconfigured environment renders `UnconfiguredWalletPanel` instead: pure
+ * static markup with no hooks, an honest "not configured" notice, and no way to
+ * reach a modal that does not exist.
  */
 
 /** What the panel reports upward, so the step can count it. */
@@ -82,8 +96,26 @@ export interface ConnectedWalletPanelProps {
    * remains. When omitted the panel only tracks live connections.
    */
   readonly onSaveConnectedWallet?: (address: string) => Promise<void> | void;
+  /**
+   * The ownership-proof callbacks, injected by the page. When supplied, a
+   * connected address is signed after it is saved, so it appears verified in
+   * Holdings. The signature is always skippable and a skip or failure leaves
+   * the saved row untouched. Omitted in read-only/Step-3-without-proof use.
+   */
+  readonly ownership?: ConnectedWalletOwnership;
   /** True when the shared EVM-address cap is already reached. */
   readonly atCap?: boolean;
+}
+
+/**
+ * The ownership callbacks this panel needs, a subset of `OwnershipCallbacks`.
+ * `onLinked` is optional here: onboarding has nothing to refresh after a
+ * verification, while Holdings re-reads its aggregate.
+ */
+export interface ConnectedWalletOwnership {
+  readonly onBegin: OwnershipCallbacks['onBegin'];
+  readonly onComplete: OwnershipCallbacks['onComplete'];
+  readonly onLinked?: OwnershipCallbacks['onLinked'];
 }
 
 const ROWS = [
@@ -146,16 +178,54 @@ export function ConnectedWalletPanel({
   configured,
   onChange,
   onSaveConnectedWallet,
+  ownership,
   atCap = false,
 }: ConnectedWalletPanelProps) {
   // Gate the hooks on configuration, exactly as FeeStep gates FeePayment on
   // `paymentConfigured`: a component that calls the wallet hooks is never
   // mounted unless WagmiProvider/createAppKit are actually present.
   if (!configured) return <UnconfiguredWalletPanel />;
+  // Signing needs `useSignMessage`; it is called only when the page actually
+  // supplied the proof callbacks, so a panel that never signs never mounts the
+  // signer. This is a component boundary, not a conditional hook.
+  if (ownership) {
+    return (
+      <SigningConfiguredWalletPanel
+        onChange={onChange}
+        onSaveConnectedWallet={onSaveConnectedWallet}
+        ownership={ownership}
+        atCap={atCap}
+      />
+    );
+  }
   return (
     <ConfiguredWalletPanel
       onChange={onChange}
       onSaveConnectedWallet={onSaveConnectedWallet}
+      atCap={atCap}
+    />
+  );
+}
+
+/** The configured panel with the ownership signer supplied. */
+function SigningConfiguredWalletPanel({
+  onChange,
+  onSaveConnectedWallet,
+  ownership,
+  atCap,
+}: Readonly<{
+  onChange: (states: readonly ConnectedWalletState[] | null) => void;
+  onSaveConnectedWallet?: (address: string) => Promise<void> | void;
+  ownership: ConnectedWalletOwnership;
+  atCap: boolean;
+}>) {
+  const { signMessageAsync } = useSignMessage();
+  return (
+    <ConfiguredWalletPanel
+      onChange={onChange}
+      onSaveConnectedWallet={onSaveConnectedWallet}
+      ownership={ownership}
+      signMessageAsync={signMessageAsync}
       atCap={atCap}
     />
   );
@@ -247,10 +317,14 @@ function UnconfiguredWalletPanel() {
 function ConfiguredWalletPanel({
   onChange,
   onSaveConnectedWallet,
+  ownership,
+  signMessageAsync,
   atCap,
 }: Readonly<{
   onChange: (states: readonly ConnectedWalletState[] | null) => void;
   onSaveConnectedWallet?: (address: string) => Promise<void> | void;
+  ownership?: ConnectedWalletOwnership;
+  signMessageAsync?: SignMessageAsync;
   atCap: boolean;
 }>) {
   const { open } = useAppKit();
@@ -277,6 +351,26 @@ function ConfiguredWalletPanel({
 
   const disconnectRef = useRef(disconnect);
   disconnectRef.current = disconnect;
+
+  // The shared connect → persist → sign → disconnect attempt. It persists
+  // through the same save handler and signs only when the page supplied the
+  // ownership callbacks. A store failure keeps the connection live for retry
+  // (`disconnectOnPersistFailure: false`), which is this panel's contract.
+  const {
+    phase: signPhase,
+    activeAddress,
+    run: runAttempt,
+    skip: skipSignature,
+  } = useConnectPersistSign({
+    persist: async (address) => {
+      await addWalletAddressRef.current?.(address);
+    },
+    signMessageAsync,
+    onBegin: ownership?.onBegin,
+    onComplete: ownership?.onComplete,
+    onLinked: ownership?.onLinked,
+    disconnectOnPersistFailure: false,
+  });
 
   // Addresses already saved this session, keyed by connector and address, so a
   // connector wagmi still reports cannot be saved or shown a second time.
@@ -372,9 +466,10 @@ function ConfiguredWalletPanel({
   // `readError` rather than dropping it from the list.
   //
   // When the step supplies a save handler, a completed read is also saved as a
-  // watch-only row and the connection is then torn down. The save is attempted
-  // once per read; a failure keeps the live row (and shows the server's
-  // message) instead of silently losing the wallet.
+  // watch-only row, signed when ownership callbacks are present, and then torn
+  // down. The attempt runs once per read; a save failure keeps the live row
+  // (and shows the server's message) instead of silently losing the wallet. A
+  // skip or a signature failure still leaves the saved row, unverified.
   useEffect(() => {
     for (const wallet of wallets) {
       if (!wallet.reading || readsInFlight.current.has(wallet.uid)) continue;
@@ -398,28 +493,27 @@ function ConfiguredWalletPanel({
 
           const add = addWalletAddressRef.current;
           if (!add) return;
-          try {
-            await add(wallet.address);
-          } catch (cause) {
-            if (!mounted.current) return;
+          const outcome = await runAttempt({
+            address: wallet.address,
+            connector: wallet.connector,
+          });
+          if (!mounted.current) return;
+          if (!outcome.persisted) {
+            // The store failed; the attempt already left the connection live.
             setStoreError(
-              cause instanceof Error
-                ? cause.message
-                : 'The address could not be saved as a watch-only row.',
+              outcome.error ??
+                'The address could not be saved as a watch-only row.',
             );
             return;
           }
-          if (!mounted.current) return;
-          // Saved. Drop the live entry and tear the connection down: the saved
-          // row is what remains, and the next connect starts clean.
+          // Persisted, whether or not the signature verified. Drop the live
+          // entry and report the settled list in the same step, so the parent's
+          // summary cannot observe a transient "still connected" state while
+          // the report effect waits for the next render.
           storedKeys.current.add(
             `${wallet.uid}:${wallet.address.toLowerCase()}`,
           );
           setStoreError(null);
-          disconnectRef.current({ connector: wallet.connector });
-          // Drop the live entry and report the settled list in the same step, so
-          // the parent's summary cannot observe a transient "still connected"
-          // state while the report effect waits for the next render.
           const remaining = walletsRef.current.filter(
             (entry) => entry.uid !== wallet.uid,
           );
@@ -450,7 +544,7 @@ function ConfiguredWalletPanel({
           readsInFlight.current.delete(wallet.uid);
         });
     }
-  }, [wallets, report]);
+  }, [wallets, report, runAttempt]);
 
   // Report the deduplicated list upward. An empty list is reported as null, the
   // "nothing is connected" shape the step already understood.
@@ -508,6 +602,15 @@ function ConfiguredWalletPanel({
         const awaitingSave =
           connectedHere && onSaveConnectedWallet !== undefined && !storeError;
         const needsManualDisconnect = connectedHere && !awaitingSave;
+        // The signature is optional: while it is being requested, the row
+        // offers a way out that keeps the already-saved row.
+        const signingHere =
+          signPhase === 'signing' &&
+          rowWallets.some(
+            (entry) =>
+              activeAddress !== null &&
+              entry.address.toLowerCase() === activeAddress.toLowerCase(),
+          );
 
         return (
           <WalletRow
@@ -519,7 +622,16 @@ function ConfiguredWalletPanel({
                 : row.subtitle
             }
             action={
-              needsManualDisconnect ? (
+              signingHere ? (
+                <button
+                  type="button"
+                  onClick={skipSignature}
+                  title="The address is already saved; skip signing it for now."
+                  style={connectButton}
+                >
+                  Skip for now
+                </button>
+              ) : needsManualDisconnect ? (
                 <button
                   type="button"
                   onClick={() => disconnectMethod(rowWalletConnect)}

@@ -33,6 +33,8 @@ import type {
   OnboardingSnapshot,
   OnboardingStore,
 } from '@/lib/onboarding/persistence';
+import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
+import type { ConnectedWalletOwnership } from '@/components/wallet/ConnectedWalletPanel';
 import { OnboardingWizard } from './OnboardingWizard';
 import { FeeStep, type FileRow } from './FeeStep';
 import { WealthStep } from './WealthStep';
@@ -86,6 +88,16 @@ export interface OnboardingFlowProps {
   readonly explorerUrl: string;
   /** True when the WalletConnect project id is configured for this environment. */
   readonly walletConfigured: boolean;
+  /**
+   * The ownership-proof server callbacks, injected by the page (the same
+   * `beginWalletLink` / `completeWalletLink` Holdings uses). When both are
+   * supplied, connecting a wallet in Step 3 also offers the signature; skipping
+   * or failing still leaves the address saved and unverified.
+   */
+  readonly onBegin?: OwnershipCallbacks['onBegin'];
+  readonly onComplete?: OwnershipCallbacks['onComplete'];
+  /** Called after a successful verification so the caller can refresh. */
+  readonly onLinked?: OwnershipCallbacks['onLinked'];
 }
 
 function steps(current: Step, paid: boolean): readonly StepperItem[] {
@@ -144,8 +156,19 @@ export function OnboardingFlow({
   usdcAddress,
   explorerUrl,
   walletConfigured,
+  onBegin,
+  onComplete,
+  onLinked,
 }: OnboardingFlowProps) {
   const router = useRouter();
+
+  // The ownership callbacks are only usable as a pair; the page supplies both
+  // or neither. Bundled for the panel, which signs only when it receives them.
+  const connectedWalletOwnership = useMemo<ConnectedWalletOwnership | undefined>(
+    () =>
+      onBegin && onComplete ? { onBegin, onComplete, onLinked } : undefined,
+    [onBegin, onComplete, onLinked],
+  );
   // The passkey is created before the pre-registration steps, as the reference's
   // Step 1 does in the background.
   const [credentialId, setCredentialId] = useState<string | null>(
@@ -425,6 +448,7 @@ export function OnboardingFlow({
             onAddWalletAddress={handleAddWalletAddress}
             onRemoveWalletAddress={handleRemoveWalletAddress}
             onSaveConnectedWallet={handleAddConnectedWallet}
+            ownership={connectedWalletOwnership}
           />
         ) : (
           <FeeStep
