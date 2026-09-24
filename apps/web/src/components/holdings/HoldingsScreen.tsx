@@ -24,9 +24,10 @@ import {
  *
  * The screen renders the aggregate `aggregateHoldings` produced: the four
  * summary cards, the per-chain totals over the signature-verified wallets, the
- * qualified-vault section, the verified per-wallet breakdown, and one labelled
- * section for every unverified wallet (connected or pasted EVM) with its
- * provenance and a per-row Verify affordance.
+ * qualified-vault section, and the reference's single "In linked wallets" list.
+ * That list shows **every** wallet — a signed row (counted in the total) and an
+ * unsigned row (`connected-wallet` or `pasted-address`, carrying its provenance
+ * and excluded from the total) side by side, each with its own action.
  *
  * Truthfulness rules honoured here:
  *
@@ -37,26 +38,35 @@ import {
  *    one.
  *  - "Balances by chain" says, and renders, only the chains we actually read:
  *    Ethereum and Base. The reference's Arbitrum/Optimism/Celo are omitted.
- *  - Reflect/USDT+ and "Move to vault" are features that do not exist in Week 2;
- *    the Reflect card is rendered as explicitly unavailable, never functional.
+ *  - "Move to vault" needs a Safe transaction from the passkey signer, which is
+ *    not deployed (EXE-011), and the qualified vault itself is beyond Week 2
+ *    (§4.3), so the action is rendered locked with that real reason.
+ *  - Reflect/USDT+ is a feature that does not exist in Week 2; its card is
+ *    rendered as explicitly unavailable, never functional.
  *
  * Presentational discipline: everything comes in as props. The wallet-connection
- * and signature machinery for the per-row Verify action is injected as
- * `renderVerify`, so this component renders without a wallet and its tests never
- * need one.
+ * and signature machinery for the per-row "Connect & sign" action and the
+ * "+ Link another wallet" action is injected as `renderConnectSign` /
+ * `renderLinkAnother`, so this component renders without a wallet and its tests
+ * never need one.
  */
 export interface HoldingsScreenProps {
   readonly aggregate: HoldingsAggregate;
   /** The resident's Safe address from `safe_deployments`, or null/absent. */
   readonly safeAddress?: string | null;
-  /** The ownership-proof link panel, injected so this stays presentational. */
-  readonly linkPanel?: ReactNode;
   /**
-   * Renders the per-row Verify affordance for an unverified wallet. Injected
-   * because proving control needs the wallet connection and signature
+   * Renders the per-row "Connect & sign" affordance for an unverified wallet.
+   * Injected because proving control needs the wallet connection and signature
    * machinery; when omitted, the row still shows its provenance and exclusion.
    */
-  readonly renderVerify?: (wallet: UnverifiedHoldingWallet) => ReactNode;
+  readonly renderConnectSign?: (
+    wallet: UnverifiedHoldingWallet,
+  ) => ReactNode;
+  /**
+   * Renders the "+ Link another wallet" action. Injected because it connects a
+   * wallet and persists the address through a server action.
+   */
+  readonly renderLinkAnother?: () => ReactNode;
 }
 
 /**
@@ -180,8 +190,8 @@ function chainRow(chain: EvmChainBalance) {
 export function HoldingsScreen({
   aggregate,
   safeAddress,
-  linkPanel,
-  renderVerify,
+  renderConnectSign,
+  renderLinkAnother,
 }: HoldingsScreenProps) {
   const {
     total,
@@ -354,23 +364,24 @@ export function HoldingsScreen({
         </p>
       </Card>
 
-      {linkPanel ? (
-        <div style={{ marginBottom: '16px' }}>{linkPanel}</div>
-      ) : null}
-
       <Card radius={14}>
         <div style={sectionHeader}>
-          <h2 style={sectionHeading}>Linked wallets</h2>
-          {walletCount > 0 ? (
-            <Chip tone="success">Signature-verified</Chip>
-          ) : null}
+          <h2 style={sectionHeading}>In linked wallets</h2>
+          <span style={sectionNote}>
+            Proof of wealth · signed rows count in the total
+          </span>
         </div>
+        <p style={{ ...bodyNote, marginTop: '10px' }}>
+          Every wallet you have added, signed or not. A signed row is counted in
+          the total above; an unsigned row is marked unverified, carries its
+          provenance, and is <strong>excluded from the total</strong> until the
+          wallet that controls it signs. Only a signed wallet can move funds to
+          the vault.
+        </p>
 
-        {walletCount === 0 ? (
+        {walletCount + unverifiedCount === 0 ? (
           <p style={emptyNote}>
-            No signed wallet is linked yet. Connect a wallet and sign the
-            challenge to show its holdings. A pasted EVM address stays in
-            Unverified wallets until its wallet signs.
+            No wallets linked yet. Use + Link another wallet to add one.
           </p>
         ) : (
           <div style={{ marginTop: '10px' }}>
@@ -401,11 +412,19 @@ export function HoldingsScreen({
 
                 {wallet.chains.map(chainRow)}
 
-                <p style={bodyNote}>
-                  Balances read from a public source. The signature proves
-                  control of this address; it is not a login and gives Kade no
-                  authority over your Safe.
-                </p>
+                <div style={actionRow}>
+                  <span style={actionNote}>
+                    Counted in the total above. The signature is not a login and
+                    gives Kade no authority over your Safe.
+                  </span>
+                  <LockedAction
+                    height={32}
+                    reason="Moving funds to the vault needs a Safe transaction from your passkey signer. That signer contract (EXE-011) is not deployed, and the qualified vault (KadeLock) is beyond the Week 2 envelope (§4.3)."
+                    style={rowActionButton}
+                  >
+                    Move to vault
+                  </LockedAction>
+                </div>
                 {wallet.readError ? (
                   <div role="alert" style={errorText}>
                     {wallet.readError}
@@ -413,24 +432,7 @@ export function HoldingsScreen({
                 ) : null}
               </div>
             ))}
-          </div>
-        )}
-      </Card>
 
-      {unverifiedCount > 0 ? (
-        <Card radius={14} style={{ marginTop: '16px' }}>
-          <div style={sectionHeader}>
-            <h2 style={sectionHeading}>Unverified wallets</h2>
-            <Chip tone="warning">Unverified</Chip>
-          </div>
-          <p style={{ ...bodyNote, marginTop: '10px' }}>
-            A connected wallet and a pasted EVM address, shown with their
-            provenance. Neither is a signature, so neither is evidence of
-            control; both are <strong>excluded from the total</strong> until
-            the wallet that controls the address signs a challenge.
-          </p>
-
-          <div style={{ marginTop: '10px' }}>
             {unverifiedWallets.map((wallet) => (
               <div key={wallet.address} style={walletRow}>
                 <div style={walletHeader}>
@@ -458,21 +460,12 @@ export function HoldingsScreen({
 
                 {wallet.chains.map(chainRow)}
 
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    marginTop: '8px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span style={{ fontSize: '12px', color: tokens.muted }}>
+                <div style={actionRow}>
+                  <span style={actionNote}>
                     Read from a public source. Not evidence of control; excluded
                     from the total.
                   </span>
-                  {renderVerify ? renderVerify(wallet) : null}
+                  {renderConnectSign ? renderConnectSign(wallet) : null}
                 </div>
                 {wallet.readError ? (
                   <div role="alert" style={errorText}>
@@ -482,8 +475,17 @@ export function HoldingsScreen({
               </div>
             ))}
           </div>
-        </Card>
-      ) : null}
+        )}
+
+        <div style={listFooter}>
+          <span style={sectionNote}>
+            {walletCount === 0
+              ? 'No wallets signed yet'
+              : `${walletCount} wallet${walletCount === 1 ? '' : 's'} signed · balances read-only`}
+          </span>
+          {renderLinkAnother ? renderLinkAnother() : null}
+        </div>
+      </Card>
 
       <Card radius={14} style={{ marginTop: '16px' }}>
         <div
@@ -614,6 +616,36 @@ const chipRow: CSSProperties = {
 const meta: CSSProperties = {
   fontSize: '12px',
   color: tokens.muted,
+};
+
+const actionRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '10px',
+  marginTop: '8px',
+  flexWrap: 'wrap',
+};
+
+const actionNote: CSSProperties = {
+  fontSize: '12px',
+  color: tokens.muted,
+  maxWidth: '58ch',
+};
+
+/** Sizing for the small per-row locked control, merged under `lockedStyle`. */
+const rowActionButton: CSSProperties = {
+  fontSize: '12.5px',
+  padding: '0 14px',
+};
+
+const listFooter: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '12px',
+  marginTop: '16px',
+  flexWrap: 'wrap',
 };
 
 const errorText: CSSProperties = {

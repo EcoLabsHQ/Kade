@@ -9,12 +9,12 @@ import type { EvmChainBalance } from '@/lib/wealth/types';
 import { shortAddress } from '@/lib/wealth/format';
 
 /**
- * The Holdings screen renders the aggregate over signed wallets and one labelled
- * section for every unverified wallet. It takes a fully-built aggregate, so the
- * exclusion proof lives in the aggregation tests; here we pin what the resident
- * actually sees: the reference's summary cards, the honest qualified-vault
- * state, the Ethereum/Base-only chain totals, and the unverified rows with their
- * provenance and per-row Verify action.
+ * The Holdings screen renders the aggregate over signed wallets and the
+ * reference's single "In linked wallets" list. It takes a fully-built aggregate,
+ * so the exclusion proof lives in the aggregation tests; here we pin what the
+ * resident actually sees: the reference's summary cards, the honest
+ * qualified-vault state, the Ethereum/Base-only chain totals, and one list where
+ * each wallet carries its own state, provenance and action.
  */
 
 const ADDRESS = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
@@ -80,7 +80,7 @@ function unverified(
   };
 }
 
-/** One connected-wallet row and one pasted-address row, both unverified. */
+/** One connected-wallet row and one pasted-address row, both unsigned. */
 function aggregateWithUnverified(): HoldingsAggregate {
   return aggregate({
     unverifiedWallets: [
@@ -104,14 +104,14 @@ function aggregateWithUnverified(): HoldingsAggregate {
 }
 
 describe('HoldingsScreen', () => {
-  it('shows the signed total and the per-wallet breakdown', () => {
+  it('shows the signed total and the signed row breakdown', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
 
     expect(screen.getByText('Holdings')).toBeInTheDocument();
     // The total, the first wallet's value and its Ethereum chain all read $3,280.
     expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('Signature-verified').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Signed')).toHaveLength(2);
+    expect(screen.getByText('2 signature-verified wallets')).toBeInTheDocument();
     expect(
       screen.getByText(/Ethereum · 1\.000000 ETH · 780\.000000 USDC/),
     ).toBeInTheDocument();
@@ -178,14 +178,104 @@ describe('HoldingsScreen', () => {
         /Nothing qualified yet — move assets from your wallets below/,
       ),
     ).toBeInTheDocument();
-    // It cannot imply the vault exists: it says it is not deployed and that no
-    // lock date, threshold or yield applies.
-    expect(
-      screen.getAllByText(/is not deployed/i).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/is not deployed/i).length).toBeGreaterThan(0);
   });
 
-  it('invites linking when nothing is verified yet', () => {
+  it('does not claim signed wallets are uncounted in the one list', () => {
+    render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
+
+    // The reference's "not counted until moved" would be false for a signed
+    // wallet, so the section says what is actually true.
+    expect(screen.getByText('In linked wallets')).toBeInTheDocument();
+    expect(
+      screen.getByText('Proof of wealth · signed rows count in the total'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/not counted until moved/i)).toBeNull();
+  });
+
+  it('puts a signed and an unsigned wallet in the same list', () => {
+    render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
+
+    expect(screen.getByText('In linked wallets')).toBeInTheDocument();
+    // All three wallets are rows of the one list.
+    expect(screen.getByTitle(ADDRESS)).toBeInTheDocument();
+    expect(screen.getByTitle(CONNECTED_ADDRESS)).toBeInTheDocument();
+    expect(screen.getByTitle(PASTED_ADDRESS)).toBeInTheDocument();
+    expect(screen.getByText('2 wallets signed · balances read-only')).toBeInTheDocument();
+  });
+
+  it('marks the unsigned rows with their provenance and excludes them from the total', () => {
+    render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
+
+    expect(screen.getByText(/Connected wallet · chains 1/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Pasted address · chains 1, 8453/),
+    ).toBeInTheDocument();
+
+    // Neither unsigned balance is added, so neither the sum nor the count moves.
+    expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText('$4,530')).toBeNull();
+    expect(screen.queryByText('$3,980')).toBeNull();
+    expect(screen.queryByText('$5,230')).toBeNull();
+    expect(screen.getByText('2 signature-verified wallets')).toBeInTheDocument();
+  });
+
+  it('renders Move to vault on the signed row, locked with the real reason', () => {
+    render(<HoldingsScreen aggregate={aggregate()} />);
+
+    const move = screen.getAllByRole('button', { name: 'Move to vault' });
+    expect(move).toHaveLength(2); // one per signed row
+    for (const button of move) {
+      expect(button).toBeDisabled();
+    }
+    const title = move[0]!.getAttribute('title') ?? '';
+    expect(title).toMatch(/EXE-011/);
+    expect(title).toMatch(/not deployed/i);
+  });
+
+  it('invokes renderConnectSign once per unsigned row, whatever its provenance', () => {
+    const renderConnectSign = vi.fn((wallet: UnverifiedHoldingWallet) => (
+      <button type="button" aria-label={`Connect & sign ${wallet.address}`}>
+        Connect &amp; sign
+      </button>
+    ));
+
+    render(
+      <HoldingsScreen
+        aggregate={aggregateWithUnverified()}
+        renderConnectSign={renderConnectSign}
+      />,
+    );
+
+    expect(renderConnectSign).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByRole('button', { name: `Connect & sign ${CONNECTED_ADDRESS}` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: `Connect & sign ${PASTED_ADDRESS}` }),
+    ).toBeInTheDocument();
+    // The signed rows never get the connect action.
+    expect(
+      screen.queryByRole('button', { name: `Connect & sign ${ADDRESS}` }),
+    ).toBeNull();
+  });
+
+  it('renders the injected + Link another wallet control', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregateWithUnverified()}
+        renderLinkAnother={() => (
+          <button type="button">+ Link another wallet</button>
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: '+ Link another wallet' }),
+    ).toBeInTheDocument();
+  });
+
+  it('invites linking when no wallet is linked at all', () => {
     render(
       <HoldingsScreen
         aggregate={aggregate({
@@ -200,68 +290,8 @@ describe('HoldingsScreen', () => {
 
     expect(screen.getByText('Link a wallet to begin')).toBeInTheDocument();
     expect(
-      screen.getByText(/No signed wallet is linked yet/i),
+      screen.getByText(/No wallets linked yet\. Use \+ Link another wallet/),
     ).toBeInTheDocument();
-  });
-
-  it('renders the injected link panel', () => {
-    render(
-      <HoldingsScreen
-        aggregate={aggregate()}
-        linkPanel={<div>link panel slot</div>}
-      />,
-    );
-
-    expect(screen.getByText('link panel slot')).toBeInTheDocument();
-  });
-
-  it('renders connected and pasted rows with distinct provenance, outside the total', () => {
-    render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
-
-    expect(screen.getByText('Unverified wallets')).toBeInTheDocument();
-    // Both provenances are named explicitly and distinctly.
-    expect(screen.getByText(/Connected wallet · chains 1/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Pasted address · chains 1, 8453/),
-    ).toBeInTheDocument();
-    expect(screen.getByTitle(CONNECTED_ADDRESS)).toBeInTheDocument();
-    expect(screen.getByTitle(PASTED_ADDRESS)).toBeInTheDocument();
-
-    // The verified total is unchanged: neither unverified balance is added, so
-    // neither the sum nor the verified count moves.
-    expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText('$4,530')).toBeNull();
-    expect(screen.queryByText('$3,980')).toBeNull();
-    expect(screen.queryByText('$5,230')).toBeNull();
-    expect(screen.getByText('2 signature-verified wallets')).toBeInTheDocument();
-  });
-
-  it('invokes renderVerify once per unverified row, whatever its provenance', () => {
-    const renderVerify = vi.fn((wallet: UnverifiedHoldingWallet) => (
-      <button type="button" aria-label={`Verify ${wallet.address}`}>
-        Verify
-      </button>
-    ));
-
-    render(
-      <HoldingsScreen
-        aggregate={aggregateWithUnverified()}
-        renderVerify={renderVerify}
-      />,
-    );
-
-    expect(renderVerify).toHaveBeenCalledTimes(2);
-    expect(
-      screen.getByRole('button', { name: `Verify ${CONNECTED_ADDRESS}` }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: `Verify ${PASTED_ADDRESS}` }),
-    ).toBeInTheDocument();
-  });
-
-  it('omits the unverified section when nothing is unverified', () => {
-    render(<HoldingsScreen aggregate={aggregate()} />);
-
-    expect(screen.queryByText('Unverified wallets')).toBeNull();
+    expect(screen.getByText('No wallets signed yet')).toBeInTheDocument();
   });
 });
