@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getSessionUser } from '@/lib/supabase/server';
 import { recordResidencyServiceFeePayment } from '@/lib/residency/service-fee-server';
-import { startSelfVerification, type SelfVerificationOutcome } from '@/lib/residency/self';
+import { createSelfSession, type SelfSessionResult } from '@/lib/residency/self';
 import { issuePermit, type PermitIssuanceResult } from '@/lib/residency/permit';
 import type { RecordFeeResult } from '@/lib/payments/preapproval-fee';
 
@@ -14,9 +14,10 @@ import type { RecordFeeResult } from '@/lib/payments/preapproval-fee';
  * browser beyond the transaction hash and the connected address, and both of
  * those are re-verified against the chain by `recordResidencyServiceFeePayment`.
  *
- * The Self and permit actions are gated: they report `not-configured`/
- * `unavailable`/`blocked` and perform no write, so a resident can never be shown
- * a KYC result or a permit this build cannot actually produce.
+ * The Self and permit actions are gated: the Self action reports
+ * `not-configured`/`unavailable` rather than inventing a verification URL, and
+ * the permit action reports `not-configured`/`blocked` rather than issuing. No
+ * `kade.kyc.v1` or permit is written by either action in this build.
  */
 
 /**
@@ -45,10 +46,23 @@ export async function recordResidencyServiceFeePaymentAction(
 }
 
 /** Start Self identity verification, or report why it cannot run. */
-export async function startSelfVerificationAction(): Promise<SelfVerificationOutcome> {
+export type SelfSessionActionOutcome =
+  | SelfSessionResult
+  | { readonly status: 'unauthenticated' };
+
+/**
+ * Create a Self verification session for the signed-in resident and return the
+ * hosted `verificationUrl`.
+ *
+ * `externalUuid` is the profile id, so the webhook's `external_uuid` resolves
+ * back to this resident. The action never invents a URL: without the Self
+ * configuration it reports `not-configured`, and a missing session reports
+ * `unauthenticated`.
+ */
+export async function createSelfSessionAction(): Promise<SelfSessionActionOutcome> {
   const session = await getSessionUser();
   if (!session) return { status: 'unauthenticated' };
-  return startSelfVerification();
+  return createSelfSession(session.userId);
 }
 
 /** Attempt permit issuance, or report the gate that blocks it. */

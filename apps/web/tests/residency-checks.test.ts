@@ -15,22 +15,19 @@ import {
  * records cannot support is impossible to render.
  */
 
-const NOW = new Date('2026-09-22T00:00:00Z');
-
 function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
   return {
     tier: '3-year',
     identity: {
-      over18: true,
-      notSanctioned: true,
+      provider: 'self',
+      status: 'valid',
+      verifiedAt: '2026-09-20T00:00:00Z',
       selfNullifier: 'nullifier-1',
-      expiresAt: '2027-01-01T00:00:00Z',
     },
     qualifiedUsd: 300_000,
     review: 'cleared',
     serviceFee: { recorded: true, verified: true, amountUsdc: 10 },
     permit: { issued: false, uid: null },
-    now: NOW,
     ...overrides,
   };
 }
@@ -69,32 +66,33 @@ describe('sumQualifiedUsd', () => {
 });
 
 describe('deriveChecks — identity', () => {
-  it('is pending when no attestation is recorded', () => {
+  it('is pending when no Self verification is recorded', () => {
     expect(check(facts({ identity: null }), 'identity').state).toBe('pending');
   });
 
-  it('is met for a valid, unexpired proof', () => {
+  it('is met for a valid Self outcome', () => {
     expect(check(facts(), 'identity').state).toBe('met');
   });
 
-  it('is blocked when the proof is expired', () => {
-    const expired = {
-      over18: true,
-      notSanctioned: true,
-      selfNullifier: 'n',
-      expiresAt: '2025-01-01T00:00:00Z',
+  it('is blocked when Self reports the proof invalid', () => {
+    const invalid = {
+      provider: 'self' as const,
+      status: 'invalid' as const,
+      verifiedAt: null,
+      selfNullifier: null,
     };
-    expect(check(facts({ identity: expired }), 'identity').state).toBe('blocked');
+    expect(check(facts({ identity: invalid }), 'identity').state).toBe('blocked');
   });
 
-  it('is blocked when the proof does not satisfy the checks', () => {
-    const sanctioned = {
-      over18: true,
-      notSanctioned: false,
+  it('is blocked whenever the outcome is not affirmatively valid', () => {
+    // Fail closed: only `valid` is met; anything else blocks rather than passes.
+    const invalid = {
+      provider: 'self' as const,
+      status: 'invalid' as const,
+      verifiedAt: null,
       selfNullifier: 'n',
-      expiresAt: null,
     };
-    expect(check(facts({ identity: sanctioned }), 'identity').state).toBe('blocked');
+    expect(check(facts({ identity: invalid }), 'identity').state).not.toBe('met');
   });
 });
 

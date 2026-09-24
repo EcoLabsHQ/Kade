@@ -16,7 +16,7 @@ import type { ResidencySnapshot } from '@/lib/residency/server';
 const hoisted = vi.hoisted(() => ({
   refresh: vi.fn(),
   push: vi.fn(),
-  startSelf: vi.fn(),
+  createSelf: vi.fn(),
   issuePermit: vi.fn(),
 }));
 
@@ -24,7 +24,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: hoisted.refresh, push: hoisted.push }),
 }));
 vi.mock('@/app/residency/actions', () => ({
-  startSelfVerificationAction: hoisted.startSelf,
+  createSelfSessionAction: hoisted.createSelf,
   issueResidencyPermitAction: hoisted.issuePermit,
 }));
 vi.mock('@/components/residency/ServiceFeePayment', () => ({
@@ -35,22 +35,19 @@ vi.mock('@/components/residency/ServiceFeePayment', () => ({
 
 import { ResidencyStep } from '@/components/residency/ResidencyStep';
 
-const NOW = new Date('2026-09-22T00:00:00Z');
-
 function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
   return {
     tier: '3-year',
     identity: {
-      over18: true,
-      notSanctioned: true,
+      provider: 'self',
+      status: 'valid',
+      verifiedAt: '2026-09-20T00:00:00Z',
       selfNullifier: 'n',
-      expiresAt: '2027-01-01T00:00:00Z',
     },
     qualifiedUsd: 300_000,
     review: 'cleared',
     serviceFee: { recorded: true, verified: true, amountUsdc: 10 },
     permit: { issued: false, uid: null },
-    now: NOW,
     ...overrides,
   };
 }
@@ -108,7 +105,7 @@ function renderStep(
 }
 
 beforeEach(() => {
-  hoisted.startSelf.mockResolvedValue({ status: 'not-configured' });
+  hoisted.createSelf.mockResolvedValue({ status: 'not-configured' });
   hoisted.issuePermit.mockResolvedValue({
     status: 'not-configured',
     reason: 'No permit issuance approval is recorded.',
@@ -219,8 +216,12 @@ describe('ResidencyStep — actions', () => {
     expect(hoisted.push).toHaveBeenCalledWith('/holdings');
   });
 
-  it('opens the Self dialog and reports the gate instead of a fabricated result', async () => {
-    hoisted.startSelf.mockResolvedValue({ status: 'not-configured' });
+  it('opens the Self dialog and renders the real hosted link', async () => {
+    hoisted.createSelf.mockResolvedValue({
+      status: 'created',
+      verificationUrl: 'https://self.xyz/v/abc',
+      sessionId: 'sess_1',
+    });
     renderStep(pendingFacts());
 
     fireEvent.click(screen.getByRole('button', { name: 'Verify with Self' }));
@@ -229,12 +230,27 @@ describe('ResidencyStep — actions', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Powered by Self')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /i completed the scan in self/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('link', { name: /open self to verify/i }),
+      ).toHaveAttribute('href', 'https://self.xyz/v/abc'),
+    );
+    expect(hoisted.createSelf).toHaveBeenCalled();
+  });
+
+  it('says Self is not configured instead of rendering a flow that cannot work', async () => {
+    hoisted.createSelf.mockResolvedValue({ status: 'not-configured' });
+    renderStep(pendingFacts());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verify with Self' }));
 
     await waitFor(() =>
       expect(screen.getByRole('status')).toHaveTextContent(/self is not configured/i),
     );
-    expect(hoisted.startSelf).toHaveBeenCalled();
+    // No fabricated QR and no fabricated verification action.
+    expect(
+      screen.queryByRole('link', { name: /open self to verify/i }),
+    ).toBeNull();
   });
 
   it('attempts permit issuance when paid and reports the gate', async () => {

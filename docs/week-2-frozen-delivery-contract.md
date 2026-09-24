@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.6 — human decisions recorded 22–24 September 2026; six amendments recorded in section 8.1  
+**Status:** Frozen v1.7 — human decisions recorded 22–24 September 2026; seven amendments recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -118,7 +118,7 @@ the DOCX is an arbitrary demo value and is marked `[arbitrary]`.
 |---|---|---:|---|---|
 | EXE-010 | Ethereum mainnet activation and Week 2 configuration | 2 | KAD-009 `[arbitrary]` | A funded mainnet payer, RPC, treasury and per-chain configuration are wired; the fee rail is available on mainnet. Testnet is retained where mainnet is not required. |
 | EXE-011 | Safe WebAuthn signer deployment | 2 | KAD-010 `[arbitrary]` | The direct Safe WebAuthn signer contract is deployed so a passkey signature validates, unblocking Invest. |
-| EXE-012 | Residency step end to end | 5 | KAD-011 `[arbitrary]` | Self identity verification (`kade.kyc.v1`), the four checks, the server-verified residency service fee, `kade.permit.v1`, and a tracker derived from on-chain records. |
+| EXE-012 | Residency step end to end | 5 | KAD-011 `[arbitrary]` | Self identity verification (**on-chain**, v1.7), the four checks, the server-verified residency service fee, `kade.permit.v1`, and a tracker derived from on-chain records. |
 | EXE-013 | Holdings from signed linked wallets | 4 | KAD-012 `[arbitrary]` | A signed-message ownership proof; Holdings shows **all** signed linked wallets' holdings; a pasted **EVM** row is displayed unverified (v1.3) but is excluded from the total by construction. |
 | EXE-014 | Invest: Morpho deposit on Ethereum mainnet, one pool | 3 | KAD-013 `[arbitrary]` | A resident deposits USDC into one Morpho pool on Ethereum mainnet, fully functional end to end, with the position reflected in Holdings. |
 | EXE-015 | Simple Admin review dashboard | 4 | KAD-014 `[arbitrary]` | A reviewer role reviews applications and approves/rejects them; the action writes `review_events` and issues `kade.review.v1`; the resident's gates flip live; RLS restricts the surface. |
@@ -187,15 +187,19 @@ Accepted when a signed-in, pre-approved resident can:
 
 - reach the Residency step, with the shell gate flipping once the pre-approval
   fee is verified;
-- complete identity verification (Self → `kade.kyc.v1`), with the four checks
-  (identity, funds, review, service fee) shown with their real state;
+- complete identity verification (**on-chain** with Self, as amended v1.7): the
+  resident is sent to Self's hosted `verificationUrl`, Self verifies the passport
+  proof on Celo Sepolia and issues a soulbound token, and Self's signed webhook
+  records the outcome. Kade does **not** emit `kade.kyc.v1` and does not store
+  nationality or expiry; the four checks (identity, funds, review, service fee)
+  are shown with their real state;
 - pay the configured **residency service fee** on the approved chain, verified
   server-side from the receipt as in D10;
 - receive the permit attestation (`kade.permit.v1`) once the checks are green;
 - see a residency tracker derived from on-chain records, not fixtures.
 
-Evidence: migration(s), the Self verifier path, the receipt verifier, issued
-UIDs, and a clean-browser end-to-end test.
+Evidence: migration(s), the Self session + webhook verification path, the
+receipt verifier, issued UIDs, and a clean-browser end-to-end test.
 
 #### D17 — Holdings from signed linked wallets (priority 2)
 
@@ -269,7 +273,8 @@ These were considered for Week 2 and are **not** contracted in this freeze:
 
 ### 4.4 Later
 
-- **D20 — Vote (Snapshot):** eligibility derived from `kade.kyc.v1`/permit state.
+- **D20 — Vote (Snapshot):** eligibility derived from the Self verification
+  outcome (v1.7) / permit state.
 - **D21 — Finance:** Bank ↔ Crypto (GOS fund/cash-out) and Card.
 
 Both are rendered locked today (`apps/web/src/components/shell/nav.ts`).
@@ -281,7 +286,9 @@ The delivery clock assumes Day 1 access to:
 - an **Ethereum mainnet** deployment payer, RPC and a treasury that can receive
   USDC (required by D16–D18);
 - a **Morpho pool address and its chain id** for D18 (Ethereum mainnet, one pool);
-- a Self project configuration for D16;
+- a Self project configuration for D16 — as amended v1.7, a Self Enterprise
+  `SELF_API_KEY`, `SELF_WEBHOOK_SECRET` and `SELF_FLOW_ID` whose flow enables
+  Minimum age ≥18 and OFAC (server-only, supplied in `apps/web/.env.local`);
 - a reviewer account/role for D19;
 - a paymaster policy for any chain where gas is sponsored;
 - confirmation that the Reown/WalletConnect project id used by v1.9 remains
@@ -568,6 +575,46 @@ Affected clauses:
 | §2.2 item 3 | verified and unverified in one list, state per row (v1.4) | verified wallets are the table rows; unverified wallets are listed in the modal (v1.6) |
 | §4.2, D17 | one list | table + verification modal |
 
+**v1.7 — 24 September 2026. Approved by the project owner.**
+
+Identity verification for D16 is **on chain**. The resident is sent to Self's
+(self.xyz) hosted `verificationUrl`; Self's own contract on **Celo Sepolia**
+verifies the passport proof and issues each verified resident a **soulbound
+token**. Kade does **not** mint an attestation and does **not** emit
+`kade.kyc.v1`. Self's signed `verification.completed` webhook records only the
+**outcome** (`valid` / `invalid`) against the resident, and the residency
+identity check is met by a valid Self verification.
+
+Kade verifies only that the resident holds a passport that passes the flow's
+rules. It does **not** learn or store `nationality` or `expiresAt`; those fields
+stay NULL and the UI does not display them. The flow is configured with
+**Minimum age ≥18** and **OFAC** checking, so a valid result means the `over18`
+and `notSanctioned` predicates held, and the checks that gate the service fee
+and the permit keep working.
+
+What this does **not** change:
+
+- the `kade.permit.v1` permit, the four checks, the server-verified residency
+  service fee, and the tracker derived from records;
+- the identity check still **fails closed**: anything other than an explicit
+  valid Self outcome — no verification, a pending/error status, an invalid
+  proof, or an explicitly failed predicate — does not unlock the service fee;
+- Kade still stores no raw proof payload anywhere.
+
+Rationale, for the record: the owner changed the model from an off-chain mirror
+of `kade.kyc.v1` to Self's on-chain verification with a soulbound token. Kade
+therefore does not need the disclosed facts, and storing less is the honest
+reduction: the outcome is enough for the check.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| header / §4.2, D16 | Self → `kade.kyc.v1` off-chain mirror | Self verifies on chain (Celo Sepolia) and issues a soulbound token; no `kade.kyc.v1` |
+| §4.2, D16 | identity verification writing the disclosed fields | identity verification from the signed webhook outcome only |
+| §4.3, D20 | eligibility derived from `kade.kyc.v1`/permit | derived from the Self verification outcome / permit |
+| §10 | identity check from a `kade.kyc.v1` mirror | identity check from a valid Self verification |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
@@ -584,12 +631,15 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.6:
+Freeze status at v1.7:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
 - [x] priority order — Residency → Holdings → Invest → Admin → Vote/Finance
   (§2.1).
+- [x] identity — Self verifies on chain (Celo Sepolia) and issues a soulbound
+  token; Kade records the outcome only and neither emits `kade.kyc.v1` nor
+  stores nationality or expiry (v1.7).
 - [x] Holdings authority — signed linked wallets are verified; a connected wallet
   and a pasted **EVM** address are shown unverified and excluded from the total,
   in **one list** with the state carried per row (v1.4); the unverified wallets
@@ -607,7 +657,7 @@ Freeze status at v1.6:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.6** with the open items above tracked under change
+This contract is **Frozen v1.7** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
@@ -615,7 +665,7 @@ control.
 | Source | Deliverable / Package | Required proof | Status |
 |---|---|---|---|
 | Week 1 v1.7–v1.10 | D9, D10, D11 / EXE-007–009 | Migrations, receipt verifier, tests | Delivered on testnet |
-| Owner 22 Sep 2026 — Residency | D16 / EXE-012 | Self path, service-fee receipt, `kade.permit.v1` UID, E2E test | Frozen |
+| Owner 22 Sep 2026 — Residency | D16 / EXE-012 | On-chain Self path (v1.7), service-fee receipt, `kade.permit.v1` UID, E2E test | Frozen |
 | Owner 22 Sep 2026 — Holdings | D17 / EXE-013 | Signed challenge, verification tests, Holdings screen | Frozen |
 | Owner 22 Sep 2026 — Invest | D18 / EXE-014 | Pool config, mainnet transaction, position, test | Frozen |
 | Owner 22 Sep 2026 — Admin | D19 / EXE-015 | Admin route, `reviewers` RLS, `kade.review.v1` UID, live test | Frozen |

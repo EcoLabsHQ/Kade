@@ -46,11 +46,29 @@ supabase/
     20260921000001_bitcoin_wallet_addresses.sql  wallets owner policy + Bitcoin address RPCs
     20260921000002_evm_wallet_addresses.sql      pasted EVM addresses: cap + delete-by-address
     20260921000003_record_preapproval_fee_tx.sql SECURITY DEFINER fee_tx writer
+    ...
+    20260924000002_self_verification_store.sql   Self verification outcome + service-role writer
   tests/                          pgTAP suites (see tests/README.md)
     0001_fee_recompute.test.sql
     support/supabase-shim.sql     auth schema/roles for a plain PostgreSQL
   seed.sql                        GENERATED — do not edit
 ```
+
+## Self identity verification (D16 / EXE-012, contract v1.7)
+
+Identity is verified **on chain** by Self (self.xyz) on Celo Sepolia; a verified
+resident receives a **soulbound token** from Self, and Kade neither mints an
+attestation nor emits `kade.kyc.v1`. `public.self_verifications` records only the
+**outcome** of a verification (`valid` / `invalid`) with the Self
+`verification_id` (the at-least-once dedupe key), the optional `self_nullifier`
+and the session id. It stores **no nationality and no expiry**; the frozen
+`kade.kyc.v1`-shaped `identity_attestations` table is left in place but is no
+longer written by the identity path (`docs/known-gaps.md`).
+
+Rows are written only by `record_self_verification`, a `SECURITY DEFINER`
+function granted to `service_role` — the `/api/webhooks/self` receiver has no
+`auth.uid()`, so the resident-scoped writers cannot reach it. RLS lets a resident
+select only their own rows; there is no write policy.
 
 ## Local setup (requires the Supabase CLI)
 

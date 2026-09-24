@@ -6,54 +6,43 @@ import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 
 /**
- * The Self handoff dialog from the deployed baseline.
+ * The Self handoff dialog (D16 / EXE-012, as amended v1.7).
  *
- * A preview of the Self flow: the resident scans their passport's NFC chip in
- * the Self app, which produces a zero-knowledge proof of the facts Kade needs.
- * The copy, the QR and the "what we learn" table are the reference's.
+ * The resident is sent to Self's hosted `verificationUrl`: Self renders the QR
+ * and the deeplink, scans the passport's NFC chip and verifies the proof **on
+ * chain** on Celo Sepolia, issuing a soulbound token. We never draw a QR and
+ * never fabricate a result. This dialog renders the real link the server
+ * created, or says plainly why it cannot (not configured / unavailable).
  *
- * Confirming runs the real server action (which reports the gate in this
- * build); the dialog fabricates no verification result.
+ * What Kade learns is stated honestly: that the passport is valid, that the
+ * resident is 18 or older and that they are not on a sanctions list. Kade does
+ * NOT receive or store nationality, date of birth, passport number or photo.
  */
+
+export interface SelfModalState {
+  readonly status: 'created' | 'not-configured' | 'unavailable' | 'unauthenticated';
+  readonly verificationUrl?: string | null;
+  readonly reason?: string | null;
+}
 
 export interface SelfVerificationModalProps {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly onConfirm: () => void;
+  /** null while the session is being created. */
+  readonly state: SelfModalState | null;
 }
 
-/** The reference's deterministic 11×11 QR pattern, reproduced exactly. */
-function qrCells(): readonly string[] {
-  const out: string[] = [];
-  let seed = 7;
-  for (let i = 0; i < 121; i += 1) {
-    const r = Math.floor(i / 11);
-    const c = i % 11;
-    const finder = (r < 3 && c < 3) || (r < 3 && c > 7) || (r > 7 && c < 3);
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    out.push(finder ? '#101828' : (seed >> 8) % 100 < 46 ? '#101828' : '#fff');
-  }
-  return out;
-}
-
-const QR = qrCells();
-
-const FACTS: readonly {
-  readonly label: string;
-  readonly value: string;
-  readonly green?: boolean;
-}[] = [
-  { label: 'Nationality', value: 'disclosed · DE' },
-  { label: 'Over 18', value: 'proven · true' },
-  { label: 'Not on OFAC list', value: 'proven · true' },
-  { label: 'Uniqueness', value: 'nullifier, one per passport' },
-  { label: 'Passport number, photo, DOB', value: 'never shared', green: true },
+const FACTS: readonly string[] = [
+  'Your passport is genuine and current — verified by Self onchain.',
+  'You are 18 or older.',
+  'You are not on a sanctions list.',
+  'Kade never receives your nationality, date of birth, passport number or photo.',
 ];
 
 export function SelfVerificationModal({
   open,
   onClose,
-  onConfirm,
+  state,
 }: SelfVerificationModalProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -70,6 +59,9 @@ export function SelfVerificationModal({
   }, [open, onClose]);
 
   if (!open || !mounted) return null;
+
+  const url =
+    state !== null && state.status === 'created' ? state.verificationUrl ?? null : null;
 
   return createPortal(
     <div onClick={onClose} style={backdrop}>
@@ -98,65 +90,85 @@ export function SelfVerificationModal({
         </div>
 
         <div style={{ padding: '22px' }}>
-          <div style={bodyCopy}>
-            Scan your passport&rsquo;s NFC chip in the Self app. It generates a
-            zero-knowledge proof of the facts we need — nationality, age,
-            sanctions status — without sending us your passport or your name.
-          </div>
+          {state === null ? (
+            <div style={bodyCopy} role="status">
+              Creating your Self verification session…
+            </div>
+          ) : state.status === 'created' && url !== null ? (
+            <>
+              <div style={bodyCopy}>
+                Open Self to scan your passport&rsquo;s NFC chip. Self verifies
+                the proof onchain and issues a soulbound token; no passport data
+                comes to Kade.
+              </div>
 
-          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center' }}>
-            <div style={qrFrame}>
-              <div style={qrGrid}>
-                {QR.map((color, index) => (
-                  <span key={index} style={{ background: color, borderRadius: '1px' }} />
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={confirmButtonLink}
+              >
+                Open Self to verify
+              </a>
+
+              <div style={linkFallback}>
+                Or open this link on your phone:
+                <br />
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={linkText}
+                >
+                  {url}
+                </a>
+              </div>
+
+              <div style={whatLabel}>What Self verifies</div>
+              <div style={factsBox}>
+                {FACTS.map((fact) => (
+                  <div key={fact} style={{ color: tokens.muted }}>
+                    {fact}
+                  </div>
                 ))}
               </div>
-              <div style={qrBadgeWrap}>
-                <span style={qrBadge}>S</span>
+
+              <div style={infoBox}>
+                The proof is verified onchain by Self on Celo Sepolia and a
+                soulbound token is issued to you. Kade stores only the outcome —
+                never your nationality or date of birth.
               </div>
-            </div>
-          </div>
 
-          <div style={qrCaption}>
-            Open the Self app and scan · or tap to open on this device
-          </div>
-
-          <div style={whatLabel}>What we learn</div>
-          <div style={factsBox}>
-            {FACTS.map((fact) => (
-              <div
-                key={fact.label}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}
-              >
-                <span style={{ color: tokens.muted }}>{fact.label}</span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    fontVariantNumeric: 'tabular-nums',
-                    color: fact.green ? tokens.success : undefined,
-                  }}
-                >
-                  {fact.value}
-                </span>
+              <button type="button" onClick={onClose} style={confirmButton}>
+                I&rsquo;ve finished verifying in Self
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={bodyCopy} role="status">
+                {messageFor(state)}
               </div>
-            ))}
-          </div>
-
-          <div style={infoBox}>
-            The proof is verified onchain and written to your account as{' '}
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>kade.kyc.v1</span>{' '}
-            — reusable for the card, banking and voting.
-          </div>
-
-          <button type="button" onClick={onConfirm} style={confirmButton}>
-            I completed the scan in Self
-          </button>
-          <div style={footnote}>Preview of the Self handoff · self.xyz</div>
+              <div style={linkFallback}>self.xyz</div>
+            </>
+          )}
         </div>
       </div>
     </div>,
     document.body,
   );
+}
+
+function messageFor(state: SelfModalState): string {
+  switch (state.status) {
+    case 'not-configured':
+      return 'Self is not configured in this environment, so identity cannot be verified yet.';
+    case 'unavailable':
+      return state.reason ?? 'Self is temporarily unavailable. Try again shortly.';
+    case 'unauthenticated':
+      return 'Your session expired. Sign in again.';
+    default:
+      return 'Identity verification is unavailable.';
+  }
 }
 
 const backdrop: CSSProperties = {
@@ -218,54 +230,6 @@ const bodyCopy: CSSProperties = {
   lineHeight: 1.6,
 };
 
-const qrFrame: CSSProperties = {
-  width: '164px',
-  height: '164px',
-  background: '#fff',
-  border: `1px solid ${tokens.border}`,
-  borderRadius: '14px',
-  padding: '10px',
-  position: 'relative',
-};
-
-const qrGrid: CSSProperties = {
-  width: '100%',
-  height: '100%',
-  display: 'grid',
-  gridTemplateColumns: 'repeat(11, 1fr)',
-  gridTemplateRows: 'repeat(11, 1fr)',
-  gap: '2px',
-};
-
-const qrBadgeWrap: CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-const qrBadge: CSSProperties = {
-  width: '36px',
-  height: '36px',
-  borderRadius: '10px',
-  background: tokens.ink,
-  color: '#fff',
-  fontSize: '13px',
-  fontWeight: 700,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  border: '3px solid #fff',
-};
-
-const qrCaption: CSSProperties = {
-  marginTop: '12px',
-  fontSize: '12.5px',
-  color: tokens.muted,
-  textAlign: 'center',
-};
-
 const whatLabel: CSSProperties = {
   marginTop: '16px',
   fontSize: '11px',
@@ -285,6 +249,7 @@ const factsBox: CSSProperties = {
   flexDirection: 'column',
   gap: '8px',
   fontSize: '12.5px',
+  lineHeight: 1.5,
 };
 
 const infoBox: CSSProperties = {
@@ -294,6 +259,7 @@ const infoBox: CSSProperties = {
   padding: '11px 13px',
   fontSize: '12.5px',
   color: '#0063B5',
+  lineHeight: 1.5,
 };
 
 const confirmButton: CSSProperties = {
@@ -310,9 +276,30 @@ const confirmButton: CSSProperties = {
   cursor: 'pointer',
 };
 
-const footnote: CSSProperties = {
-  marginTop: '10px',
+const confirmButtonLink: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: '18px',
+  width: '100%',
+  height: '44px',
+  borderRadius: '999px',
+  background: tokens.ink,
+  color: '#fff',
+  fontSize: '14.5px',
+  fontWeight: 600,
+  textDecoration: 'none',
+};
+
+const linkFallback: CSSProperties = {
+  marginTop: '12px',
   fontSize: '11.5px',
   color: tokens.muted,
   textAlign: 'center',
+  wordBreak: 'break-all',
+};
+
+const linkText: CSSProperties = {
+  color: '#0063B5',
+  textDecoration: 'underline',
 };

@@ -22,13 +22,17 @@ import { TIERS } from '@kade/shared';
 /* Facts                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/** The mirrored `kade.kyc.v1` fields for the resident, or none recorded. */
+/** The Self verification outcome for the resident, or none recorded. */
 export interface IdentityFact {
-  readonly over18: boolean;
-  readonly notSanctioned: boolean;
+  readonly provider: 'self';
+  readonly status: 'valid' | 'invalid';
+  /** ISO timestamp of a valid outcome, or null when none was established. */
+  readonly verifiedAt: string | null;
+  /**
+   * Self's per-person identifier, when supplied. Kept for Sybil resistance; it
+   * is not the identity criterion and carries no personal data.
+   */
   readonly selfNullifier: string | null;
-  /** ISO timestamp, or null when the proof has no expiry. */
-  readonly expiresAt: string | null;
 }
 
 export type ReviewFactState = 'cleared' | 'pending' | 'blocked';
@@ -57,8 +61,6 @@ export interface ResidencyFacts {
   readonly review: ReviewFactState;
   readonly serviceFee: ServiceFeeFact;
   readonly permit: PermitFact;
-  /** Injected so an expiry boundary is testable without freezing the clock. */
-  readonly now: Date;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -126,7 +128,12 @@ function deriveIdentityCheck(facts: ResidencyFacts): ResidencyCheck {
       detail: 'Identity verification has not started.',
     };
   }
-  if (!facts.identity.over18 || !facts.identity.notSanctioned) {
+  // As amended v1.7, identity is verified on chain by Self, which issues a
+  // soulbound token. The flow is configured with Minimum age ≥18 and OFAC, so a
+  // valid result means the age and sanctions predicates held; Kade stores the
+  // outcome, not the facts. Fail closed: anything but an explicit valid outcome
+  // blocks rather than passes.
+  if (facts.identity.status !== 'valid') {
     return {
       id,
       label,
@@ -134,19 +141,6 @@ function deriveIdentityCheck(facts: ResidencyFacts): ResidencyCheck {
       state: 'blocked',
       detail: 'The identity proof did not satisfy the programme checks.',
     };
-  }
-  const expiresAt = facts.identity.expiresAt;
-  if (expiresAt !== null) {
-    const expiry = new Date(expiresAt);
-    if (!Number.isNaN(expiry.getTime()) && expiry.getTime() <= facts.now.getTime()) {
-      return {
-        id,
-        label,
-        blocksServiceFee,
-        state: 'blocked',
-        detail: 'The identity proof has expired.',
-      };
-    }
   }
   return {
     id,

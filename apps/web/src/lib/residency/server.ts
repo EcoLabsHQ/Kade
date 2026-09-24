@@ -71,16 +71,16 @@ function reviewFromStatus(status: string | null): ReviewFactState {
 }
 
 function toIdentityFact(row: {
-  over18?: boolean | null;
-  not_sanctioned?: boolean | null;
+  status?: string | null;
+  verified_at?: string | null;
   self_nullifier?: string | null;
-  expires_at?: string | null;
-}): IdentityFact {
+}): IdentityFact | null {
+  if (row.status !== 'valid' && row.status !== 'invalid') return null;
   return {
-    over18: row.over18 === true,
-    notSanctioned: row.not_sanctioned === true,
+    provider: 'self',
+    status: row.status,
+    verifiedAt: row.verified_at ?? null,
     selfNullifier: row.self_nullifier ?? null,
-    expiresAt: row.expires_at ?? null,
   };
 }
 
@@ -109,8 +109,8 @@ async function loadIdentityFact(profileId: string): Promise<IdentityFact | null>
   try {
     const client = await createSupabaseServerClient();
     const { data, error } = await client
-      .from('identity_attestations')
-      .select('over18, not_sanctioned, self_nullifier, expires_at')
+      .from('self_verifications')
+      .select('status, verified_at, self_nullifier')
       .eq('profile_id', profileId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -119,15 +119,14 @@ async function loadIdentityFact(profileId: string): Promise<IdentityFact | null>
     if (!data) return null;
     return toIdentityFact(
       data as {
-        over18: boolean | null;
-        not_sanctioned: boolean | null;
+        status: string | null;
+        verified_at: string | null;
         self_nullifier: string | null;
-        expires_at: string | null;
       },
     );
   } catch (cause) {
     console.warn(
-      '[kade] Could not read identity attestations for residency:',
+      '[kade] Could not read Self verifications for residency:',
       cause instanceof Error ? cause.message : cause,
     );
     return null;
@@ -189,7 +188,6 @@ export async function loadResidencyFacts(
     review: reviewFromStatus(row.status),
     serviceFee,
     permit,
-    now: new Date(),
   };
 }
 
