@@ -1,0 +1,54 @@
+iteration: iteration-holdings-parity
+profile: NORMAL
+known_good: 86d7988138fddc981080a520e85cfc60b65e7ec6
+candidate: b40492b0f95bb41469c37900fc5d68189bf60624
+mode: resume
+reviewed_scopes:
+  data-path: complete
+  frontend: complete
+  shell: complete
+  docs: complete
+  tests: complete
+active_findings: [F6, F7]
+resolved_findings: [F1, F2, F3, F4, F5]
+next_finding_id: F8
+recheck_attempts:
+  F1: 0
+  F2: 0
+  F3: 0
+  F4: 0
+  F5: 0
+  F6: 0
+  F7: 0
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: b40492b0f95bb41469c37900fc5d68189bf60624
+  note: >-
+    Recorded by the orchestrator on the exact candidate HEAD; not re-run by the
+    reviewer.
+headline: >-
+  Week-2 amendments v1.3 and v1.4: a pasted EVM address is displayed in Holdings
+  unverified and verifiable by connection; verified and unverified wallets share
+  one list with the state per row; the screen follows the design reference with
+  real data only. DISCOVERY raised one blocker (summary cards deriving their
+  message from the verified-only count) plus four warnings; the blocker and its
+  class were fixed in one pass (a third instance was found by the corrective
+  inventory), the recurring post-amendment doc staleness was swept scope-wide,
+  and the invalidated frontend/tests/docs scopes were closed in RESUME.
+open_warnings:
+  F6: "docs — §4.2 D17 still carries the v1.2 bullet 'in a separate section', superseded by the v1.4 bullet two lines later; the class sweep missed this spot"
+  F7: "frontend — 'Every wallet you have added, signed or not' omits pasted-Bitcoin rows, which are structurally not displayed; mitigated by the footer disclosure"
+  - "§2.2 item 2's general rule is qualified by item 3 immediately after it (reviewer: does not escalate)"
+  - "planning artifacts docs/planning/week-2-front-briefs.md, week-2-iteration-plan.md use the pre-v1.3 'excluded' sense (non-governing)"
+  - "carried from earlier iterations: F5 live-PostgREST coverage, F6 pgTAP suite ungated (now renumbered; see each session record)"
+live_dependency: >-
+  Migrations 27 and 28 are applied to the live project (verified 23 Sep 2026).
+  Migration 28's column-scoped grant and sticky conflict clause back the Holdings
+  unverified flow.
+follow_up_proposed: >
+  A small docs+copy QUICKFIX for F6 and F7 (and, if wanted, retiring the stale
+  planning-artifact wording) — not folded into this iteration so the promoted HEAD
+  stays exactly the reviewed one.

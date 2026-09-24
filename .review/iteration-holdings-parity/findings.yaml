@@ -1,0 +1,77 @@
+- id: F1
+  severity: FAIL
+  scope: frontend
+  title: "Not qualified card said no wallets are linked while the list showed a linked unverified wallet"
+  evidence: "apps/web/src/components/holdings/HoldingsScreen.tsx:269-294; lib/wealth/holdings.ts:425,430"
+  failure_mode: "Both summary cards derived their fallback from the verified-only count, so a linked-but-unsigned wallet made them claim nothing was linked. A third instance of the class ('Total holdings') was found by the corrective inventory and fixed in the same pass."
+  materiality: "Factually false claim in the headline v1.3 pasted-EVM flow."
+  status: resolved
+  introduced_by: 63306c41cab9521de0afa224fdd974c725d91cac
+  resolved_by: a4427b155e6c99842e120a37cd12aa1e8342da99
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: frontend
+  title: "Chain card can claim 'No verified wallet on this chain' for a wallet linked there whose read failed"
+  evidence: "apps/web/src/components/holdings/HoldingsScreen.tsx:103-150"
+  failure_mode: "Presence counted from read results instead of stored rows (chainIds), so a failed read looked like an absent wallet."
+  materiality: "Wrong unavailable-state reason; value still '—'."
+  status: resolved
+  introduced_by: 63306c41cab9521de0afa224fdd974c725d91cac
+  resolved_by: a4427b155e6c99842e120a37cd12aa1e8342da99
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: docs
+  title: "known-gaps pasted-EVM row still said proving control is out of scope"
+  evidence: "docs/known-gaps.md:39"
+  failure_mode: "The ledger understated a delivered capability and contradicted the row above it."
+  materiality: "Stale/contradictory documentation."
+  status: resolved
+  introduced_by: 63306c41cab9521de0afa224fdd974c725d91cac
+  resolved_by: c9698d6
+  recheck_attempts: 0
+- id: F4
+  severity: WARN
+  scope: docs
+  title: "Contract section 2.1 item 2 and section 10 heading not reconciled with v1.3/v1.4"
+  evidence: "docs/week-2-frozen-delivery-contract.md:48-51,515,536"
+  failure_mode: "Current-state clauses and the freeze label asserted the superseded model. Third recurrence of the post-amendment staleness class, so the whole scope was inventoried and swept in one pass."
+  materiality: "Documentation consistency gap."
+  status: resolved
+  introduced_by: 63306c41cab9521de0afa224fdd974c725d91cac
+  resolved_by: c9698d6
+  recheck_attempts: 0
+- id: F5
+  severity: WARN
+  scope: docs
+  title: "Historical evidence note lists deleted WalletLinkPanel/LinkedWalletSection"
+  evidence: "docs/planning/week-2-evidence-04-holdings.md:31-32,36"
+  failure_mode: "An auditor cross-checking the evidence list looks for files that no longer exist."
+  materiality: "Low; dated historical record. Rewriting it would falsify a point-in-time record."
+  status: resolved
+  introduced_by: 63306c41cab9521de0afa224fdd974c725d91cac
+  resolved_by: null
+  recheck_attempts: 0
+- id: F6
+  severity: WARN
+  scope: docs
+  title: "D17 acceptance criterion still asserts the superseded v1.2 'separate section' model"
+  evidence: "docs/week-2-frozen-delivery-contract.md:212-214 vs :219-221"
+  failure_mode: "A reviewer accepting D17 reads a presentation requirement ('separate section') the delivered screen does not meet, and must resolve it against the later v1.4 bullet."
+  materiality: "Documentation consistency; the class-level sweep missed this spot. Non-gating (self-corrected by the following bullet)."
+  status: open
+  introduced_by: 2b9074cd1dd87dc5a78057f3489663ad83ec208b
+  resolved_by: null
+  recheck_attempts: 0
+- id: F7
+  severity: WARN
+  scope: frontend
+  title: "'In linked wallets' intro claims completeness the list does not have for pasted Bitcoin"
+  evidence: "apps/web/src/components/holdings/HoldingsScreen.tsx:390-396 vs app/holdings/data.ts:76-82 and lib/wealth/holdings.ts:189-192,226-228"
+  failure_mode: "A resident who pasted a Bitcoin address reads 'Every wallet you have added, signed or not', a completeness claim the screen does not back for that row."
+  materiality: "Copy-only; no fabricated value or state. Mitigated by the footer disclosure. Non-gating."
+  status: open
+  introduced_by: b40492b0f95bb41469c37900fc5d68189bf60624
+  resolved_by: null
+  recheck_attempts: 0
