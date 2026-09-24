@@ -2,9 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import type { HoldingsAggregate } from '@/lib/wealth/holdings';
-import { ConnectAndSignAction } from './ConnectAndSignAction';
 import { HoldingsScreen } from './HoldingsScreen';
-import { LinkAnotherWalletButton } from './LinkAnotherWalletButton';
+import { VerifyWalletsModal } from './VerifyWalletsModal';
 import type { OwnershipCallbacks } from './ownership-callbacks';
 
 /**
@@ -12,16 +11,14 @@ import type { OwnershipCallbacks } from './ownership-callbacks';
  * signature, `router.refresh()`) to the presentational `HoldingsScreen`, so the
  * screen stays prop-driven and testable without a wallet.
  *
- * Two injected controls, one per row state:
+ * One injected control: `renderVerifyWallets` renders the "Verify wallets"
+ * button and the modal behind it. The modal owns the whole per-wallet flow —
+ * connect, persist, sign, disconnect — because linking and signing are one
+ * gesture: a resident who links a wallet it has not listed yet verifies it in
+ * the same pass.
  *
- *  - `renderConnectSign` — a "Connect & sign" action on every unverified row:
- *    connect the controlling wallet, sign the server-issued challenge, then
- *    disconnect.
- *  - `renderLinkAnother` — the "+ Link another wallet" action, which persists a
- *    newly connected address as an unsigned `connected-wallet` row.
- *
- * Both are gated on `configured` inside their own components, so the
- * unconfigured path reaches no AppKit/wagmi hook.
+ * The modal is gated on `configured` inside itself, so the unconfigured path
+ * renders static markup and reaches no AppKit/wagmi hook.
  */
 export interface HoldingsViewProps {
   readonly aggregate: HoldingsAggregate;
@@ -48,19 +45,13 @@ export function HoldingsView({
     <HoldingsScreen
       aggregate={aggregate}
       safeAddress={safeAddress}
-      renderConnectSign={(wallet) => (
-        <ConnectAndSignAction
-          wallet={wallet}
+      renderVerifyWallets={() => (
+        <VerifyWalletsModal
           configured={configured}
+          wallets={aggregate.unverifiedWallets}
+          onAddConnectedWallet={onAddConnectedWallet}
           onBegin={onBegin}
           onComplete={onComplete}
-          onLinked={refresh}
-        />
-      )}
-      renderLinkAnother={() => (
-        <LinkAnotherWalletButton
-          configured={configured}
-          onAddConnectedWallet={onAddConnectedWallet}
           onLinked={refresh}
         />
       )}

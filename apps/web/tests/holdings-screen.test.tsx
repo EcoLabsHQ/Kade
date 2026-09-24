@@ -225,13 +225,14 @@ describe('HoldingsScreen', () => {
     // The two chains we read are real: Ethereum $3,280, Base unread.
     expect(screen.getAllByText('Ethereum').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
-    // The three we do not read render the reference's own cards.
+    // The three we do not read render the reference's cards, but with no
+    // fabricated figure: a chain this app does not read has no balance to show.
     expect(screen.getByText('Arbitrum')).toBeInTheDocument();
     expect(screen.getByText('Optimism')).toBeInTheDocument();
     expect(screen.getByText('Celo')).toBeInTheDocument();
-    expect(screen.getByText('$25,540')).toBeInTheDocument();
-    expect(screen.getByText('$6,182')).toBeInTheDocument();
-    expect(screen.getByText('$1,910')).toBeInTheDocument();
+    expect(screen.queryByText('$25,540')).toBeNull();
+    expect(screen.queryByText('$6,182')).toBeNull();
+    expect(screen.queryByText('$1,910')).toBeNull();
   });
 
   it('shows the Safe address and the reference qualified-vaults note', () => {
@@ -307,45 +308,30 @@ describe('HoldingsScreen', () => {
     expect(title).toMatch(/not deployed/i);
   });
 
-  it('invokes renderConnectSign once per unsigned holding, whatever its provenance', () => {
-    const renderConnectSign = vi.fn((wallet: UnverifiedHoldingWallet) => (
-      <button type="button" aria-label={`Connect & sign ${wallet.address}`}>
-        Connect &amp; sign
-      </button>
-    ));
+  it('marks every unsigned holding with its own Unverified chip and no row action', () => {
+    render(<HoldingsScreen aggregate={aggregateWithUnverified()} />);
 
-    render(
-      <HoldingsScreen
-        aggregate={aggregateWithUnverified()}
-        renderConnectSign={renderConnectSign}
-      />,
-    );
-
-    expect(renderConnectSign).toHaveBeenCalledTimes(2);
+    // One chip per unverified row (connected + pasted), and no per-row action:
+    // verification lives in the modal, not on the row.
+    expect(screen.getAllByText('Unverified')).toHaveLength(2);
     expect(
-      screen.getByRole('button', { name: `Connect & sign ${CONNECTED_ADDRESS}` }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: `Connect & sign ${PASTED_ADDRESS}` }),
-    ).toBeInTheDocument();
-    // The signed rows never get the connect action.
-    expect(
-      screen.queryByRole('button', { name: `Connect & sign ${ADDRESS}` }),
+      screen.queryByRole('button', { name: /Connect & sign/ }),
     ).toBeNull();
+    expect(screen.queryByRole('button', { name: /Verify in modal/ })).toBeNull();
   });
 
-  it('renders the injected + Link another wallet control', () => {
+  it('renders the injected Verify wallets control when supplied', () => {
     render(
       <HoldingsScreen
         aggregate={aggregateWithUnverified()}
-        renderLinkAnother={() => (
-          <button type="button">+ Link another wallet</button>
+        renderVerifyWallets={() => (
+          <button type="button">Verify wallets</button>
         )}
       />,
     );
 
     expect(
-      screen.getByRole('button', { name: '+ Link another wallet' }),
+      screen.getByRole('button', { name: 'Verify wallets' }),
     ).toBeInTheDocument();
   });
 

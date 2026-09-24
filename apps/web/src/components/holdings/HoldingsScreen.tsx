@@ -12,11 +12,8 @@ import type {
   HoldingsAggregate,
   UnverifiedHoldingWallet,
 } from '@/lib/wealth/holdings';
-import {
-  CONNECTED_WALLET_PROVIDER,
-  EVM_PROVIDER,
-  type EvmChainBalance,
-} from '@/lib/wealth/types';
+import type { EvmChainBalance } from '@/lib/wealth/types';
+import { provenanceLabel } from './provenance';
 
 /**
  * Holdings — the design reference's layout over **real data only**.
@@ -64,18 +61,12 @@ export interface HoldingsScreenProps {
   /** The resident's Safe address from `safe_deployments`, or null/absent. */
   readonly safeAddress?: string | null;
   /**
-   * Renders the per-row "Connect & sign" affordance for an unverified wallet.
-   * Injected because proving control needs the wallet connection and signature
-   * machinery; when omitted, the row still shows its provenance and exclusion.
+   * Renders the "Verify wallets" control that opens the verification modal. The
+   * modal owns the per-wallet connect → persist → sign flow, so this screen
+   * stays free of the wallet machinery. When omitted, no control is rendered and
+   * the unverified rows still show their chip, provenance and exclusion.
    */
-  readonly renderConnectSign?: (
-    wallet: UnverifiedHoldingWallet,
-  ) => ReactNode;
-  /**
-   * Renders the "+ Link another wallet" action. Injected because it connects a
-   * wallet and persists the address through a server action.
-   */
-  readonly renderLinkAnother?: () => ReactNode;
+  readonly renderVerifyWallets?: () => ReactNode;
 }
 
 /**
@@ -125,14 +116,15 @@ const CHAIN_AVAILABLE = 'Vault available';
 const CHAIN_READONLY = 'Read-only';
 
 /**
- * The three chain cards the reference shows that this app does not read. The
- * owner accepted the reference's presentation, so their cards render with the
- * reference's own figures; they never feed the aggregate or any real total.
+ * The three chain cards the reference shows that this app does not read. Their
+ * cards keep the reference's presentation, but the value is an explicit `—`:
+ * this app has no balance for a chain it does not read, so no figure is shown.
+ * Nothing here feeds the aggregate or any real total.
  */
 const REFERENCE_EXTRA_CHAINS = [
-  { chainId: 42161, name: 'Arbitrum', usd: 25540, sub: CHAIN_AVAILABLE },
-  { chainId: 10, name: 'Optimism', usd: 6182, sub: CHAIN_READONLY },
-  { chainId: 42220, name: 'Celo', usd: 1910, sub: CHAIN_READONLY },
+  { chainId: 42161, name: 'Arbitrum', usd: null, sub: CHAIN_AVAILABLE },
+  { chainId: 10, name: 'Optimism', usd: null, sub: CHAIN_READONLY },
+  { chainId: 42220, name: 'Celo', usd: null, sub: CHAIN_READONLY },
 ] as const;
 
 /** The reference's qualified-vaults section note (verbatim). */
@@ -195,18 +187,6 @@ function chainTotals(wallets: readonly HoldingWallet[]): ChainTotal[] {
       valued,
     };
   });
-}
-
-/** The resident-facing name of an unverified row's provenance. */
-function provenanceLabel(provider: string): string {
-  switch (provider) {
-    case CONNECTED_WALLET_PROVIDER:
-      return 'Connected wallet';
-    case EVM_PROVIDER:
-      return 'Pasted address';
-    default:
-      return provider;
-  }
 }
 
 /** One row of the "In linked wallets" table: a real, readable holding. */
@@ -383,8 +363,7 @@ function SummaryCard({
 export function HoldingsScreen({
   aggregate,
   safeAddress,
-  renderConnectSign,
-  renderLinkAnother,
+  renderVerifyWallets,
 }: HoldingsScreenProps) {
   const { total, walletCount, wallets, unverifiedWallets } = aggregate;
 
@@ -466,7 +445,9 @@ export function HoldingsScreen({
                 />
                 <span style={chainName}>{chain.name}</span>
               </div>
-              <div style={chainValue}>{usd(chain.usd)}</div>
+              <div style={chainValue}>
+                {chain.usd === null ? '—' : usd(chain.usd)}
+              </div>
               <div
                 style={{
                   ...chainSubLine,
@@ -548,8 +529,10 @@ export function HoldingsScreen({
                     >
                       Move to vault
                     </LockedAction>
-                  ) : row.unverifiedWallet && renderConnectSign ? (
-                    renderConnectSign(row.unverifiedWallet)
+                  ) : row.unverifiedWallet ? (
+                    <Chip tone="warning" dot>
+                      Unverified
+                    </Chip>
                   ) : null}
                 </span>
                 {row.readError ? (
@@ -566,7 +549,7 @@ export function HoldingsScreen({
           <span style={sectionNote}>
             {walletCount} wallets signed · balances read-only across 5 chains
           </span>
-          {renderLinkAnother ? renderLinkAnother() : null}
+          {renderVerifyWallets ? renderVerifyWallets() : null}
         </div>
       </Card>
 
