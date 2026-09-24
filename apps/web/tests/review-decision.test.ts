@@ -3,6 +3,7 @@ import {
   applicantName,
   availableActions,
   feeState,
+  identitySummary,
   residencyState,
   walletClass,
   wealthState,
@@ -140,17 +141,17 @@ describe('queue derivations', () => {
     const state = residencyState(
       item({
         identity: {
-          nationality: 'NL',
-          over18: true,
-          notSanctioned: true,
-          expiresAt: null,
-          attestationUid: '0xuid',
+          provider: 'self',
+          status: 'valid',
+          verifiedAt: '2026-09-20T00:00:00.000Z',
+          selfNullifier: 'nullifier-1',
         },
         residences: [{ countryCode: 'NL', fromYear: 2020, toYear: null }],
         citizenships: ['NL'],
       }),
     );
     expect(state.identityVerified).toBe(true);
+    expect(state.identityStatus).toBe('valid');
     expect(state.residences).toBe(1);
     expect(state.checks).toEqual([
       { label: 'Identity', met: true },
@@ -158,6 +159,49 @@ describe('queue derivations', () => {
       { label: 'Review', met: false },
       { label: 'Service fee', met: false },
     ]);
+  });
+
+  it('does not call an invalid Self outcome verified', () => {
+    const state = residencyState(
+      item({
+        identity: {
+          provider: 'self',
+          status: 'invalid',
+          verifiedAt: null,
+          selfNullifier: null,
+        },
+      }),
+    );
+    expect(state.identityVerified).toBe(false);
+    expect(state.identityStatus).toBe('invalid');
+    expect(state.checks[0]).toEqual({ label: 'Identity', met: false });
+  });
+
+  it('reports no identity as none, never as verified', () => {
+    const state = residencyState(item({ identity: null }));
+    expect(state.identityVerified).toBe(false);
+    expect(state.identityStatus).toBe('none');
+    expect(state.checks[0]).toEqual({ label: 'Identity', met: false });
+  });
+
+  it('summarises the Self outcome for the reviewer without inventing facts', () => {
+    expect(identitySummary(null)).toBe('not verified with Self');
+    expect(
+      identitySummary({
+        provider: 'self',
+        status: 'valid',
+        verifiedAt: '2026-09-20T00:00:00.000Z',
+        selfNullifier: 'n',
+      }),
+    ).toBe('verified via Self (valid)');
+    expect(
+      identitySummary({
+        provider: 'self',
+        status: 'invalid',
+        verifiedAt: null,
+        selfNullifier: null,
+      }),
+    ).toBe('Self verification invalid');
   });
 
   it('offers actions that match the current status', () => {

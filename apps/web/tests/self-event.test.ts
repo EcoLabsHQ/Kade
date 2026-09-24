@@ -115,6 +115,26 @@ describe('mapSelfEvent', () => {
     expect(mapped).not.toHaveProperty('expiresAt');
   });
 
+  it('treats a reveal-only payload as ignored reveals, not as a failed predicate', () => {
+    // The flow also enables Date of birth and Nationality reveals. The mapper
+    // ignores every disclosed reveal; only `minimumAge`/`ofac` are predicates.
+    const mapped = mapSelfEvent(
+      event({
+        proof_attributes: {
+          nationality: 'DEU',
+          dateOfBirth: '1990-01-01',
+          dob: '1990-01-01',
+          expiryDate: '300101',
+          name: 'Ada Lovelace',
+        },
+      }),
+    );
+    expect(mapped).toMatchObject({ status: 'valid' });
+    expect(mapped).not.toHaveProperty('nationality');
+    expect(mapped).not.toHaveProperty('dateOfBirth');
+    expect(mapped).not.toHaveProperty('expiresAt');
+  });
+
   it('fails closed: an explicitly failed predicate downgrades a valid event', () => {
     expect(
       mapSelfEvent(event({ proof_attributes: { minimumAge: 17, ofac: true } })),

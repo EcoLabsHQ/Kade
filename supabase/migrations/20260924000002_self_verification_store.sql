@@ -32,8 +32,11 @@
 --     EXECUTE is granted only to `service_role` (the precedent is the
 --     `grant execute … to service_role` block in
 --     20260922000040_residency_service_fee.sql).
---   * Residents may only SELECT their own rows (RLS policy below); there is no
---     insert/update/delete policy, so a resident cannot write a verification.
+--   * Residents may only SELECT their own rows, and a reviewer (Admin review
+--     surface) may SELECT every row (RLS policies below); there is no
+--     insert/update/delete policy, so a client cannot write a verification.
+--     Without the reviewer policy the Admin surface would read no rows and
+--     wrongly show every verified resident as unverified.
 --   * The caller (the webhook route) verifies Self's signature over the raw body
 --     before this function is reached. The function is a persistence primitive:
 --     it trusts its arguments and must never be granted to a client-invocable
@@ -190,8 +193,11 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------
--- RLS: a resident may read their own verification rows and nothing else. The
--- writer is the only insert/update path (granted to service_role).
+-- RLS: a resident may read their own verification rows and nothing else; a
+-- reviewer (admins deciding on an application) may read every row, exactly as
+-- the reviewer policies in 20260922000060_admin_review.sql allow for
+-- `identity_attestations`. The writer is the only insert/update path (granted to
+-- service_role).
 -- ---------------------------------------------------------------------------
 alter table public.self_verifications enable row level security;
 
@@ -202,7 +208,18 @@ create policy self_verifications_select_own
   on public.self_verifications for select to authenticated
   using (profile_id = auth.uid());
 
+create policy self_verifications_select_reviewer
+  on public.self_verifications for select to authenticated
+  using (public.is_reviewer());
+
 comment on policy self_verifications_select_own on public.self_verifications is
   'A resident may read only their own Self verification outcomes. There is no '
   'write policy: rows are written exclusively by record_self_verification, '
   'granted to service_role.';
+
+comment on policy self_verifications_select_reviewer on public.self_verifications is
+  'A reviewer may read every resident''s Self verification outcome, which is '
+  'what the Admin review surface shows for the identity check. `is_reviewer()` '
+  '(20260922000060_admin_review.sql) is the gate; without this policy the '
+  'reviewer would see no rows and wrongly read every verified resident as '
+  'unverified.';

@@ -7,6 +7,7 @@ import {
   applicantName,
   availableActions,
   feeState,
+  identitySummary,
   residencyState,
   walletClass,
   wealthState,
@@ -220,6 +221,9 @@ export function ReviewQueue({ items }: ReviewQueueProps) {
                   {residency.checks
                     .map((check) => `${check.met ? '✓' : '—'} ${check.label}`)
                     .join(' · ')}
+                </div>
+                <div style={{ color: tokens.muted, fontSize: '11.5px' }}>
+                  Identity: {identitySummary(item.identity)}
                 </div>
               </div>
 

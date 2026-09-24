@@ -45,12 +45,23 @@ export interface ReviewWallet {
   readonly verifiedAt: string | null;
 }
 
+/**
+ * The resident's Self verification outcome, as the reviewer needs it.
+ *
+ * As amended (week-2 contract v1.7), identity is verified **on chain** by Self
+ * and the outcome is stored in `self_verifications`. The reviewer sees whether
+ * the resident verified and, where known, the outcome; Kade does not store — and
+ * this type does not carry — nationality, date of birth or expiry.
+ */
 export interface ReviewIdentity {
-  readonly nationality: string | null;
-  readonly over18: boolean | null;
-  readonly notSanctioned: boolean | null;
-  readonly expiresAt: string | null;
-  readonly attestationUid: string | null;
+  /** The provider; 'self' is the only verification provider. */
+  readonly provider: 'self';
+  /** The Self outcome. */
+  readonly status: 'valid' | 'invalid';
+  /** When a valid outcome was established, ISO; null otherwise. */
+  readonly verifiedAt: string | null;
+  /** Self's per-person identifier, when supplied. */
+  readonly selfNullifier: string | null;
 }
 
 export interface ReviewResidence {
@@ -152,24 +163,39 @@ export function wealthState(wallets: readonly ReviewWallet[]): WealthState {
   };
 }
 
+export type ReviewIdentityStatus = 'none' | 'valid' | 'invalid';
+
 export interface ResidencyState {
+  /** True only for a valid Self verification; the identity check is met then. */
   readonly identityVerified: boolean;
-  readonly over18: boolean | null;
-  readonly notSanctioned: boolean | null;
+  /** The Self outcome, or 'none' when the resident has not verified. */
+  readonly identityStatus: ReviewIdentityStatus;
   readonly residences: number;
   readonly citizenships: number;
   /** The four checks D16 names: identity, funds, review, service fee. */
   readonly checks: readonly { readonly label: string; readonly met: boolean }[];
 }
 
+/**
+ * The one-line identity summary the reviewer reads.
+ *
+ * It reports the real source of truth — the `self_verifications` row — and never
+ * a nationality, date of birth or expiry, which Kade does not store. Only a
+ * `valid` outcome is "verified".
+ */
+export function identitySummary(identity: ReviewIdentity | null): string {
+  if (identity === null) return 'not verified with Self';
+  return identity.status === 'valid'
+    ? 'verified via Self (valid)'
+    : 'Self verification invalid';
+}
+
 export function residencyState(item: ReviewQueueItem): ResidencyState {
-  const identityVerified =
-    item.identity !== null && item.identity.attestationUid !== null;
-  const identity = item.identity;
+  const identityStatus: ReviewIdentityStatus = item.identity?.status ?? 'none';
+  const identityVerified = identityStatus === 'valid';
   return {
     identityVerified,
-    over18: identity?.over18 ?? null,
-    notSanctioned: identity?.notSanctioned ?? null,
+    identityStatus,
     residences: item.residences.length,
     citizenships: item.citizenships.length,
     checks: [
