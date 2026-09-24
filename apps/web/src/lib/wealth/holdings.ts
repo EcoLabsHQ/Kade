@@ -1,41 +1,45 @@
 /**
- * Holdings — the aggregate over **signature-verified** linked wallets.
+ * Holdings — the aggregate over **signature-verified** linked wallets, plus the
+ * unverified wallets displayed beside them.
  *
  * Frozen decision §2.2 item 2: a linked wallet is proven by a signature over a
  * server-issued challenge (EIP-191 / EIP-4361-style), and that proof is required
- * to display the wallet's holdings. Frozen decision §2.2 item 3: a pasted
- * address is registration-only and **never** feeds Holdings — the exclusion is
- * structural, not a display convention. As amended v1.2, a wallet connected
- * during onboarding (browser extension or WalletConnect) is displayed in
- * Holdings too, but as an **unverified** connected wallet, in its own labelled
- * section and **excluded from the total**.
+ * to feed the Holdings total. As amended v1.2, a wallet connected during
+ * onboarding (browser extension or WalletConnect) is displayed in Holdings too,
+ * but as an **unverified** wallet, in its own labelled section and **excluded
+ * from the total**. As amended v1.3, a **pasted EVM** (`0x…`) address is
+ * displayed the same way, while a pasted **Bitcoin** address remains
+ * registration-only and **never** feeds Holdings — that exclusion stays
+ * structural, not a display convention.
  *
  * That structure lives here, in two parts:
  *
  *   1. `classifyWalletRows` is the only producer of a `VerifiedWallet` and of
- *      an `UnverifiedConnectedWallet`. A row is classified exactly once:
+ *      an `UnverifiedWallet`. A row is classified exactly once:
  *      - `verified_at` non-null            → VERIFIED (any provider);
  *      - `verified_at` null, provider
- *        `connected-wallet`               → UNVERIFIED CONNECTED;
+ *        `connected-wallet` or
+ *        `pasted-address`                 → UNVERIFIED;
  *      - `verified_at` null, provider
- *        `pasted-address`/`bitcoin-address`
- *                                         → EXCLUDED from Holdings.
- *      So a pasted row (`verified_at` NULL, the documented "unverified" meaning)
- *      can never satisfy the verified predicate and can never be passed in.
+ *        `bitcoin-address` (or none)      → EXCLUDED from Holdings.
+ *      So a pasted Bitcoin row (`verified_at` NULL, the documented "unverified"
+ *      meaning) can never satisfy the verified predicate and can never be passed
+ *      in.
  *   2. Both classes are branded by a module-private `unique symbol`, so neither
  *      can be constructed with an object literal from outside this module.
  *      `aggregateHoldings` takes `VerifiedWallet[]` for the total and a separate
- *      `UnverifiedConnectedWallet[]` for the unverified section: the unverified
- *      class can never contribute to `total`, because the function never adds it.
+ *      `UnverifiedWallet[]` for the unverified section: the unverified class can
+ *      never contribute to `total`, because the function never adds it.
  *
  * Balances are read through an injected reader (`readBalances`), so these
  * functions are pure, network-free and directly testable, and the same code is
- * reused for every verified wallet. A failed read is reported as a per-wallet
- * `readError` with a null value — never fabricated as zero.
+ * reused for every wallet. A failed read is reported as a per-wallet `readError`
+ * with a null value — never fabricated as zero.
  */
 
 import {
   CONNECTED_WALLET_PROVIDER,
+  EVM_PROVIDER,
   type EvmChainBalance,
 } from './types';
 
@@ -76,7 +80,7 @@ export interface VerifiedWallet {
 }
 
 /**
- * Compile-time proof marker for a connected, unverified wallet.
+ * Compile-time proof marker for a displayed, unverified wallet.
  *
  * Deliberately **not exported**, exactly like `ownershipProof`: a pasted row
  * cannot be named as one of these from outside this module, and the classifier
@@ -85,18 +89,21 @@ export interface VerifiedWallet {
 declare const connectionProof: unique symbol;
 
 /**
- * A wallet connected during onboarding whose control was **not** proven.
+ * A wallet displayed in Holdings whose control was **not** proven: a connected
+ * wallet or a pasted EVM address.
  *
  * `verified_at` is NULL and it is not evidence of control. It is shown in
  * Holdings in its own labelled section and is **excluded from the total**: it is
- * a separate class from `VerifiedWallet`, never a substitute for one.
+ * a separate class from `VerifiedWallet`, never a substitute for one. The
+ * `provider` is carried through so the UI can show provenance (`connected-wallet`
+ * or `pasted-address`) and label each row.
  */
-export interface UnverifiedConnectedWallet {
+export interface UnverifiedWallet {
   readonly [connectionProof]: true;
   /** Canonical address as stored, for display. */
   readonly address: string;
-  /** Always `'connected-wallet'`; the connected, unverified encoding. */
-  readonly provider: typeof CONNECTED_WALLET_PROVIDER;
+  /** The stored provider, so the UI can label provenance. */
+  readonly provider: string;
   /** Distinct chains a stored row exists for, ascending. */
   readonly chainIds: readonly number[];
 }
@@ -105,8 +112,11 @@ export interface UnverifiedConnectedWallet {
 export interface ClassifiedWalletRows {
   /** Signature-verified wallets; the only rows that feed the Holdings total. */
   readonly verified: readonly VerifiedWallet[];
-  /** Connected but unverified wallets; shown separately, never in the total. */
-  readonly unverifiedConnected: readonly UnverifiedConnectedWallet[];
+  /**
+   * Connected or pasted-EVM wallets, unverified; shown separately, never in the
+   * total.
+   */
+  readonly unverifiedWallets: readonly UnverifiedWallet[];
 }
 
 /**
@@ -123,13 +133,14 @@ function normalizeVerifiedAt(value: string | null | undefined): string | null {
 }
 
 /**
- * The structural pasted-address exclusion.
+ * The structural verified-only selection.
  *
  * Group the stored rows by address; a group is a verified wallet only when at
  * least one of its rows carries a usable `verified_at`. Rows without one (every
- * pasted Bitcoin and pasted EVM row) are dropped before aggregation, so they
- * cannot contribute a holding. The earliest proof wins, and the address keeps
- * every chain it has a row for.
+ * pasted Bitcoin and pasted EVM row) are omitted, so they cannot contribute a
+ * holding; the classifier below may still display a pasted EVM row as
+ * unverified. The earliest proof wins, and the address keeps every chain it has
+ * a row for.
  */
 export function selectVerifiedWallets(
   rows: readonly WalletLinkRow[],
@@ -169,20 +180,32 @@ export function selectVerifiedWallets(
 }
 
 /**
- * Partition stored rows into the two Holdings classes, exactly.
+ * The providers that classify as displayed-but-unverified.
+ *
+ * A connected wallet and a pasted EVM address are shown; a pasted Bitcoin
+ * address (`bitcoin-address`) is deliberately absent, so it stays excluded by
+ * construction.
+ */
+const UNVERIFIED_PROVIDERS: ReadonlySet<string> = new Set([
+  CONNECTED_WALLET_PROVIDER,
+  EVM_PROVIDER,
+]);
+
+/**
+ * Partition stored rows into the Holdings classes, exactly.
  *
  * This is the single classifier the Holdings loader uses:
  *
  *   - a row with a usable `verified_at` is VERIFIED, whatever its provider;
- *   - otherwise a row whose provider is `connected-wallet` is UNVERIFIED
- *     CONNECTED;
- *   - every other row — `verified_at` NULL with a `pasted-address` or
- *     `bitcoin-address` provider, or no provider at all — is EXCLUDED.
+ *   - otherwise a row whose provider is `connected-wallet` or `pasted-address`
+ *     is UNVERIFIED;
+ *   - every other row — `verified_at` NULL with a `bitcoin-address` provider, or
+ *     no provider at all — is EXCLUDED.
  *
- * A verified row always wins for its address: if the same address also has a
- * connected row, only the verified class is produced. That keeps a wallet that
+ * A verified row always wins for its address: if the same address also has an
+ * unverified row, only the verified class is produced. That keeps a wallet that
  * was later signature-verified out of the unverified section instead of showing
- * it twice. Like `selectVerifiedWallets`, the pasted exclusion is a predicate
+ * it twice. Like `selectVerifiedWallets`, the Bitcoin exclusion is a predicate
  * here, not a render-time filter.
  */
 export function classifyWalletRows(
@@ -194,13 +217,15 @@ export function classifyWalletRows(
   );
   const byAddress = new Map<
     string,
-    { address: string; chainIds: Set<number> }
+    { address: string; provider: string; chainIds: Set<number> }
   >();
 
   for (const row of rows) {
     // A usable verified_at means the row belongs to the verified class above.
     if (normalizeVerifiedAt(row.verifiedAt) !== null) continue;
-    if (row.provider !== CONNECTED_WALLET_PROVIDER) continue;
+    if (row.provider === null || !UNVERIFIED_PROVIDERS.has(row.provider)) {
+      continue;
+    }
     if (typeof row.address !== 'string' || row.address.trim() === '') continue;
 
     const key = row.address.trim().toLowerCase();
@@ -214,11 +239,12 @@ export function classifyWalletRows(
     }
     byAddress.set(key, {
       address: row.address.trim(),
+      provider: row.provider,
       chainIds: new Set([row.chain]),
     });
   }
 
-  const unverifiedConnected = [...byAddress.values()]
+  const unverifiedWallets = [...byAddress.values()]
     .sort((a, b) =>
       a.address.toLowerCase().localeCompare(b.address.toLowerCase()),
     )
@@ -226,12 +252,12 @@ export function classifyWalletRows(
       (entry) =>
         ({
           address: entry.address,
-          provider: CONNECTED_WALLET_PROVIDER,
+          provider: entry.provider,
           chainIds: [...entry.chainIds].sort((a, b) => a - b),
-        }) as unknown as UnverifiedConnectedWallet,
+        }) as unknown as UnverifiedWallet,
     );
 
-  return { verified, unverifiedConnected };
+  return { verified, unverifiedWallets };
 }
 
 /** The balances of one verified address, as returned by the injected reader. */
@@ -254,8 +280,8 @@ interface WalletBalanceRead {
 
 /**
  * Read one wallet's balances, turning a provider failure into a `readError`
- * rather than an exception or a fabricated zero. Shared by both classes, so a
- * connected wallet's failed read is reported exactly as a verified one's.
+ * rather than an exception or a fabricated zero. Shared by both classes, so an
+ * unverified wallet's failed read is reported exactly as a verified one's.
  */
 async function readWalletBalances(
   address: string,
@@ -293,16 +319,16 @@ export interface HoldingWallet {
 }
 
 /**
- * One connected, unverified wallet in the aggregate.
+ * One displayed, unverified wallet in the aggregate.
  *
  * It is deliberately a separate type from `HoldingWallet`: it has no
  * `verifiedAt`, so a renderer cannot mistake it for a proven wallet.
  */
 export interface UnverifiedHoldingWallet {
   readonly address: string;
-  /** Always `'connected-wallet'`. */
+  /** The stored provider (`connected-wallet` or `pasted-address`). */
   readonly provider: string;
-  /** Chains the connected wallet has a stored row for. */
+  /** Chains the unverified wallet has a stored row for. */
   readonly chainIds: readonly number[];
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
@@ -321,17 +347,18 @@ export interface HoldingsAggregate {
   readonly unvaluedCount: number;
   readonly wallets: readonly HoldingWallet[];
   /**
-   * Connected, unverified wallets. Shown in their own labelled section and
-   * **never** included in `total` or in `valuedCount`/`unvaluedCount`.
+   * Connected or pasted-EVM, unverified wallets. Shown in their own labelled
+   * section and **never** included in `total` or in
+   * `valuedCount`/`unvaluedCount`.
    */
   readonly unverifiedWallets: readonly UnverifiedHoldingWallet[];
-  /** How many unverified connected wallets there are. */
+  /** How many unverified wallets there are. */
   readonly unverifiedCount: number;
 }
 
 /**
- * Aggregate the holdings of verified wallets, plus the unverified connected
- * ones for a separate section.
+ * Aggregate the holdings of verified wallets, plus the unverified ones for a
+ * separate section.
  *
  * `wallets` is typed `VerifiedWallet[]`, so a caller cannot put a pasted row in
  * the total: it would not typecheck and, at runtime, it cannot carry the private
@@ -343,11 +370,12 @@ export interface HoldingsAggregate {
  *
  * The unverified wallets are read so the screen can show their balances, but
  * their `usd` is **never** added to `total` and they never touch the verified
- * counts: a connection is not a signature and is not evidence of control.
+ * counts: neither a connection nor a pasted address is a signature, and neither
+ * is evidence of control.
  */
 export async function aggregateHoldings(input: {
   readonly wallets: readonly VerifiedWallet[];
-  readonly unverifiedWallets?: readonly UnverifiedConnectedWallet[];
+  readonly unverifiedWallets?: readonly UnverifiedWallet[];
   readonly readBalances: ReadVerifiedBalances;
 }): Promise<HoldingsAggregate> {
   const seen = new Set<string>();

@@ -6,20 +6,22 @@ import {
   type HoldingsAggregate,
   type WalletLinkRow,
 } from '@/lib/wealth/holdings';
-import { CONNECTED_WALLET_PROVIDER } from '@/lib/wealth/types';
+import { CONNECTED_WALLET_PROVIDER, EVM_PROVIDER } from '@/lib/wealth/types';
 
 /**
  * The Holdings data path, server-side only.
  *
- * Frozen decision §2.2 item 3: pasted addresses never feed Holdings. As amended
- * v1.2, a wallet connected during onboarding is shown in Holdings — unverified
- * and excluded from the total. This loader therefore asks Supabase for the
- * resident's rows where `verified_at` is set **or** the provider is
- * `connected-wallet`, and then runs every row through `classifyWalletRows`, so
- * the structural predicate is applied even if the query were ever loosened.
- * Balances are read from the existing public EVM provider (`@/lib/wealth/evm`),
- * the same one the proof-of-wealth screen uses, so the two cannot disagree.
- * Nothing is fabricated: a read that fails becomes that wallet's `readError`.
+ * Frozen decision §2.2 item 3 (as amended v1.3): a pasted EVM address is shown
+ * in Holdings unverified and excluded from the total, while a pasted Bitcoin
+ * address never feeds Holdings. As amended v1.2, a wallet connected during
+ * onboarding is likewise shown unverified and excluded from the total. This
+ * loader therefore asks Supabase for the resident's rows where `verified_at` is
+ * set **or** the provider is `connected-wallet` or `pasted-address`, and then
+ * runs every row through `classifyWalletRows`, so the structural predicate is
+ * applied even if the query were ever loosened. Balances are read from the
+ * existing public EVM provider (`@/lib/wealth/evm`), the same one the
+ * proof-of-wealth screen uses, so the two cannot disagree. Nothing is
+ * fabricated: a read that fails becomes that wallet's `readError`.
  */
 
 interface WalletRow {
@@ -54,14 +56,14 @@ async function readVerifiedBalances(address: string) {
 }
 
 /**
- * Aggregate the signed-in resident's verified and connected-unverified holdings.
+ * Aggregate the signed-in resident's verified and unverified holdings.
  *
  * The query selects a row when it is signature-verified (any provider) or when
- * it is a `connected-wallet` row; pasted rows are never returned. The structural
- * classifier then partitions them, so a pasted row is dropped even if the query
- * were ever loosened. Returns an empty aggregate (rather than throwing) for a
- * resident with no such rows or no session, so the screen degrades to "nothing
- * linked yet".
+ * it is a `connected-wallet` or `pasted-address` row; pasted Bitcoin rows are
+ * never returned. The structural classifier then partitions them, so a
+ * `bitcoin-address` row is dropped even if the query were ever loosened. Returns
+ * an empty aggregate (rather than throwing) for a resident with no such rows or
+ * no session, so the screen degrades to "nothing linked yet".
  */
 export async function loadVerifiedHoldings(
   userId: string,
@@ -72,7 +74,11 @@ export async function loadVerifiedHoldings(
     .select('id, address, chain, provider, verified_at')
     .eq('profile_id', userId)
     .or(
-      `verified_at.not.is.null,provider.eq.${CONNECTED_WALLET_PROVIDER}`,
+      [
+        'verified_at.not.is.null',
+        `provider.eq.${CONNECTED_WALLET_PROVIDER}`,
+        `provider.eq.${EVM_PROVIDER}`,
+      ].join(','),
     )
     .order('id', { ascending: true });
 
@@ -80,13 +86,13 @@ export async function loadVerifiedHoldings(
     throw new Error(`Reading the verified wallets failed: ${error.message}`);
   }
 
-  const { verified, unverifiedConnected } = classifyWalletRows(
+  const { verified, unverifiedWallets } = classifyWalletRows(
     toWalletLinkRows((data ?? []) as readonly WalletRow[]),
   );
 
   return aggregateHoldings({
     wallets: verified,
-    unverifiedWallets: unverifiedConnected,
+    unverifiedWallets,
     readBalances: readVerifiedBalances,
   });
 }

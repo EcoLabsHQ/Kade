@@ -5,9 +5,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * The Holdings loader.
  *
  * `loadVerifiedHoldings` is the only place the screen reads the database. These
- * tests pin two things: it asks Supabase for rows where `verified_at` is set
- * (03's column, the signature proof), and it re-applies the structural predicate
- * so a pasted row — even one the query somehow returned — is still dropped
+ * tests pin two things: it asks Supabase for signature-verified rows, connected
+ * rows and pasted-EVM rows, and it re-applies the structural predicate so a
+ * pasted Bitcoin row — even one the query somehow returned — is still dropped
  * before the aggregate.
  */
 
@@ -29,7 +29,9 @@ import { loadVerifiedHoldings } from '@/app/holdings/data';
 const VERIFIED = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const PASTED = '0x2222222222222222222222222222222222222222';
 const CONNECTED = '0x3333333333333333333333333333333333333333';
+const BITCOIN = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 const CONNECTED_PROVIDER = 'connected-wallet';
+const PASTED_PROVIDER = 'pasted-address';
 
 interface Row {
   readonly id: number;
@@ -81,20 +83,23 @@ beforeEach(() => {
 });
 
 describe('loadVerifiedHoldings', () => {
-  it('selects verified rows and connected-wallet rows in one query', async () => {
+  it('selects verified, connected-wallet and pasted-address rows in one query', async () => {
     const { client, filters } = createFakeClient([]);
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
 
     await loadVerifiedHoldings('user-1');
 
-    // The widened predicate: a signature proof OR the connected encoding.
+    // The widened predicate: a signature proof, the connected encoding, or the
+    // pasted-EVM encoding. Bitcoin is deliberately absent.
     const or = filters.find(([kind]) => kind === 'or');
     expect(or).toBeDefined();
     expect(String(or?.[1])).toContain('verified_at.not.is.null');
     expect(String(or?.[1])).toContain(`provider.eq.${CONNECTED_PROVIDER}`);
+    expect(String(or?.[1])).toContain(`provider.eq.${PASTED_PROVIDER}`);
+    expect(String(or?.[1])).not.toContain('bitcoin-address');
   });
 
-  it('drops a pasted row even when the query returns one', async () => {
+  it('shows a pasted EVM row unverified and drops a Bitcoin row the query returned', async () => {
     const { client } = createFakeClient([
       {
         id: 1,
@@ -107,7 +112,14 @@ describe('loadVerifiedHoldings', () => {
         id: 2,
         address: PASTED,
         chain: 1,
-        provider: 'pasted-address',
+        provider: PASTED_PROVIDER,
+        verified_at: null,
+      },
+      {
+        id: 3,
+        address: BITCOIN,
+        chain: 0,
+        provider: 'bitcoin-address',
         verified_at: null,
       },
     ]);
@@ -117,10 +129,11 @@ describe('loadVerifiedHoldings', () => {
 
     expect(aggregate.walletCount).toBe(1);
     expect(aggregate.wallets[0]!.address).toBe(VERIFIED);
-    expect(aggregate.unverifiedCount).toBe(0);
-    expect(hoisted.readEvmBalances).toHaveBeenCalledTimes(1);
-    expect(hoisted.readEvmBalances).toHaveBeenCalledWith(VERIFIED);
-    expect(hoisted.readEvmBalances).not.toHaveBeenCalledWith(PASTED);
+    expect(aggregate.unverifiedCount).toBe(1);
+    expect(aggregate.unverifiedWallets[0]!.address).toBe(PASTED);
+    expect(aggregate.unverifiedWallets[0]!.provider).toBe(PASTED_PROVIDER);
+    expect(hoisted.readEvmBalances).toHaveBeenCalledWith(PASTED);
+    expect(hoisted.readEvmBalances).not.toHaveBeenCalledWith(BITCOIN);
   });
 
   it('shows a connected row unverified and excludes it from the total', async () => {
