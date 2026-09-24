@@ -386,13 +386,7 @@ export function HoldingsScreen({
   renderConnectSign,
   renderLinkAnother,
 }: HoldingsScreenProps) {
-  const {
-    total,
-    walletCount,
-    wallets,
-    unverifiedWallets,
-    unverifiedCount,
-  } = aggregate;
+  const { total, walletCount, wallets, unverifiedWallets } = aggregate;
 
   const chains = chainTotals(wallets);
   const rows = linkedRows(aggregate);
