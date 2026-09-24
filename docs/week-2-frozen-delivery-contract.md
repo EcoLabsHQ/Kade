@@ -45,7 +45,9 @@ The owner's priority order is frozen. It governs sequencing and any trade-off:
 1. **Residency** — the resident completes the residency step.
 2. **Holdings** — show all linked holdings, **and only through a wallet
    connection signature** (an ownership proof comparable to an EOA signature).
-   Pasting an address is **not** sufficient for Holdings; pasting is
+   Pasting an address is **not** sufficient for Holdings: as amended v1.3, a
+   pasted **EVM** address is displayed there unverified and excluded from the
+   total, and only a signature makes it count; pasting is otherwise
    registration-only (Step 3 proof of wealth).
 3. **Invest** — the **Morpho deposit on Ethereum mainnet into one pool** is made
    fully functional first, before any other instrument, pool or chain.
@@ -116,7 +118,7 @@ the DOCX is an arbitrary demo value and is marked `[arbitrary]`.
 | EXE-010 | Ethereum mainnet activation and Week 2 configuration | 2 | KAD-009 `[arbitrary]` | A funded mainnet payer, RPC, treasury and per-chain configuration are wired; the fee rail is available on mainnet. Testnet is retained where mainnet is not required. |
 | EXE-011 | Safe WebAuthn signer deployment | 2 | KAD-010 `[arbitrary]` | The direct Safe WebAuthn signer contract is deployed so a passkey signature validates, unblocking Invest. |
 | EXE-012 | Residency step end to end | 5 | KAD-011 `[arbitrary]` | Self identity verification (`kade.kyc.v1`), the four checks, the server-verified residency service fee, `kade.permit.v1`, and a tracker derived from on-chain records. |
-| EXE-013 | Holdings from signed linked wallets | 4 | KAD-012 `[arbitrary]` | A signed-message ownership proof; Holdings shows **all** signed linked wallets' holdings; pasted rows are excluded by construction. |
+| EXE-013 | Holdings from signed linked wallets | 4 | KAD-012 `[arbitrary]` | A signed-message ownership proof; Holdings shows **all** signed linked wallets' holdings; a pasted **EVM** row is displayed unverified (v1.3) but is excluded from the total by construction. |
 | EXE-014 | Invest: Morpho deposit on Ethereum mainnet, one pool | 3 | KAD-013 `[arbitrary]` | A resident deposits USDC into one Morpho pool on Ethereum mainnet, fully functional end to end, with the position reflected in Holdings. |
 | EXE-015 | Simple Admin review dashboard | 4 | KAD-014 `[arbitrary]` | A reviewer role reviews applications and approves/rejects them; the action writes `review_events` and issues `kade.review.v1`; the resident's gates flip live; RLS restricts the surface. |
 |  | **Total** | **20** | **KAD-009–KAD-014** |  |
@@ -202,8 +204,9 @@ Accepted when:
   server-issued challenge** (EIP-191 / EIP-4361-style);
 - the Holdings screen shows **all** linked wallets' holdings from the approved
   provider(s);
-- **pasting an address cannot add a holding** — pasted rows are excluded by
-  construction;
+- **pasting an address cannot add a holding** — a pasted **EVM** address is
+  displayed unverified but is never counted in the total, and a pasted
+  **Bitcoin** address is not displayed at all (v1.3);
 - `wallets.verified_at` is set only for signature-verified rows;
 - the signature confers no Safe authority and is not a login;
 - as amended v1.2, a connected wallet that has **not** been signature-verified is
@@ -501,7 +504,7 @@ Unless introduced through change control, Week 2 excludes:
 - ownership proof anywhere other than Holdings, and wallet login;
 - managed/embedded signers;
 - hardware wallets and Bitcoin xpub;
-- pasted addresses feeding Holdings;
+- a pasted address counting toward Holdings (a pasted EVM address is displayed unverified and excluded from the total, v1.3);
 - ERC-20 balances other than the approved token set;
 - recovery (Safe RecoveryHub), Reflect/Aave vaults, CCTP, GOS and Card;
 - Vote;
@@ -509,7 +512,7 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.2:
+Freeze status at v1.4:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
@@ -530,7 +533,7 @@ Freeze status at v1.2:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.2** with the open items above tracked under change
+This contract is **Frozen v1.4** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
