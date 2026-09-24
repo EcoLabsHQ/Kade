@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import { HoldingsScreen } from './HoldingsScreen';
 import { VerifyWalletsModal } from './VerifyWalletsModal';
-import type { OwnershipCallbacks } from './ownership-callbacks';
+import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
 
 /**
  * The client half of Holdings: it binds the browser-only machinery (AppKit, the

@@ -4,12 +4,15 @@
  * Verifying a wallet's control is a signature over a server-issued challenge
  * (EIP-191 / EIP-4361-style). The browser half signs the exact message; the
  * server half issues the challenge and decides whether the signature verifies,
- * and it alone sets `wallets.verified_at`. The Holdings actions depend only on
- * these three callbacks, injected by the page, so they hold no proof logic —
- * they never re-implement the challenge, the verification or the write.
+ * and it alone sets `wallets.verified_at`. Callers depend only on these three
+ * callbacks, injected by the page, so they hold no proof logic — they never
+ * re-implement the challenge, the verification or the write.
+ *
+ * Shared by Holdings (the verify modal) and onboarding Step 3 (the connect flow)
+ * so both sites prove ownership through one interface.
  *
  * `onLinked` is the refresh hook: called after a successful verification (or a
- * successful persistence) so the page can re-read the aggregate.
+ * successful persistence) so the caller can re-read its data.
  */
 
 export interface OwnershipChallengeView {
@@ -26,6 +29,6 @@ export interface OwnershipCallbacks {
     readonly message: string;
     readonly signature: string;
   }) => Promise<{ readonly ok: boolean }>;
-  /** Called after a successful verification so the page can refresh. */
+  /** Called after a successful verification so the caller can refresh. */
   readonly onLinked: () => void;
 }

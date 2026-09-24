@@ -8,7 +8,7 @@ import { tokens } from '@/components/ui/tokens';
 import type { UnverifiedHoldingWallet } from '@/lib/wealth/holdings';
 import { shortAddress } from '@/lib/wealth/format';
 import { type WalletConnection } from './connected-addresses';
-import type { OwnershipCallbacks } from './ownership-callbacks';
+import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
 import { provenanceLabel } from './provenance';
 
 /**
