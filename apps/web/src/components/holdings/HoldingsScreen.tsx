@@ -669,15 +669,7 @@ export function HoldingsScreen({
       </Card>
 
       <Card radius={14} padding="20px 24px">
-        <p style={closingParagraph}>
-          Balances are read from a public provider on Ethereum and Base only. A
-          linked wallet is proven by signing a server-issued challenge; that
-          signature is not a login and gives Kade no authority over your Safe. A
-          connected wallet or a pasted EVM address is read-only, unverified and
-          excluded from the total; a pasted Bitcoin address never feeds Holdings.
-          The qualified vault (KadeLock) is not deployed in Week 2, so no asset
-          is qualified and no tier, lock date or yield applies.
-        </p>
+        <p style={closingParagraph}>{CLOSING_PARAGRAPH}</p>
       </Card>
     </div>
   );
@@ -804,22 +796,6 @@ const qualifiedEmpty: CSSProperties = {
   textAlign: 'center',
   fontSize: '13px',
   color: tokens.muted,
-};
-
-const bodyNote: CSSProperties = {
-  fontSize: '12px',
-  color: tokens.muted,
-  marginTop: '8px',
-  marginBottom: 0,
-  lineHeight: 1.5,
-};
-
-const linkedIntro: CSSProperties = {
-  fontSize: '12px',
-  color: tokens.muted,
-  margin: '10px 0 0',
-  lineHeight: 1.5,
-  maxWidth: '80ch',
 };
 
 const listHead: CSSProperties = {
