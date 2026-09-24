@@ -96,6 +96,12 @@ interface FlowProps {
     readonly address: string;
     readonly readError: string | null;
   }[];
+  readonly onBegin?: (address: string) => Promise<{ message: string }>;
+  readonly onComplete?: (input: {
+    address: string;
+    message: string;
+    signature: string;
+  }) => Promise<{ ok: boolean }>;
 }
 
 async function flowProps(): Promise<FlowProps> {
@@ -199,6 +205,14 @@ describe('onboarding page credential restore', () => {
     hoisted.listWalletAddresses.mockRejectedValue(new Error('provider down'));
 
     expect((await flowProps()).initialEvmAddresses).toEqual([]);
+  });
+
+  it('hands the ownership-proof callbacks to the flow, so Step 3 can sign', async () => {
+    const props = await flowProps();
+    // The same begin/complete actions Holdings uses; the panel must not import
+    // them itself, so the page is what proves they are injected.
+    expect(typeof props.onBegin).toBe('function');
+    expect(typeof props.onComplete).toBe('function');
   });
 
   it('hands the server-verified fee payment state to the flow', async () => {

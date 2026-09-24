@@ -20,6 +20,7 @@ import { BitcoinGlyph } from '@/components/icons/BitcoinGlyph';
 import { EvmAddressGlyph } from '@/components/icons/EvmAddressGlyph';
 import {
   ConnectedWalletPanel,
+  type ConnectedWalletOwnership,
   type ConnectedWalletState,
 } from '@/components/wallet/ConnectedWalletPanel';
 import { chainColor } from '@/lib/wealth/chain-colors';
@@ -68,6 +69,12 @@ export interface WealthStepProps {
    * construction.
    */
   readonly onSaveConnectedWallet: (address: string) => Promise<void> | void;
+  /**
+   * The ownership-proof callbacks, injected by the page. When supplied, a
+   * connected wallet is signed after it is saved, so it appears verified in
+   * Holdings. Signing is always skippable and never gates Continue.
+   */
+  readonly ownership?: ConnectedWalletOwnership;
 }
 
 function btc(value: string | null): string {
@@ -89,6 +96,7 @@ export function WealthStep({
   onAddWalletAddress,
   onRemoveWalletAddress,
   onSaveConnectedWallet,
+  ownership,
 }: WealthStepProps) {
   const [addressInput, setAddressInput] = useState('');
   const [adding, setAdding] = useState(false);
@@ -211,6 +219,7 @@ export function WealthStep({
             configured={walletConfigured}
             onChange={onWalletChange}
             onSaveConnectedWallet={onSaveConnectedWallet}
+            ownership={ownership}
             atCap={evmAtCap}
           />
 

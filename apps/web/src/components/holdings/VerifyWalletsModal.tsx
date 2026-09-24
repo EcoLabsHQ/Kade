@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAppKit } from '@reown/appkit/react';
-import { useConnections, useDisconnect, useSignMessage } from 'wagmi';
+import { useConnections, useSignMessage } from 'wagmi';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { UnverifiedHoldingWallet } from '@/lib/wealth/holdings';
 import { shortAddress } from '@/lib/wealth/format';
 import { type WalletConnection } from './connected-addresses';
 import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
+import { useConnectPersistSign } from '@/components/wallet/useConnectPersistSign';
 import { provenanceLabel } from './provenance';
 
 /**
@@ -155,8 +156,6 @@ function LockedBody() {
   );
 }
 
-type Phase = 'idle' | 'connecting' | 'persisting' | 'signing' | 'done';
-
 function ConfiguredBody({
   wallets,
   onAddConnectedWallet,
@@ -169,75 +168,42 @@ function ConfiguredBody({
 }) {
   const { open } = useAppKit();
   const connections = useConnections();
-  const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
 
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [error, setError] = useState<string | null>(null);
   const [verified, setVerified] = useState<readonly string[]>([]);
 
   const connection: WalletConnection | null =
     connections.find((entry) => Boolean(entry.accounts[0])) ?? null;
   const address = connection?.accounts[0] ?? null;
 
-  /**
-   * Connect → persist → sign → disconnect, in one pass. The address that is
-   * signed is always the connected one, whichever row it happens to match.
-   */
+  // Connect → persist → sign → disconnect, in one pass, through the shared
+  // attempt. The address that is signed is always the connected one, whichever
+  // row it happens to match.
+  const { phase, error, busy, run: attempt, beginConnecting } =
+    useConnectPersistSign({
+      persist: onAddConnectedWallet,
+      signMessageAsync,
+      onBegin,
+      onComplete,
+      onLinked,
+    });
+
   const run = useCallback(
     async (target: WalletConnection) => {
       const account = target.accounts[0];
       if (!account) return;
-      setError(null);
-      try {
-        setPhase('persisting');
-        // Persist first: an address not already listed becomes a row, so the
-        // signature below always has a stored row to verify.
-        await onAddConnectedWallet(account);
-
-        setPhase('signing');
-        const challenge = await onBegin(account);
-        const signature = await signMessageAsync({
-          account,
-          message: challenge.message,
-        });
-        const result = await onComplete({
-          address: account,
-          message: challenge.message,
-          signature,
-        });
-        if (!result.ok) {
-          throw new Error(
-            'The signature did not verify; the wallet was not verified.',
-          );
-        }
-
-        setVerified((current) =>
-          current.includes(account.toLowerCase())
-            ? current
-            : [...current, account.toLowerCase()],
-        );
-        setPhase('done');
-        onLinked();
-      } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'The wallet could not be verified. Nothing was changed.',
-        );
-        setPhase('idle');
-      } finally {
-        disconnect({ connector: target.connector });
-      }
+      const result = await attempt({
+        address: account,
+        connector: target.connector,
+      });
+      if (!result.verified) return;
+      setVerified((current) =>
+        current.includes(account.toLowerCase())
+          ? current
+          : [...current, account.toLowerCase()],
+      );
     },
-    [
-      onAddConnectedWallet,
-      onBegin,
-      onComplete,
-      onLinked,
-      signMessageAsync,
-      disconnect,
-    ],
+    [attempt],
   );
 
   // Once a wallet connects during the connecting phase, verify it immediately.
@@ -246,20 +212,14 @@ function ConfiguredBody({
     void run(connection);
   }, [phase, connection, address, run]);
 
-  const busy =
-    phase === 'connecting' ||
-    phase === 'persisting' ||
-    phase === 'signing';
-
   function handleVerify() {
     if (busy) return;
-    setError(null);
     if (connection && address) {
       // A connection is already live: verify it rather than opening AppKit.
       void run(connection);
       return;
     }
-    setPhase('connecting');
+    beginConnecting();
     void open({ view: 'Connect' });
   }
 
