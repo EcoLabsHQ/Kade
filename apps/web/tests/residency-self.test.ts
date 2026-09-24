@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SelfClient, SelfWebhooks, WebhookVerificationError } from '@selfxyz/enterprise-sdk';
 import {
   createSelfSession,
   isSelfVerificationConfigured,
@@ -71,6 +72,18 @@ describe('readSelfConfig', () => {
     configure();
     expect(readSelfConfig()).toEqual(CONFIG);
     expect(isSelfVerificationConfigured()).toBe(true);
+  });
+});
+
+describe('the installed SDK surface', () => {
+  it('exposes the client and verifier the adapter is typed against', () => {
+    // The pinned dependency is real; these are the exact members the adapter
+    // calls. No credentials and no network are needed to check the surface.
+    const client = new SelfClient({ apiKey: 'sk_test_not_a_real_key' });
+    expect(typeof client.sessions.create).toBe('function');
+    expect(typeof client.sessions.get).toBe('function');
+    expect(typeof SelfWebhooks.verify).toBe('function');
+    expect(typeof WebhookVerificationError).toBe('function');
   });
 });
 
@@ -168,5 +181,20 @@ describe('verifySelfWebhook', () => {
       throw new Error('Cannot find module @selfxyz/enterprise-sdk');
     });
     expect(outcome.status).toBe('unavailable');
+  });
+
+  it('loads the installed SDK and maps a bad signature to invalid-signature', async () => {
+    // Uses the real, pinned @selfxyz/enterprise-sdk through the same dynamic
+    // import the route uses; no credentials and no network call.
+    const outcome = await verifySelfWebhook(
+      '{"type":"verification.completed"}',
+      {
+        'svix-id': 'msg_1',
+        'svix-timestamp': '1700000000',
+        'svix-signature': 'v1,ZGVhZGJlZWY=',
+      },
+      CONFIG,
+    );
+    expect(outcome).toEqual({ status: 'invalid-signature' });
   });
 });

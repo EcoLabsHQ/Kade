@@ -68,7 +68,10 @@ longer written by the identity path (`docs/known-gaps.md`).
 Rows are written only by `record_self_verification`, a `SECURITY DEFINER`
 function granted to `service_role` — the `/api/webhooks/self` receiver has no
 `auth.uid()`, so the resident-scoped writers cannot reach it. RLS lets a resident
-select only their own rows; there is no write policy.
+select only their own rows and a reviewer (`is_reviewer()`) select every row,
+which is what the Admin review surface reads for the identity check; there is no
+write policy. Without the reviewer policy the reviewer would see no rows and
+wrongly read a verified resident as unverified.
 
 ## Local setup (requires the Supabase CLI)
 

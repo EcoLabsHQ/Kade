@@ -23,9 +23,10 @@ import type {
  * authorization decision, and it never uses a service-role key.
  *
  * The queue is assembled from the tables D19 names: `applications` + `profiles`
- * for the applicant, `wallets` for proof of wealth, `identity_attestations`,
- * `profile_residences` and `profile_citizenships` for the residency checks, and
- * `review_events` for the latest action.
+ * for the applicant, `wallets` for proof of wealth, `self_verifications` (the
+ * real identity outcome, contract v1.7), `profile_residences` and
+ * `profile_citizenships` for the residency checks, and `review_events` for the
+ * latest action.
  */
 
 interface ApplicationRow {
@@ -63,13 +64,12 @@ interface WalletRow {
   readonly verified_at: string | null;
 }
 
-interface IdentityRow {
+interface SelfVerificationRow {
   readonly profile_id: string;
-  readonly nationality: string | null;
-  readonly over18: boolean | null;
-  readonly not_sanctioned: boolean | null;
-  readonly expires_at: string | null;
-  readonly attestation_uid: string | null;
+  readonly provider: string | null;
+  readonly status: string | null;
+  readonly verified_at: string | null;
+  readonly self_nullifier: string | null;
 }
 
 interface ResidenceRow {
@@ -204,10 +204,14 @@ export async function loadReviewQueue(
 
   const [wallets, identities, residences, citizenships, events] = await Promise.all([
     client.from('wallets').select('profile_id, address, chain, provider, verified_at').in('profile_id', profileIds),
+    // The identity outcome now lives in `self_verifications` (contract v1.7):
+    // identity is verified on chain by Self and Kade stores only the outcome.
+    // The reviewer policy on the table is what lets these rows through.
     client
-      .from('identity_attestations')
-      .select('profile_id, nationality, over18, not_sanctioned, expires_at, attestation_uid')
-      .in('profile_id', profileIds),
+      .from('self_verifications')
+      .select('profile_id, provider, status, verified_at, self_nullifier')
+      .in('profile_id', profileIds)
+      .order('created_at', { ascending: false }),
     client
       .from('profile_residences')
       .select('profile_id, country_code, from_year, to_year')
@@ -238,7 +242,7 @@ export async function loadReviewQueue(
     (row) => row.profile_id,
   );
   const identitiesByProfile = groupBy(
-    (identities.data as unknown as IdentityRow[] | null) ?? [],
+    (identities.data as unknown as SelfVerificationRow[] | null) ?? [],
     (row) => row.profile_id,
   );
   const residencesByProfile = groupBy(
@@ -256,15 +260,15 @@ export async function loadReviewQueue(
 
   return applications.map((row) => {
     const identityRow = identitiesByProfile.get(row.profile_id)?.[0];
-    const identity: ReviewIdentity | null = identityRow
-      ? {
-          nationality: identityRow.nationality,
-          over18: identityRow.over18,
-          notSanctioned: identityRow.not_sanctioned,
-          expiresAt: identityRow.expires_at,
-          attestationUid: identityRow.attestation_uid,
-        }
-      : null;
+    const identity: ReviewIdentity | null =
+      identityRow && (identityRow.status === 'valid' || identityRow.status === 'invalid')
+        ? {
+            provider: 'self',
+            status: identityRow.status,
+            verifiedAt: identityRow.verified_at,
+            selfNullifier: identityRow.self_nullifier,
+          }
+        : null;
 
     const latestEvent = eventsByApplication.get(row.id)?.[0];
     const latestReview: ReviewEvent | null =

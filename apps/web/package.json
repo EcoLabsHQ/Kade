@@ -16,6 +16,7 @@
     "@kade/shared": "*",
     "@reown/appkit": "^1.8.24",
     "@reown/appkit-adapter-wagmi": "^1.8.24",
+    "@selfxyz/enterprise-sdk": "0.4.1",
     "@simplewebauthn/browser": "14.0.0",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.116.0",
