@@ -7,10 +7,10 @@ import { loadShellSafe } from '@/lib/safe/shell';
 import { readChainEnv } from '@/lib/env';
 import { loadReviewBar } from '@/lib/review/review-bar';
 import {
-  isMorphoConfigured,
+  isMorphoVaultConfigured,
   morphoChainId,
   morphoChainName,
-  readMorphoPoolConfig,
+  readMorphoVaultConfig,
 } from '@/lib/invest/morpho-config';
 
 export const dynamic = 'force-dynamic';
@@ -18,9 +18,10 @@ export const dynamic = 'force-dynamic';
 /**
  * The Invest route (D18 / EXE-014).
  *
- * Resolves the resident's Safe and the server-only Morpho configuration and
- * renders the screen. The pool address, chain and market id are passed to the
- * client as values, so the browser neither reads nor hard-codes them.
+ * Resolves the resident's Safe and the server-only MetaMorpho vault
+ * configuration and renders the screen. The vault address, its underlying USDC
+ * and the chain are passed to the client as values, so the browser neither
+ * reads nor hard-codes them.
  *
  * Execution state is resolved honestly: `mainnetConfigured` is false while no
  * mainnet RPC/payer is supplied, and `signerDeployed` follows the Safe record.
@@ -33,10 +34,10 @@ export default async function InvestPage() {
   }
 
   const shellSafe = await loadShellSafe(session.userId);
-  // `readMorphoPoolConfig` returns null (never throws) when configuration is
+  // `readMorphoVaultConfig` returns null (never throws) when configuration is
   // absent or malformed, so a misconfigured environment degrades rather than
   // taking the route down.
-  const config = readMorphoPoolConfig();
+  const config = readMorphoVaultConfig();
   const reviewBar = await loadReviewBar(session.userId);
 
   return (
@@ -52,13 +53,12 @@ export default async function InvestPage() {
     >
       <ContentContainer>
         <InvestScreen
-          pool={{
-            configured: isMorphoConfigured(),
+          vault={{
+            configured: isMorphoVaultConfigured(),
             chainId: morphoChainId(),
             chainName: morphoChainName(),
-            loanToken: config?.marketParams.loanToken ?? null,
-            morpho: config?.morpho ?? null,
-            marketId: config?.marketId ?? null,
+            vault: config?.vault ?? null,
+            usdc: config?.usdc ?? null,
           }}
           safeAddress={shellSafe.address}
           safeDeployed={shellSafe.deployed}
