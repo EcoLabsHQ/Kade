@@ -1,33 +1,33 @@
 - id: F1
   severity: FAIL
   scope: holdings
-  title: "Holdings says all linked assets are in the qualified vault whenever no wallet is verified"
-  evidence: "apps/web/src/components/holdings/HoldingsScreen.tsx:482-485; :308-333; :366; apps/web/tests/holdings-screen.test.tsx:331-350"
-  failure_mode: "A resident whose only linked wallets are unverified sees 'All linked assets are in the qualified vault' while the Qualified card shows '—' and no vault exists. The empty state counts only verified rows, so a pending wallet makes the table look empty and the sentence false."
-  materiality: "False claim about the resident's assets and qualification state, in the exact state v1.2-v1.4 create (a connected wallet, unverified)."
-  status: open
+  title: "Holdings said all linked assets were in the qualified vault whenever no wallet was verified"
+  evidence: "apps/web/src/components/holdings/HoldingsScreen.tsx:483-494; apps/web/tests/holdings-screen.test.tsx:127-146,373-389"
+  failure_mode: "A resident whose only linked wallets are unverified read a false claim about their assets and qualification state."
+  materiality: "False claim about the resident's assets, in the exact state v1.2-v1.4 create."
+  status: resolved
   introduced_by: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
-  resolved_by: null
-  recheck_attempts: 0
+  resolved_by: 517d64a
+  recheck_attempts: 1
 - id: F2
   severity: FAIL
   scope: docs
-  title: "Frozen contract and known-gaps still assert the v1.4 one-list model the code no longer implements"
-  evidence: "docs/week-2-frozen-delivery-contract.md:77-80, :219-221, :560-563; docs/known-gaps.md:37; apps/web/src/components/holdings/HoldingsScreen.tsx:303-333"
-  failure_mode: "Reviewers validate delivery against a one-list, per-row-state model; the shipped screen shows only verified rows and a modal for pending wallets. v1.5 declares copy divergence only, so no amendment covers the structural change."
+  title: "Frozen contract and known-gaps still asserted the v1.4 one-list model the code no longer implements"
+  evidence: "docs/week-2-frozen-delivery-contract.md:74-82,220-223,540-569,587-596,610; docs/known-gaps.md:37"
+  failure_mode: "Reviewers validated delivery against a one-list model; the shipped screen shows verified rows in the table and pending wallets in a modal."
   materiality: "Factually false current-state claims in governing documents."
-  status: open
+  status: resolved
   introduced_by: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
-  resolved_by: null
-  recheck_attempts: 0
+  resolved_by: 517d64a
+  recheck_attempts: 1
 - id: F3
   severity: FAIL
   scope: onboarding
-  title: "Step 3 copy claims connecting signs and marks the wallet verified"
-  evidence: "apps/web/src/components/onboarding/WealthStep.tsx:198-209; apps/web/src/components/wallet/ConnectedWalletPanel.tsx:382-403; apps/web/src/components/wallet/useConnectPersistSign.ts:235-252"
-  failure_mode: "Connecting persists and offers an OPTIONAL, user-triggered signature; a resident who skips may believe the wallet is verified. The paragraph contradicts itself: 'marks it verified for Holdings ... will appear in Holdings as an unverified wallet'."
-  materiality: "User-facing claim that verification happens when it does not; 'claiming verification that did not happen' is non-relaxable per docs/known-gaps.md:13-15."
-  status: open
+  title: "Step 3 copy claimed connecting signs and marks the wallet verified"
+  evidence: "apps/web/src/components/onboarding/WealthStep.tsx:199-212,737-744; apps/web/src/components/wallet/useConnectPersistSign.ts:235-252"
+  failure_mode: "Connecting persists and OFFERS a signature; a resident who skipped could believe the wallet was verified. The first corrective fixed the lead paragraph and missed three sibling instances on the same screen (a visible note and two docblocks), plus one in ConnectedWalletPanel."
+  materiality: "User-facing claim that verification happened when it did not; non-relaxable per docs/known-gaps.md:13-15."
+  status: resolved
   introduced_by: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
-  resolved_by: null
-  recheck_attempts: 0
+  resolved_by: c74c373
+  recheck_attempts: 2

@@ -1,35 +1,43 @@
 iteration: iteration-onboarding-self-morpho
 profile: NORMAL
 known_good: 59d1d284c87f6936fe142b609bb1fe78212c38da
-candidate: 517d64a
+candidate: c74c37391974273b36900d87829874e4cf2c65b6
 mode: recheck
 reviewed_scopes:
   holdings: complete
   wallet-connect: complete
   onboarding: complete
   docs: complete
-active_findings: [F1, F2, F3]
-resolved_findings: []
+active_findings: []
+resolved_findings: [F1, F2, F3]
 next_finding_id: F4
 recheck_attempts:
-  F1: 0
-  F2: 0
-  F3: 0
-review_complete: false
-verdict: review_failed
+  F1: 1
+  F2: 1
+  F3: 2
+review_complete: true
+verdict: review_passed
 verify:
   command: ./scripts/verify.sh
   result: passed
-  head: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
+  head: c74c37391974273b36900d87829874e4cf2c65b6
   note: >-
-    Run by the orchestrator on the exact candidate HEAD; not re-run by the
+    Recorded by the orchestrator on the exact candidate HEAD; not re-run by the
     reviewer.
-batch_plan:
-  F1: "holdings empty state — guard on walletCount + unverifiedCount, not verified rows only (a regression the orchestrator introduced when pending wallets left the table)"
-  F2: "docs — amendment v1.6 declaring the modal-based model, plus the contract and known-gaps clauses swept"
-  F3: "onboarding copy — stop claiming connecting verifies; the signature is optional and user-triggered (a regression the orchestrator introduced in 092176d and T7 left unswept)"
-  note: >
-    All three were introduced by the orchestrator's own changes today, not by a
-    worker. Two of them are the same class as findings already fixed once in this
-    session (a summary/empty state deriving from the wrong set; an amendment
-    leaving other clauses stale).
+headline: >-
+  Backlog review of 15 commits: the Holdings reference work, the verify modal,
+  onboarding Step 3 (connect now signs, inline, skippable) and amendments
+  v1.5-v1.6. DISCOVERY raised three blockers, all introduced by the
+  orchestrator's own changes today; the first corrective closed F1 and F2 and
+  was reopened on F3 for missing sibling instances of the same claim, and the
+  second swept the file rather than the line.
+open_warnings:
+  - "Onboarding signature failure is silent: the panel surfaces a store error but not the attempt's error, so a rejected signature gives no feedback. Non-blocking."
+  - "The Holdings verify modal has no AppKit-dismiss guard, so dismissing AppKit without connecting leaves its button on 'Waiting for wallet…' until reopened. Non-blocking."
+  - "Carried: D17's v1.2 bullet, the pasted-Bitcoin completeness phrasing, the ungated pgTAP suite, and the widened Holdings query's lack of live-PostgREST coverage."
+  - "amendments v1.5 and v1.6 declare the reference-copy divergence and the modal model; the copy still describes capabilities (KadeLock, multi-chain vault, cure period) that D14 keeps beyond the envelope."
+process_note: >
+  F3's first fix corrected the reported line and missed three siblings on the
+  same screen — the exact class this session has been remediating in workers'
+  work all day, committed here by the orchestrator. The second fix attributed it
+  correctly: swept for the claim, not the location.
