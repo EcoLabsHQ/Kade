@@ -27,9 +27,12 @@ import { provenanceLabel } from './provenance';
  *      it), which sets `verified_at` on the server;
  *   4. the connection is torn down, so the modal returns to its initial state.
  *
- * Because linking and signing are one gesture, a wallet is never left persisted
- * and unsigned by this control: linking an unknown address verifies it in the
- * same pass. The override only relaxes the copy; the authority model is
+ * Because linking and signing are one gesture, this control does not leave a
+ * wallet persisted-and-unsigned by *choice*: there is no skip here, and an
+ * unknown address is persisted and signed in the same pass. A **failed
+ * signature is different** — the address has already been persisted by then, so
+ * on a failure the row is left persisted and unverified, exactly as the
+ * onboarding path leaves it when the resident skips. The authority model is
  * unchanged — a connection alone never sets `verified_at`, and the signature is
  * not a login and confers no Safe authority.
  *

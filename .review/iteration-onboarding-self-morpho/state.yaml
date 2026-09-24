@@ -1,8 +1,8 @@
 iteration: iteration-onboarding-self-morpho
 profile: NORMAL
 known_good: 59d1d284c87f6936fe142b609bb1fe78212c38da
-candidate: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
-mode: discovery
+candidate: 517d64a
+mode: recheck
 reviewed_scopes:
   holdings: complete
   wallet-connect: complete

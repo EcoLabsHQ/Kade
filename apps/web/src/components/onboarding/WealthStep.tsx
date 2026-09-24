@@ -39,8 +39,9 @@ const BITCOIN_ORANGE = '#F7931A';
  * account's balance is read from the same public provider (Ethereum and Base)
  * that everything else uses. Bitcoin and pasted EVM ("wallet address") rows are
  * watch-only: the server reads the balance from a public source with no
- * signature and no ownership proof. A connected wallet is signed after it is
- * saved, so it appears verified in Holdings; these watch-only rows say so. Nothing here is
+ * signature and no ownership proof. A connected wallet is saved first and then
+ * *offered* a signature; only signing marks it verified in Holdings, and it is
+ * skippable. Nothing here is
  * mocked, and no path here gives Kade authority over the resident Safe.
  */
 
@@ -72,8 +73,8 @@ export interface WealthStepProps {
   readonly onSaveConnectedWallet: (address: string) => Promise<void> | void;
   /**
    * The ownership-proof callbacks, injected by the page. When supplied, a
-   * connected wallet is signed after it is saved, so it appears verified in
-   * Holdings. Signing is always skippable and never gates Continue.
+   * connected wallet is saved and then offered a signature: signing marks it
+   * verified in Holdings. Signing is always skippable and never gates Continue.
    */
   readonly ownership?: ConnectedWalletOwnership;
 }
@@ -736,11 +737,12 @@ export function WealthStep({
             }}
           >
             Every figure here is read from a public source on Ethereum and Base.
-            Connecting a wallet also signs a challenge, so that wallet is
-            verified for Holdings; pasting an address involves no signature, and
-            a public read is not proof of ownership. A connected wallet is saved
-            and shown in Holdings as unverified, excluded from the total; the
-            connection is read-only and gives Kade no authority over your Safe.
+            Connecting a wallet then offers to sign a challenge, and signing is
+            what marks that wallet verified for Holdings; pasting an address
+            involves no signature, and a public read is not proof of ownership.
+            A connected wallet is saved and, until you sign, shown in Holdings as
+            unverified, excluded from the total; the connection is read-only and
+            gives Kade no authority over your Safe.
           </p>
         </Card>
       </div>

@@ -106,9 +106,10 @@ export interface ConnectedWalletPanelProps {
   readonly onSaveConnectedWallet?: (address: string) => Promise<void> | void;
   /**
    * The ownership-proof callbacks, injected by the page. When supplied, a
-   * connected address is signed after it is saved, so it appears verified in
-   * Holdings. The signature is always skippable and a skip or failure leaves
-   * the saved row untouched. Omitted in read-only/Step-3-without-proof use.
+   * connected address is saved and then offered a signature: signing marks it
+   * verified in Holdings. The signature is always skippable and a skip or
+   * failure leaves the saved row untouched and unverified. Omitted in
+   * read-only/Step-3-without-proof use.
    */
   readonly ownership?: ConnectedWalletOwnership;
   /** True when the shared EVM-address cap is already reached. */
