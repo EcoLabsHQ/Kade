@@ -1,0 +1,32 @@
+iteration: iteration-quickfix-docs
+profile: QUICKFIX
+known_good: d10f0d1aea11d6f701ec5f88128552f6d5cb9c4e
+candidate: 77a9f8d4761e9aed436d16850e0e5786389a3029
+mode: recheck
+reviewed_scopes:
+  quickfix: complete
+active_findings: []
+resolved_findings: [F1]
+next_finding_id: F2
+recheck_attempts:
+  F1: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 77a9f8d4761e9aed436d16850e0e5786389a3029
+  note: >-
+    Recorded by the orchestrator on the exact candidate HEAD; not re-run by the
+    reviewer.
+human_checkpoint: accepted (owner approved the QUICKFIX profile and the result)
+headline: >-
+  Docs-only correction of the applied-migration state after migrations 27 and 28
+  were applied to the live project on 23 Sep 2026. Two living documents claimed
+  they were unapplied; the TARGETED run passed with one WARN (a superseded
+  "26 are applied" clause in the same gate cell), which was closed in RECHECK.
+open_warnings:
+  - "supabase/README.md:16 still reads 'all 22 applied' — a historical clean-database run record, deliberately out of this quickfix; belongs in a follow-up docs change"
+  - "The historical Gate-1 sentence in docs/gates/foundation.md:19 carries a loose count (pre-existing, superseded by the dated Update)"
+out_of_scope_observations:
+  - "supabase/README.md:16 stale migration count (flagged by the TARGETED reviewer, not widened into this quickfix)"

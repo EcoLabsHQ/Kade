@@ -1,0 +1,11 @@
+- id: F1
+  severity: WARN
+  scope: quickfix
+  title: "Gate-1 evidence row still asserted '26 are applied', contradicting the correction in the same cell"
+  evidence: "docs/gates/foundation.md:19"
+  failure_mode: "The cell stated both 'Of those, 26 are applied to the live project' and 'All 28 committed migrations are applied', so a Gate-1 approver could still read migrations 27/28 as missing."
+  materiality: "Residual pre-existing clause of the same claim class under correction; not a regression this diff introduced."
+  status: resolved
+  introduced_by: d10f0d1aea11d6f701ec5f88128552f6d5cb9c4e
+  resolved_by: 77a9f8d4761e9aed436d16850e0e5786389a3029
+  recheck_attempts: 1
