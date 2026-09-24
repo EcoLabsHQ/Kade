@@ -1,11 +1,12 @@
 /**
  * The Self (self.xyz) Enterprise client (D16 / EXE-012).
  *
- * As amended (week-2 contract v1.7), identity is verified **on chain**: the
- * resident is sent to Self's `verificationUrl`, Self's own contract on Celo
- * Sepolia verifies the passport proof and issues a soulbound token, and Self
- * delivers a signed `verification.completed` webhook back to us. Kade does
- * **not** mint an attestation and does **not** emit `kade.kyc.v1`.
+ * Self verifies the passport proof in **backend (off-chain) mode**: its own
+ * servers check the proof and deliver a signed `verification.completed` webhook
+ * back to us, which now carries the disclosed facts. There is no wallet step and
+ * no soulbound token. Kade records the outcome and the facts (`./self-event`);
+ * it does **not** emit `kade.kyc.v1` itself: the payload is prepared and gated
+ * (`./kyc-attestation`).
  *
  * This module is the only place that reaches for `@selfxyz/enterprise-sdk`. It:
  *   - reads the server-only Enterprise configuration (`SELF_API_KEY`,

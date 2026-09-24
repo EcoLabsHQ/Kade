@@ -219,6 +219,10 @@ describe('POST /api/webhooks/self', () => {
       p_self_nullifier: 'nullifier-abc',
       p_session_id: null,
       p_verification_id: 'ver_1',
+      p_nationality: null,
+      p_over18: true,
+      p_not_sanctioned: true,
+      p_expires_at: null,
     });
   });
 
@@ -239,6 +243,10 @@ describe('POST /api/webhooks/self', () => {
       p_self_nullifier: null,
       p_session_id: null,
       p_verification_id: 'ver_1',
+      p_nationality: null,
+      p_over18: false,
+      p_not_sanctioned: false,
+      p_expires_at: null,
     });
   });
 

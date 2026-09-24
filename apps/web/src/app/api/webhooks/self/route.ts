@@ -3,7 +3,7 @@ import {
   isSelfVerificationConfigured,
   verifySelfWebhook,
 } from '@/lib/residency/self';
-import { mapSelfEvent } from '@/lib/residency/self-event';
+import { mapSelfEvent, type MappedSelfVerification } from '@/lib/residency/self-event';
 import {
   createSupabaseServiceClient,
   ServiceRoleNotConfiguredError,
@@ -12,10 +12,13 @@ import {
 /**
  * Self (self.xyz) webhook receiver (D16 / EXE-012).
  *
- * As amended (week-2 contract v1.7), Self verifies the passport proof on chain
- * (Celo Sepolia) and issues a soulbound token; this route records only the
- * **outcome** so the residency identity check can read it. It does not write
- * `identity_attestations` and does not emit `kade.kyc.v1`.
+ * Self now verifies the passport proof in backend/off-chain mode and delivers
+ * the result by signed webhook; this route records the **outcome** and the
+ * **disclosed facts** (nationality, over18, not_sanctioned, expires_at) so the
+ * residency identity check can read them and a `kade.kyc.v1` payload can be
+ * prepared. It does not write `identity_attestations` and does not emit
+ * `kade.kyc.v1`: the emit is gated, with no broadcast path
+ * (`@/lib/residency/kyc-attestation`).
  *
  * The provider calls this server-to-server; it carries no resident session, so
  * it is a public path (`@/lib/routing`) and authenticates with the Svix
@@ -78,14 +81,8 @@ async function verificationExists(verificationId: string): Promise<boolean> {
   return data !== null;
 }
 
-/** Record the mapped outcome through the service-role-only writer. */
-async function recordVerification(mapped: {
-  readonly profileId: string;
-  readonly status: 'valid' | 'invalid';
-  readonly verificationId: string;
-  readonly selfNullifier: string | null;
-  readonly sessionId: string | null;
-}): Promise<void> {
+/** Record the mapped outcome and disclosed facts through the service-role-only writer. */
+async function recordVerification(mapped: MappedSelfVerification): Promise<void> {
   const client = await createSupabaseServiceClient();
   const { error } = await client.rpc('record_self_verification', {
     p_profile_id: mapped.profileId,
@@ -94,6 +91,10 @@ async function recordVerification(mapped: {
     p_self_nullifier: mapped.selfNullifier,
     p_session_id: mapped.sessionId,
     p_verification_id: mapped.verificationId,
+    p_nationality: mapped.nationality,
+    p_over18: mapped.over18,
+    p_not_sanctioned: mapped.notSanctioned,
+    p_expires_at: mapped.expiresAt,
   });
   if (error) throw new Error(`recording the verification failed: ${error.message}`);
 }

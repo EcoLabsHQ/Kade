@@ -204,9 +204,10 @@ export async function loadReviewQueue(
 
   const [wallets, identities, residences, citizenships, events] = await Promise.all([
     client.from('wallets').select('profile_id, address, chain, provider, verified_at').in('profile_id', profileIds),
-    // The identity outcome now lives in `self_verifications` (contract v1.7):
-    // identity is verified on chain by Self and Kade stores only the outcome.
-    // The reviewer policy on the table is what lets these rows through.
+    // The identity outcome and disclosed facts now live in `self_verifications`:
+    // Self verifies the proof in backend (off-chain) mode and Kade stores the
+    // outcome plus the facts. The reviewer policy on the table is what lets
+    // these rows through.
     client
       .from('self_verifications')
       .select('profile_id, provider, status, verified_at, self_nullifier')
