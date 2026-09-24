@@ -84,27 +84,31 @@ interface ChainTotal {
   readonly name: string;
   /** Sum of the readable USD values on this chain, or null when none read. */
   readonly usd: number | null;
-  /** How many verified wallets have a stored row on this chain. */
+  /** Verified wallets with a **stored row** on this chain (from `chainIds`). */
   readonly wallets: number;
+  /** Of those, how many produced a readable USD figure for this chain. */
+  readonly valued: number;
 }
 
 /**
  * Aggregate the signature-verified wallets' per-chain reads.
  *
- * Only chains we actually read are produced. A chain whose reads all failed (or
- * that no wallet has) keeps `usd: null`, so the card renders `—` rather than a
- * fabricated zero. This sums the same per-chain figures that feed the total, so
- * the chain cards reconstruct the total instead of contradicting it.
+ * Only chains we actually read are produced. Presence is counted from the
+ * wallets' **stored rows** (`chainIds`), not from their read results, so a
+ * wallet whose read failed is still known to be linked on that chain; the value,
+ * though, is the sum of the **readable** per-chain figures, so it can never
+ * fabricate a zero and reconstructs the same total. When nothing readable
+ * exists, `usd` is null and the card renders `—` with the correct reason.
  */
 function chainTotals(wallets: readonly HoldingWallet[]): ChainTotal[] {
   return READ_CHAINS.map(({ chainId, name }) => {
     let sum = 0;
+    let stored = 0;
     let valued = 0;
-    let present = 0;
     for (const wallet of wallets) {
+      if (wallet.chainIds.includes(chainId)) stored += 1;
       for (const chain of wallet.chains) {
         if (chain.chainId !== chainId) continue;
-        present += 1;
         if (chain.usd !== null) {
           sum += chain.usd;
           valued += 1;
@@ -115,7 +119,8 @@ function chainTotals(wallets: readonly HoldingWallet[]): ChainTotal[] {
       chainId,
       name,
       usd: valued === 0 ? null : sum,
-      wallets: present,
+      wallets: stored,
+      valued,
     };
   });
 }
@@ -135,7 +140,9 @@ function provenanceLabel(provider: string): string {
 /** The honest sub-line for a chain card. Never a fabricated value. */
 function chainSub(total: ChainTotal): string {
   if (total.usd !== null) {
-    return `Read-only · ${total.wallets} wallet${total.wallets === 1 ? '' : 's'}`;
+    // The figure is the sum of the readable reads, so say how many wallets
+    // actually contributed it rather than how many have a stored row.
+    return `Read-only · ${total.valued} wallet${total.valued === 1 ? '' : 's'}`;
   }
   return total.wallets === 0
     ? 'No verified wallet on this chain'
@@ -201,6 +208,11 @@ export function HoldingsScreen({
     unverifiedCount,
   } = aggregate;
 
+  // The cards below speak about the **signed** set (their value is the verified
+  // total), so a fallback must distinguish "nothing is linked yet" from "wallets
+  // are linked but unsigned" — the list renders the latter.
+  const linkedCount = walletCount + unverifiedCount;
+
   const chains = chainTotals(wallets);
 
   return (
@@ -255,9 +267,11 @@ export function HoldingsScreen({
           label="Total holdings"
           value={usd(total)}
           sub={
-            walletCount === 0
-              ? 'Link a wallet to begin'
-              : `${walletCount} signature-verified wallet${walletCount === 1 ? '' : 's'}`
+            walletCount > 0
+              ? `${walletCount} signature-verified wallet${walletCount === 1 ? '' : 's'}`
+              : linkedCount > 0
+                ? 'No signed wallet yet'
+                : 'Link a wallet to begin'
           }
           valueColor={total > 0 ? tokens.ink : tokens.locked}
           highlight
@@ -272,9 +286,11 @@ export function HoldingsScreen({
           label="Not qualified"
           value={usd(total)}
           sub={
-            walletCount === 0
-              ? 'No wallets linked yet'
-              : 'proof of wealth · not counted'
+            walletCount > 0
+              ? 'proof of wealth · not counted'
+              : linkedCount > 0
+                ? 'No signed wallet yet'
+                : 'No wallets linked yet'
           }
         />
         <StatCard

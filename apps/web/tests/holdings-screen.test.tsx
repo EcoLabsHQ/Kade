@@ -147,6 +147,45 @@ describe('HoldingsScreen', () => {
     expect(screen.queryByText(/3\.4%/)).toBeNull();
   });
 
+  it('never says no wallets are linked while the list shows an unsigned one', () => {
+    // The v1.3 flow: a connected/pasted wallet is linked but unsigned, so the
+    // verified count is 0 while the list is not empty. The cards describe the
+    // signed set, not "nothing is linked".
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 0,
+          walletCount: 0,
+          valuedCount: 0,
+          unvaluedCount: 0,
+          wallets: [],
+          unverifiedWallets: [
+            unverified({
+              address: CONNECTED_ADDRESS,
+              provider: 'connected-wallet',
+              chainIds: [1],
+              chains: [ethereum(1250)],
+              usd: 1250,
+            }),
+          ],
+          unverifiedCount: 1,
+        })}
+      />,
+    );
+
+    expect(screen.getByTitle(CONNECTED_ADDRESS)).toBeInTheDocument();
+    expect(screen.queryByText('No wallets linked yet')).toBeNull();
+    expect(
+      screen.queryByText(/No wallets linked yet\. Use \+ Link another wallet/),
+    ).toBeNull();
+    // Both cards that describe the signed set say so honestly.
+    expect(screen.getAllByText('No signed wallet yet').length).toBeGreaterThan(
+      0,
+    );
+    // The unsigned balance is still excluded: the total is $0.
+    expect(screen.getAllByText('$0').length).toBeGreaterThan(0);
+  });
+
   it('renders Fund from bank as a locked feature, not a working control', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
 
@@ -163,6 +202,45 @@ describe('HoldingsScreen', () => {
     expect(screen.queryByText('Arbitrum')).toBeNull();
     expect(screen.queryByText('Optimism')).toBeNull();
     expect(screen.queryByText('Celo')).toBeNull();
+  });
+
+  it('says a stored chain balance could not be read, not that no wallet is present', () => {
+    // ADDRESS_2 has stored rows on Ethereum and Base, but its reads failed
+    // (chains: []). Base must report the failed read, not an absent wallet, and
+    // the value stays an explicit dash.
+    render(<HoldingsScreen aggregate={aggregate()} />);
+
+    expect(screen.getByText('Balance could not be read')).toBeInTheDocument();
+    expect(screen.queryByText('No verified wallet on this chain')).toBeNull();
+    // Ethereum is partly readable: only the wallet that contributed is counted.
+    expect(screen.getByText('Read-only · 1 wallet')).toBeInTheDocument();
+  });
+
+  it('says no verified wallet is on a chain with no stored row', () => {
+    const onlyEthereum = aggregate({
+      total: 3280,
+      walletCount: 1,
+      valuedCount: 1,
+      unvaluedCount: 0,
+      wallets: [
+        {
+          address: ADDRESS,
+          verifiedAt: '2026-09-22T10:00:00.000Z',
+          chainIds: [1],
+          chains: [ethereum(3280)],
+          usd: 3280,
+          readError: null,
+        },
+      ],
+    });
+
+    render(<HoldingsScreen aggregate={onlyEthereum} />);
+
+    // Base has no stored row at all.
+    expect(
+      screen.getByText('No verified wallet on this chain'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Balance could not be read')).toBeNull();
   });
 
   it('shows the Safe address and the honest not-deployed vault state', () => {
@@ -292,6 +370,8 @@ describe('HoldingsScreen', () => {
     expect(
       screen.getByText(/No wallets linked yet\. Use \+ Link another wallet/),
     ).toBeInTheDocument();
+    // With nothing linked at all, the card is allowed to say exactly that.
+    expect(screen.getByText('No wallets linked yet')).toBeInTheDocument();
     expect(screen.getByText('No wallets signed yet')).toBeInTheDocument();
   });
 });
