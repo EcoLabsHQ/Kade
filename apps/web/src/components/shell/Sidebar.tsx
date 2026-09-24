@@ -102,72 +102,11 @@ export function Sidebar({
           />
         </div>
 
-        <div
-          style={{
-            background: tokens.surface,
-            border: `1px solid ${tokens.border}`,
-            borderRadius: '12px',
-            padding: '4px',
-            display: 'flex',
-            gap: '4px',
-            marginTop: '12px',
-          }}
-        >
-          <span
-            style={{
-              flex: 1,
-              padding: '8px 6px',
-              borderRadius: '9px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              textAlign: 'center',
-              background: '#fff',
-              color: tokens.brandPrimary,
-            }}
-          >
-            Resident
-          </span>
-          {isReviewer ? (
-            <Link
-              href="/admin"
-              title="Open the review queue."
-              style={{
-                flex: 1,
-                padding: '8px 6px',
-                borderRadius: '9px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                textAlign: 'center',
-                background: pathname.startsWith('/admin')
-                  ? tokens.activeNavBg
-                  : 'transparent',
-                color: tokens.brandPrimary,
-                textDecoration: 'none',
-              }}
-            >
-              Admin
-            </Link>
-          ) : (
-            <span
-              aria-disabled="true"
-              title="Admin access requires a reviewers row."
-              style={{
-                flex: 1,
-                padding: '8px 6px',
-                borderRadius: '9px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                textAlign: 'center',
-                color: tokens.locked,
-                cursor: 'not-allowed',
-              }}
-            >
-              Admin
-            </span>
-          )}
-        </div>
-
-        <SidebarFooter email={email} />
+        <SidebarFooter
+          isReviewer={isReviewer}
+          adminActive={pathname.startsWith('/admin')}
+          email={email}
+        />
       </aside>
     </>
   );
