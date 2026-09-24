@@ -21,6 +21,9 @@ import type { EvmAddressRecord } from '@/lib/wealth/types';
 
 const hoisted = vi.hoisted(() => ({
   open: vi.fn(),
+  // AppKit's own modal open state, as `useAppKitState` reports it. The panel
+  // watches it to leave the `connecting` step if the resident dismisses AppKit.
+  appKitOpen: false,
   connections: [] as Array<{
     connector: { uid: string; id?: string; name?: string };
     accounts: string[];
@@ -37,6 +40,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@reown/appkit/react', () => ({
   useAppKit: () => ({ open: hoisted.open }),
+  useAppKitState: () => ({ open: hoisted.appKitOpen }),
 }));
 vi.mock('wagmi', () => ({
   useConnections: () => hoisted.connections,
@@ -100,6 +104,7 @@ const RECORD_2 = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  hoisted.appKitOpen = false;
   hoisted.connections = [];
   hoisted.readAddressBalances.mockImplementation(async (address: string) =>
     address === ADDRESS_2 ? RECORD_2 : RECORD,
@@ -128,19 +133,44 @@ describe('ConnectedWalletPanel', () => {
   });
 
   it('opens the connector list for the browser extension and the WalletConnect QR for WalletConnect', () => {
-    render(<ConnectedWalletPanel configured onChange={() => {}} />);
+    const view = render(<ConnectedWalletPanel configured onChange={() => {}} />);
 
-    const [extension, walletConnect] = screen.getAllByRole('button', {
-      name: 'Connect',
-    });
+    const [extension] = screen.getAllByRole('button', { name: 'Connect' });
     fireEvent.click(extension!);
     expect(hoisted.open).toHaveBeenCalledWith({ view: 'Connect' });
 
-    fireEvent.click(walletConnect!);
+    // AppKit opened, then the resident dismissed it without connecting. The
+    // panel returns to an actionable state rather than staying stuck busy.
+    hoisted.appKitOpen = true;
+    view.rerender(<ConnectedWalletPanel configured onChange={() => {}} />);
+    hoisted.appKitOpen = false;
+    view.rerender(<ConnectedWalletPanel configured onChange={() => {}} />);
+
+    const walletConnect = screen.getAllByRole('button', {
+      name: 'Connect',
+    })[1]!;
+    fireEvent.click(walletConnect);
     expect(hoisted.open).toHaveBeenCalledWith({
       view: 'ConnectingWalletConnectBasic',
     });
     expect(hoisted.open).not.toHaveBeenCalledWith({ view: 'AllWallets' });
+  });
+
+  it('locks the other Connect while AppKit is connecting', () => {
+    render(<ConnectedWalletPanel configured onChange={() => {}} />);
+
+    const [extension] = screen.getAllByRole('button', { name: 'Connect' });
+    fireEvent.click(extension!);
+
+    // Step 1 is in flight: the row shows a truthful busy label and the other
+    // route cannot start a second flow.
+    expect(
+      screen.getByRole('progressbar', { name: 'Waiting for your wallet…' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Waiting for your wallet…').length).toBeGreaterThan(0);
+    const remaining = screen.getAllByRole('button', { name: 'Connect' });
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]).toBeDisabled();
   });
 
   it('reads the connected account balance and reports it upward', async () => {
@@ -490,7 +520,61 @@ function SigningAddressesHarness({
 }
 
 describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
-  it('saves, signs the server challenge, verifies and disconnects', async () => {
+  it('saves the address and pauses for the resident before signing', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
+    const onComplete = vi.fn(async () => ({ ok: true }));
+
+    render(
+      <SigningAddressesHarness onBegin={onBegin} onComplete={onComplete} />,
+    );
+
+    // The row reaches step 2 with the address already persisted...
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Skip for now' }),
+    ).toBeInTheDocument();
+    // ...and nothing has asked the wallet to sign yet.
+    expect(onBegin).not.toHaveBeenCalled();
+    expect(hoisted.signMessageAsync).not.toHaveBeenCalled();
+  });
+
+  it('shows the two-step indicator and disables the other Connect while waiting to sign', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const { container } = render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: true })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    await screen.findByRole('button', { name: 'Sign to verify' });
+
+    // The resident is told this is step 2 of 2, and step 2 is the signature.
+    expect(
+      screen.getByText('Step 2 · Sign (optional)'),
+    ).toBeInTheDocument();
+    expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(
+      'Sign (optional)',
+    );
+
+    // The other row cannot start a second connect until this one is settled.
+    const connectButtons = screen.getAllByRole('button', { name: 'Connect' });
+    expect(connectButtons).toHaveLength(1);
+    expect(connectButtons[0]).toBeDisabled();
+  });
+
+  it('signs only after the resident presses "Sign to verify"', async () => {
     hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
     const onBegin = vi.fn(async (address: string) => ({
       message: `challenge:${address}`,
@@ -509,6 +593,10 @@ describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
     await waitFor(() =>
       expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
     );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
+    );
+
     await waitFor(() => expect(onBegin).toHaveBeenCalledWith(ADDRESS));
     expect(hoisted.signMessageAsync).toHaveBeenCalledWith({
       account: ADDRESS,
@@ -540,23 +628,27 @@ describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
 
   it('keeps the address saved and unverified when the signature is skipped', async () => {
     hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
-    // The wallet prompt never settles, so the skip control stays available.
-    hoisted.signMessageAsync.mockImplementation(() => new Promise(() => {}));
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
     const onComplete = vi.fn(async () => ({ ok: true }));
 
     render(
-      <SigningAddressesHarness
-        onBegin={async (address) => ({ message: `challenge:${address}` })}
-        onComplete={onComplete}
-      />,
+      <SigningAddressesHarness onBegin={onBegin} onComplete={onComplete} />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
+    // Skip is offered at step 2 and is what settles the attempt.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skip for now' }),
+    );
 
-    // No verification, but the row was persisted and the connection is gone.
+    // No signature is asked for, but the row was persisted and the connection
+    // is gone.
     await waitFor(() =>
       expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
     );
+    expect(onBegin).not.toHaveBeenCalled();
+    expect(hoisted.signMessageAsync).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
     expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
     await waitFor(() =>
@@ -578,6 +670,9 @@ describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
 
     await waitFor(() =>
       expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
     );
     await waitFor(() =>
       expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
@@ -601,6 +696,12 @@ describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
       />,
     );
 
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
+    );
     await waitFor(() =>
       expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
     );

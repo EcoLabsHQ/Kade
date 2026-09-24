@@ -23,6 +23,12 @@ import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
  * ownership callbacks, the hook persists and disconnects without signing — the
  * behaviour a read-only tracker and a Bitcoin/pasted address both rely on.
  *
+ * The signature can also be **user-triggered**: with
+ * `awaitSignatureConfirmation` the attempt pauses in `awaiting-sign` after the
+ * address is persisted and only proceeds when the caller invokes
+ * `confirmSignature()` (or settles via `skip()`). The Holdings verify modal
+ * leaves the option off and keeps its single-gesture behaviour.
+ *
  * Hooks are called unconditionally here. The component that supplies
  * `signMessageAsync` (and therefore calls wagmi's `useSignMessage`) is mounted
  * only when signing is actually available, so a component that never signs
@@ -40,6 +46,8 @@ export type ConnectPersistSignPhase =
   | 'idle'
   | 'connecting'
   | 'persisting'
+  /** Persisted; waiting for the resident to trigger or skip the signature. */
+  | 'awaiting-sign'
   | 'signing'
   | 'done';
 
@@ -77,6 +85,15 @@ export interface UseConnectPersistSignOptions {
    * retry the store, which is today's behaviour.
    */
   readonly disconnectOnPersistFailure?: boolean;
+  /**
+   * When true, the signature is **not** fired automatically once the address is
+   * persisted. The attempt pauses in `awaiting-sign` until the caller invokes
+   * `confirmSignature()` (the resident's explicit "Sign to verify") or `skip()`.
+   * The address is persisted first either way, so a skip leaves exactly the
+   * unverified row. Defaults to false: the Holdings verify modal signs in one
+   * gesture and must not regress.
+   */
+  readonly awaitSignatureConfirmation?: boolean;
 }
 
 export interface ConnectPersistSignController {
@@ -89,6 +106,11 @@ export interface ConnectPersistSignController {
   readonly run: (target: ConnectPersistSignTarget) => Promise<ConnectPersistSignResult>;
   /** Enter the `connecting` phase while the caller opens AppKit. */
   readonly beginConnecting: () => void;
+  /**
+   * Leave `awaiting-sign` and request the signature. No-op otherwise, so it is
+   * safe to leave wired to a button that is only rendered in that phase.
+   */
+  readonly confirmSignature: () => void;
   /** Skip the in-flight signature; the persisted row is kept. */
   readonly skip: () => void;
   /** Return to `idle` and clear the error. */
@@ -137,13 +159,21 @@ export function useConnectPersistSign(
 
   // Set while a signature is being requested, so `skip` can settle the race.
   const skipRef = useRef<(() => void) | null>(null);
+  // Set only while paused in `awaiting-sign`, so `confirmSignature` can resume
+  // the attempt. Cleared on every other phase.
+  const confirmRef = useRef<(() => void) | null>(null);
 
   const skip = useCallback(() => {
     skipRef.current?.();
   }, []);
 
+  const confirmSignature = useCallback(() => {
+    confirmRef.current?.();
+  }, []);
+
   const reset = useCallback(() => {
     skipRef.current = null;
+    confirmRef.current = null;
     setPhase('idle');
     setError(null);
     setActiveAddress(null);
@@ -164,6 +194,7 @@ export function useConnectPersistSign(
         onComplete,
         onLinked,
         disconnectOnPersistFailure = true,
+        awaitSignatureConfirmation = false,
       } = optionsRef.current;
 
       setError(null);
@@ -195,48 +226,78 @@ export function useConnectPersistSign(
         return { persisted: true, verified: false, skipped: false, error: null };
       }
 
-      setPhase('signing');
-      setActiveAddress(address);
-      const skipped = deferred<never>();
-      skipRef.current = () => skipped.reject(SKIP);
+      // From here every path settles the attempt: the connection is always torn
+      // down and the active address cleared in the outer `finally`.
       try {
-        const challenge = await onBegin!(address);
-        // Race the wallet's signature against "Skip for now". A skip settles
-        // this immediately; the wallet's own promise is left handled.
-        const signature = await Promise.race([
-          signMessageAsync!({
-            account: address as `0x${string}`,
+        // 2a. When requested, the signature is user-triggered: the attempt
+        //     pauses after persisting, and the resident sees step 2. Only
+        //     `confirmSignature` proceeds; `skip` settles it without signing.
+        if (awaitSignatureConfirmation) {
+          setPhase('awaiting-sign');
+          setActiveAddress(address);
+          const decision = deferred<'sign'>();
+          confirmRef.current = () => decision.resolve('sign');
+          skipRef.current = () => decision.reject(SKIP);
+          try {
+            await decision.promise;
+          } catch (cause) {
+            if (cause !== SKIP) throw cause;
+            // Skipped before the wallet was asked: the persisted row is kept.
+            setPhase('idle');
+            return { persisted: true, verified: false, skipped: true, error: null };
+          } finally {
+            confirmRef.current = null;
+            skipRef.current = null;
+          }
+        }
+
+        // 2b. Ask the server for the challenge and the wallet to sign it.
+        setPhase('signing');
+        setActiveAddress(address);
+        const skipped = deferred<never>();
+        skipRef.current = () => skipped.reject(SKIP);
+        try {
+          const challenge = await onBegin!(address);
+          // Race the wallet's signature against "Skip for now". A skip settles
+          // this immediately; the wallet's own promise is left handled.
+          const signature = await Promise.race([
+            signMessageAsync!({
+              account: address as `0x${string}`,
+              message: challenge.message,
+            }),
+            skipped.promise,
+          ]);
+          const result = await onComplete!({
+            address,
             message: challenge.message,
-          }),
-          skipped.promise,
-        ]);
-        const result = await onComplete!({
-          address,
-          message: challenge.message,
-          signature,
-        });
-        if (!result.ok) {
-          throw new Error(
+            signature,
+          });
+          if (!result.ok) {
+            throw new Error(
+              'The signature did not verify; the wallet was not verified.',
+            );
+          }
+          onLinked?.();
+          setPhase('done');
+          return { persisted: true, verified: true, skipped: false, error: null };
+        } catch (cause) {
+          if (cause === SKIP) {
+            // The row is already persisted: skipping only drops the proof.
+            setPhase('idle');
+            return { persisted: true, verified: false, skipped: true, error: null };
+          }
+          const message = messageOf(
+            cause,
             'The signature did not verify; the wallet was not verified.',
           );
-        }
-        onLinked?.();
-        setPhase('done');
-        return { persisted: true, verified: true, skipped: false, error: null };
-      } catch (cause) {
-        if (cause === SKIP) {
-          // The row is already persisted: skipping only drops the proof.
+          setError(message);
           setPhase('idle');
-          return { persisted: true, verified: false, skipped: true, error: null };
+          return { persisted: true, verified: false, skipped: false, error: message };
+        } finally {
+          skipRef.current = null;
         }
-        const message = messageOf(
-          cause,
-          'The signature did not verify; the wallet was not verified.',
-        );
-        setError(message);
-        setPhase('idle');
-        return { persisted: true, verified: false, skipped: false, error: message };
       } finally {
+        confirmRef.current = null;
         skipRef.current = null;
         setActiveAddress(null);
         disconnectRef.current({ connector });
@@ -251,10 +312,12 @@ export function useConnectPersistSign(
     busy:
       phase === 'connecting' ||
       phase === 'persisting' ||
+      phase === 'awaiting-sign' ||
       phase === 'signing',
     activeAddress,
     run,
     beginConnecting,
+    confirmSignature,
     skip,
     reset,
   };

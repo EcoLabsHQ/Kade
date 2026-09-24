@@ -86,6 +86,9 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
 // renders against a recorded connection state rather than a real modal.
 vi.mock('@reown/appkit/react', () => ({
   useAppKit: () => ({ open: hoisted.open }),
+  // AppKit's own modal state; the connected-wallet panel reads it to leave its
+  // `connecting` step if the resident dismisses AppKit without connecting.
+  useAppKitState: () => ({ open: false }),
   useAppKitAccount: () => hoisted.account,
   useAppKitNetwork: () => ({
     chainId: hoisted.network.chainId,
@@ -1449,9 +1452,12 @@ describe('Step 3 signs a connected wallet when the page supplies the proof callb
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await screen.findByRole('heading', { name: /show proof of wealth/i });
 
-    // The wallet is saved first, then the server challenge is signed.
+    // The wallet is saved first, then the resident triggers the signature.
     await waitFor(() =>
       expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(CONNECTED_ADDRESS),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
     );
     await waitFor(() => expect(onBegin).toHaveBeenCalledWith(CONNECTED_ADDRESS));
     expect(hoisted.signMessageAsync).toHaveBeenCalledWith({
