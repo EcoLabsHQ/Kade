@@ -1,0 +1,35 @@
+iteration: iteration-onboarding-self-morpho
+profile: NORMAL
+known_good: 59d1d284c87f6936fe142b609bb1fe78212c38da
+candidate: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
+mode: discovery
+reviewed_scopes:
+  holdings: complete
+  wallet-connect: complete
+  onboarding: complete
+  docs: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts:
+  F1: 0
+  F2: 0
+  F3: 0
+review_complete: false
+verdict: review_failed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 2202c5f888dbe7179ef4d3352dcf228d1689de4c
+  note: >-
+    Run by the orchestrator on the exact candidate HEAD; not re-run by the
+    reviewer.
+batch_plan:
+  F1: "holdings empty state — guard on walletCount + unverifiedCount, not verified rows only (a regression the orchestrator introduced when pending wallets left the table)"
+  F2: "docs — amendment v1.6 declaring the modal-based model, plus the contract and known-gaps clauses swept"
+  F3: "onboarding copy — stop claiming connecting verifies; the signature is optional and user-triggered (a regression the orchestrator introduced in 092176d and T7 left unswept)"
+  note: >
+    All three were introduced by the orchestrator's own changes today, not by a
+    worker. Two of them are the same class as findings already fixed once in this
+    session (a summary/empty state deriving from the wrong set; an amendment
+    leaving other clauses stale).

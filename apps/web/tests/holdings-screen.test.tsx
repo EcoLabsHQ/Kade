@@ -124,6 +124,27 @@ function aggregateWithUnverified(): HoldingsAggregate {
   });
 }
 
+/** A resident whose only linked wallets are unverified: no verified rows at all. */
+function aggregateOnlyUnverified(): HoldingsAggregate {
+  return aggregate({
+    total: 0,
+    walletCount: 0,
+    valuedCount: 0,
+    unvaluedCount: 0,
+    wallets: [],
+    unverifiedWallets: [
+      unverified({
+        address: CONNECTED_ADDRESS,
+        provider: 'connected-wallet',
+        chainIds: [1],
+        chains: [ethereum(1250)],
+        usd: 1250,
+      }),
+    ],
+    unverifiedCount: 1,
+  });
+}
+
 describe('HoldingsScreen', () => {
   it('shows the reference header copy verbatim', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
@@ -347,6 +368,24 @@ describe('HoldingsScreen', () => {
     expect(
       screen.getByText('0 wallets signed · balances read-only across 5 chains'),
     ).toBeInTheDocument();
+  });
+
+  it('never claims the vault holds assets that are merely unverified', () => {
+    // The state v1.2-v1.4 create: a linked wallet, not verified. The table has
+    // no rows, but the reference's "all in the vault" line would be false —
+    // nothing is verified and no vault exists.
+    render(<HoldingsScreen aggregate={aggregateOnlyUnverified()} />);
+
+    expect(
+      screen.queryByText('All linked assets are in the qualified vault.'),
+    ).toBeNull();
+    // The sentence is split by a <strong>, so match on the paragraph's text.
+    const note = screen
+      .getAllByText((_, element) => element?.tagName === 'P')
+      .find((element) =>
+        /linked wallets are not verified yet/i.test(element.textContent ?? ''),
+      );
+    expect(note).toBeDefined();
   });
 
   it('renders the Reflect card with the reference figures and a demo marker, without touching the total', () => {

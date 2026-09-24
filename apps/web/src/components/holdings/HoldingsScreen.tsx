@@ -360,7 +360,8 @@ export function HoldingsScreen({
   safeAddress,
   renderVerifyWallets,
 }: HoldingsScreenProps) {
-  const { total, walletCount, wallets, unverifiedWallets } = aggregate;
+  const { total, walletCount, wallets, unverifiedWallets, unverifiedCount } =
+    aggregate;
 
   const chains = chainTotals(wallets);
   const rows = linkedRows(aggregate);
@@ -479,7 +480,19 @@ export function HoldingsScreen({
           <span style={sectionNote}>{LINKED_NOTE}</span>
         </div>
 
-        {rows.length === 0 ? (
+        {rows.length === 0 && unverifiedCount > 0 ? (
+          /*
+           * The resident HAS linked wallets, they are just not verified: the
+           * table has no rows, and the reference's "all in the vault" line would
+           * be false (nothing is verified, and the vault does not exist). Say
+           * what is actually true and point at the control that fixes it.
+           */
+          <p style={emptyNote}>
+            Your linked wallets are not verified yet. Use{' '}
+            <strong>Link &amp; verify wallets</strong> to prove you control them,
+            so they count toward your holdings.
+          </p>
+        ) : rows.length === 0 ? (
           <p style={emptyNote}>
             All linked assets are in the qualified vault.
           </p>

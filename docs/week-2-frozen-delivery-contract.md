@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.5 — human decisions recorded 22–24 September 2026; five amendments recorded in section 8.1  
+**Status:** Frozen v1.6 — human decisions recorded 22–24 September 2026; six amendments recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -74,10 +74,11 @@ The owner's priority order is frozen. It governs sequencing and any trade-off:
    **never** feed Holdings; that exclusion is structural, not a display
    convention. As amended v1.2, a **connected** wallet (browser extension or
    WalletConnect) is likewise displayed unverified and excluded from the total.
-   As amended v1.4, signature-verified and unverified wallets are presented in a
-   **single list**, each row carrying its own state, instead of two separate
-   sections; the exclusion of the unverified rows from the total is unchanged and
-   must stay visible per row.
+   As amended v1.4, signature-verified and unverified wallets are presented
+   together, each carrying its own state, instead of two separate sections. As
+   amended v1.6, the **table lists the signature-verified wallets** and the
+   unverified ones are **listed in the verification modal** instead of as table
+   rows; the exclusion of the unverified rows from the total is unchanged.
 4. **The connected EOA has no authority over the resident Safe.** It is never a
    Safe owner or signer, is never added to `safe_deployments` or
    `passkey_credentials`, cannot authorise a Safe transaction, and is not a login
@@ -216,8 +217,9 @@ Accepted when:
   excluded from the total, and verifiable from Holdings by connecting the wallet
   that controls it); a **pasted Bitcoin** address remains excluded by
   construction;
-- as amended v1.4, verified and unverified wallets share **one list** with the
-  state carried per row; the vault action is gated on verification and is
+- as amended v1.4, verified and unverified wallets are presented together with
+  the state carried per wallet; as amended v1.6, the verified ones are the table
+  rows and the unverified ones are listed **in the verification modal**; the vault action is gated on verification and is
   presented as unavailable while the qualified vault (D14) is not deployed.
 
 Evidence: the challenge/verification migration or column use, the verification
@@ -535,6 +537,37 @@ Affected clauses:
 | §2.2 item 2 | Holdings shows what the resident has verified | the screen also displays reference copy describing a vault state that does not exist, declared here |
 | §4.3 | D12–D15 beyond the envelope, unmentioned in the UI | still beyond the envelope; the UI describes them, and this amendment records that |
 
+**v1.6 — 24 September 2026. Approved by the project owner.**
+
+The unverified wallets are **listed in the verification modal**, not as rows of
+the Holdings table. The table shows the signature-verified wallets; a control in
+the table footer ("Link & verify wallets") opens the modal, where connecting a
+wallet persists and signs it in one gesture.
+
+What this does **not** change:
+
+- an unverified wallet remains excluded from the Holdings total;
+- the signature remains the only path that sets `wallets.verified_at`; a connect
+  or a paste alone never verifies;
+- pasted Bitcoin addresses still never feed Holdings;
+- the empty state must not claim the vault holds assets the resident has not
+  verified — the table has no rows in that case, and the screen says the linked
+  wallets are unverified instead;
+- in onboarding Step 3 the signature is **optional and user-triggered**, and a
+  skip or a failure leaves the address persisted and unverified.
+
+Rationale, for the record: the owner moved the pending wallets out of the table
+so the table shows what counts, and asked for one control that both links and
+verifies. This amendment declares that presentation; the authority model is
+unchanged.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| §2.2 item 3 | verified and unverified in one list, state per row (v1.4) | verified wallets are the table rows; unverified wallets are listed in the modal (v1.6) |
+| §4.2, D17 | one list | table + verification modal |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
@@ -551,7 +584,7 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.5:
+Freeze status at v1.6:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
@@ -559,7 +592,9 @@ Freeze status at v1.5:
   (§2.1).
 - [x] Holdings authority — signed linked wallets are verified; a connected wallet
   and a pasted **EVM** address are shown unverified and excluded from the total,
-  in **one list** with the state carried per row; pasting **Bitcoin** is
+  in **one list** with the state carried per row (v1.4); the unverified wallets
+  are listed in the verification modal rather than as table rows (v1.6); pasting
+  **Bitcoin** is
   registration-only and never feeds Holdings (§2.2 items 2–3, v1.2–v1.4).
 - [x] Invest — Morpho on Ethereum mainnet, one pool (§2.2 item, §6.3).
 - [x] Admin dashboard — simple review/approve, first-class (§2.1 item 4).
@@ -572,7 +607,7 @@ Freeze status at v1.5:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.5** with the open items above tracked under change
+This contract is **Frozen v1.6** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability

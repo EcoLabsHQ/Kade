@@ -199,13 +199,15 @@ export function WealthStep({
         Connect a wallet or paste an address. The browser-extension and
         WalletConnect rows open a real wallet connection and read that account&rsquo;s
         balances from a public source on Ethereum and Base. Bitcoin and pasted
-        wallet addresses are read-only in the same way. Connecting a wallet also
-        signs a challenge, which marks it verified for Holdings; the connection
+        wallet addresses are read-only in the same way. Connecting a wallet then
+        offers to <strong>sign a challenge</strong> &mdash; signing is what marks a
+        wallet verified for Holdings, and you can skip it; the connection alone
         gives Kade no authority over your Safe, and a public read is
-        not proof of ownership. A connected wallet is saved and will appear in
-        Holdings as an <strong>unverified</strong> wallet, outside the total &mdash;
-        it is not proof that you control it. This only shows you can meet the
-        tier; moving funds into a qualified vault happens inside the platform.
+        not proof of ownership. A connected wallet is saved and, until you sign,
+        appears in Holdings as an <strong>unverified</strong> wallet, outside the
+        total &mdash; it is not proof that you control it. This only shows you can
+        meet the tier; moving funds into a qualified vault happens inside the
+        platform.
       </p>
 
       <div
