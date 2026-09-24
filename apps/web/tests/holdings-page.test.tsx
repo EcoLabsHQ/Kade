@@ -9,6 +9,9 @@ import { cleanup, render, screen } from '@testing-library/react';
  * tree in `WalletProvider`, so the context cannot be dropped again.
  */
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+}));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),
 }));

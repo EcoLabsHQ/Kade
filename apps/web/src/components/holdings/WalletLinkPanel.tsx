@@ -92,8 +92,9 @@ function UnconfiguredLinkPanel() {
       </button>
       <p style={mutedNote}>
         Wallet connection is not configured here, so a wallet cannot be linked
-        by signature. Pasted addresses stay registration-only and never appear in
-        Holdings.
+        by signature. A pasted Bitcoin address stays registration-only and never
+        appears in Holdings; a pasted EVM address is shown unverified and can be
+        verified once wallet connection is configured.
       </p>
     </Card>
   );
