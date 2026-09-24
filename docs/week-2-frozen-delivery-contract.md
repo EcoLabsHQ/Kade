@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.4 — human decisions recorded 22–24 September 2026; four amendments recorded in section 8.1  
+**Status:** Frozen v1.5 — human decisions recorded 22–24 September 2026; five amendments recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -496,6 +496,45 @@ Affected clauses:
 | §2.2 item 3 | unverified wallets in their own labelled section | verified and unverified rows in **one** list, state carried per row |
 | §4.2, D17 | separate labelled section for unverified wallets | one list; unverified rows labelled and excluded from the total |
 
+**v1.5 — 24 September 2026. Approved by the project owner.**
+
+The Holdings screen displays the design reference's copy **verbatim**, including
+statements that describe a state the programme has not reached: that a qualified
+vault exists, that KadeLock blocks outbound transfers until an unlock date, that
+the vault runs on Ethereum, Base and Arbitrum, and that a 90-day cure period
+starts automatically if the qualified total drops below tier.
+
+This is a **declared presentational divergence**, recorded here rather than left
+implicit, because those claims are **not backed by the Week 2 scope**: the
+qualified vault (D14, KadeLock) is in §4.3 and beyond the 20-hour envelope, and
+the passkey signer (EXE-011) is not deployed, which blocks D18.
+
+What this does **not** change:
+
+- no capability is created: every action that would move funds or convert a
+  balance is presented **disabled**, and no transaction path exists;
+- the **arithmetic remains real**: the total and the per-chain figures come from
+  the aggregate, an unverified wallet is excluded from the total, and a chain the
+  app does not read renders `—` rather than a figure;
+- the signature remains the only path that sets `wallets.verified_at`;
+- the authority model is unchanged: no wallet login, no Safe authority from a
+  connection, and no transaction is ever claimed as sent;
+- D14 / KadeLock / D12 multi-chain remain **out of scope**; this amendment
+  changes display only and does not move them into the envelope.
+
+Rationale, for the record: the owner asked for visual parity with the reference
+as a demonstration layer, accepting that the copy describes the intended
+product. Recording the divergence keeps the repository honest about the gap
+between the demonstrated product and the delivered scope, and is the condition on
+which this iteration was promoted.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| §2.2 item 2 | Holdings shows what the resident has verified | the screen also displays reference copy describing a vault state that does not exist, declared here |
+| §4.3 | D12–D15 beyond the envelope, unmentioned in the UI | still beyond the envelope; the UI describes them, and this amendment records that |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
@@ -512,7 +551,7 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.4:
+Freeze status at v1.5:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
@@ -533,7 +572,7 @@ Freeze status at v1.4:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.4** with the open items above tracked under change
+This contract is **Frozen v1.5** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
