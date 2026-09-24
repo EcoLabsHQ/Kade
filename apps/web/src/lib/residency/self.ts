@@ -89,30 +89,26 @@ export interface SelfSdkModule {
 export type SelfSdkLoader = () => Promise<SelfSdkModule>;
 
 /**
- * Load the SDK without making it a build-time dependency of the unconfigured
- * path.
+ * Load the SDK.
  *
- * The specifier is held in a variable and the import is marked ignored, so the
- * type checker, Vitest and the bundler do not require
- * `@selfxyz/enterprise-sdk` to be installed for the route to exist; a deployment
- * that has configured Self must install it. See the module header.
+ * It is a real, pinned dependency (`apps/web/package.json`), so this is a plain
+ * static import: no dynamic specifier, no bundler escape hatch. The loader stays
+ * injectable so a test can supply a stub without a network or the package
+ * internals.
  */
 async function loadSelfSdk(): Promise<SelfSdkModule> {
-  const specifier = '@selfxyz/enterprise-sdk';
-  const module = (await import(
-    /* @vite-ignore */ /* webpackIgnore: true */ specifier
-  )) as Partial<SelfSdkModule>;
-  if (typeof module.SelfClient !== 'function') {
+  const sdk = await import('@selfxyz/enterprise-sdk');
+  if (typeof sdk.SelfClient !== 'function') {
     throw new Error(
       '@selfxyz/enterprise-sdk did not expose SelfClient; is the expected version installed?',
     );
   }
-  if (typeof module.SelfWebhooks?.verify !== 'function') {
+  if (typeof sdk.SelfWebhooks?.verify !== 'function') {
     throw new Error(
       '@selfxyz/enterprise-sdk did not expose SelfWebhooks.verify; is the expected version installed?',
     );
   }
-  return module as SelfSdkModule;
+  return sdk as SelfSdkModule;
 }
 
 function nonEmptyString(value: unknown): string | null {
