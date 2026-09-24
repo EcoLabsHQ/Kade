@@ -91,6 +91,13 @@ textarea {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  /*
+   * The card and footer are pinned to the bottom (the flex spacer above the
+   * card collects the slack). When the nav is taller than the viewport, scroll
+   * the sidebar's own content instead of pushing them out of view. The narrow
+   * breakpoint below already set this for the drawer.
+   */
+  overflow-y: auto;
   padding: 24px 16px 18px;
   background: #fff;
 }

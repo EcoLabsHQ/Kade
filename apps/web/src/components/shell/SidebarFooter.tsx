@@ -9,7 +9,6 @@ export interface SidebarFooterProps {
 export function SidebarFooter({ email }: SidebarFooterProps) {
   return (
     <>
-      <div style={{ flex: 1 }} />
       {email ? (
         <div
           style={{

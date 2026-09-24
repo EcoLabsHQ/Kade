@@ -92,6 +92,15 @@ export function Sidebar({
           </nav>
         )}
 
+        {/*
+          The leftover vertical space belongs *above* the Safe card, between the
+          nav and the card. It lived inside SidebarFooter before, which made the
+          spacer absorb the space between the card and the footer and stranded
+          the card at the top. This spacer collapses to zero when the nav is
+          tall, so the card and footer stay reachable (the sidebar scrolls).
+        */}
+        <div style={{ flex: 1 }} />
+
         <div style={{ marginTop: '18px' }}>
           <SafeAddressCard
             address={safeAddress}
