@@ -4,11 +4,15 @@ import { cleanup, render, screen } from '@testing-library/react';
 /**
  * Regression: `/holdings` must render inside the wallet context.
  *
- * The link panel uses wagmi hooks, which throw "useConfig must be used within
- * WagmiProvider" when no provider is mounted. This pins that the page wraps its
- * tree in `WalletProvider`, so the context cannot be dropped again.
+ * The per-row "Connect & sign" and "+ Link another wallet" actions use
+ * AppKit/wagmi hooks, which throw "useConfig must be used within WagmiProvider"
+ * when no provider is mounted. This pins that the page wraps its tree in
+ * `WalletProvider`, so the context cannot be dropped again.
  */
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+}));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),
 }));
@@ -42,9 +46,6 @@ vi.mock('@/components/shell/ContentContainer', () => ({
 vi.mock('@/components/holdings/HoldingsScreen', () => ({
   HoldingsScreen: () => <div>holdings screen</div>,
 }));
-vi.mock('@/components/holdings/LinkedWalletSection', () => ({
-  LinkedWalletSection: () => <div>link panel</div>,
-}));
 vi.mock('@/app/holdings/data', () => ({
   loadVerifiedHoldings: vi.fn(async () => ({
     totalUsd: 0,
@@ -56,11 +57,16 @@ vi.mock('@/app/holdings/link-actions', () => ({
   beginWalletLink: vi.fn(),
   completeWalletLink: vi.fn(),
 }));
+// Imported read-only by the page and passed through as a prop; mocked so the
+// page test does not pull in the onboarding server module.
+vi.mock('@/app/onboarding/wallet-actions', () => ({
+  addConnectedWallet: vi.fn(),
+}));
 
 import HoldingsPage from '@/app/holdings/page';
 
 describe('HoldingsPage', () => {
-  it('provides the wallet context to the link panel', async () => {
+  it('provides the wallet context to the holdings view', async () => {
     render(await HoldingsPage());
     expect(screen.getByTestId('wallet-provider')).toBeInTheDocument();
     expect(screen.getByText('holdings screen')).toBeInTheDocument();
