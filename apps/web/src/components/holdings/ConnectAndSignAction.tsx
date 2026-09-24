@@ -13,7 +13,7 @@ import {
   liveAddresses,
   type WalletAddress,
 } from './connected-addresses';
-import type { WalletLinkPanelProps } from './WalletLinkPanel';
+import type { OwnershipCallbacks } from './ownership-callbacks';
 
 /**
  * The per-row "Connect & sign" action for an unverified Holdings row.
@@ -31,18 +31,18 @@ import type { WalletLinkPanelProps } from './WalletLinkPanel';
  * case-insensitively, and a mismatch is reported on the row rather than asking
  * the wrong wallet to sign.
  *
- * The hooks are gated exactly as `WalletLinkPanel` gates them: when wallet
- * connection is not configured, only a locked control is rendered and no hook is
- * reached, so the unconfigured path cannot throw.
+ * The hooks are gated on configuration: when wallet connection is not
+ * configured, only a locked control is rendered and no hook is reached, so the
+ * unconfigured path cannot throw.
  */
 
 export interface ConnectAndSignActionProps {
   readonly wallet: UnverifiedHoldingWallet;
   readonly configured: boolean;
-  readonly onBegin: WalletLinkPanelProps['onBegin'];
-  readonly onComplete: WalletLinkPanelProps['onComplete'];
+  readonly onBegin: OwnershipCallbacks['onBegin'];
+  readonly onComplete: OwnershipCallbacks['onComplete'];
   /** Called after a successful verification so the page can refresh. */
-  readonly onLinked: () => void;
+  readonly onLinked: OwnershipCallbacks['onLinked'];
 }
 
 /** The honest guidance for an unverified row with no controlling connection. */

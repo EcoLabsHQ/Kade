@@ -6,6 +6,7 @@ import { useConnections, useDisconnect } from 'wagmi';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { tokens } from '@/components/ui/tokens';
 import { type WalletConnection } from './connected-addresses';
+import type { OwnershipCallbacks } from './ownership-callbacks';
 
 /**
  * The reference's "+ Link another wallet" action.
@@ -21,9 +22,8 @@ import { type WalletConnection } from './connected-addresses';
  * 5-address cap is the server's rule, so a refusal is surfaced verbatim (a
  * `role="alert"` on the control) rather than duplicated here.
  *
- * The hooks are gated exactly as `WalletLinkPanel` gates them: when wallet
- * connection is not configured, only a locked control is rendered and no hook is
- * reached.
+ * The hooks are gated on configuration: when wallet connection is not
+ * configured, only a locked control is rendered and no hook is reached.
  */
 
 export interface LinkAnotherWalletButtonProps {
@@ -31,7 +31,7 @@ export interface LinkAnotherWalletButtonProps {
   /** `addConnectedWallet`: persist an address as a connected-wallet row. */
   readonly onAddConnectedWallet: (address: string) => Promise<unknown>;
   /** Called after a successful persist so the list can refresh. */
-  readonly onLinked: () => void;
+  readonly onLinked: OwnershipCallbacks['onLinked'];
 }
 
 export function LinkAnotherWalletButton(props: LinkAnotherWalletButtonProps) {

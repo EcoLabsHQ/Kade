@@ -5,7 +5,7 @@ import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import { ConnectAndSignAction } from './ConnectAndSignAction';
 import { HoldingsScreen } from './HoldingsScreen';
 import { LinkAnotherWalletButton } from './LinkAnotherWalletButton';
-import type { WalletLinkPanelProps } from './WalletLinkPanel';
+import type { OwnershipCallbacks } from './ownership-callbacks';
 
 /**
  * The client half of Holdings: it binds the browser-only machinery (AppKit, the
@@ -27,8 +27,8 @@ export interface HoldingsViewProps {
   readonly aggregate: HoldingsAggregate;
   readonly safeAddress: string | null;
   readonly configured: boolean;
-  readonly onBegin: WalletLinkPanelProps['onBegin'];
-  readonly onComplete: WalletLinkPanelProps['onComplete'];
+  readonly onBegin: OwnershipCallbacks['onBegin'];
+  readonly onComplete: OwnershipCallbacks['onComplete'];
   /** `addConnectedWallet`: persist an address as a connected-wallet row. */
   readonly onAddConnectedWallet: (address: string) => Promise<unknown>;
 }

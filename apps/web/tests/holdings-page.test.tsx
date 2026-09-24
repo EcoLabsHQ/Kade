@@ -4,9 +4,10 @@ import { cleanup, render, screen } from '@testing-library/react';
 /**
  * Regression: `/holdings` must render inside the wallet context.
  *
- * The link panel uses wagmi hooks, which throw "useConfig must be used within
- * WagmiProvider" when no provider is mounted. This pins that the page wraps its
- * tree in `WalletProvider`, so the context cannot be dropped again.
+ * The per-row "Connect & sign" and "+ Link another wallet" actions use
+ * AppKit/wagmi hooks, which throw "useConfig must be used within WagmiProvider"
+ * when no provider is mounted. This pins that the page wraps its tree in
+ * `WalletProvider`, so the context cannot be dropped again.
  */
 
 vi.mock('next/navigation', () => ({

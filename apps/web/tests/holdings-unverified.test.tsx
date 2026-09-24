@@ -134,9 +134,13 @@ describe('ConnectAndSignAction', () => {
     );
   });
 
-  it('signs with the controlling wallet (case-insensitive) and disconnects afterwards', async () => {
+  it('signs with the wallet that controls the row, not the first connection', async () => {
+    // A non-controlling wallet is connected first; the action must pick the
+    // connection that matches the row, case-insensitively, and disconnect that
+    // one — never connections[0].
     hoisted.connections = [
-      { accounts: [ROW.toLowerCase()], connector: { uid: 'uid-1' } },
+      { accounts: [OTHER], connector: { uid: 'uid-1' } },
+      { accounts: [ROW.toLowerCase()], connector: { uid: 'uid-2' } },
     ];
     const onBegin = vi.fn(async (address: string) => ({
       message: `challenge:${address}`,
@@ -166,9 +170,12 @@ describe('ConnectAndSignAction', () => {
     // The connection is torn down after proving, mirroring onboarding.
     await waitFor(() =>
       expect(hoisted.disconnect).toHaveBeenCalledWith({
-        connector: { uid: 'uid-1' },
+        connector: { uid: 'uid-2' },
       }),
     );
+    expect(hoisted.disconnect).not.toHaveBeenCalledWith({
+      connector: { uid: 'uid-1' },
+    });
     expect(await screen.findByText(/Signed/)).toBeInTheDocument();
     expect(hoisted.open).not.toHaveBeenCalled();
   });
@@ -194,5 +201,60 @@ describe('ConnectAndSignAction', () => {
     expect(onLinked).not.toHaveBeenCalled();
     // A failed attempt still tears the connection down.
     expect(hoisted.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps one row usable when another row's signature fails", async () => {
+    const ROW_B = '0x1234567890AbCdEf1234567890aBcDeF12345678';
+    hoisted.connections = [
+      { accounts: [ROW], connector: { uid: 'uid-a' } },
+      { accounts: [ROW_B], connector: { uid: 'uid-b' } },
+    ];
+    const onBegin = vi.fn(async (address: string) => ({
+      message: `challenge:${address}`,
+    }));
+    const onComplete = vi.fn(async ({ address }: { address: string }) => {
+      if (address.toLowerCase() === ROW.toLowerCase()) {
+        throw new Error('User rejected the request.');
+      }
+      return { ok: true };
+    });
+    const onLinked = vi.fn();
+
+    render(
+      <>
+        <ConnectAndSignAction
+          wallet={wallet()}
+          configured
+          onBegin={onBegin}
+          onComplete={onComplete}
+          onLinked={onLinked}
+        />
+        <ConnectAndSignAction
+          wallet={{ ...wallet(), address: ROW_B }}
+          configured
+          onBegin={onBegin}
+          onComplete={onComplete}
+          onLinked={onLinked}
+        />
+      </>,
+    );
+
+    // Fail the first row.
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Connect & sign' })[0]!,
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'User rejected the request.',
+    );
+    expect(onLinked).not.toHaveBeenCalled();
+
+    // The untouched row still signs successfully.
+    const secondRow = screen.getAllByRole('button', {
+      name: 'Connect & sign',
+    })[1]!;
+    expect(secondRow).toBeEnabled();
+    fireEvent.click(secondRow);
+    await waitFor(() => expect(onLinked).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Signed/)).toBeInTheDocument();
   });
 });
