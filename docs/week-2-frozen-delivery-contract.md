@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.2 — human decisions recorded 22–23 September 2026; two amendments recorded in section 8.1  
+**Status:** Frozen v1.3 — human decisions recorded 22–24 September 2026; three amendments recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -63,12 +63,15 @@ The owner's priority order is frozen. It governs sequencing and any trade-off:
    wallet is proven by a signature over a server-issued challenge (EIP-191 /
    EIP-4361-style), comparable to an EOA signature, and is required to display
    that wallet's holdings.
-3. **Pasted addresses are registration-only.** Pasted Bitcoin and EVM addresses
-   remain read-only, unverified proof-of-wealth for Step 3 and **never** feed
-   Holdings. This exclusion is structural, not a display convention. As amended
-   v1.2, a **connected** wallet (browser extension or WalletConnect) **is**
-   displayed in Holdings without a signature — explicitly marked unverified and
-   **excluded from the Holdings total**.
+3. **Pasted addresses are registration-only — except that a pasted EVM address is
+   displayed as unverified.** As amended v1.3, a pasted EVM (`0x…`) address is
+   shown in Holdings, explicitly marked unverified and **excluded from the
+   Holdings total**, and can be verified there by connecting the wallet that
+   controls it and signing the server-issued challenge. Pasted **Bitcoin**
+   addresses remain read-only, unverified proof-of-wealth for Step 3 and
+   **never** feed Holdings; that exclusion is structural, not a display
+   convention. As amended v1.2, a **connected** wallet (browser extension or
+   WalletConnect) is likewise displayed unverified and excluded from the total.
 4. **The connected EOA has no authority over the resident Safe.** It is never a
    Safe owner or signer, is never added to `safe_deployments` or
    `passkey_credentials`, cannot authorise a Safe transaction, and is not a login
@@ -201,7 +204,11 @@ Accepted when:
 - the signature confers no Safe authority and is not a login;
 - as amended v1.2, a connected wallet that has **not** been signature-verified is
   also shown — in a separate section, labelled unverified, and **excluded from
-  the Holdings total**; pasted rows remain excluded by construction.
+  the Holdings total**;
+- as amended v1.3, a **pasted EVM** address is shown the same way (unverified,
+  excluded from the total, and verifiable from Holdings by connecting the wallet
+  that controls it); a **pasted Bitcoin** address remains excluded by
+  construction.
 
 Evidence: the challenge/verification migration or column use, the verification
 path and unit tests, the Holdings screen test, and the on-screen distinction
@@ -418,6 +425,37 @@ Affected clauses:
 | §4.2, D17 | Holdings shows signature-verified wallets only | signature-verified wallets **plus** unverified connected wallets, in a separate labelled section |
 | §8.1 v1.1 | a connected account persists as a watch-only `pasted-address` row | a connected account persists with `provider = 'connected-wallet'` and is shown unverified in Holdings |
 
+**v1.3 — 24 September 2026. Approved by the project owner.**
+
+A pasted EVM (`0x…`) address is displayed in Holdings as an unverified wallet, in
+the same labelled section as a connected wallet, and is **excluded from the
+Holdings total**. It can be verified from Holdings by connecting the wallet that
+controls it and signing the server-issued challenge.
+
+What this does **not** change:
+
+- pasted **Bitcoin** addresses never feed Holdings; that exclusion stays
+  structural (no EVM connection can prove a `bc1…` address);
+- the signature remains the only path that sets `wallets.verified_at`, and a
+  pasted row is never marked verified without one;
+- a connection alone never marks a row verified;
+- the signature is not a login and confers no authority over the resident Safe
+  (D11 / v1.9 unchanged);
+- the 5-address cap still applies to pasted and connected rows.
+
+Rationale, for the record: the owner asked that a pasted address be visible in
+Holdings so it can be verified there, rather than staying invisible until
+independently proven. No new mechanism is introduced: `record_wallet_ownership`
+already marks every stored row for the signed address, so this amendment changes
+what is *displayed*, not what can be *written*.
+
+Affected clauses:
+
+| Clause | Before | After |
+|---|---|---|
+| §2.2 item 3 | no pasted row feeds Holdings | a pasted **EVM** row feeds Holdings, unverified and excluded from the total; pasted Bitcoin stays excluded |
+| §4.2, D17 | signature-verified wallets plus unverified connected wallets | plus unverified **pasted EVM** wallets, verifiable from Holdings |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
@@ -440,9 +478,10 @@ Freeze status at v1.2:
   with parallel agents.
 - [x] priority order — Residency → Holdings → Invest → Admin → Vote/Finance
   (§2.1).
-- [x] Holdings authority — signed linked wallets are verified; pasting is
-  registration-only and never feeds Holdings; a connected wallet is shown
-  unverified and excluded from the total (§2.2 items 2–3, v1.2).
+- [x] Holdings authority — signed linked wallets are verified; a connected wallet
+  and a pasted **EVM** address are shown unverified and excluded from the total;
+  pasting **Bitcoin** is registration-only and never feeds Holdings (§2.2 items
+  2–3, v1.2 and v1.3).
 - [x] Invest — Morpho on Ethereum mainnet, one pool (§2.2 item, §6.3).
 - [x] Admin dashboard — simple review/approve, first-class (§2.1 item 4).
 - [x] mainnet activation for iteration 2 (§2.2 item 1).
