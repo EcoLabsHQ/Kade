@@ -94,6 +94,24 @@ export function AccountSetupStep({
    * the address is already theirs, so the screen reports the account as not set
    * up yet rather than as failed.
    */
+  /**
+   * Record the account address Safe's SDK derives from the passkey.
+   *
+   * Nothing is deployed: the account is an address until its first operation.
+   * A failure is not fatal to Step 1 — the passkey exists either way — so it is
+   * reported rather than thrown, and the shell simply shows no account yet.
+   */
+  async function recordAccount() {
+    try {
+      const { deriveAndRecordAccount } = await import(
+        '@/app/onboarding/account-actions'
+      );
+      await deriveAndRecordAccount();
+    } catch (cause) {
+      console.warn('[kade] could not record the account address:', cause);
+    }
+  }
+
   async function resolveAccount(publicKey: string) {
     setAccount({ state: 'deriving' });
     try {
@@ -179,7 +197,12 @@ export function AccountSetupStep({
       // the Safe's owner and the account is deployed by its first user
       // operation, so there is no signer contract and no separate deployment
       // step. The account address is derived and shown for information.
+      // The account address comes from Safe's SDK and is recorded here, so the
+      // shell and Holdings can show the account the resident already owns. This
+      // deploys nothing: the account becomes a contract with its first
+      // operation, which the paymaster sponsors.
       await resolveAccount(publicKeyToDerive);
+      await recordAccount();
     } catch (cause) {
       setError(
         cause instanceof Error

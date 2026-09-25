@@ -88,7 +88,7 @@ describe('onboarding flow collapses below the shell breakpoint', () => {
       // stop collapsing while this test still passed. Assert the inline style
       // that accompanies the class does not carry a column list.
       const element = new RegExp(
-        `className="${className}"[\\s\\S]{0,200}?style=\\{\\{([\\s\\S]*?)\\}\\}`,
+        `className=['"]${className}['"][\\s\\S]{0,200}?style=\\{\\{([\\s\\S]*?)\\}\\}`,
       );
       const match = source.match(element);
       expect(

@@ -197,22 +197,14 @@ export function WealthStep({
       <div style={eyebrow}>Step 3 of 4</div>
       <h1 style={heading}>Show proof of wealth</h1>
       <p style={lead}>
-        Connect a wallet or paste an address. The browser-extension and
-        WalletConnect rows open a real wallet connection and read that account&rsquo;s
-        balances from a public source on Ethereum and Base. Bitcoin and pasted
-        wallet addresses are read-only in the same way. Connecting a wallet then
-        offers to <strong>sign a challenge</strong> &mdash; signing is what marks a
-        wallet verified for Holdings, and you can skip it; the connection alone
-        gives Kade no authority over your Safe, and a public read is
-        not proof of ownership. A connected wallet is saved and, until you sign,
-        appears in Holdings as an <strong>unverified</strong> wallet, outside the
-        total &mdash; it is not proof that you control it. This only shows you can
+        One signature per wallet reads your balances on Ethereum, Base,
+        Arbitrum, Optimism and Celo — nothing moves. This only shows you can
         meet the tier; moving funds into a qualified vault happens inside the
         platform.
       </p>
 
       <div
-        className="kade-grid-wealth"
+        className='kade-grid-wealth'
         style={{
           gap: '16px',
           alignItems: 'start',
@@ -228,7 +220,7 @@ export function WealthStep({
             atCap={evmAtCap}
           />
 
-          <Card padding="14px 16px">
+          <Card padding='14px 16px'>
             <div style={rowHeaderStyle}>
               <span
                 aria-hidden
@@ -244,7 +236,7 @@ export function WealthStep({
               </div>
               {bitcoinAddresses.length > 0 ? <ReadState /> : null}
               <button
-                type="button"
+                type='button'
                 onClick={() => setBitcoinOpen((open) => !open)}
                 aria-expanded={bitcoinOpen}
                 aria-label={
@@ -262,17 +254,17 @@ export function WealthStep({
               <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
-                    type="text"
-                    aria-label="Bitcoin address"
-                    placeholder="bc1q… or 1… or 3…"
+                    type='text'
+                    aria-label='Bitcoin address'
+                    placeholder='bc1q… or 1… or 3…'
                     value={addressInput}
                     spellCheck={false}
                     onChange={(event) => setAddressInput(event.target.value)}
                     style={addressInputStyle}
                   />
                   <button
-                    type="button"
-                    aria-label="Confirm Bitcoin address"
+                    type='button'
+                    aria-label='Confirm Bitcoin address'
                     onClick={handleConfirm}
                     disabled={confirmDisabled}
                     title={
@@ -294,7 +286,7 @@ export function WealthStep({
                 </div>
 
                 {addError ? (
-                  <div role="alert" style={errorText}>
+                  <div role='alert' style={errorText}>
                     {addError}
                   </div>
                 ) : null}
@@ -312,7 +304,7 @@ export function WealthStep({
                 </p>
 
                 <div style={{ marginTop: '6px' }}>
-                  <Chip tone="warning" dot dotColor={BITCOIN_ORANGE}>
+                  <Chip tone='warning' dot dotColor={BITCOIN_ORANGE}>
                     Read from the network
                   </Chip>
                 </div>
@@ -362,7 +354,7 @@ export function WealthStep({
                         {record.usd === null ? '—' : usd(record.usd)}
                       </span>
                       <button
-                        type="button"
+                        type='button'
                         aria-label={`Remove address ${record.address}`}
                         onClick={() => onRemoveBitcoin(record.id)}
                         style={removeButton}
@@ -375,7 +367,7 @@ export function WealthStep({
                     </div>
                     {record.readError ? (
                       <div
-                        role="alert"
+                        role='alert'
                         style={{ ...errorText, marginTop: '4px' }}
                       >
                         {record.readError}
@@ -387,7 +379,7 @@ export function WealthStep({
             ) : null}
           </Card>
 
-          <Card padding="14px 16px">
+          <Card padding='14px 16px'>
             <div style={rowHeaderStyle}>
               <span
                 aria-hidden
@@ -405,7 +397,7 @@ export function WealthStep({
               </div>
               {evmAddresses.length > 0 ? <ReadState /> : null}
               <button
-                type="button"
+                type='button'
                 onClick={() => setEvmOpen((open) => !open)}
                 aria-expanded={evmOpen}
                 aria-label={
@@ -423,17 +415,17 @@ export function WealthStep({
               <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
-                    type="text"
-                    aria-label="Wallet address"
-                    placeholder="0x…"
+                    type='text'
+                    aria-label='Wallet address'
+                    placeholder='0x…'
                     value={evmInput}
                     spellCheck={false}
                     onChange={(event) => setEvmInput(event.target.value)}
                     style={addressInputStyle}
                   />
                   <button
-                    type="button"
-                    aria-label="Confirm wallet address"
+                    type='button'
+                    aria-label='Confirm wallet address'
                     onClick={requestEvmAdd}
                     disabled={evmConfirmDisabled}
                     title={
@@ -463,9 +455,9 @@ export function WealthStep({
                 <p style={{ ...mutedNote, marginTop: '10px' }}>
                   Balances are read from a public source on Ethereum and Base
                   and are not proof of ownership: no signature is asked for a
-                  pasted address. You confirm each address before it is
-                  added, and every saved address is listed in the Proof of
-                  wealth summary on the right.
+                  pasted address. You confirm each address before it is added,
+                  and every saved address is listed in the Proof of wealth
+                  summary on the right.
                 </p>
               </div>
             ) : null}
@@ -489,14 +481,13 @@ export function WealthStep({
                 For off-chain assets · PDF, hashed &amp; pinned
               </div>
             </div>
-            <button type="button" style={connectButton}>
+            <button type='button' style={connectButton}>
               Upload
             </button>
           </div>
-
         </div>
 
-        <Card padding="20px 22px">
+        <Card padding='20px 22px'>
           <div
             style={{
               display: 'flex',
@@ -506,7 +497,7 @@ export function WealthStep({
             }}
           >
             <div style={eyebrow}>Proof of wealth</div>
-            <Chip tone="muted">
+            <Chip tone='muted'>
               {hasRealRead ? 'Read from public sources' : 'No sources yet'}
             </Chip>
           </div>
@@ -660,7 +651,7 @@ export function WealthStep({
                     {record.usd === null ? '—' : usd(record.usd)}
                   </span>
                   <button
-                    type="button"
+                    type='button'
                     aria-label={`Remove wallet address ${record.address}`}
                     onClick={() => onRemoveWalletAddress(record.address)}
                     style={removeButton}
@@ -719,7 +710,7 @@ export function WealthStep({
                 Read from a public source · not proof of ownership
               </div>
               {record.readError ? (
-                <div role="alert" style={{ ...errorText, marginTop: '4px' }}>
+                <div role='alert' style={{ ...errorText, marginTop: '4px' }}>
                   {record.readError}
                 </div>
               ) : null}
@@ -736,23 +727,19 @@ export function WealthStep({
               lineHeight: 1.6,
             }}
           >
-            Every figure here is read from a public source on Ethereum and Base.
-            Connecting a wallet then offers to sign a challenge, and signing is
-            what marks that wallet verified for Holdings; pasting an address
-            involves no signature, and a public read is not proof of ownership.
-            A connected wallet is saved and, until you sign, shown in Holdings as
-            unverified, excluded from the total; the connection is read-only and
-            gives Kade no authority over your Safe.
+            One signature covers every EVM chain — balances are read on
+            Ethereum, Base, Arbitrum, Optimism and Celo. Bitcoin via watch-only
+            xpub.
           </p>
         </Card>
       </div>
 
       <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-        <button type="button" onClick={onBack} style={secondaryButton}>
+        <button type='button' onClick={onBack} style={secondaryButton}>
           Back
         </button>
         <button
-          type="button"
+          type='button'
           disabled={!canContinue}
           onClick={onContinue}
           title={
@@ -775,7 +762,7 @@ export function WealthStep({
         onClose={() => {
           if (!evmAdding) setPendingEvm(null);
         }}
-        title="Add this address?"
+        title='Add this address?'
       >
         <div style={{ padding: '6px 24px 20px' }}>
           <p
@@ -793,7 +780,7 @@ export function WealthStep({
           </p>
           <div style={pendingAddressStyle}>{pendingEvm}</div>
           {evmError ? (
-            <div role="alert" style={errorText}>
+            <div role='alert' style={errorText}>
               {evmError}
             </div>
           ) : null}
@@ -806,7 +793,7 @@ export function WealthStep({
             }}
           >
             <button
-              type="button"
+              type='button'
               onClick={() => setPendingEvm(null)}
               disabled={evmAdding}
               style={{ ...secondaryButton, opacity: evmAdding ? 0.5 : 1 }}
@@ -814,7 +801,7 @@ export function WealthStep({
               Cancel
             </button>
             <button
-              type="button"
+              type='button'
               onClick={confirmEvmAdd}
               disabled={evmAdding}
               style={{
@@ -853,16 +840,16 @@ function CheckGlyph() {
     <svg
       width={15}
       height={15}
-      viewBox="0 0 24 24"
-      fill="none"
+      viewBox='0 0 24 24'
+      fill='none'
       stroke={tokens.success}
       strokeWidth={3}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      aria-hidden='true'
+      focusable='false'
     >
-      <path d="M4 12.5 9.5 18 20 6.5" />
+      <path d='M4 12.5 9.5 18 20 6.5' />
     </svg>
   );
 }

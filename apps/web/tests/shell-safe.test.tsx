@@ -122,23 +122,26 @@ describe('loadShellSafe', () => {
 });
 
 describe('SafeAddressCard', () => {
-  it('shows a not-deployed address with a retry and the correct explorer link', () => {
+  it('shows a created account without a link until it is on chain', () => {
     render(
       <SafeAddressCard
         address={SAFE}
         deployed={false}
-        status="failed"
+        status="predicted"
         explorerUrl={SEPOLIA_EXPLORER}
       />,
     );
 
-    expect(screen.getByText(/setup needs another try/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /retry setup/i })).toBeEnabled();
-    const link = screen.getByRole('link', { name: SAFE });
-    expect(link).toHaveAttribute('href', `${SEPOLIA_EXPLORER}/address/${SAFE}`);
+    // The account is created the moment the passkey is: a counterfactual
+    // address is the resident's account, not a fault.
+    expect(screen.getByText(/Safe · created/)).toBeInTheDocument();
+    // It is not a contract yet, so there is nothing to open in the explorer.
+    expect(screen.queryByRole('link', { name: SAFE })).toBeNull();
+    // And there is no retry: nothing in this step can fail to deploy.
+    expect(screen.queryByRole('button', { name: /retry setup/i })).toBeNull();
   });
 
-  it('shows a deployed address with no retry', () => {
+  it('links the address once the account is on chain', () => {
     render(
       <SafeAddressCard
         address={SAFE}
@@ -148,8 +151,18 @@ describe('SafeAddressCard', () => {
       />,
     );
 
-    expect(screen.getByText(/Safe · deployed/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /retry setup/i })).toBeNull();
+    expect(screen.getByText(/Safe · created/)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: SAFE });
+    expect(link).toHaveAttribute('href', `${SEPOLIA_EXPLORER}/address/${SAFE}`);
+  });
+
+  it('explains on hover why a not-yet-deployed address is not a link', () => {
+    render(<SafeAddressCard address={SAFE} deployed={false} status="predicted" />);
+
+    // The tooltip is the resident's explanation for the missing link.
+    expect(
+      screen.getByText(SAFE).closest('[title]')?.getAttribute('title'),
+    ).toMatch(/first operation/i);
   });
 
   it('shows no account yet, and no retry, when there is no address', () => {
@@ -157,16 +170,5 @@ describe('SafeAddressCard', () => {
 
     expect(screen.getByText(/no account yet/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /retry setup/i })).toBeNull();
-  });
-
-  it('re-runs the deployment action on retry and refreshes the shell', async () => {
-    render(
-      <SafeAddressCard address={SAFE} deployed={false} status="predicted" />,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /retry setup/i }));
-
-    await waitFor(() => expect(hoisted.deployAccount).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(hoisted.refresh).toHaveBeenCalledTimes(1));
   });
 });

@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
 import { GearGlyph } from '@/components/icons/GearGlyph';
 import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
-import { SafeRetryButton } from './SafeRetryButton';
 
 export interface SafeAddressCardProps {
   /**
@@ -23,14 +22,21 @@ export interface SafeAddressCardProps {
  * The reference's Safe account card.
  *
  * The address is never fabricated: it is either the resident's derived address
- * or nothing at all. Before deployment it is still shown, because a
- * counterfactual address is the resident's account — it is simply not a contract
- * yet, and the card says which of the two it is.
+ * or nothing at all.
  *
- * When an explorer base is supplied the address links out, so the state can be
- * checked against the chain rather than taken on trust. When the Safe is not
- * deployed the card offers a retry, which is the resident's route back from a
- * failed setup without creating a second passkey.
+ * **The account exists from the moment the passkey does.** Under Safe's passkey
+ * model the Safe is counterfactual until its first user operation, which is a
+ * normal state rather than a fault — so the card reads "created" either way, and
+ * the difference surfaces on the link:
+ *
+ *   - not deployed yet: the address is shown but is not a link, and hovering it
+ *     explains that it appears on chain with the first operation;
+ *   - deployed: it links out, so the state can be checked against the chain
+ *     rather than taken on trust.
+ *
+ * There is no retry here any more. Nothing in this step can fail to deploy: there
+ * is no deployment in it, and the first operation deploys the account when the
+ * paymaster sponsors it.
  */
 export function SafeAddressCard({
   address,
@@ -41,15 +47,26 @@ export function SafeAddressCard({
 }: SafeAddressCardProps) {
   const hasAddress = address !== null && address.length > 0;
   const href =
-    hasAddress && explorerUrl ? `${explorerUrl}/address/${address}` : null;
+    hasAddress && deployed && explorerUrl
+      ? `${explorerUrl}/address/${address}`
+      : null;
 
   const stateLabel = !hasAddress
     ? 'no account yet'
-    : deployed
-      ? 'deployed'
-      : status === 'failed'
-        ? 'setup needs another try'
-        : 'not deployed';
+    : status === 'failed'
+      ? 'setup needs another try'
+      : 'created';
+
+  /** Shown on hover, and the reason the address is not a link yet. */
+  const help = !hasAddress
+    ? 'No account address is available for this session.'
+    : status === 'failed'
+      ? 'Setting up your account did not finish. Try again from this step.'
+      : deployed
+        ? 'Your account is on chain. Open it in the explorer.'
+        : 'Your account is created. It appears on chain with your first ' +
+          'operation — Kade covers the network fee for it, so there is nothing ' +
+          'to do now.';
 
   const addressStyle = {
     fontSize: '12.5px',
@@ -87,34 +104,28 @@ export function SafeAddressCard({
         }}
       />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div
-          title={
-            hasAddress
-              ? deployed
-                ? 'Deployed Safe address'
-                : 'Your Safe address. The contract is not deployed yet.'
-              : 'No account address is available for this session'
-          }
-        >
+        <div title={help}>
           {href ? (
             <a
               href={href}
               target="_blank"
               rel="noreferrer noopener"
               style={addressStyle}
+              title={help}
             >
               {address}
             </a>
           ) : (
-            <span style={addressStyle}>{hasAddress ? address : '0x…'}</span>
+            <span style={{ ...addressStyle, cursor: 'help' }} title={help}>
+              {hasAddress ? address : '0x…'}
+            </span>
           )}
         </div>
-        <div style={{ fontSize: '11px', color: tokens.muted }}>
+        <div style={{ fontSize: '11px', color: tokens.muted }} title={help}>
           {hasAddress
             ? `Safe · ${stateLabel} · ${network}`
             : `Safe · no account yet · ${network}`}
         </div>
-        {hasAddress && !deployed ? <SafeRetryButton /> : null}
       </div>
       <Link
         href="/account"

@@ -782,8 +782,7 @@ describe('pre-registration flow', () => {
 
     // Every figure is a public read now, and the step says so.
     expect(
-      screen.getAllByText(/read from a public source on Ethereum and Base/i)
-        .length,
+      screen.getAllByText(/reads your balances on Ethereum, Base/i).length,
     ).toBeGreaterThan(0);
 
     await continueFromWealth();
@@ -1019,11 +1018,8 @@ describe('what is the resident\u2019s and what is demo', () => {
     // Nothing on this screen is labelled demo any more, and the real tier target
     // carries no label at all.
     expect(
-      (
-        await screen.findAllByText(
-          /read from a public source on Ethereum and Base/i,
-        )
-      ).length,
+      (await screen.findAllByText(/reads your balances on Ethereum, Base/i))
+        .length,
     ).toBeGreaterThan(0);
     expect(screen.queryByText('Demo')).toBeNull();
     expect(screen.queryByText('Demo balances')).toBeNull();
