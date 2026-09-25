@@ -21,7 +21,11 @@ import { tokens } from '@/components/ui/tokens';
  */
 
 export interface SelfModalState {
-  readonly status: 'created' | 'not-configured' | 'unavailable' | 'unauthenticated';
+  readonly status:
+    | 'created'
+    | 'not-configured'
+    | 'unavailable'
+    | 'unauthenticated';
   readonly verificationUrl?: string | null;
   readonly reason?: string | null;
 }
@@ -68,27 +72,31 @@ export function SelfVerificationModal({
   if (!open || !mounted) return null;
 
   const url =
-    state !== null && state.status === 'created' ? state.verificationUrl ?? null : null;
+    state !== null && state.status === 'created'
+      ? (state.verificationUrl ?? null)
+      : null;
 
   return createPortal(
     <div onClick={onClose} style={backdrop}>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Verify your identity"
+        role='dialog'
+        aria-modal='true'
+        aria-label='Verify your identity'
         onClick={(event) => event.stopPropagation()}
         style={card}
       >
         <div style={header}>
           <div>
             <div style={eyebrow}>Verify your identity</div>
-            <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px' }}>
+            <div
+              style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px' }}
+            >
               Powered by Self
             </div>
           </div>
           <button
-            type="button"
-            aria-label="Close"
+            type='button'
+            aria-label='Close'
             onClick={onClose}
             style={closeButton}
           >
@@ -96,9 +104,9 @@ export function SelfVerificationModal({
           </button>
         </div>
 
-        <div style={{ padding: '22px' }}>
+        <div style={{ padding: '18px' }}>
           {state === null ? (
-            <div style={bodyCopy} role="status">
+            <div style={bodyCopy} role='status'>
               Creating your Self verification session…
             </div>
           ) : state.status === 'created' && url !== null ? (
@@ -116,14 +124,6 @@ export function SelfVerificationModal({
                 only competed with it. When the resident finishes, Self sends them
                 back to /residency via successUrl.
               */}
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={confirmButtonLink}
-              >
-                Continue with Self
-              </a>
 
               <div style={whatLabel}>What Self verifies</div>
               <div style={factsBox}>
@@ -133,47 +133,18 @@ export function SelfVerificationModal({
                   </div>
                 ))}
               </div>
-
-              <div style={infoBox}>
-                Self verifies the proof and returns the result to Kade. Kade
-                stores the outcome and the facts Self discloses (your
-                nationality and passport expiry) — never your passport number,
-                date of birth or photo.
-              </div>
-
-              {/*
-                A real state, not a button that pretends to check something.
-                The verification arrives by webhook and the page reflects it;
-                this only tells the resident it is still pending and lets them
-                close the dialog.
-              */}
-              <div style={infoBox} role="status">
-                {pending
-                  ? 'Waiting for Self to confirm. This page updates by itself once it does.'
-                  : 'Verification received. Closing this dialog refreshes the checks.'}
-              </div>
-
-              <div style={linkFallback}>
-                Can&rsquo;t scan right now? You can also paste this link on your
-                phone:
-                <br />
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={linkText}
-                >
-                  {url}
-                </a>
-              </div>
-
-              <button type="button" onClick={onClose} style={confirmButton}>
-                Done
-              </button>
+              <a
+                href={url}
+                target='_blank'
+                rel='noopener noreferrer'
+                style={confirmButtonLink}
+              >
+                Continue with Self
+              </a>
             </>
           ) : (
             <>
-              <div style={bodyCopy} role="status">
+              <div style={bodyCopy} role='status'>
                 {messageFor(state)}
               </div>
               <div style={linkFallback}>self.xyz</div>
@@ -191,7 +162,9 @@ function messageFor(state: SelfModalState): string {
     case 'not-configured':
       return 'Self is not configured in this environment, so identity cannot be verified yet.';
     case 'unavailable':
-      return state.reason ?? 'Self is temporarily unavailable. Try again shortly.';
+      return (
+        state.reason ?? 'Self is temporarily unavailable. Try again shortly.'
+      );
     case 'unauthenticated':
       return 'Your session expired. Sign in again.';
     default:
