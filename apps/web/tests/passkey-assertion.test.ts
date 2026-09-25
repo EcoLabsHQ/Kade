@@ -4,7 +4,10 @@ import {
   promptPasskeyAssertion,
   withAssertionPrompt,
 } from '@/lib/passkey/assertion';
-import type { PasskeySigner } from '@/lib/safe/passkey-signer';
+import {
+  credentialIdToRawId,
+  type PasskeySigner,
+} from '@/lib/safe/passkey-signer';
 
 /**
  * The passkey assertion, which is what Safe asks for when it signs.
@@ -16,7 +19,7 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  */
 
 const CHALLENGE = 'Y2hhbGxlbmdl'; // "challenge" in base64url
-const CREDENTIAL_ID = 'Y3JlZA'; // "cred" in base64url
+const CREDENTIAL_ID = '63726564'; // "cred" bytes, as hex (Safe's rawId form)
 
 const SIGNER: PasskeySigner = {
   rawId: CREDENTIAL_ID,
@@ -40,9 +43,11 @@ describe('buildAssertionOptions', () => {
     expect(options.rpId).toBe('localhost');
     // D3: the transaction passkey must require user verification.
     expect(options.userVerification).toBe('required');
+    // Safe carries the credential id as hex; WebAuthn's JSON form needs
+    // base64url, so the option is converted here rather than passed through.
     expect(options.allowCredentials).toEqual([
       {
-        id: CREDENTIAL_ID,
+        id: 'Y3JlZA',
         type: 'public-key',
         transports: ['internal', 'hybrid'],
       },
@@ -106,5 +111,26 @@ describe('withAssertionPrompt', () => {
     // The identity Safe needs is unchanged; only the prompt is added.
     expect(withPrompt.rawId).toBe(SIGNER.rawId);
     expect(withPrompt.verifierAddress).toBe(SIGNER.verifierAddress);
+  });
+});
+
+describe('credentialIdToRawId', () => {
+  it('converts the stored base64url id to the hex form Safe expects', () => {
+    // The SDK builds rawId as Buffer.from(credential.rawId).toString('hex').
+    // Kade stores base64url, so passing it through unconverted made the SDK
+    // reject it: Invalid byte sequence ("0x" in "0xggXbr…").
+    expect(credentialIdToRawId('Y3JlZA')).toBe('63726564');
+    expect(credentialIdToRawId('Y3JlZA')).not.toMatch(/^0x/);
+  });
+
+  it('round-trips through the WebAuthn form used when asserting', () => {
+    const rawId = credentialIdToRawId('Y3JlZA');
+    const options = buildAssertionOptions({
+      credentialId: rawId,
+      challenge: CHALLENGE,
+      rpId: 'localhost',
+    });
+    // Hex in, base64url out — the two forms must agree on the same bytes.
+    expect(options.allowCredentials?.[0]?.id).toBe('Y3JlZA');
   });
 });

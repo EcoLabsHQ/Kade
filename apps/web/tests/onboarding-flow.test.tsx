@@ -530,6 +530,46 @@ describe('step 1, the transaction passkey', () => {
     ).toBeInTheDocument();
   });
 
+  it('says the address is being prepared while the derivation is in flight', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    // The derivation is a round trip to the chain, so hold it open and check
+    // what the resident sees while it works. Without this the line showed a
+    // dash and read as broken rather than busy.
+    let release!: (value: unknown) => void;
+    hoisted.deriveAndRecordAccount.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    expect(await screen.findByText(/passkey created/i)).toBeInTheDocument();
+
+    expect(await screen.findByText(/preparing/i)).toBeInTheDocument();
+
+    release({ status: 'recorded', safeAddress: ACCOUNT_ADDRESS, deployed: false });
+    expect(await screen.findByText(ACCOUNT_ADDRESS)).toBeInTheDocument();
+  });
+
+  it('tries the derivation once per credential, not once per outcome', async () => {
+    hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'failed',
+      safeAddress: null,
+      deployed: false,
+    });
+    renderFlowFromStart(makeStore().store);
+
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
+    await screen.findByText(/could not be set up yet/i);
+
+    // The recording writes the account state itself, so an effect keyed on that
+    // state would re-run after each failure and hammer the chain. One credential
+    // means one attempt, however it ends.
+    expect(hoisted.deriveAndRecordAccount).toHaveBeenCalledTimes(1);
+  });
+
   it('shows no address, and no internal gate language, before enrolment', () => {
     const { store } = makeStore();
     renderFlowFromStart(store);

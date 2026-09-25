@@ -17,7 +17,18 @@ import { SAFE_PASSKEY_MODULE } from '@kade/shared';
  * assertion itself, so there is no contract to pre-deploy and no `signerDeployed`
  * gate to wait on.
  *
- * `PasskeyArgType` is `ExtractedPasskeyData & { verifierAddress }` — the
+ * ## `rawId` is hex, and that is not obvious
+ *
+ * The SDK produces it as
+ *
+ *   Buffer.from(credential.rawId).toString('hex')
+ *
+ * — the credential id's **bytes** as a hex string with no `0x`. Kade stores the
+ * credential id as base64url (what WebAuthn JSON gives), so it must be converted.
+ * Passing the base64url string through made the SDK fail with
+ * `Invalid byte sequence ("0x" in "0xggXbr…")`, which is exactly this mistake.
+ *
+ * `PasskeyArgType` is `ExtractedPasskeyData & { verifierAddress }`; the
  * coordinates come from the credential, and the verifier is chain configuration
  * the repository already carries (`SAFE_PASSKEY_MODULE.p256Verifier`).
  */
@@ -48,6 +59,36 @@ export function passkeyVerifierAddress(): string {
 }
 
 /**
+ * Convert a credential id to the form Safe's SDK expects.
+ *
+ * The SDK's own extraction does
+ *
+ *   Buffer.from(credential.rawId).toString('hex')
+ *
+ * so `rawId` is the credential id's **bytes** as lowercase hex with no `0x`.
+ * Kade stores the id as base64url, which is what the WebAuthn JSON form uses, so
+ * it has to be decoded and re-encoded. Handing the base64url string through
+ * makes the SDK reject it as a byte sequence.
+ */
+export function credentialIdToRawId(credentialId: string): string {
+  return Buffer.from(base64urlToBytes(credentialId))
+    .toString('hex')
+    .toLowerCase();
+}
+
+/** base64url (with or without padding) → bytes. */
+function base64urlToBytes(value: string): Uint8Array {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const binary =
+    typeof atob === 'function'
+      ? atob(padded)
+      : Buffer.from(padded, 'base64').toString('binary');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
  * Build the signer Safe's SDK expects from the data extracted off a credential.
  *
  * `createPasskeySigner` on the SDK does the extraction; this attaches the
@@ -59,7 +100,7 @@ export function toPasskeySigner(
   getFn?: () => Promise<Credential>,
 ): PasskeySigner {
   return {
-    rawId: extracted.rawId,
+    rawId: credentialIdToRawId(extracted.rawId),
     coordinates: {
       x: extracted.coordinates.x,
       y: extracted.coordinates.y,

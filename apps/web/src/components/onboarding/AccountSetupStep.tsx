@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { savePasskeyCredential } from '@/app/account/passkey-actions';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
@@ -87,13 +87,41 @@ export function AccountSetupStep({
   const [error, setError] = useState<string | null>(null);
 
   /**
+   * Which credential has already been through `recordAccount`.
+   *
+   * The create path and the mount effect both ask for the address; without this
+   * the same credential would be derived twice, which is a wasted round trip
+   * and two racing writes of the same row. A ref, not state: it guards work, it
+   * is not rendered.
+   */
+  const derivedFor = useRef<string | null>(null);
+
+  /**
    * Record the account address Safe's SDK derives from the passkey.
    *
    * Nothing is deployed: the account is an address until its first operation.
    * The result is kept so the screen can say what happened — a silent failure
    * would leave the resident with no account and no explanation.
+   *
+   * `forCredential` names the credential being recorded. The create path knows
+   * it from the enrolment it just persisted; the effect takes it from the prop.
+   * Passing it in, rather than reading the prop, is what makes the guard below
+   * work: `onEnrolled` updates the prop before the effect can run, so a guard
+   * that read the prop would see a different value and derive a second time.
    */
-  async function recordAccount() {
+  async function recordAccount(forCredential: string | null) {
+    // One attempt per credential, however many callers reach here: the create
+    // path invokes it directly and the effect below invokes it on mount, and
+    // both legitimately want an account. Deriving twice would be a second round
+    // trip to the chain for the same answer, and the second write would race
+    // the first.
+    if (!forCredential) return;
+    if (derivedFor.current === forCredential) return;
+    derivedFor.current = forCredential;
+    // Deriving an address means a round trip to the chain through Safe's SDK,
+    // so it is not instant. Saying so is the difference between "working" and
+    // "broken": without this the address line shows a dash for seconds.
+    setAccount({ state: 'deriving' });
     try {
       const { deriveAndRecordAccount } = await import(
         '@/app/onboarding/account-actions'
@@ -135,12 +163,15 @@ export function AccountSetupStep({
    * run only on a fresh enrolment. Running it whenever the step mounts with a
    * credential already present closes that gap: the row is written as soon as
    * the resident opens the step again, and an existing row is left alone.
+   *
+   * Keyed on the credential, not on the account state: `recordAccount` writes
+   * the state itself, so depending on it would re-enter this effect after every
+   * failure and hammer the chain. One credential, one derivation attempt.
    */
   useEffect(() => {
     if (status !== 'done') return;
-    if (account.state !== 'idle') return;
-    void recordAccount();
-  }, [status, account.state]);
+    void recordAccount(credentialId);
+  }, [status, credentialId]);
 
   async function createPasskey() {
     setStatus('creating');
@@ -201,17 +232,22 @@ export function AccountSetupStep({
         });
       }
 
-      onEnrolled(credentialIdToReport);
+      // The passkey is real as soon as the credential is persisted, so the
+      // screen says so immediately. The address comes from Safe's SDK and is
+      // recorded next, which is why the address line — not this line — carries
+      // the pending state.
       setStatus('done');
+      // Recorded with the credential just saved, before `onEnrolled` reports
+      // it: `recordAccount` claims that credential, so when the prop updates
+      // and the mount effect runs, it finds the work already done instead of
+      // deriving the same address a second time.
+      await recordAccount(credentialIdToReport);
+      onEnrolled(credentialIdToReport);
       // Nothing else to deploy. Under Safe's passkey model the passkey **is**
       // the Safe's owner and the account is deployed by its first user
       // operation, so there is no signer contract and no separate deployment
-      // step. The account address is derived and shown for information.
-      // The account address comes from Safe's SDK and is recorded here, so the
-      // shell and Holdings can show the account the resident already owns. This
-      // deploys nothing: the account becomes a contract with its first
-      // operation, which the paymaster sponsors.
-      await recordAccount();
+      // step. The account becomes a contract with its first operation, which
+      // the paymaster sponsors.
     } catch (cause) {
       setError(
         cause instanceof Error

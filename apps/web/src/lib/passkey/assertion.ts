@@ -21,6 +21,12 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  */
 
 export interface PasskeyAssertionOptions {
+  /**
+   * The credential id as Safe's SDK carries it: the credential's **bytes** as
+   * lowercase hex, with no `0x` (see `@/lib/safe/passkey-signer`). WebAuthn's
+   * JSON form uses base64url instead, so this is decoded from hex — accepting
+   * base64url here would silently produce the wrong credential id.
+   */
   readonly credentialId: string;
   /** base64url challenge from Safe, signed exactly as issued. */
   readonly challenge: string;
@@ -41,7 +47,9 @@ export function buildAssertionOptions(
     userVerification: 'required',
     allowCredentials: [
       {
-        id: options.credentialId,
+        // Safe's SDK carries the credential id as hex; WebAuthn's JSON form
+        // carries it as base64url. Convert once, here.
+        id: hexToBase64url(options.credentialId),
         type: 'public-key',
         // `internal` covers platform authenticators (Touch ID, Face ID,
         // Windows Hello, Android biometrics). `hybrid` covers a phone used as
@@ -50,6 +58,16 @@ export function buildAssertionOptions(
       },
     ],
   };
+}
+
+/** A hex credential id, with or without `0x`, as base64url. */
+function hexToBase64url(value: string): string {
+  const hex = value.startsWith('0x') ? value.slice(2) : value;
+  return Buffer.from(hex, 'hex')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 /**
