@@ -58,15 +58,13 @@ export async function buildDeposit(input: {
   readonly amountUsdc: string;
   readonly vaultConfigured: boolean;
   readonly mainnetConfigured: boolean;
-  readonly signerDeployed: boolean;
 }): Promise<BuildDepositResult> {
   const result: MorphoVaultDepositResult = await prepareMorphoVaultDeposit(
     { safeAddress: input.safeAddress as `0x${string}`, amountUsdc: input.amountUsdc },
     {
       mainnetConfigured: input.mainnetConfigured,
-      signerDeployed: input.signerDeployed,
-      // No execute callback: the Onchain gate is not approved, so this build
-      // can only ever return a plan, never a sent transaction.
+      // No passkey signer is wired into this build action, so it can only ever
+      // return a plan — never a sent transaction.
     },
   );
 

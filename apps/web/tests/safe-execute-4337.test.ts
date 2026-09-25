@@ -2,24 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Address, Hex } from 'viem';
 import {
   executeResidentSafeBatch,
-  pimlicoBundlerUrl,
+  pimlicoUrl,
   readPimlicoConfig,
   type Safe4337PackLike,
 } from '@/lib/safe/execute-safe-4337';
+import type { PasskeySigner } from '@/lib/safe/passkey-signer';
 
 /**
- * The resident-Safe execution, on Safe's documented ERC-4337 flow.
+ * The resident-Safe execution, on Safe's documented passkey + 4337 flow.
  *
- * These tests pin the two conditions that must hold before anything is sent —
- * a deployed signer and the Pimlico keys — and the Safe sequence itself:
- * init → createTransaction → signSafeOperation → executeTransaction → receipt.
+ * These tests pin the sequence Safe documents and the two states around it, and
+ * they pin something the old model got wrong: **there is no signer contract to
+ * deploy**. The passkey is the owner, so the only precondition is the Pimlico
+ * configuration — an absent Safe is deployed by its first user operation.
  *
  * The pack is injected, so no network, no bundler and no key is needed, and no
  * test can broadcast.
  */
 
 const SAFE = '0x1111111111111111111111111111111111111111' as Address;
-const SIGNER = '0x2222222222222222222222222222222222222222' as Address;
 const HASH = '0xabc0000000000000000000000000000000000000000000000000000000000abc' as Hex;
 
 const env = (values: Record<string, string>): NodeJS.ProcessEnv =>
@@ -27,8 +28,18 @@ const env = (values: Record<string, string>): NodeJS.ProcessEnv =>
 
 const ENV = env({ PIMLICO_API_KEY: 'pim_test', PIMLICO_POLICY_ID: 'sp_test' });
 
+const SIGNER: PasskeySigner = {
+  rawId: 'cred-1',
+  coordinates: { x: '1', y: '2' },
+  verifierAddress: '0x4444444444444444444444444444444444444444',
+};
+
 const CALLS = [
-  { to: '0xaaaa000000000000000000000000000000000001' as Address, value: 0n, data: '0xdead' as Hex },
+  {
+    to: '0xaaaa000000000000000000000000000000000001' as Address,
+    value: 0n,
+    data: '0xdead' as Hex,
+  },
 ];
 
 /** A pack stub that records the documented call order. */
@@ -59,10 +70,10 @@ function fakePack(overrides: Partial<Safe4337PackLike> = {}): {
   return { pack, order };
 }
 
-function deps(ownerAddress: Address | null, pack: Safe4337PackLike) {
+function deps(pack: Safe4337PackLike, safeAddress: Address | null = SAFE) {
   return {
-    safeAddress: SAFE,
-    ownerAddress,
+    safeAddress,
+    signer: SIGNER,
     initPack: vi.fn(async () => pack),
   };
 }
@@ -70,19 +81,15 @@ function deps(ownerAddress: Address | null, pack: Safe4337PackLike) {
 describe('readPimlicoConfig', () => {
   it('returns null unless both keys are present', () => {
     expect(readPimlicoConfig(11155111, env({}))).toBeNull();
-    expect(
-      readPimlicoConfig(11155111, env({ PIMLICO_API_KEY: 'k' })),
-    ).toBeNull();
-    expect(
-      readPimlicoConfig(11155111, env({ PIMLICO_POLICY_ID: 'p' })),
-    ).toBeNull();
+    expect(readPimlicoConfig(11155111, env({ PIMLICO_API_KEY: 'k' }))).toBeNull();
+    expect(readPimlicoConfig(11155111, env({ PIMLICO_POLICY_ID: 'p' }))).toBeNull();
   });
 
-  it('builds the chain-scoped bundler URL', () => {
+  it('builds the chain-scoped endpoint', () => {
     const config = readPimlicoConfig(11155111, ENV);
     expect(config).not.toBeNull();
-    expect(pimlicoBundlerUrl(config!)).toBe(
-      'https://api.pimlico.io/v2/11155111/rpc?apikey=pim_test',
+    expect(pimlicoUrl(config!)).toBe(
+      'https://api.pimlico.io/v2/11155111/rpc?add_balance_override&apikey=pim_test',
     );
   });
 });
@@ -90,7 +97,7 @@ describe('readPimlicoConfig', () => {
 describe('executeResidentSafeBatch', () => {
   it('refuses without the Pimlico keys and reaches no pack', async () => {
     const { pack } = fakePack();
-    const d = deps(SIGNER, pack);
+    const d = deps(pack);
     const outcome = await executeResidentSafeBatch(CALLS, d, env({}));
 
     expect(outcome.status).toBe('not-configured');
@@ -99,20 +106,19 @@ describe('executeResidentSafeBatch', () => {
     expect(pack.createTransaction).not.toHaveBeenCalled();
   });
 
-  it('refuses when the signer has no code, and reaches no pack', async () => {
-    const { pack } = fakePack();
-    const d = deps(null, pack);
-    const outcome = await executeResidentSafeBatch(CALLS, d, ENV);
+  it('executes from a counterfactual Safe: no signer contract to deploy', async () => {
+    // The whole point of the passkey model: a Safe that does not exist yet is
+    // deployed by its first user operation, so `safeAddress: null` is valid.
+    const { pack, order } = fakePack();
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack, null), ENV);
 
-    expect(outcome.status).toBe('blocked');
-    expect(outcome.sent).toBe(false);
-    expect(d.initPack).not.toHaveBeenCalled();
-    expect(pack.signSafeOperation).not.toHaveBeenCalled();
+    expect(order).toEqual(['create', 'sign', 'submit', 'receipt']);
+    expect(outcome.status).toBe('sent');
   });
 
   it('follows the documented Safe sequence and reports sent only on a success receipt', async () => {
     const { pack, order } = fakePack();
-    const outcome = await executeResidentSafeBatch(CALLS, deps(SIGNER, pack), ENV);
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack), ENV);
 
     expect(order).toEqual(['create', 'sign', 'submit', 'receipt']);
     expect(outcome.status).toBe('sent');
@@ -129,7 +135,7 @@ describe('executeResidentSafeBatch', () => {
         receipt: { status: 'reverted' },
       })),
     });
-    const outcome = await executeResidentSafeBatch(CALLS, deps(SIGNER, pack), ENV);
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack), ENV);
 
     expect(outcome.status).toBe('failed');
     // It was submitted, so `sent` is true — but the status is a failure, never
@@ -144,7 +150,7 @@ describe('executeResidentSafeBatch', () => {
         throw new Error('user rejected the passkey prompt');
       }),
     });
-    const outcome = await executeResidentSafeBatch(CALLS, deps(SIGNER, pack), ENV);
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack), ENV);
 
     expect(outcome.status).toBe('failed');
     expect(outcome.sent).toBe(false);
@@ -152,5 +158,15 @@ describe('executeResidentSafeBatch', () => {
       expect(outcome.stage).toBe('sign');
       expect(outcome.reason).toMatch(/rejected/);
     }
+  });
+
+  it('does nothing for an empty batch, and sends nothing', async () => {
+    const { pack } = fakePack();
+    const d = deps(pack);
+    const outcome = await executeResidentSafeBatch([], d, ENV);
+
+    expect(outcome.status).toBe('ready');
+    expect(outcome.sent).toBe(false);
+    expect(d.initPack).not.toHaveBeenCalled();
   });
 });

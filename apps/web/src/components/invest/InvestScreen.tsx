@@ -34,7 +34,6 @@ export interface InvestScreenProps {
   readonly safeDeployed: boolean;
   /** Whether the mainnet rail and the Safe signer are ready for execution. */
   readonly mainnetConfigured: boolean;
-  readonly signerDeployed: boolean;
 }
 
 interface Instrument {
@@ -140,7 +139,6 @@ export function InvestScreen({
   safeAddress,
   safeDeployed,
   mainnetConfigured,
-  signerDeployed,
 }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
@@ -180,7 +178,6 @@ export function InvestScreen({
       amountUsdc: amount.trim(),
       vaultConfigured: vault.configured,
       mainnetConfigured,
-      signerDeployed,
     });
     if (result.status === 'gated') {
       setState({ kind: 'gated', reason: result.reason });

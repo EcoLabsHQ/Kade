@@ -21,6 +21,12 @@ const COMPLETE_ENV = {
   [MORPHO_VAULT_ENV_KEYS.usdc]: USDC,
 } as const;
 
+const SIGNER = {
+  rawId: 'cred-1',
+  coordinates: { x: '1', y: '2' },
+  verifierAddress: '0x4444444444444444444444444444444444444444',
+} as const;
+
 const REQUEST = { safeAddress: SAFE, amountUsdc: '25000' } as const;
 
 describe('prepareMorphoVaultDeposit', () => {
@@ -28,7 +34,6 @@ describe('prepareMorphoVaultDeposit', () => {
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: {},
       mainnetConfigured: true,
-      signerDeployed: true,
     });
     expect(result.status).toBe('gated');
     expect(result.gated).toBe(true);
@@ -42,37 +47,34 @@ describe('prepareMorphoVaultDeposit', () => {
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
       mainnetConfigured: false,
-      signerDeployed: true,
     });
     expect(result.status).toBe('gated');
     if (result.status === 'gated') expect(result.gate).toBe('mainnet-not-configured');
   });
 
-  it('is gated on the signer when vault and mainnet are present but the signer is not deployed', async () => {
+  it('is gated when no passkey signer is available to authorise the Safe', async () => {
+    // The passkey is the Safe's owner, so an absent signer means nothing can
+    // authorise the deposit. There is no signer contract to wait on any more.
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
       mainnetConfigured: true,
-      signerDeployed: false,
     });
     expect(result.status).toBe('gated');
     if (result.status === 'gated') expect(result.gate).toBe('signer-not-deployed');
   });
 
-  it('builds the plan but sends nothing when all gates are open and no callback is wired', async () => {
+  it('builds the plan and stops before sending when the bundler is not configured', async () => {
+    // A signer alone is not enough to send: without the Pimlico keys there is
+    // no sponsored bundler, so the engine refuses. The plan is still returned.
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
       mainnetConfigured: true,
-      signerDeployed: true,
+      safeExecution: { signer: SIGNER, safeAddress: SAFE },
     });
-    // Every gate is open, but this build still sends nothing: `ready-to-execute`
-    // carries the plan and `gated: true` states no transaction was broadcast.
-    expect(result.status).toBe('ready-to-execute');
+    expect(result.status).toBe('gated');
     expect(result.gated).toBe(true);
-    if (result.status === 'ready-to-execute') {
-      expect(result.plan.calls).toHaveLength(2);
-      expect(result.plan.vault).toBe(VAULT);
-      expect(result.plan.safeAddress).toBe(SAFE);
-    }
+    expect(result.plan?.calls).toHaveLength(2);
+    expect(result.plan?.vault).toBe(VAULT);
   });
 
   it('invokes the injected Safe execution callback only once every gate is open', async () => {
@@ -80,7 +82,7 @@ describe('prepareMorphoVaultDeposit', () => {
     await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
       mainnetConfigured: true,
-      signerDeployed: true,
+      safeExecution: { signer: SIGNER, safeAddress: SAFE },
       execute,
     });
     expect(execute).toHaveBeenCalledTimes(1);
@@ -91,7 +93,6 @@ describe('prepareMorphoVaultDeposit', () => {
     await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
       mainnetConfigured: false,
-      signerDeployed: true,
       execute,
     });
     expect(execute).not.toHaveBeenCalled();
@@ -101,7 +102,7 @@ describe('prepareMorphoVaultDeposit', () => {
     const execute = vi.fn(async () => ({ txHash: `0x${'ab'.repeat(32)}` as const }));
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '0' },
-      { env: COMPLETE_ENV, mainnetConfigured: true, signerDeployed: true, execute },
+      { env: COMPLETE_ENV, mainnetConfigured: true, execute },
     );
     expect(result.status).toBe('gated');
     expect(execute).not.toHaveBeenCalled();

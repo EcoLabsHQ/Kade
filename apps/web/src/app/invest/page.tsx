@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic';
  * reads nor hard-codes them.
  *
  * Execution state is resolved honestly: `mainnetConfigured` is false while no
- * mainnet RPC/payer is supplied, and `signerDeployed` follows the Safe record.
+ * mainnet RPC/payer is supplied. The passkey signer needs no deployment.
  * Both being false is why the screen can only build, never send.
  */
 export default async function InvestPage() {
@@ -63,7 +63,6 @@ export default async function InvestPage() {
           safeAddress={shellSafe.address}
           safeDeployed={shellSafe.deployed}
           mainnetConfigured={isMainnetRailConfigured()}
-          signerDeployed={shellSafe.deployed}
         />
       </ContentContainer>
     </AppShell>

@@ -7,10 +7,8 @@ import {
   type MorphoVaultDepositPlan,
 } from './morpho-deposit';
 import { readMorphoVaultConfig, type MorphoEnv } from './morpho-config';
-import {
-  executeResidentSafeBatchFromEnv,
-  type ResidentSafeBatchRequest,
-} from '../safe/execute-safe-4337-env';
+import { executeResidentSafeBatchFromEnv } from '../safe/execute-safe-4337-env';
+import type { PasskeySigner } from '../safe/passkey-signer';
 import type { SafeExecutionOutcome } from '../safe/execute-safe-4337';
 
 /**
@@ -108,14 +106,11 @@ export interface MorphoVaultExecutionDependencies {
    * WebAuthn signer that owns it. When supplied, the plan's exact calls go
    * through Safe's ERC-4337 flow, sponsored by Pimlico.
    */
-  readonly safeExecution?: Omit<ResidentSafeBatchRequest, 'calls'>;
+  readonly safeExecution?: {
+    readonly signer: PasskeySigner;
+    readonly safeAddress: `0x${string}` | null;
+  };
   readonly env?: MorphoEnv;
-  /**
-   * Whether the Safe WebAuthn signer has code on chain. Defaults to `false`
-   * because the signer is not deployed (D-EXE-011); a post-gate caller that has
-   * verified code passes `true`.
-   */
-  readonly signerDeployed?: boolean;
   /** Whether the mainnet rail (RPC/payer) is configured. Defaults to `false`. */
   readonly mainnetConfigured?: boolean;
 }
@@ -175,13 +170,15 @@ export async function prepareMorphoVaultDeposit(
     };
   }
 
-  if (!deps.signerDeployed) {
+  if (!deps.safeExecution) {
+    // No passkey signer is wired, so there is nothing that could authorise the
+    // Safe transaction. The plan is still built and returned for review.
     return {
       status: 'gated',
       gate: 'signer-not-deployed',
       reason:
-        'The direct Safe WebAuthn signer is not deployed, so a passkey ' +
-        'signature cannot authorise the Safe transaction (D-EXE-011).',
+        'No passkey signer is available to authorise the Safe transaction. ' +
+        'Nothing was signed or sent.',
       gated: true,
     };
   }

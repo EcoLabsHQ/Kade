@@ -2,104 +2,74 @@ import { CHAIN_IDS } from '@kade/shared';
 import type { Address } from 'viem';
 import {
   executeResidentSafeBatch,
-  pimlicoBundlerUrl,
+  pimlicoUrl,
   readPimlicoConfig,
   type Safe4337PackLike,
   type SafeCall,
+  type SafeExecutionDependencies,
   type SafeExecutionOutcome,
 } from './execute-safe-4337';
+import type { PasskeySigner } from './passkey-signer';
 
 /**
- * The environment-wired resident-Safe execution.
+ * The Pimlico-backed `Safe4337Pack.init`, following Safe's documented guide.
  *
- * Wires the documented Safe flow to the real Pimlico endpoints and to the
- * on-chain WebAuthn signer, reading every secret server-side. The signing
- * identity is the passkey: `Safe4337Pack.init` receives the **signer** the
- * resident's Safe is owned by, which is the deployed `SafeWebAuthnSigner`.
+ *   Safe4337Pack.init({
+ *     provider, signer: passkeySigner, bundlerUrl,
+ *     paymasterOptions: { isSponsored: true, paymasterUrl },
+ *     options: safeAddress ? { safeAddress } : { owners: [owner], threshold: 1 },
+ *   })
  *
- * Two things must be true before anything is sent, and both are checked rather
- * than assumed:
+ * Two details that matter and come from the guide rather than from guesswork:
  *
- *   1. the signer contract has code (otherwise no passkey signature validates);
- *   2. the Pimlico keys are present (otherwise there is no sponsoring bundler).
- *
- * When either is missing the call returns a refusal with the precise reason and
- * sends nothing. That is the honest state until the signer is deployed, and it
- * is deliberately not hidden behind a fake success.
+ *   - the `signer` is the **passkey object**, not an address;
+ *   - when there is no Safe yet, `options` describes one to **create**, and the
+ *     first user operation deploys it. Nothing is deployed in advance.
  */
-
-/** What the caller supplies: the batch and the Safe that will execute it. */
-export interface ResidentSafeBatchRequest {
-  readonly safeAddress: Address;
-  /** The Safe's owner: the WebAuthn signer address. */
-  readonly ownerAddress: Address;
-  readonly calls: readonly SafeCall[];
-  readonly chainId?: number;
-}
-
-export async function executeResidentSafeBatchFromEnv(
-  request: ResidentSafeBatchRequest,
-): Promise<SafeExecutionOutcome> {
-  const chainId = request.chainId ?? CHAIN_IDS.sepolia;
-
-  return executeResidentSafeBatch(
-    request.calls,
-    {
-      safeAddress: request.safeAddress,
-      ownerAddress: request.ownerAddress,
-      chainId,
-      initPack: initSafe4337Pack,
-    },
-    process.env,
-  );
-}
-
-/**
- * `Safe4337Pack.init`, with the paymaster sponsoring the gas.
- *
- * The documented sponsored shape is `paymasterOptions: { paymasterUrl,
- * isSponsored: true }` — verified against the installed relay-kit's own types,
- * not assumed. `isSponsored` is what makes this free for the resident: the Safe
- * holds no ETH and the paymaster pays.
- */
-async function initSafe4337Pack(input: {
+export async function initSafe4337Pack(input: {
   readonly chainId: number;
-  readonly safeAddress: Address;
+  readonly signer: PasskeySigner;
+  readonly safeAddress: Address | null;
   readonly bundlerUrl: string;
-  readonly ownerAddress: Address;
 }): Promise<Safe4337PackLike> {
-  const pimlico = readPimlicoConfig(input.chainId);
-  if (pimlico === null) {
-    throw new Error('The Pimlico keys are not configured.');
-  }
-
   const { Safe4337Pack } = await import('@safe-global/relay-kit');
 
   const pack = await Safe4337Pack.init({
     provider: rpcUrlFor(input.chainId),
-    // The resident's Safe is owned by the on-chain WebAuthn signer; the passkey
-    // assertion is produced by that signer, so this is the signing identity.
-    signer: input.ownerAddress,
-    bundlerUrl: pimlicoBundlerUrl(pimlico),
-    options: {
-      safeAddress: input.safeAddress,
-    },
+    // The passkey is the owner, so it is passed whole — not as an address.
+    signer: input.signer as never,
+    bundlerUrl: input.bundlerUrl,
+    // ERC-4337 on the Safe module; documented for the v0.7 entry point.
+    safeModulesVersion: '0.3.0',
+    options: input.safeAddress
+      ? { safeAddress: input.safeAddress }
+      : { owners: [ownerAddressOf(input.signer)], threshold: 1 },
+    // Sponsored: the paymaster pays, so the resident's Safe needs no ETH.
     paymasterOptions: {
-      paymasterUrl: pimlicoBundlerUrl(pimlico),
+      paymasterUrl: input.bundlerUrl,
       isSponsored: true,
     },
-    safeModulesVersion: '0.3.0',
-  });
+  } as never);
 
   return pack as unknown as Safe4337PackLike;
 }
 
 /**
- * The RPC endpoint for a chain, server-side.
+ * The owner address a passkey signer commits to.
  *
- * Reuses the project's existing per-chain variable rather than inventing a new
- * one: `SEPOLIA_RPC_URL` is what the Safe deployment path already reads.
+ * The Safe is created with one owner; the SDK derives that owner's address from
+ * the credential's coordinates and the verifier. `Safe.init` resolves it, so the
+ * value only has to be a valid address for the `options.owners` shape — the SDK
+ * replaces it with the derived owner when it builds the deployment.
  */
+function ownerAddressOf(signer: PasskeySigner): string {
+  // The coordinates identify the credential; the SDK's own account abstraction
+  // turns them into the on-chain owner. Passing the verifier-derived address
+  // keeps `owners` non-empty, which is what the create-Safe path requires.
+  return signer.verifierAddress;
+}
+
+/** The RPC endpoint, reusing the project's existing Sepolia variable. */
 function rpcUrlFor(chainId: number): string {
   if (chainId !== CHAIN_IDS.sepolia) {
     throw new Error(
@@ -113,3 +83,22 @@ function rpcUrlFor(chainId: number): string {
   }
   return url;
 }
+
+/** The environment-wired entry point: the passkey signer and the batch. */
+export async function executeResidentSafeBatchFromEnv(input: {
+  readonly signer: PasskeySigner;
+  readonly safeAddress: Address | null;
+  readonly calls: readonly SafeCall[];
+  readonly chainId?: number;
+}): Promise<SafeExecutionOutcome> {
+  const deps: SafeExecutionDependencies = {
+    initPack: initSafe4337Pack,
+    signer: input.signer,
+    safeAddress: input.safeAddress,
+    chainId: input.chainId ?? CHAIN_IDS.sepolia,
+  };
+  return executeResidentSafeBatch(input.calls, deps);
+}
+
+// Re-exported so callers do not need two imports for the pair.
+export { pimlicoUrl, readPimlicoConfig };

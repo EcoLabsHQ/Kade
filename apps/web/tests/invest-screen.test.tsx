@@ -62,7 +62,6 @@ function renderScreen(overrides: {
   safeAddress?: string | null;
   safeDeployed?: boolean;
   mainnetConfigured?: boolean;
-  signerDeployed?: boolean;
 } = {}) {
   return render(
     <InvestScreen
@@ -70,7 +69,6 @@ function renderScreen(overrides: {
       safeAddress={overrides.safeAddress === undefined ? SAFE : overrides.safeAddress}
       safeDeployed={overrides.safeDeployed ?? true}
       mainnetConfigured={overrides.mainnetConfigured ?? false}
-      signerDeployed={overrides.signerDeployed ?? true}
     />,
   );
 }
@@ -204,7 +202,6 @@ describe('InvestScreen building', () => {
       amountUsdc: '1500.5',
       vaultConfigured: true,
       mainnetConfigured: false,
-      signerDeployed: true,
     });
   });
 
