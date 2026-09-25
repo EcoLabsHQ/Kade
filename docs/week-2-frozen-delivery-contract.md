@@ -1,6 +1,6 @@
 # Kade MVP — Week 2 Delivery Contract
 
-**Status:** Frozen v1.7 — human decisions recorded 22–24 September 2026; seven amendments recorded in section 8.1  
+**Status:** Frozen v1.8 — human decisions recorded 22–24 September 2026; eight amendments recorded in section 8.1  
 **Delivery window:** 21–27 September 2026 (build guide §10, Week 2)  
 **Execution allocation:** 20 human development/orchestration hours (parallel
 agent execution, not combined effort)  
@@ -190,7 +190,7 @@ Accepted when a signed-in, pre-approved resident can:
 - complete identity verification (**on-chain** with Self, as amended v1.7): the
   resident is sent to Self's hosted `verificationUrl`, Self verifies the passport
   proof on Celo Sepolia and issues a soulbound token, and Self's signed webhook
-  records the outcome. Kade does **not** emit `kade.kyc.v1` and does not store
+  records the outcome. Kade does **not** emit `kade.kyc.v1` yet and does not store
   nationality or expiry; the four checks (identity, funds, review, service fee)
   are shown with their real state;
 - pay the configured **residency service fee** on the approved chain, verified
@@ -575,6 +575,48 @@ Affected clauses:
 | §2.2 item 3 | verified and unverified in one list, state per row (v1.4) | verified wallets are the table rows; unverified wallets are listed in the modal (v1.6) |
 | §4.2, D17 | one list | table + verification modal |
 
+**v1.8 — 24 September 2026. Approved by the project owner.**
+
+Identity verification for D16 uses Self in **backend (off-chain) mode**, not
+on-chain mode. Self's servers verify the proof and the signed
+`verification.completed` webhook carries the **disclosed facts** in
+`proof_attributes`; in on-chain mode those attributes arrived empty.
+
+Kade therefore **receives and stores** the `kade.kyc.v1` facts for the resident:
+`nationality` (converted from Self's **ISO 3166-1 alpha-3** to the schema's
+**alpha-2**), `over18` and `notSanctioned` (derived from the resolved outcome,
+since the flow enforces Minimum age ≥18 and OFAC), `expiresAt` (Self's passport
+`expiryDate`, MRZ `YYMMDD`, read as current-century) and the Self nullifier.
+They are stored on the verification row, **not** in `identity_attestations`,
+which stays reserved for an actually-emitted attestation.
+
+The `kade.kyc.v1` attestation payload is **prepared and validated** from the
+frozen schema, behind an explicit issuance approval, and **nothing is signed or
+broadcast**. The schema, its registered UID and its encoding are unchanged.
+
+Why backend mode: the on-chain flow required the resident to connect a wallet and
+receive a soulbound token, and **Self cannot issue that token to a Safe** — a
+Safe is a contract, not an EOA. Backend mode removes the wallet step entirely and
+returns the facts Self's on-chain mode withheld.
+
+What this does **not** change:
+
+- the identity check still **fails closed**: only an explicit `valid` outcome is
+  `met`;
+- the signature — or here, the webhook's verified origin — is still the only path
+  that establishes identity, and this is still not a login;
+- **no attestation is emitted yet**: issuance remains gated on the Onchain gate,
+  and the repository still has no EAS broadcast path;
+- the four checks, the server-verified service fee and the permit gating are
+  unchanged.
+
+Affected clauses:
+
+| Clause | Before (v1.7) | After (v1.8) |
+|---|---|---|
+| §4.2, D16 | on-chain Self; nationality and expiry **not** stored | backend Self; the five facts **are** stored |
+| §10 | `kade.kyc.v1` not emitted, facts not stored | facts stored; the attestation payload is prepared but still not emitted |
+
 **v1.7 — 24 September 2026. Approved by the project owner.**
 
 Identity verification for D16 is **on chain**. The resident is sent to Self's
@@ -631,15 +673,16 @@ Unless introduced through change control, Week 2 excludes:
 
 ## 10. Freeze checklist
 
-Freeze status at v1.7:
+Freeze status at v1.8:
 
 - [x] meaning of the 20-hour allocation — human development/orchestration hours
   with parallel agents.
 - [x] priority order — Residency → Holdings → Invest → Admin → Vote/Finance
   (§2.1).
-- [x] identity — Self verifies on chain (Celo Sepolia) and issues a soulbound
-  token; Kade records the outcome only and neither emits `kade.kyc.v1` nor
-  stores nationality or expiry (v1.7).
+- [x] identity — Self verifies in **backend mode**; Kade stores the disclosed
+  `kade.kyc.v1` facts (nationality as alpha-2, over18, notSanctioned, expiresAt,
+  nullifier) on the verification row, prepares the attestation payload, and
+  **does not emit** `kade.kyc.v1` (v1.8).
 - [x] Holdings authority — signed linked wallets are verified; a connected wallet
   and a pasted **EVM** address are shown unverified and excluded from the total,
   in **one list** with the state carried per row (v1.4); the unverified wallets
@@ -657,7 +700,7 @@ Freeze status at v1.7:
 - [ ] backlog ids KAD-009–KAD-014 confirmed against the workbook — currently
   `[arbitrary]`.
 
-This contract is **Frozen v1.7** with the open items above tracked under change
+This contract is **Frozen v1.8** with the open items above tracked under change
 control.
 
 ## Appendix A — Requirement traceability
