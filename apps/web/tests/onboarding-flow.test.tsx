@@ -14,7 +14,7 @@ const hoisted = vi.hoisted(() => ({
   push: vi.fn(),
   refresh: vi.fn(),
   enrolPasskey: vi.fn(),
-  deriveAccount: vi.fn(),
+  deriveAndRecordAccount: vi.fn(),
   previewPreapprovalFee: vi.fn(),
   savePasskeyCredential: vi.fn(),
   addBitcoinAddress: vi.fn(),
@@ -58,8 +58,8 @@ vi.mock('@/app/account/passkey-actions', () => ({
 }));
 // Only the chain round trip is mocked. The public-key parser is the real
 // implementation, so the coordinates handed to the action are real.
-vi.mock('@/app/onboarding/signer-actions', () => ({
-  deriveAccount: hoisted.deriveAccount,
+vi.mock('@/app/onboarding/account-actions', () => ({
+  deriveAndRecordAccount: hoisted.deriveAndRecordAccount,
 }));
 // The fee preview is a server action. It is mocked here so the test exercises
 // the client against a server answer, not the database client.
@@ -172,7 +172,7 @@ afterEach(() => {
   hoisted.push.mockReset();
   hoisted.refresh.mockReset();
   hoisted.enrolPasskey.mockReset();
-  hoisted.deriveAccount.mockReset();
+  hoisted.deriveAndRecordAccount.mockReset();
   hoisted.previewPreapprovalFee.mockReset();
   hoisted.savePasskeyCredential.mockReset();
   hoisted.addBitcoinAddress.mockReset();
@@ -476,9 +476,10 @@ describe('step 1, the transaction passkey', () => {
 
   it('gates Continue until the passkey exists, then derives the account', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     const { store } = makeStore();
     renderFlowFromStart(store);
@@ -495,33 +496,38 @@ describe('step 1, the transaction passkey', () => {
 
   it('asks the chain for the account, using the passkey coordinates', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     renderFlowFromStart(makeStore().store);
 
     fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
     await screen.findByText(ACCOUNT_ADDRESS);
 
-    // The (x, y) actually parsed out of the credential's public key, plus the
-    // resident the salt nonce is derived from.
-    expect(hoisted.deriveAccount).toHaveBeenCalledWith(
-      '60007956084768639721304183014925048035643211105580041179157164810671935625859',
-      '100466100699769958682154873776127380612531326340629437721014042449018296325464',
-      'user-1',
-    );
+    // The address comes from Safe's SDK through the server action, so the
+    // browser never reproduces the derivation.
+    expect(hoisted.deriveAndRecordAccount).toHaveBeenCalled();
   });
 
-  it('survives the chain being unreachable, since the passkey still exists', async () => {
+  it('keeps the passkey when the account could not be recorded, and says so', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockRejectedValue(new Error('rpc down'));
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'failed',
+      safeAddress: null,
+      deployed: false,
+    });
     renderFlowFromStart(makeStore().store);
 
     fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
 
     expect(await screen.findByText(/passkey created/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^continue$/i })).toBeEnabled();
+    // A derivation that did not happen is reported, never silently swallowed.
+    expect(
+      await screen.findByText(/could not be set up yet/i),
+    ).toBeInTheDocument();
   });
 
   it('shows no address, and no internal gate language, before enrolment', () => {
@@ -539,9 +545,10 @@ describe('step 1, the transaction passkey', () => {
 
   it('persists the created credential through the action, with its own fields', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     renderFlowFromStart(makeStore().store);
 
@@ -560,20 +567,23 @@ describe('step 1, the transaction passkey', () => {
 
   it('derives the account address from the credential that was persisted', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     renderFlowFromStart(makeStore().store);
 
     fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
     await screen.findByText(ACCOUNT_ADDRESS);
 
-    // One credential, one derived signal: the address is derived only after the
-    // credential is persisted, from the persisted credential's public key.
+    // One credential, one address: the account is recorded only after the
+    // credential is persisted, because the server action reads it back from the
+    // database rather than trusting anything the browser sends.
     const saveOrder =
       hoisted.savePasskeyCredential.mock.invocationCallOrder[0];
-    const deriveOrder = hoisted.deriveAccount.mock.invocationCallOrder[0];
+    const deriveOrder =
+      hoisted.deriveAndRecordAccount.mock.invocationCallOrder[0];
     expect(saveOrder as number).toBeLessThan(deriveOrder as number);
   });
 
@@ -617,9 +627,10 @@ describe('step 1, the transaction passkey', () => {
 
   it('never claims the credential is stored when the action did not persist it', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     hoisted.savePasskeyCredential.mockResolvedValue({
       credential: {
@@ -650,9 +661,10 @@ describe('step 1, the transaction passkey', () => {
 
   it('does not block the resident when persistence itself fails', async () => {
     hoisted.enrolPasskey.mockResolvedValue(enrolResponse());
-    hoisted.deriveAccount.mockResolvedValue({
-      signerAddress: SIGNER_ADDRESS,
+    hoisted.deriveAndRecordAccount.mockResolvedValue({
+      status: 'recorded',
       safeAddress: ACCOUNT_ADDRESS,
+      deployed: false,
     });
     hoisted.savePasskeyCredential.mockRejectedValue(new Error('database down'));
     renderFlowFromStart(makeStore().store);

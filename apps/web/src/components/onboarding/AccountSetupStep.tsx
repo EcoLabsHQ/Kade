@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { savePasskeyCredential } from '@/app/account/passkey-actions';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
@@ -33,7 +33,8 @@ export interface AccountSetupStepProps {
 type AccountAddress =
   | { readonly state: 'idle' }
   | { readonly state: 'deriving' }
-  | { readonly state: 'ready'; readonly value: string }
+  | { readonly state: 'ready'; readonly value: string; readonly deployed: boolean }
+  | { readonly state: 'failed'; readonly reason: string }
   | { readonly state: 'unavailable' };
 
 /**
@@ -86,50 +87,60 @@ export function AccountSetupStep({
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Create the resident's account on chain.
-   *
-   * Runs after the passkey is persisted, because the deployment is derived from
-   * the stored credential rather than from anything the browser hands over. Not
-   * being able to deploy does not block the resident: the passkey is real and
-   * the address is already theirs, so the screen reports the account as not set
-   * up yet rather than as failed.
-   */
-  /**
    * Record the account address Safe's SDK derives from the passkey.
    *
    * Nothing is deployed: the account is an address until its first operation.
-   * A failure is not fatal to Step 1 — the passkey exists either way — so it is
-   * reported rather than thrown, and the shell simply shows no account yet.
+   * The result is kept so the screen can say what happened — a silent failure
+   * would leave the resident with no account and no explanation.
    */
   async function recordAccount() {
     try {
       const { deriveAndRecordAccount } = await import(
         '@/app/onboarding/account-actions'
       );
-      await deriveAndRecordAccount();
+      const outcome = await deriveAndRecordAccount();
+      if (outcome.status === 'recorded' || outcome.status === 'already-recorded') {
+        setAccount({
+          state: 'ready',
+          value: outcome.safeAddress ?? '',
+          deployed: outcome.deployed,
+        });
+        return;
+      }
+      // A derivation that did not happen is reported, never swallowed: without
+      // it the resident has no account, and that must not look like success.
+      setAccount({
+        state: 'failed',
+        reason:
+          outcome.status === 'unavailable'
+            ? 'Your passkey is ready. Sign in again to finish your account.'
+            : 'Your account address could not be set up yet.',
+      });
     } catch (cause) {
-      console.warn('[kade] could not record the account address:', cause);
+      setAccount({
+        state: 'failed',
+        reason:
+          cause instanceof Error
+            ? cause.message
+            : 'Your account address could not be set up yet.',
+      });
     }
   }
 
-  async function resolveAccount(publicKey: string) {
-    setAccount({ state: 'deriving' });
-    try {
-      const [{ parseP256PublicKey }, { deriveAccount }] = await Promise.all([
-        import('@/lib/passkey/public-key'),
-        import('@/app/onboarding/signer-actions'),
-      ]);
-      const { x, y } = parseP256PublicKey(publicKey);
-      // The chain is asked for the signer address and for the factory's own
-      // proxy creation code; the rest of the derivation is frozen on our side.
-      const derived = await deriveAccount(x.toString(), y.toString(), userId);
-      setAccount({ state: 'ready', value: derived.safeAddress });
-    } catch {
-      // The passkey is created and usable either way, so a failure to reach the
-      // chain does not block the resident.
-      setAccount({ state: 'unavailable' });
-    }
-  }
+  /**
+   * Finish an account that was left without one.
+   *
+   * A resident whose passkey predates this step — or whose derivation failed
+   * once — would otherwise stay broken forever, because the recording used to
+   * run only on a fresh enrolment. Running it whenever the step mounts with a
+   * credential already present closes that gap: the row is written as soon as
+   * the resident opens the step again, and an existing row is left alone.
+   */
+  useEffect(() => {
+    if (status !== 'done') return;
+    if (account.state !== 'idle') return;
+    void recordAccount();
+  }, [status, account.state]);
 
   async function createPasskey() {
     setStatus('creating');
@@ -164,10 +175,10 @@ export function AccountSetupStep({
 
       // Persist through the existing server action so the credential survives
       // reload. The action derives the signer from the public key; the browser
-      // names none. The address shown below is derived from the same persisted
-      // public key, so one credential yields one signal.
+      // names none. The account address is then read from that stored
+      // credential by `recordAccount`, below, so one credential yields one
+      // address.
       let credentialIdToReport = record.credentialId;
-      let publicKeyToDerive = record.publicKey;
       try {
         const saved = await savePasskeyCredential({
           credentialId: record.credentialId,
@@ -177,7 +188,6 @@ export function AccountSetupStep({
         });
         setSigner(saved.signer);
         credentialIdToReport = saved.credential.credentialId;
-        publicKeyToDerive = saved.credential.publicKey;
       } catch (cause) {
         // The passkey exists on the device even when the server write fails,
         // so the resident is not blocked. The screen simply must not claim the
@@ -201,7 +211,6 @@ export function AccountSetupStep({
       // shell and Holdings can show the account the resident already owns. This
       // deploys nothing: the account becomes a contract with its first
       // operation, which the paymaster sponsors.
-      await resolveAccount(publicKeyToDerive);
       await recordAccount();
     } catch (cause) {
       setError(
@@ -335,6 +344,13 @@ function AccountAddressLine({ account }: { readonly account: AccountAddress }) {
   if (account.state === 'ready') return <>{account.value}</>;
   if (account.state === 'deriving') {
     return <span style={{ color: tokens.muted, fontWeight: 500 }}>Preparing…</span>;
+  }
+  if (account.state === 'failed') {
+    // A derivation that did not happen is shown, not hidden behind a dash: the
+    // resident has no account, and that must not read as "still coming".
+    return (
+      <span style={{ color: tokens.danger, fontWeight: 500 }}>{account.reason}</span>
+    );
   }
   if (account.state === 'unavailable') {
     return (
