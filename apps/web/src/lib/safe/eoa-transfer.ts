@@ -47,6 +47,61 @@ export class InvalidTransferAddressError extends Error {
   }
 }
 
+/**
+ * Raised when the connected wallet is not the wallet a holding row belongs to.
+ *
+ * The row's token sits in a specific wallet; only that wallet may sign the
+ * transfer, so a mismatch is refused rather than sent from the wrong account.
+ */
+export class WrongWalletError extends Error {
+  constructor(expected: string, connected: string | null) {
+    super(
+      connected
+        ? `The connected wallet ${connected} is not the wallet this holding belongs to (${expected}). Connect that wallet instead.`
+        : `This holding belongs to ${expected}, and no wallet is connected. Connect that wallet first.`,
+    );
+    this.name = 'WrongWalletError';
+  }
+}
+
+/**
+ * Refuse a connected wallet that is not the row's wallet.
+ *
+ * The address that signs must be the address the row belongs to; a checksum
+ * difference is not a mismatch, so the comparison is case-insensitive.
+ *
+ * @throws {WrongWalletError} when `connected` is absent or a different address.
+ */
+export function assertCorrectWallet(
+  expected: string,
+  connected: string | null | undefined,
+): void {
+  if (
+    !connected ||
+    expected.trim().toLowerCase() !== connected.trim().toLowerCase()
+  ) {
+    throw new WrongWalletError(expected, connected ?? null);
+  }
+}
+
+/**
+ * The honest validation message for an amount, or null when it is usable.
+ *
+ * Mirrors the builder's own rule (a positive decimal with at most `decimals`
+ * places) so the dialog can say what is wrong before anything is sent.
+ */
+export function validateTransferAmount(
+  amount: string,
+  decimals = 6,
+): string | null {
+  try {
+    parseAmount(amount, decimals);
+    return null;
+  } catch {
+    return `Enter a positive amount with at most ${decimals} decimal places.`;
+  }
+}
+
 const AMOUNT_PATTERN = /^(\d+)(?:\.(\d+))?$/;
 
 export interface BuildEoaToSafeTransferInput {

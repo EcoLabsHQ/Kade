@@ -6,6 +6,7 @@ import { Chip } from '@/components/ui/Chip';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { tokens } from '@/components/ui/tokens';
 import { chainColor } from '@/lib/wealth/chain-colors';
+import { USDC_DECIMALS, usdcAddressForChain } from '@/lib/wealth/evm';
 import { shortAddress, usd } from '@/lib/wealth/format';
 import type {
   HoldingWallet,
@@ -40,9 +41,13 @@ import { provenanceLabel } from './provenance';
  * the multi-chain vault, the cure period). The **arithmetic is unchanged**: the
  * total / not-qualified figures still come from the real aggregate, an unverified
  * wallet is still excluded from the total, and a chain whose read failed still
- * shows `—`. Mechanisms that would imply a real capability are not wired up:
- * "Fund from bank", "Move to vault" and "Convert to USDT+" stay disabled with
- * their real reason, and the unverified per-row state stays visible.
+ * shows `—`. The per-row "Move to vault" on a verified row is now a real
+ * control for an ERC-20 holding: it opens the injected dialog so the resident's
+ * own wallet can sign `transfer(safe, amount)`. A row with nothing movable (a
+ * native balance, an unread balance, a chain whose token is not configured) or
+ * no known Safe address stays disabled with its **true** reason. "Fund from
+ * bank" and "Convert to USDT+" stay disabled with their real reason, and the
+ * unverified per-row state stays visible.
  *
  * "Balances by chain" renders only the chains we actually read (Ethereum and
  * Base); the reference's Arbitrum/Optimism/Celo cards are not invented. Reflect/
@@ -50,10 +55,10 @@ import { provenanceLabel } from './provenance';
  * (the owner's declared exception) and a small demo chip; none of its figures
  * flow into the total, the qualified figure or any other real number.
  *
- * Presentational discipline: everything comes in as props. The wallet-connection
- * and signature machinery for the per-row "Connect & sign" action and the
- * "+ Link another wallet" action is injected as `renderConnectSign` /
- * `renderLinkAnother`, so this component renders without a wallet and its tests
+ * Presentational discipline: everything comes in as props. The wallet
+ * machinery behind "Verify wallets" is injected as `renderVerifyWallets` and
+ * the dialog behind the per-row "Move to vault" is opened through
+ * `onMoveToVault`, so this component renders without a wallet and its tests
  * never need one.
  */
 export interface HoldingsScreenProps {
@@ -67,6 +72,40 @@ export interface HoldingsScreenProps {
    * the unverified rows still show their chip, provenance and exclusion.
    */
   readonly renderVerifyWallets?: () => ReactNode;
+  /**
+   * Opens the "Move to vault" dialog for a verified ERC-20 row. The owner of
+   * the dialog (and of the wallet machinery behind it) is the caller, so this
+   * screen stays presentational and renders without a wallet. When omitted the
+   * control is still shown, disabled with a true reason.
+   */
+  readonly onMoveToVault?: (target: MoveToVaultTarget) => void;
+}
+
+/**
+ * What a row's "Move to vault" action hands to the dialog.
+ *
+ * The token is the row's own token, resolved from the chain read that produced
+ * the row; it is never chosen in the dialog. `tokenAddress` is null for a native
+ * or unread row, which the screen keeps locked instead of guessing.
+ */
+export interface MoveToVaultTarget {
+  /** The row's stable key, so the dialog can be tied back to it in tests. */
+  readonly key: string;
+  /** The token symbol shown on the row (e.g. `USDC`). */
+  readonly symbol: string;
+  /** The token's display name (e.g. `USDC`). */
+  readonly name: string;
+  /** The wallet the row belongs to: only this wallet may sign. */
+  readonly address: string;
+  /** The chain the token sits on. */
+  readonly chainId: number;
+  readonly chainName: string;
+  /** The ERC-20 contract to move, or null for a native/unread holding. */
+  readonly tokenAddress: string | null;
+  /** The token's decimals, so the amount is validated and parsed correctly. */
+  readonly decimals: number;
+  /** The row's read amount, as the dialog's starting value. */
+  readonly amount: string;
 }
 
 /**
@@ -85,12 +124,27 @@ const CHAIN_NAMES = new Map<number, string>(
 );
 
 /**
- * The honest reason the vault action is unavailable: the passkey signer contract
- * is not deployed (EXE-011) and the qualified vault is beyond the Week 2
- * envelope (§4.3). Shared by every verified row so the reason never drifts.
+ * The honest reasons the vault action is unavailable on a given row. Each is
+ * true of the state that produces it; a verified ERC-20 row with a known Safe is
+ * never disabled, so it never carries one of these.
  */
-const MOVE_TO_VAULT_REASON =
-  'Moving funds to the vault needs a Safe transaction from your passkey signer. That signer contract (EXE-011) is not deployed, and the qualified vault (KadeLock) is beyond the Week 2 envelope (§4.3).';
+/** The Safe address has not been recorded, so there is nowhere to send. */
+const NO_SAFE_REASON =
+  'Your vault address is not ready yet, so there is nowhere to send this holding.';
+/** The row is the chain's native coin, which is not an ERC-20 transfer. */
+const NATIVE_REASON =
+  'Only USDC can be moved to your vault right now. This is the chain’s native coin, so it stays in your wallet to pay gas.';
+/** The balance could not be read, so there is nothing known to move. */
+const UNREAD_REASON =
+  'This balance could not be read, so there is nothing to move yet.';
+/** The read produced no balance at all. */
+const EMPTY_REASON = 'This holding is empty, so there is nothing to move.';
+/** USDC exists on the chain but this build has no contract address for it. */
+const UNSUPPORTED_TOKEN_REASON =
+  'Moving USDC on this chain is not supported yet. It stays in your wallet.';
+/** No wallet machinery was injected: the screen is rendering without a wallet. */
+const NO_WALLET_REASON =
+  'Wallet connection is not available here, so this holding cannot be moved.';
 
 /**
  * The Reflect card uses the reference's own figures (the owner's declared
@@ -189,6 +243,15 @@ function chainTotals(wallets: readonly HoldingWallet[]): ChainTotal[] {
   });
 }
 
+/**
+ * What kind of holding a row is, from the read that produced it.
+ *
+ * `erc20` is the only kind the EOA → Safe transfer can move; `native` and
+ * `unread` are deliberately not ERC-20 transfers, and `none` is a wallet with
+ * nothing readable at all.
+ */
+type HoldingKind = 'erc20' | 'native' | 'unread' | 'none';
+
 /** One row of the "In linked wallets" table: a real, readable holding. */
 interface WalletAssetRow {
   readonly key: string;
@@ -202,6 +265,15 @@ interface WalletAssetRow {
   readonly chainColor: string;
   readonly amount: string;
   readonly value: string;
+  /** The chain the holding sits on, or null when there is no chain. */
+  readonly chainId: number | null;
+  readonly kind: HoldingKind;
+  /** The ERC-20 contract to move, or null for a native/unread holding. */
+  readonly tokenAddress: string | null;
+  /** The token's decimals (USDC's 6 for an ERC-20, native's 18 otherwise). */
+  readonly decimals: number;
+  /** The read amount without the symbol, for the dialog's starting value. */
+  readonly tokenAmount: string | null;
 }
 
 /** A row plus the wallet state its action needs. */
@@ -244,6 +316,12 @@ function assetRows(
       chainColor: chainColor(chain.name),
       amount: `${chain.nativeAmount} ${chain.nativeSymbol}`,
       value: chain.nativeUsd === null ? '—' : usd(chain.nativeUsd),
+      chainId: chain.chainId,
+      // The native coin is not an ERC-20, so it carries no token contract.
+      kind: 'native',
+      tokenAddress: null,
+      decimals: 18,
+      tokenAmount: chain.nativeAmount,
     });
 
     if (chain.usdc) {
@@ -257,6 +335,13 @@ function assetRows(
         chainColor: chainColor(chain.name),
         amount: `${chain.usdc.amount} ${chain.usdc.symbol}`,
         value: chain.usdc.usd === null ? '—' : usd(chain.usdc.usd),
+        chainId: chain.chainId,
+        kind: 'erc20',
+        // The same table the balance read used, so the token moved is the token
+        // that was read. Null when this build has no contract for the chain.
+        tokenAddress: usdcAddressForChain(chain.chainId),
+        decimals: USDC_DECIMALS,
+        tokenAmount: chain.usdc.amount,
       });
     }
   }
@@ -277,6 +362,11 @@ function assetRows(
       chainColor: chainColor(name),
       amount: '—',
       value: '—',
+      chainId,
+      kind: 'unread',
+      tokenAddress: null,
+      decimals: 18,
+      tokenAmount: null,
     });
   }
 
@@ -291,6 +381,11 @@ function assetRows(
       chainColor: tokens.border,
       amount: '—',
       value: '—',
+      chainId: null,
+      kind: 'none',
+      tokenAddress: null,
+      decimals: 18,
+      tokenAmount: null,
     });
   }
 
@@ -332,6 +427,88 @@ function linkedRows(aggregate: HoldingsAggregate): LinkedRow[] {
   return rows;
 }
 
+/**
+ * The true reason a verified row cannot move to the vault, or null when it can.
+ *
+ * Exactly one reason applies to any locked row, and it names the actual state
+ * that blocks the move rather than a generic "not available".
+ */
+function moveToVaultLockedReason(
+  row: LinkedRow,
+  safeAddress: string | null,
+  onMoveToVault: ((target: MoveToVaultTarget) => void) | undefined,
+): string {
+  if (row.kind === 'native') return NATIVE_REASON;
+  if (row.kind === 'unread') return UNREAD_REASON;
+  if (row.kind === 'none') return EMPTY_REASON;
+  // An ERC-20 row without a contract cannot be built into a transfer.
+  if (row.tokenAddress === null) return UNSUPPORTED_TOKEN_REASON;
+  if (row.tokenAmount === null || !(Number(row.tokenAmount) > 0)) {
+    return EMPTY_REASON;
+  }
+  if (safeAddress === null || safeAddress.trim() === '') return NO_SAFE_REASON;
+  if (!onMoveToVault) return NO_WALLET_REASON;
+  return EMPTY_REASON;
+}
+
+/**
+ * The per-row vault control: a real button for a movable ERC-20 row, and a
+ * disabled control carrying its true reason for every other state. It owns no
+ * wallet machinery; the click is handed to the injected `onMoveToVault`.
+ */
+function MoveToVaultButton({
+  row,
+  safeAddress,
+  onMoveToVault,
+}: {
+  readonly row: LinkedRow;
+  readonly safeAddress: string | null;
+  readonly onMoveToVault?: (target: MoveToVaultTarget) => void;
+}) {
+  if (
+    row.kind === 'erc20' &&
+    row.tokenAddress !== null &&
+    row.chainId !== null &&
+    row.tokenAmount !== null &&
+    Number(row.tokenAmount) > 0 &&
+    safeAddress !== null &&
+    safeAddress.trim() !== '' &&
+    onMoveToVault
+  ) {
+    const target: MoveToVaultTarget = {
+      key: row.key,
+      symbol: row.symbol,
+      name: row.name,
+      address: row.address,
+      chainId: row.chainId,
+      chainName: row.chain,
+      tokenAddress: row.tokenAddress,
+      decimals: row.decimals,
+      amount: row.tokenAmount,
+    };
+    return (
+      <button
+        type="button"
+        onClick={() => onMoveToVault(target)}
+        title={`Move ${row.symbol} from ${shortAddress(row.address)} to your vault`}
+        style={{ ...rowActionButton, ...activeRowActionButton }}
+      >
+        Move to vault
+      </button>
+    );
+  }
+
+  return (
+    <LockedAction
+      height={32}
+      reason={moveToVaultLockedReason(row, safeAddress, onMoveToVault)}
+      style={rowActionButton}
+    >
+      Move to vault
+    </LockedAction>
+  );
+}
+
 /** The reference's summary card: uppercase eyebrow, 26px value, muted sub. */
 function SummaryCard({
   label,
@@ -359,9 +536,9 @@ export function HoldingsScreen({
   aggregate,
   safeAddress,
   renderVerifyWallets,
+  onMoveToVault,
 }: HoldingsScreenProps) {
-  const { total, walletCount, wallets, unverifiedWallets, unverifiedCount } =
-    aggregate;
+  const { total, walletCount, wallets, unverifiedCount } = aggregate;
 
   const chains = chainTotals(wallets);
   const rows = linkedRows(aggregate);
@@ -530,13 +707,11 @@ export function HoldingsScreen({
                 <span style={valueCell}>{row.value}</span>
                 <span style={actionCell}>
                   {row.verified ? (
-                    <LockedAction
-                      height={32}
-                      reason={MOVE_TO_VAULT_REASON}
-                      style={rowActionButton}
-                    >
-                      Move to vault
-                    </LockedAction>
+                    <MoveToVaultButton
+                      row={row}
+                      safeAddress={safeAddress ?? null}
+                      onMoveToVault={onMoveToVault}
+                    />
                   ) : null}
                 </span>
                 {row.readError ? (
@@ -871,6 +1046,22 @@ const actionCell: CSSProperties = {
 const rowActionButton: CSSProperties = {
   fontSize: '12px',
   padding: '0 14px',
+};
+
+/** The enabled per-row control's fill and pointer, over `rowActionButton`. */
+const activeRowActionButton: CSSProperties = {
+  height: '32px',
+  border: 0,
+  borderRadius: '999px',
+  background: tokens.action,
+  color: '#fff',
+  fontFamily: 'inherit',
+  fontWeight: 600,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };
 
 const rowError: CSSProperties = {

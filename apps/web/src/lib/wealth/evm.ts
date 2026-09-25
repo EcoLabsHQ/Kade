@@ -79,6 +79,15 @@ export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
   },
 ];
 
+/**
+ * The USDC contract this app reads for `chainId`, or null when the chain is not
+ * one we read. Read-only data from the same `EVM_READ_CHAINS` table the balance
+ * read uses, so the token the screen moves is the token it read.
+ */
+export function usdcAddressForChain(chainId: number): string | null {
+  return EVM_READ_CHAINS.find((chain) => chain.chainId === chainId)?.usdcAddress ?? null;
+}
+
 /** `0x` followed by exactly 40 hex digits, the EVM address shape. */
 const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { decodeFunctionData, erc20Abi, getAddress, type Address } from 'viem';
 import {
+  assertCorrectWallet,
   buildEoaToSafeTransfer,
   InvalidTransferAddressError,
   InvalidTransferAmountError,
+  validateTransferAmount,
+  WrongWalletError,
 } from '@/lib/safe/eoa-transfer';
 
 /**
@@ -60,6 +63,23 @@ describe('buildEoaToSafeTransfer', () => {
     expect(() => buildEoaToSafeTransfer({ ...base, amount: '1.2345678' })).toThrow(
       InvalidTransferAmountError,
     );
+  });
+
+  it('validates an amount against the token decimals, case-insensitively', () => {
+    expect(validateTransferAmount('1.5', 6)).toBeNull();
+    expect(validateTransferAmount('123456', 6)).toBeNull();
+    expect(validateTransferAmount('0', 6)).toMatch(/positive amount/i);
+    expect(validateTransferAmount('-1', 6)).toMatch(/positive amount/i);
+    expect(validateTransferAmount('1.2345678', 6)).toMatch(/6 decimal places/i);
+    expect(validateTransferAmount('', 6)).toMatch(/positive amount/i);
+  });
+
+  it('accepts the row wallet and refuses any other or no wallet', () => {
+    expect(() => assertCorrectWallet(SAFE, SAFE)).not.toThrow();
+    expect(() => assertCorrectWallet(SAFE, SAFE.toLowerCase())).not.toThrow();
+    expect(() => assertCorrectWallet(SAFE, USDC)).toThrow(WrongWalletError);
+    expect(() => assertCorrectWallet(SAFE, null)).toThrow(WrongWalletError);
+    expect(() => assertCorrectWallet(SAFE, undefined)).toThrow(WrongWalletError);
   });
 
   it('refuses a malformed token or recipient address', () => {

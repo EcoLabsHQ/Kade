@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { getAddress } from 'viem';
 import { HoldingsScreen } from '@/components/holdings/HoldingsScreen';
 import type {
   HoldingsAggregate,
@@ -309,18 +310,189 @@ describe('HoldingsScreen', () => {
     expect(screen.queryByText('$5,230')).toBeNull();
   });
 
-  it('renders Move to vault on every signed holding, locked with the real reason', () => {
+  it('locks a native holding with a true reason, never the stale tooltip', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
 
-    // ADDRESS has one readable holding; ADDRESS_2 has two unread-chain rows.
+    // ADDRESS has one readable native holding; ADDRESS_2 has two unread rows.
     const move = screen.getAllByRole('button', { name: 'Move to vault' });
     expect(move).toHaveLength(3);
+    const native = move.find((button) =>
+      (button.getAttribute('title') ?? '').includes('native coin'),
+    );
+    expect(native).toBeDefined();
+    expect(native).toBeDisabled();
     for (const button of move) {
-      expect(button).toBeDisabled();
+      const title = button.getAttribute('title') ?? '';
+      // No removed internals leak into a disabled control's reason.
+      expect(title).not.toMatch(/EXE-011|KadeLock|Week 2/);
     }
-    const title = move[0]!.getAttribute('title') ?? '';
-    expect(title).toMatch(/EXE-011/);
-    expect(title).toMatch(/not deployed/i);
+  });
+
+  it('locks an unread balance with the real "nothing to move" reason', () => {
+    render(<HoldingsScreen aggregate={aggregate()} />);
+
+    const unread = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('could not be read'),
+      );
+    expect(unread).toBeDefined();
+    expect(unread).toBeDisabled();
+  });
+
+  it('enables Move to vault on a verified USDC row and hands up that row only', () => {
+    const onMoveToVault = vi.fn();
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 3280,
+          walletCount: 1,
+          valuedCount: 1,
+          unvaluedCount: 0,
+          wallets: [
+            {
+              address: ADDRESS,
+              verifiedAt: '2026-09-22T10:00:00.000Z',
+              chainIds: [1],
+              chains: [ethereumWithUsdc(2500, 780)],
+              usd: 3280,
+              readError: null,
+            },
+          ],
+        })}
+        safeAddress={SAFE_ADDRESS}
+        onMoveToVault={onMoveToVault}
+      />,
+    );
+
+    const buttons = screen.getAllByRole('button', { name: 'Move to vault' });
+    // The native ETH row stays locked; the USDC row is the enabled control.
+    const usdcButton = buttons.find(
+      (button) => !(button as HTMLButtonElement).disabled,
+    );
+    expect(usdcButton).toBeDefined();
+    fireEvent.click(usdcButton!);
+
+    expect(onMoveToVault).toHaveBeenCalledTimes(1);
+    expect(onMoveToVault).toHaveBeenCalledWith({
+      key: `${ADDRESS}:1:usdc`,
+      symbol: 'USDC',
+      name: 'USDC',
+      address: ADDRESS,
+      chainId: 1,
+      chainName: 'Ethereum',
+      // The row's own token contract, resolved from the shared chain table.
+      tokenAddress: getAddress('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+      decimals: 6,
+      amount: '780.000000',
+    });
+  });
+
+  it('locks Move to vault when no Safe address is known', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 3280,
+          walletCount: 1,
+          valuedCount: 1,
+          unvaluedCount: 0,
+          wallets: [
+            {
+              address: ADDRESS,
+              verifiedAt: '2026-09-22T10:00:00.000Z',
+              chainIds: [1],
+              chains: [ethereumWithUsdc(2500, 780)],
+              usd: 3280,
+              readError: null,
+            },
+          ],
+        })}
+        onMoveToVault={vi.fn()}
+      />,
+    );
+
+    const usdc = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('vault address is not ready'),
+      );
+    expect(usdc).toBeDefined();
+    expect(usdc).toBeDisabled();
+  });
+
+  it('locks Move to vault when no wallet machinery is injected', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 3280,
+          walletCount: 1,
+          valuedCount: 1,
+          unvaluedCount: 0,
+          wallets: [
+            {
+              address: ADDRESS,
+              verifiedAt: '2026-09-22T10:00:00.000Z',
+              chainIds: [1],
+              chains: [ethereumWithUsdc(2500, 780)],
+              usd: 3280,
+              readError: null,
+            },
+          ],
+        })}
+        safeAddress={SAFE_ADDRESS}
+      />,
+    );
+
+    const usdc = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('Wallet connection is not available'),
+      );
+    expect(usdc).toBeDefined();
+    expect(usdc).toBeDisabled();
+  });
+
+  it('locks a USDC row whose chain has no configured token contract', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 0,
+          walletCount: 1,
+          valuedCount: 0,
+          unvaluedCount: 1,
+          wallets: [
+            {
+              address: ADDRESS,
+              verifiedAt: '2026-09-22T10:00:00.000Z',
+              chainIds: [999],
+              chains: [
+                {
+                  chainId: 999,
+                  name: 'Unknown',
+                  nativeSymbol: 'ETH',
+                  nativeAmount: '1.000000',
+                  nativeUsd: null,
+                  usdc: { symbol: 'USDC', amount: '5.000000', usd: 5 },
+                  usd: 5,
+                },
+              ],
+              usd: 5,
+              readError: null,
+            },
+          ],
+        })}
+        safeAddress={SAFE_ADDRESS}
+        onMoveToVault={vi.fn()}
+      />,
+    );
+
+    const usdc = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('not supported yet'),
+      );
+    expect(usdc).toBeDefined();
+    expect(usdc).toBeDisabled();
   });
 
   it('does not render pending wallets as rows; verification is the modal’s job', () => {
