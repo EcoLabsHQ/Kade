@@ -14,15 +14,11 @@ import { EAS_SCHEMAS, encodeSchema, type EasSchemaName } from '@kade/shared';
  * **does not** call `writeContract`, and **does not** broadcast.
  *
  * **GATED: kade.kyc.v1 issuance.** The schema is registered on Ethereum
- * Sepolia, but nothing is emitted in this build. To actually issue an
- * attestation, three things the permit path also waits on are still missing:
- *   1. the Week 2 Onchain gate approval for issuance (contract §7);
- *   2. an authorized attester key (`kade.kyc.v1.attester = 'kade-authorized'`)
- *      and the resident's recipient (their Safe) to attest to;
- *   3. a submission path: this repository deliberately contains no EAS
- *      broadcast path, so the prepared payload has no sender.
- * Every result below is marked `sent: false`, so a caller cannot mistake a
- * prepared payload for an issued attestation.
+ * Sepolia. This module only builds and validates the payload; the complete
+ * encode/sign/send/confirm path is the sibling `./kyc-emitter`, which reuses the
+ * encoding and the approval gate defined here and refuses to broadcast unless
+ * the approval record exists. Every result below is marked `sent: false`, so a
+ * caller cannot mistake this prepared payload for an issued attestation.
  */
 
 /** The `kade.kyc.v1` field values, in schema order. */
@@ -229,8 +225,8 @@ export function prepareKycAttestation(
     sent: false,
     payload,
     reason:
-      'The kade.kyc.v1 payload is prepared but NOT sent: no broadcast path is ' +
-      'wired in this build and no attester key is configured, so no attestation ' +
-      'was issued.',
+      'The kade.kyc.v1 payload is prepared but NOT sent: this module only builds ' +
+      'the payload. Issuance is the separate, approval-gated ./kyc-emitter path, ' +
+      'so no attestation was issued here.',
   };
 }
