@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
- * The onboarding step must show the real deployment outcome, in product
- * language, and let the resident retry a failed deployment.
+ * Onboarding Step 1, under Safe's passkey model.
  *
- * `deployAccount` is mocked so each failure mode can be presented without a
- * chain. The point is that a failure is neither hidden behind "shortly" nor
- * turned into configuration jargon, and that the retry button re-runs the same
- * action rather than asking for a second passkey.
+ * The step creates the passkey and persists the credential. It does **not**
+ * deploy anything: the passkey is the Safe's owner and the account is deployed
+ * by its first user operation, so there is no signer contract and no separate
+ * deployment transaction. These tests pin that, and pin that a persistence
+ * failure is reported honestly rather than hidden.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -17,7 +17,6 @@ const hoisted = vi.hoisted(() => ({
   deriveAccount: vi.fn(),
   parseP256PublicKey: vi.fn(),
   deployAccount: vi.fn(),
-  sendPasskeySignerDeploymentAction: vi.fn(),
 }));
 
 vi.mock('@/lib/passkey/enrolment', () => ({ enrolPasskey: hoisted.enrolPasskey }));
@@ -26,9 +25,6 @@ vi.mock('@/app/account/passkey-actions', () => ({
 }));
 vi.mock('@/app/onboarding/signer-actions', () => ({
   deriveAccount: hoisted.deriveAccount,
-  // Step 1 now deploys the WebAuthn signer BEFORE the Safe, because the Safe's
-  // owner is the signer contract.
-  sendPasskeySignerDeploymentAction: hoisted.sendPasskeySignerDeploymentAction,
 }));
 vi.mock('@/lib/passkey/public-key', () => ({
   parseP256PublicKey: hoisted.parseP256PublicKey,
@@ -56,12 +52,6 @@ function renderStep() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Step 1 deploys the signer first; a succeeded deployment is the happy path.
-  hoisted.sendPasskeySignerDeploymentAction.mockResolvedValue({
-    status: 'sent',
-    signerAddress: SAFE,
-    txHash: '0xsigner',
-  });
   hoisted.enrolPasskey.mockResolvedValue({
     credentialId: 'cred-new',
     publicKey: 'pk-new',
@@ -93,49 +83,45 @@ async function enrol() {
   await screen.findByText(/passkey created/i);
 }
 
-describe('AccountSetupStep deployment outcome', () => {
-  it('reports a live account on success', async () => {
-    hoisted.deployAccount.mockResolvedValue({ status: 'deployed', safeAddress: SAFE });
+describe('AccountSetupStep under the passkey model', () => {
+  it('creates the passkey and reports it ready', async () => {
     renderStep();
-
     await enrol();
 
-    expect(await screen.findByText(/account is live on Sepolia/i)).toBeInTheDocument();
+    expect(screen.getByText(/passkey created/i)).toBeInTheDocument();
+    expect(screen.getByText(/becomes your account owner/i)).toBeInTheDocument();
+  });
+
+  it('deploys nothing: the passkey is the owner and the first operation deploys the account', async () => {
+    renderStep();
+    await enrol();
+
+    // No deployment transaction is attempted from this step any more.
+    expect(hoisted.deployAccount).not.toHaveBeenCalled();
+    // And the screen never offers a retry for a deployment that cannot fail.
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
-  it.each([
-    ['not-configured', /still preparing account setup/i],
-    ['insufficient-funds', /could not cover the network fee/i],
-    ['address-mismatch', /paused for a safety check/i],
-    ['failed', /could not finish setting up your account/i],
-  ] as const)('states the %s failure specifically and offers a retry', async (status, message) => {
-    hoisted.deployAccount.mockResolvedValue({ status, safeAddress: SAFE });
+  it('still enrols when the server write fails, and says so instead of claiming it was stored', async () => {
+    hoisted.savePasskeyCredential.mockRejectedValue(
+      new Error('Storing the credential failed.'),
+    );
     renderStep();
-
     await enrol();
 
-    expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /try again/i })).toBeEnabled();
-    // No configuration name reaches the screen.
-    expect(screen.queryByText(/SEPOLIA|PRIVATE_KEY|RPC_URL/i)).toBeNull();
+    // The passkey exists on the device even when the row does not, so the
+    // resident is not blocked — and the screen must not claim persistence.
+    expect(screen.getByText(/passkey created/i)).toBeInTheDocument();
+    expect(screen.getByText(/link it to your account shortly/i)).toBeInTheDocument();
   });
 
-  it('retries the same deployment action and can then report success', async () => {
-    hoisted.deployAccount
-      .mockResolvedValueOnce({ status: 'insufficient-funds', safeAddress: SAFE })
-      .mockResolvedValueOnce({ status: 'deployed', safeAddress: SAFE });
+  it('surfaces an enrolment failure rather than a half-created account', async () => {
+    hoisted.enrolPasskey.mockRejectedValue(new Error('No credential was returned.'));
     renderStep();
+    fireEvent.click(screen.getByRole('button', { name: /create passkey/i }));
 
-    await enrol();
-    const retry = await screen.findByRole('button', { name: /try again/i });
-
-    fireEvent.click(retry);
-
-    await waitFor(() => expect(hoisted.deployAccount).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/account is live on Sepolia/i)).toBeInTheDocument();
-    // The passkey was created once; the retry never enrols a second one.
-    expect(hoisted.enrolPasskey).toHaveBeenCalledTimes(1);
-    expect(hoisted.savePasskeyCredential).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /No credential was returned/,
+    );
   });
 });

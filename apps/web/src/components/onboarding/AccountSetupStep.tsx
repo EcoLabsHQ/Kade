@@ -94,40 +94,6 @@ export function AccountSetupStep({
    * the address is already theirs, so the screen reports the account as not set
    * up yet rather than as failed.
    */
-  async function setUpAccount() {
-    setDeploy({ state: 'deploying' });
-    try {
-      // The Safe's only owner is the WebAuthn signer contract, so the signer
-      // must exist on chain BEFORE the Safe is deployed; otherwise the Safe is
-      // born pointing at an address with no code and no passkey signature can
-      // ever validate. Deploying it here is what closes Step 1 for real.
-      const { sendPasskeySignerDeploymentAction } = await import(
-        '@/app/onboarding/signer-actions'
-      );
-      const signer = await sendPasskeySignerDeploymentAction();
-
-      // A signer that is already deployed needs no second transaction, and a
-      // blocked or unconfigured deployment must not stop the Safe: the resident
-      // can retry, and the step says so honestly rather than claiming success.
-      if (signer.status === 'failed' || signer.status === 'not-configured') {
-        setDeploy({ state: 'failed', status: signer.status });
-        return;
-      }
-
-      const { deployAccount } = await import('@/app/onboarding/deploy-actions');
-      const result = await deployAccount();
-      setDeploy(
-        result.status === 'deployed' || result.status === 'already-deployed'
-          ? { state: 'ready' }
-          : { state: 'failed', status: result.status },
-      );
-    } catch {
-      // The action itself could not be reached. That is a failure, not a silent
-      // "we'll finish shortly": the resident can retry.
-      setDeploy({ state: 'failed', status: 'failed' });
-    }
-  }
-
   async function resolveAccount(publicKey: string) {
     setAccount({ state: 'deriving' });
     try {
@@ -209,8 +175,11 @@ export function AccountSetupStep({
 
       onEnrolled(credentialIdToReport);
       setStatus('done');
+      // Nothing else to deploy. Under Safe's passkey model the passkey **is**
+      // the Safe's owner and the account is deployed by its first user
+      // operation, so there is no signer contract and no separate deployment
+      // step. The account address is derived and shown for information.
       await resolveAccount(publicKeyToDerive);
-      await setUpAccount();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -243,11 +212,7 @@ export function AccountSetupStep({
               <div style={{ fontSize: '13px', color: tokens.muted, marginTop: '2px' }}>
                 {signer?.status === 'not-persisted'
                   ? "Your passkey is on this device. We'll link it to your account shortly."
-                  : deploy.state === 'ready'
-                    ? 'Your account is ready.'
-                    : deploy.state === 'failed'
-                      ? 'Your passkey is ready. We still need to finish your account.'
-                      : 'Your passkey is ready.'}
+                  : 'Your passkey is ready. It becomes your account owner.'}
               </div>
             </div>
           </div>
@@ -311,7 +276,6 @@ export function AccountSetupStep({
                 color: tokens.muted,
               }}
             >
-              <DeployLine deploy={deploy} onRetry={() => void setUpAccount()} />
             </div>
           </div>
         ) : null}
