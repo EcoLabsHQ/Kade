@@ -6,17 +6,18 @@ import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 
 /**
- * The Self handoff dialog (D16 / EXE-012, as amended v1.7).
+ * The Self handoff dialog (D16 / EXE-012).
  *
  * The resident is sent to Self's hosted `verificationUrl`: Self renders the QR
- * and the deeplink, scans the passport's NFC chip and verifies the proof **on
- * chain** on Celo Sepolia, issuing a soulbound token. We never draw a QR and
- * never fabricate a result. This dialog renders the real link the server
- * created, or says plainly why it cannot (not configured / unavailable).
+ * and the deeplink, scans the passport's NFC chip and verifies the proof in
+ * backend (off-chain) mode. We never draw a QR and never fabricate a result.
+ * This dialog renders the real link the server created, or says plainly why it
+ * cannot (not configured / unavailable).
  *
  * What Kade learns is stated honestly: that the passport is valid, that the
- * resident is 18 or older and that they are not on a sanctions list. Kade does
- * NOT receive or store nationality, date of birth, passport number or photo.
+ * resident is 18 or older, that they are not on a sanctions list, and the facts
+ * Self discloses — nationality and passport expiry. Kade does NOT receive or
+ * store the passport number, date of birth or photo.
  */
 
 export interface SelfModalState {
@@ -33,10 +34,10 @@ export interface SelfVerificationModalProps {
 }
 
 const FACTS: readonly string[] = [
-  'Your passport is genuine and current — verified by Self onchain.',
+  'Your passport is genuine and current — verified by Self.',
   'You are 18 or older.',
   'You are not on a sanctions list.',
-  'Kade never receives your nationality, date of birth, passport number or photo.',
+  'Kade receives only the facts Self discloses — your nationality and passport expiry — never your passport number, date of birth or photo.',
 ];
 
 export function SelfVerificationModal({
@@ -98,8 +99,8 @@ export function SelfVerificationModal({
             <>
               <div style={bodyCopy}>
                 Open Self to scan your passport&rsquo;s NFC chip. Self verifies
-                the proof onchain and issues a soulbound token; no passport data
-                comes to Kade.
+                the proof; no passport number, date of birth or photo comes to
+                Kade.
               </div>
 
               <a
@@ -134,9 +135,10 @@ export function SelfVerificationModal({
               </div>
 
               <div style={infoBox}>
-                The proof is verified onchain by Self on Celo Sepolia and a
-                soulbound token is issued to you. Kade stores only the outcome —
-                never your nationality or date of birth.
+                Self verifies the proof and returns the result to Kade. Kade
+                stores the outcome and the facts Self discloses (your
+                nationality and passport expiry) — never your passport number,
+                date of birth or photo.
               </div>
 
               <button type="button" onClick={onClose} style={confirmButton}>

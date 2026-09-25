@@ -128,11 +128,11 @@ function deriveIdentityCheck(facts: ResidencyFacts): ResidencyCheck {
       detail: 'Identity verification has not started.',
     };
   }
-  // As amended v1.7, identity is verified on chain by Self, which issues a
-  // soulbound token. The flow is configured with Minimum age ≥18 and OFAC, so a
-  // valid result means the age and sanctions predicates held; Kade stores the
-  // outcome, not the facts. Fail closed: anything but an explicit valid outcome
-  // blocks rather than passes.
+  // Self verifies the proof in backend (off-chain) mode; its signed webhook
+  // discloses the facts, and Kade stores the outcome and the disclosed facts.
+  // The flow is configured with Minimum age >=18 and OFAC, so a valid result
+  // means the age and sanctions predicates held. Fail closed: anything but an
+  // explicit valid outcome blocks rather than passes.
   if (facts.identity.status !== 'valid') {
     return {
       id,
