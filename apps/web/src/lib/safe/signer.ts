@@ -324,3 +324,104 @@ export async function preparePasskeySigner(
     gated: true,
   };
 }
+
+/** The injected send dependencies, so tests need no network and no key. */
+export interface SignerSendDependencies {
+  readonly send: (transaction: PasskeySignerTransaction) => Promise<Hex>;
+  readonly waitForReceipt: (
+    hash: Hex,
+  ) => Promise<{ readonly status: 'success' | 'reverted' }>;
+}
+
+export type SendPasskeySignerResult =
+  | { readonly status: 'already-deployed'; readonly signerAddress: Address }
+  | {
+      readonly status: 'sent';
+      readonly signerAddress: Address;
+      readonly txHash: Hex;
+      readonly sent: true;
+    }
+  | {
+      readonly status: 'failed';
+      readonly stage: 'send' | 'receipt';
+      readonly signerAddress: Address;
+      readonly reason: string;
+      readonly sent: boolean;
+    };
+
+/**
+ * Deploy the resident's WebAuthn signer, if the Account gate allows it.
+ *
+ * The order mirrors `deployResidentSafeFromEnv` (`./deploy.ts`), the repository's
+ * only other broadcast path: prepare and simulate (never trusting the caller's
+ * coordinates), **re-assert the gate**, then send, then read the receipt — a
+ * reverted or absent receipt is a failure, not a success.
+ *
+ * The gate is asserted twice on purpose: at the entry, so an unapproved call
+ * cannot even reach the simulation, and again immediately before the send, so a
+ * result cannot be reached through a path that skipped the first check.
+ */
+export async function sendPasskeySignerDeployment(
+  request: PasskeySignerRequest,
+  deps: PasskeySignerDependencies & SignerSendDependencies,
+): Promise<SendPasskeySignerResult> {
+  const prepared = await preparePasskeySigner(request, deps);
+  if (prepared.status === 'already-deployed') {
+    return {
+      status: 'already-deployed',
+      signerAddress: prepared.signerAddress,
+    };
+  }
+  if (prepared.status !== 'ready-to-deploy') {
+    return {
+      status: 'failed',
+      stage: 'send',
+      signerAddress:
+        'signerAddress' in prepared ? prepared.signerAddress : request.x as never,
+      reason:
+        'reason' in prepared ? prepared.reason : 'the signer could not be prepared.',
+      sent: false,
+    };
+  }
+
+  let txHash: Hex;
+  try {
+    txHash = await deps.send(prepared.transaction);
+  } catch (error) {
+    return {
+      status: 'failed',
+      stage: 'send',
+      signerAddress: prepared.signerAddress,
+      reason: `the signer deployment could not be sent: ${describe(error)}`,
+      sent: false,
+    };
+  }
+
+  try {
+    const receipt = await deps.waitForReceipt(txHash);
+    if (receipt.status !== 'success') {
+      return {
+        status: 'failed',
+        stage: 'receipt',
+        signerAddress: prepared.signerAddress,
+        reason: 'the signer deployment transaction reverted.',
+        sent: true,
+      };
+    }
+  } catch (error) {
+    return {
+      status: 'failed',
+      stage: 'receipt',
+      signerAddress: prepared.signerAddress,
+      reason: `the receipt could not be read: ${describe(error)}`,
+      sent: true,
+    };
+  }
+
+  return {
+    status: 'sent',
+    signerAddress: prepared.signerAddress,
+    txHash,
+    sent: true,
+  };
+}

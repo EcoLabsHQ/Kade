@@ -97,6 +97,23 @@ export function AccountSetupStep({
   async function setUpAccount() {
     setDeploy({ state: 'deploying' });
     try {
+      // The Safe's only owner is the WebAuthn signer contract, so the signer
+      // must exist on chain BEFORE the Safe is deployed; otherwise the Safe is
+      // born pointing at an address with no code and no passkey signature can
+      // ever validate. Deploying it here is what closes Step 1 for real.
+      const { sendPasskeySignerDeploymentAction } = await import(
+        '@/app/onboarding/signer-actions'
+      );
+      const signer = await sendPasskeySignerDeploymentAction();
+
+      // A signer that is already deployed needs no second transaction, and a
+      // blocked or unconfigured deployment must not stop the Safe: the resident
+      // can retry, and the step says so honestly rather than claiming success.
+      if (signer.status === 'failed' || signer.status === 'not-configured') {
+        setDeploy({ state: 'failed', status: signer.status });
+        return;
+      }
+
       const { deployAccount } = await import('@/app/onboarding/deploy-actions');
       const result = await deployAccount();
       setDeploy(

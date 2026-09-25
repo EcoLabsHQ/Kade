@@ -12,6 +12,7 @@ import {
 } from '@/lib/safe/signer';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
+import { readPayerPrivateKey } from '@/lib/safe/deploy';
 
 /**
  * Derive the resident's account from their passkey, asking the chain.
@@ -111,10 +112,108 @@ export type PrepareSignerStatus =
   /** A precondition failed (no session or no stored credential). */
   | 'unavailable';
 
+/**
+ * Deploy the resident's direct Safe WebAuthn signer, past the Account gate.
+ *
+ * Separated from `preparePasskeySignerDeployment` on purpose: preparing is a
+ * read-and-simulate that anyone with a credential may trigger, while sending is
+ * an irreversible write. This one refuses unless the Account gate record is
+ * present (`KADE_ACCOUNT_SIGNER_APPROVED` / `_BY` / `_AT`), and it re-asserts
+ * the gate inside the engine immediately before the write.
+ *
+ * The payer is the same funded Sepolia account that deploys a resident Safe
+ * (`SEPOLIA_DEPLOYER_PRIVATE_KEY`) — the signer deployment is a Kade
+ * infrastructure cost, not the resident's, so it is not sponsored.
+ */
+export type SendSignerStatus =
+  | 'sent'
+  | 'already-deployed'
+  | 'not-configured'
+  | 'failed'
+  | 'unavailable';
+
+export interface SendSignerResult {
+  readonly status: SendSignerStatus;
+  readonly signerAddress: string | null;
+  readonly txHash?: string;
+}
+
 export interface PrepareSignerResult {
   readonly status: PrepareSignerStatus;
   readonly signerAddress: string | null;
   readonly safeAddress?: string;
+}
+
+export async function sendPasskeySignerDeploymentAction(): Promise<SendSignerResult> {
+  const session = await getSessionUser();
+  if (!session) {
+    return { status: 'unavailable', signerAddress: null };
+  }
+
+  const stored = await loadPasskeyCredential();
+  if (!stored?.publicKey) {
+    return { status: 'unavailable', signerAddress: null };
+  }
+
+  const rpcUrl = readSepoliaRpcUrl();
+  const privateKey = readPayerPrivateKey();
+  if (!rpcUrl || !privateKey) {
+    console.warn(
+      '[kade] signer deployment not-configured: SEPOLIA_RPC_URL or the payer key is not set',
+    );
+    return { status: 'not-configured', signerAddress: null };
+  }
+
+  try {
+    const { createPublicClient, createWalletClient, http } = await import('viem');
+    const { privateKeyToAccount } = await import('viem/accounts');
+    const { sepolia } = await import('viem/chains');
+    const { parseP256PublicKey } = await import('@/lib/passkey/public-key');
+    const { sendPasskeySignerDeployment } = await import('@/lib/safe/signer');
+
+    const account = privateKeyToAccount(privateKey);
+    const transport = http(rpcUrl);
+    const publicClient = createPublicClient({ chain: sepolia, transport });
+    const walletClient = createWalletClient({ account, chain: sepolia, transport });
+
+    const { x, y } = parseP256PublicKey(stored.publicKey);
+    const derived = await deriveAccount(x.toString(), y.toString(), session.userId);
+
+    const result = await sendPasskeySignerDeployment(
+      { x, y, expectedSignerAddress: derived.signerAddress },
+      {
+        publicClient,
+        // The engine builds the identical calldata; sending it through a plain
+        // writeContract from the payer is the whole difference from preparing.
+        send: (transaction) =>
+          walletClient.sendTransaction({
+            to: transaction.to,
+            data: transaction.data,
+            value: transaction.value,
+            account,
+            chain: sepolia,
+          }),
+        waitForReceipt: async (hash) => {
+          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          return { status: receipt.status };
+        },
+      },
+    );
+
+    if (result.status === 'failed') {
+      console.warn(`[kade] signer deployment ${result.stage}: ${result.reason}`);
+    }
+
+    return {
+      status: result.status,
+      signerAddress:
+        'signerAddress' in result ? (result.signerAddress ?? null) : null,
+      ...(result.status === 'sent' ? { txHash: result.txHash } : {}),
+    };
+  } catch (cause) {
+    console.warn(`[kade] signer deployment failed: ${String(cause)}`);
+    return { status: 'failed', signerAddress: null };
+  }
 }
 
 /**
