@@ -1,0 +1,52 @@
+iteration: iteration-self-kyc-morpho
+profile: NORMAL
+known_good: 2c2f3635cf1445e4b9e03c3ffb1c01628931624a
+candidate: 7d89df7
+mode: discovery
+reviewed_scopes:
+  identity-facts: complete
+  kyc-emitter: complete
+  invest-morpho: complete
+  residency-ui: complete
+  database: complete
+  config: complete
+active_findings: [F1, F2, F3, F4, F5]
+resolved_findings: []
+next_finding_id: F6
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 7d89df7
+  note: >-
+    Run by the orchestrator on the exact candidate HEAD with the dev server
+    stopped; all ten sections passed and `npx vitest run` reported 748/748. Two
+    earlier runs failed on transient faults (the dev server holding :3000 during
+    the build; a flaky supabase mock) and were re-run rather than masked.
+headline: >-
+  Four themes in one batch: Self moved to backend mode and now stores the
+  kade.kyc.v1 facts (v1.8); the gated kade.kyc.v1 emitter was built to the
+  boundary; Invest was converted from a Morpho Blue market to a MetaMorpho vault;
+  and the Self dialog was simplified with a return trip. Reviewed with zero
+  blocking findings.
+open_warnings:
+  F1: "frozen docs still claim the repository has no EAS broadcast path; one now exists (gated)"
+  F2: "supabase/README.md Self section is stale within the same candidate (describes v1.7)"
+  F3: "over18/not_sanctioned derive from status:valid alone; the code cannot observe that the flow enforces the predicates"
+  F4: "known-gaps overstates how issuance starts — no production caller invokes the emitter"
+  F5: "the Self dialog copy promises nationality/expiry, which the live flow did not disclose"
+flaky_verification: >-
+  Judged not a product defect: the build failure under a running dev server is
+  port contention, and the transient supabase mock is a vitest per-file
+  module-mock artifact. No test depends on execution order.
+production_proof: >-
+  Self identity verification was confirmed working end to end on the deployed app
+  (kade-web.vercel.app): a real verification was stored from a signed webhook.
+  Locally it also worked; the earlier Vercel failure was a desynced
+  SELF_WEBHOOK_SECRET between the registered endpoint and the Vercel env.
+known_blockers:
+  - "D18: the passkey WebAuthn signer is not deployed (EXE-011) and no resident-Safe submission path exists"
+  - "kade.kyc.v1 issuance: Onchain gate not approved; the emitter is dormant by design"
+  - "the Self flow's Additional data is not enabled, so nationality/expires_at arrive NULL"

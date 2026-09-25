@@ -1,0 +1,55 @@
+- id: F1
+  severity: WARN
+  scope: config
+  title: "Frozen docs still claim the repository has no EAS broadcast path; one now exists"
+  evidence: "docs/week-2-frozen-delivery-contract.md v1.8; packages/shared/src/eas.ts:21 vs apps/web/src/lib/residency/kyc-emitter.ts:668"
+  failure_mode: "An operator reading the frozen contract believes no code in the repo can broadcast; it can, if the three KADE_KYC_ISSUANCE_* gates plus key/RPC are set and a caller is wired."
+  materiality: "Documentation-only; known-gaps correctly states there are now two send paths, so no unsafe behaviour follows."
+  status: open
+  introduced_by: 7d89df7
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: database
+  title: "supabase/README.md Self section is stale within the same candidate"
+  evidence: "supabase/README.md vs supabase/migrations/20260924000010_self_verification_facts.sql:52-72"
+  failure_mode: "A reader of the Supabase docs believes the facts are never stored and no backend path exists, contradicting the v1.8 migration added by the same candidate."
+  materiality: "Documentation accuracy."
+  status: open
+  introduced_by: 7d89df7
+  resolved_by: null
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: identity-facts
+  title: "over18/not_sanctioned are asserted true from valid alone (fail-open to undisclosed predicates)"
+  evidence: "apps/web/src/lib/residency/self-event.ts:246-271"
+  failure_mode: "If the deployed Self flow is ever missing Minimum-age/OFAC, a merely-valid row records both predicates as held — a false attestation-ready fact."
+  materiality: "Contract v1.8 explicitly sanctions deriving both from the resolved outcome because the flow enforces them, so this is a declared reliance. The code comment calls it fail-closed, which is inaccurate for undisclosed predicates."
+  status: open
+  introduced_by: 7d89df7
+  resolved_by: null
+  recheck_attempts: 0
+- id: F4
+  severity: WARN
+  scope: kyc-emitter
+  title: "known-gaps next-step overstates how issuance starts"
+  evidence: "docs/known-gaps.md vs repo-wide grep: callers exist only in apps/web/tests/residency-kyc-emitter.test.ts"
+  failure_mode: "An operator sets the gate keys expecting issuance; nothing is sent because no route or action calls the emitter."
+  materiality: "Documentation accuracy; the dormancy is deliberate and safer."
+  status: open
+  introduced_by: 7d89df7
+  resolved_by: null
+  recheck_attempts: 0
+- id: F5
+  severity: WARN
+  scope: residency-ui
+  title: "Self dialog leftovers and copy that may promise facts Self does not disclose"
+  evidence: "apps/web/src/components/residency/SelfVerificationModal.tsx:42,56,256,266,303; FACTS at :49"
+  failure_mode: "A resident is told Kade will receive nationality and expiry even though the current flow disclosed neither."
+  materiality: "Cosmetic/dead code plus copy accuracy; no behaviour."
+  status: open
+  introduced_by: 7d89df7
+  resolved_by: null
+  recheck_attempts: 0
