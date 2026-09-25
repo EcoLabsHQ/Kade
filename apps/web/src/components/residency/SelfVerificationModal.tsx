@@ -31,6 +31,11 @@ export interface SelfVerificationModalProps {
   readonly onClose: () => void;
   /** null while the session is being created. */
   readonly state: SelfModalState | null;
+  /**
+   * True while Self has not confirmed yet, so the dialog can show an honest
+   * status line instead of a button that only pretends to check something.
+   */
+  readonly pending?: boolean;
 }
 
 const FACTS: readonly string[] = [
@@ -44,6 +49,7 @@ export function SelfVerificationModal({
   open,
   onClose,
   state,
+  pending = true,
 }: SelfVerificationModalProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -103,27 +109,21 @@ export function SelfVerificationModal({
                 Kade.
               </div>
 
+              {/*
+                One control. Self's hosted page already decides how to continue:
+                it shows a QR on desktop and an "Open Self app" button on mobile.
+                Duplicating that choice here (a separate link, a separate button)
+                only competed with it. When the resident finishes, Self sends them
+                back to /residency via successUrl.
+              */}
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={confirmButtonLink}
               >
-                Open Self to verify
+                Continue with Self
               </a>
-
-              <div style={linkFallback}>
-                Or open this link on your phone:
-                <br />
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={linkText}
-                >
-                  {url}
-                </a>
-              </div>
 
               <div style={whatLabel}>What Self verifies</div>
               <div style={factsBox}>
@@ -141,8 +141,34 @@ export function SelfVerificationModal({
                 date of birth or photo.
               </div>
 
+              {/*
+                A real state, not a button that pretends to check something.
+                The verification arrives by webhook and the page reflects it;
+                this only tells the resident it is still pending and lets them
+                close the dialog.
+              */}
+              <div style={infoBox} role="status">
+                {pending
+                  ? 'Waiting for Self to confirm. This page updates by itself once it does.'
+                  : 'Verification received. Closing this dialog refreshes the checks.'}
+              </div>
+
+              <div style={linkFallback}>
+                Can&rsquo;t scan right now? You can also paste this link on your
+                phone:
+                <br />
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={linkText}
+                >
+                  {url}
+                </a>
+              </div>
+
               <button type="button" onClick={onClose} style={confirmButton}>
-                I&rsquo;ve finished verifying in Self
+                Done
               </button>
             </>
           ) : (

@@ -232,7 +232,7 @@ describe('ResidencyStep — actions', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole('link', { name: /open self to verify/i }),
+        screen.getByRole('link', { name: /continue with self/i }),
       ).toHaveAttribute('href', 'https://self.xyz/v/abc'),
     );
     expect(hoisted.createSelf).toHaveBeenCalled();

@@ -28,6 +28,7 @@
  * break), then this module works unchanged.
  */
 
+import { readAuthEnv } from '@/lib/env';
 import type { SelfWebhookEventLike } from './self-event';
 
 /** Server-only Self Enterprise configuration, or null when any part is absent. */
@@ -70,6 +71,13 @@ export interface SelfClientLike {
     create(input: {
       readonly flowId: string;
       readonly externalUuid: string;
+      /**
+       * Where Self sends the resident once the flow ends. A UX convenience: the
+       * signed webhook remains the authoritative result. Self appends
+       * `?userId=<externalUuid>`.
+       */
+      readonly successUrl?: string;
+      readonly failureUrl?: string;
     }): Promise<SelfSessionLike>;
   };
 }
@@ -161,6 +169,11 @@ export async function createSelfSession(
     const session = await client.sessions.create({
       flowId: config.flowId,
       externalUuid: profileId,
+      // Send the resident back to Residency when Self is done, instead of
+      // leaving them on Self's result screen. Self appends ?userId=<uuid>.
+      // A UX convenience only — the signed webhook is the trust signal.
+      successUrl: new URL('/residency?verified=1', readAuthEnv().siteUrl).toString(),
+      failureUrl: new URL('/residency?verify=failed', readAuthEnv().siteUrl).toString(),
     });
     const verificationUrl = nonEmptyString(session?.verificationUrl);
     if (verificationUrl === null) {

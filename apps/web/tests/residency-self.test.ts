@@ -42,7 +42,12 @@ class FakeWebhookVerificationError extends Error {
 }
 
 function fakeSdk(
-  create: (input: { flowId: string; externalUuid: string }) => Promise<unknown>,
+  create: (input: {
+    flowId: string;
+    externalUuid: string;
+    successUrl?: string;
+    failureUrl?: string;
+  }) => Promise<unknown>,
   verify: (payload: string, headers: Record<string, string>, secret: string) => unknown = () => ({
     type: 'verification.completed',
   }),
@@ -119,10 +124,14 @@ describe('createSelfSession', () => {
       verificationUrl: 'https://self.xyz/v/abc',
       sessionId: 'sess_1',
     });
-    expect(create).toHaveBeenCalledWith({
-      flowId: 'flow-uuid',
-      externalUuid: 'profile-1',
-    });
+    // The flow sends the resident back through success/failure URLs as well.
+    const sent = (create as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0]?.[0] as
+      | { flowId?: string; successUrl?: string; failureUrl?: string }
+      | undefined;
+    expect(sent?.flowId).toBe('flow-uuid');
+    expect(String(sent?.successUrl)).toMatch(/\/residency\?verified=1$/);
+    expect(String(sent?.failureUrl)).toMatch(/\/residency\?verify=failed$/);
   });
 
   it('never invents a URL when Self returns none', async () => {
