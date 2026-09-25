@@ -17,6 +17,7 @@ const hoisted = vi.hoisted(() => ({
   deriveAccount: vi.fn(),
   parseP256PublicKey: vi.fn(),
   deployAccount: vi.fn(),
+  sendPasskeySignerDeploymentAction: vi.fn(),
 }));
 
 vi.mock('@/lib/passkey/enrolment', () => ({ enrolPasskey: hoisted.enrolPasskey }));
@@ -25,6 +26,9 @@ vi.mock('@/app/account/passkey-actions', () => ({
 }));
 vi.mock('@/app/onboarding/signer-actions', () => ({
   deriveAccount: hoisted.deriveAccount,
+  // Step 1 now deploys the WebAuthn signer BEFORE the Safe, because the Safe's
+  // owner is the signer contract.
+  sendPasskeySignerDeploymentAction: hoisted.sendPasskeySignerDeploymentAction,
 }));
 vi.mock('@/lib/passkey/public-key', () => ({
   parseP256PublicKey: hoisted.parseP256PublicKey,
@@ -52,6 +56,12 @@ function renderStep() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Step 1 deploys the signer first; a succeeded deployment is the happy path.
+  hoisted.sendPasskeySignerDeploymentAction.mockResolvedValue({
+    status: 'sent',
+    signerAddress: SAFE,
+    txHash: '0xsigner',
+  });
   hoisted.enrolPasskey.mockResolvedValue({
     credentialId: 'cred-new',
     publicKey: 'pk-new',

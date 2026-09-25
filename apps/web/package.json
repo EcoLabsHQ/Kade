@@ -17,6 +17,7 @@
     "@reown/appkit": "^1.8.24",
     "@reown/appkit-adapter-wagmi": "^1.8.24",
     "@safe-global/protocol-kit": "^8.0.7",
+    "@safe-global/relay-kit": "^6.1.1",
     "@selfxyz/enterprise-sdk": "0.4.1",
     "@simplewebauthn/browser": "14.0.0",
     "@supabase/ssr": "0.12.7",

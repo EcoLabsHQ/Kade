@@ -8,11 +8,10 @@ import {
 } from './morpho-deposit';
 import { readMorphoVaultConfig, type MorphoEnv } from './morpho-config';
 import {
-  executeSafeTransaction,
-  type SafeExecutionDependencies,
-  type SafeExecutionOutcome,
-  type SafePasskeyReference,
-} from '../safe/execute';
+  executeResidentSafeBatchFromEnv,
+  type ResidentSafeBatchRequest,
+} from '../safe/execute-safe-4337-env';
+import type { SafeExecutionOutcome } from '../safe/execute-safe-4337';
 
 /**
  * The config-gated MetaMorpho vault deposit execution path (Week 2, D18 /
@@ -87,7 +86,7 @@ export type MorphoVaultDepositResult =
       readonly status: 'sent';
       readonly sent: true;
       readonly plan: MorphoVaultDepositPlan;
-      readonly transactionHash: Hex;
+      readonly transactionHash: Hex | null;
       readonly userOperationHash: Hex;
       readonly gated: false;
       readonly reason: string;
@@ -105,14 +104,11 @@ export interface MorphoVaultExecutionDependencies {
     plan: MorphoVaultDepositPlan,
   ) => Promise<{ readonly txHash: `0x${string}` }>;
   /**
-   * The resident-Safe engine's injected dependencies. When `execute` is absent
-   * and this is supplied, the plan's calls are executed through
-   * `executeSafeTransaction`, which enforces its own approval gate and sends
-   * nothing unless a signer and submitter are supplied.
+   * The resident-Safe request: the Safe that executes the deposit and the
+   * WebAuthn signer that owns it. When supplied, the plan's exact calls go
+   * through Safe's ERC-4337 flow, sponsored by Pimlico.
    */
-  readonly safeExecution?: SafeExecutionDependencies;
-  /** The passkey the Safe engine signs with, when the engine is wired in. */
-  readonly credential?: SafePasskeyReference;
+  readonly safeExecution?: Omit<ResidentSafeBatchRequest, 'calls'>;
   readonly env?: MorphoEnv;
   /**
    * Whether the Safe WebAuthn signer has code on chain. Defaults to `false`
@@ -224,44 +220,42 @@ export async function prepareMorphoVaultDeposit(
 
   const safeExecution = deps.safeExecution;
   if (!safeExecution) {
-    // Every gate is open and the plan is built, but no callback or engine is
-    // wired: this is the honest "ready, not sent" state. Nothing was broadcast.
+    // Every gate is open and the plan is built, but no Safe is wired: this is
+    // the honest "ready, not sent" state. Nothing was broadcast.
     return { status: 'ready-to-execute', plan, gated: true };
   }
 
-  // Route the plan's exact calls through the resident-Safe engine. The engine
-  // enforces the Onchain approval gate and, absent a signer/submitter, stops at
-  // its own reviewable plan; a `sent: true` means a confirmed receipt.
-  const outcome = await executeSafeTransaction(
-    {
-      calls: plan.calls,
-      safeAddress: plan.safeAddress,
-      chainId: plan.chainId,
-      credential: deps.credential,
-    },
-    safeExecution,
-  );
+  // Route the plan's exact calls through Safe's ERC-4337 flow. A `sent: true`
+  // means the user operation was submitted and its receipt confirmed.
+  const outcome = await executeResidentSafeBatchFromEnv({
+    ...safeExecution,
+    calls: plan.calls,
+    chainId: plan.chainId,
+  });
 
   if (outcome.status === 'sent') {
     return {
       status: 'sent',
       sent: true,
       plan,
-      transactionHash: outcome.transactionHash,
       userOperationHash: outcome.userOperationHash,
+      transactionHash: outcome.transactionHash,
       gated: false,
-      reason: outcome.reason,
+      reason: 'The deposit was submitted and its receipt confirmed.',
     };
   }
 
-  if (outcome.status === 'plan') {
+  if (outcome.status === 'ready') {
     return { status: 'ready-to-execute', plan, gated: true, execution: outcome };
   }
 
   return {
     status: 'gated',
     gate: 'execution-blocked',
-    reason: outcome.reason,
+    reason:
+      'reason' in outcome && typeof outcome.reason === 'string'
+        ? outcome.reason
+        : 'The resident-Safe execution could not proceed.',
     plan,
     gated: true,
   };
