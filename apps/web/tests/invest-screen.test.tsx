@@ -8,16 +8,17 @@ import {
   within,
 } from '@testing-library/react';
 import { InvestScreen } from '@/components/invest/InvestScreen';
-import type { InvestPoolSummary } from '@/app/invest/actions';
+import type { InvestVaultSummary } from '@/app/invest/actions';
 
 /**
  * The Invest screen (D18 / EXE-014), laid out to match the deployed baseline.
  *
  * The server action is mocked so the screen is exercised against recorded server
  * outcomes, but the assertions are about what the screen must never do: it must
- * not claim a deposit happened, it must show the configured pool address as a
- * value (never a literal of its own), and it must refuse to allocate until the
- * pool, the Safe and a valid amount are all present.
+ * not claim a deposit happened, it must show the configured vault address as a
+ * value (never a literal of its own), it must not quote a yield figure it has no
+ * source for, and it must refuse to allocate until the vault, the Safe and a
+ * valid amount are all present.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -29,26 +30,23 @@ vi.mock('@/app/invest/actions', () => ({
 }));
 
 const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
-const MORPHO = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
+const VAULT = '0x1111222233334444555566667777888899990000';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
-const MARKET_ID = '0x94b823e6bd8ea533b4e33fbc307faea0b307301bc48763acc4d4aa4def7636cd';
 
-const CONFIGURED_POOL: InvestPoolSummary = {
+const CONFIGURED_VAULT: InvestVaultSummary = {
   configured: true,
   chainId: 1,
   chainName: 'Ethereum',
-  loanToken: USDC,
-  morpho: MORPHO,
-  marketId: MARKET_ID,
+  vault: VAULT,
+  usdc: USDC,
 };
 
-const UNCONFIGURED_POOL: InvestPoolSummary = {
+const UNCONFIGURED_VAULT: InvestVaultSummary = {
   configured: false,
   chainId: 1,
   chainName: 'Ethereum',
-  loanToken: null,
-  morpho: null,
-  marketId: null,
+  vault: null,
+  usdc: null,
 };
 
 const REFERENCE_INSTRUMENTS = [
@@ -60,7 +58,7 @@ const REFERENCE_INSTRUMENTS = [
 ];
 
 function renderScreen(overrides: {
-  pool?: InvestPoolSummary;
+  vault?: InvestVaultSummary;
   safeAddress?: string | null;
   safeDeployed?: boolean;
   mainnetConfigured?: boolean;
@@ -68,7 +66,7 @@ function renderScreen(overrides: {
 } = {}) {
   return render(
     <InvestScreen
-      pool={overrides.pool ?? CONFIGURED_POOL}
+      vault={overrides.vault ?? CONFIGURED_VAULT}
       safeAddress={overrides.safeAddress === undefined ? SAFE : overrides.safeAddress}
       safeDeployed={overrides.safeDeployed ?? true}
       mainnetConfigured={overrides.mainnetConfigured ?? false}
@@ -115,6 +113,14 @@ describe('InvestScreen reference layout', () => {
     ).toHaveLength(REFERENCE_INSTRUMENTS.length);
   });
 
+  it('names the vault instrument accurately and does not quote a yield', () => {
+    renderScreen();
+    expect(screen.getByText('MetaMorpho · Ethereum vault')).toBeInTheDocument();
+    expect(screen.getByText('Variable APY · not quoted')).toBeInTheDocument();
+    // The reference's demo APY must never be presented as the real figure.
+    expect(screen.queryByText(/4\.62%/)).toBeNull();
+  });
+
   it('renders the two baseline stat cards', () => {
     renderScreen();
     expect(screen.getByText('Vault USDC available')).toBeInTheDocument();
@@ -123,21 +129,20 @@ describe('InvestScreen reference layout', () => {
 });
 
 describe('InvestScreen configuration', () => {
-  it('shows the configured pool values from props, not literals', () => {
+  it('shows the configured vault values from props, not literals', () => {
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
-    expect(within(dialog).getByText(MORPHO)).toBeInTheDocument();
+    expect(within(dialog).getByText(VAULT)).toBeInTheDocument();
     expect(within(dialog).getByText(USDC)).toBeInTheDocument();
-    expect(within(dialog).getByText(MARKET_ID)).toBeInTheDocument();
     expect(
-      within(dialog).getByText(`Ethereum · ${CONFIGURED_POOL.chainId}`),
+      within(dialog).getByText(`Ethereum · ${CONFIGURED_VAULT.chainId}`),
     ).toBeInTheDocument();
   });
 
-  it('cannot allocate when the pool is not configured', () => {
-    renderScreen({ pool: UNCONFIGURED_POOL });
+  it('cannot allocate when the vault is not configured', () => {
+    renderScreen({ vault: UNCONFIGURED_VAULT });
     const dialog = openDialog('Morpho USDC vault');
-    expect(within(dialog).queryByText(MORPHO)).toBeNull();
+    expect(within(dialog).queryByText(VAULT)).toBeNull();
     expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
     expect(
       within(dialog).getByRole('button', { name: /build the deposit/i }),
@@ -173,7 +178,7 @@ describe('InvestScreen configuration', () => {
     }
   });
 
-  it('enables Allocate when the pool, Safe and amount are all present', () => {
+  it('enables Allocate when the vault, Safe and amount are all present', () => {
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
     expect(
@@ -197,7 +202,7 @@ describe('InvestScreen building', () => {
     expect(hoisted.buildDeposit).toHaveBeenCalledWith({
       safeAddress: SAFE,
       amountUsdc: '1500.5',
-      poolConfigured: true,
+      vaultConfigured: true,
       mainnetConfigured: false,
       signerDeployed: true,
     });
@@ -222,9 +227,9 @@ describe('InvestScreen building', () => {
       callCount: 2,
       calls: [
         { to: USDC, selector: '0x095ea7b3' },
-        { to: MORPHO, selector: '0xa99aad89' },
+        { to: VAULT, selector: '0x6e553f65' },
       ],
-      marketId: MARKET_ID,
+      vault: VAULT,
       amountUsdc: '25000',
     });
     renderScreen();
@@ -237,8 +242,10 @@ describe('InvestScreen building', () => {
       await within(dialog).findByText(/deposit built · not sent/i),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/nothing has been sent/i)).toBeInTheDocument();
+    // The vault address is shown both as the configured vault and on the plan.
+    expect(within(dialog).getAllByText(VAULT).length).toBeGreaterThan(0);
     expect(within(dialog).getByText('Call 1 · approve')).toBeInTheDocument();
-    expect(within(dialog).getByText('Call 2 · supply')).toBeInTheDocument();
+    expect(within(dialog).getByText('Call 2 · deposit')).toBeInTheDocument();
   });
 
   it('puts Morpho first and disables the instruments with no execution path', () => {

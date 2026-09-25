@@ -7,7 +7,7 @@ import { ChainChip } from '@/components/ui/ChainChip';
 import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
 import { tokens } from '@/components/ui/tokens';
-import { buildDeposit, type InvestPoolSummary } from '@/app/invest/actions';
+import { buildDeposit, type InvestVaultSummary } from '@/app/invest/actions';
 
 /**
  * The Invest screen (D18 / EXE-014).
@@ -15,10 +15,10 @@ import { buildDeposit, type InvestPoolSummary } from '@/app/invest/actions';
  * Laid out to match the deployed baseline (`mvp.onchainisland.co`, Invest
  * screen): the instrument table, its columns, the footer note and the two stat
  * cards are the reference's. The instruments themselves are the reference's
- * demo list; only the Morpho pool is wired in this iteration.
+ * demo list; only the MetaMorpho vault is wired in this iteration.
  *
- * "Allocate" asks the server to build the deposit for the configured pool. The
- * server returns either a gated outcome (the pool, mainnet or signer is
+ * "Allocate" asks the server to build the deposit for the configured vault. The
+ * server returns either a gated outcome (the vault, mainnet or signer is
  * missing) or the built calls. **Nothing is sent**: the Onchain gate is not
  * approved and the Safe WebAuthn signer is not deployed, so the dialog builds
  * and reports, and the screen says so plainly rather than implying a deposit
@@ -26,8 +26,8 @@ import { buildDeposit, type InvestPoolSummary } from '@/app/invest/actions';
  */
 
 export interface InvestScreenProps {
-  /** The resolved pool, so the screen can name the configured market. */
-  readonly pool: InvestPoolSummary;
+  /** The resolved vault, so the screen can name the configured instrument. */
+  readonly vault: InvestVaultSummary;
   /** The resident Safe that would own the position, or null when none yet. */
   readonly safeAddress: string | null;
   /** Whether the Safe has been deployed on chain. */
@@ -51,16 +51,22 @@ interface Instrument {
 }
 
 /**
- * The reference's instrument list, verbatim. `wired` marks the one instrument
- * this iteration has a call path for; the rest render as the baseline does.
+ * The reference's instrument list. The Morpho row's label and venue now name
+ * the instrument accurately — a **MetaMorpho vault**, not a Morpho Blue market.
+ * `wired` marks the one instrument this iteration has a call path for; the rest
+ * render as the baseline does.
+ *
+ * The vault's row carries no yield figure: this build has no source for the
+ * vault's current APY, so it is presented as unavailable rather than quoting the
+ * reference's demo number as if it were real.
  */
 const INSTRUMENTS: readonly Instrument[] = [
   {
     key: 'morpho',
     name: 'Morpho USDC vault',
-    venue: 'Morpho Blue · Ethereum vault',
+    venue: 'MetaMorpho · Ethereum vault',
     type: 'Lending vault',
-    terms: '4.62% APY · variable',
+    terms: 'Variable APY · not quoted',
     minimum: '$100',
     chain: 'Ethereum',
     chainColor: '#627EEA',
@@ -119,7 +125,7 @@ type BuildState =
   | { readonly kind: 'gated'; readonly reason: string }
   | {
       readonly kind: 'built';
-      readonly marketId: string;
+      readonly vault: string;
       readonly amountUsdc: string;
       readonly calls: readonly { readonly to: string; readonly selector: string }[];
     };
@@ -130,7 +136,7 @@ const PRESETS = ['10000', '25000', '50000'] as const;
 const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 110px';
 
 export function InvestScreen({
-  pool,
+  vault,
   safeAddress,
   safeDeployed,
   mainnetConfigured,
@@ -144,7 +150,7 @@ export function InvestScreen({
   const canAllocate =
     selected !== null &&
     selected.wired &&
-    pool.configured &&
+    vault.configured &&
     safeAddress !== null &&
     safeDeployed &&
     amountValid;
@@ -172,7 +178,7 @@ export function InvestScreen({
     const result = await buildDeposit({
       safeAddress,
       amountUsdc: amount.trim(),
-      poolConfigured: pool.configured,
+      vaultConfigured: vault.configured,
       mainnetConfigured,
       signerDeployed,
     });
@@ -182,7 +188,7 @@ export function InvestScreen({
     }
     setState({
       kind: 'built',
-      marketId: result.marketId,
+      vault: result.vault,
       amountUsdc: result.amountUsdc,
       calls: result.calls,
     });
@@ -315,7 +321,7 @@ export function InvestScreen({
                   title={
                     instrument.wired
                       ? undefined
-                      : 'Only the Morpho pool is wired in this iteration.'
+                      : 'Only the MetaMorpho vault is wired in this iteration.'
                   }
                   style={{
                     height: '32px',
@@ -450,21 +456,16 @@ export function InvestScreen({
                 </div>
 
                 <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
-                  <Row label="Pool chain" value={`Ethereum · ${pool.chainId}`} />
+                  <Row label="Vault chain" value={`Ethereum · ${vault.chainId}`} />
                   <Row
-                    label="Morpho"
-                    value={pool.morpho ?? 'Not configured'}
-                    mono={pool.morpho !== null}
+                    label="MetaMorpho vault"
+                    value={vault.vault ?? 'Not configured'}
+                    mono={vault.vault !== null}
                   />
                   <Row
-                    label="Loan token (USDC)"
-                    value={pool.loanToken ?? 'Not configured'}
-                    mono={pool.loanToken !== null}
-                  />
-                  <Row
-                    label="Market id"
-                    value={pool.marketId ?? 'Not configured'}
-                    mono={pool.marketId !== null}
+                    label="Underlying USDC"
+                    value={vault.usdc ?? 'Not configured'}
+                    mono={vault.usdc !== null}
                   />
                 </dl>
 
@@ -475,8 +476,8 @@ export function InvestScreen({
                     onClick={allocate}
                     ariaLabel="Build the deposit"
                     title={
-                      !pool.configured
-                        ? 'Configure the Morpho pool first'
+                      !vault.configured
+                        ? 'Configure the MetaMorpho vault first'
                         : !safeDeployed || safeAddress === null
                           ? 'Your Safe must be deployed first'
                           : !amountValid
@@ -492,8 +493,9 @@ export function InvestScreen({
               </>
             ) : (
               <Notice tone="warning" title="Not wired yet">
-                Only the Morpho pool is wired in this iteration. This instrument
-                renders as the baseline does but has no execution path yet.
+                Only the MetaMorpho vault is wired in this iteration. This
+                instrument renders as the baseline does but has no execution path
+                yet.
               </Notice>
             )}
 
@@ -501,8 +503,8 @@ export function InvestScreen({
               <Notice tone="warning" title="Deposit gated">
                 {state.reason}
                 <div style={{ marginTop: '6px' }}>
-                  Nothing was signed or sent. The Morpho pool, mainnet and the
-                  Safe WebAuthn signer deployment must be in place before a
+                  Nothing was signed or sent. The MetaMorpho vault, mainnet and
+                  the Safe WebAuthn signer deployment must be in place before a
                   deposit can execute.
                 </div>
               </Notice>
@@ -512,14 +514,14 @@ export function InvestScreen({
               <Notice tone="info" title="Deposit built · not sent">
                 The deposit is prepared as {state.calls.length} calls and{' '}
                 <strong>nothing has been sent</strong>: execution is gated until
-                the pool, mainnet and signer deployment are approved.
+                the vault, mainnet and signer deployment are approved.
                 <dl style={{ margin: '10px 0 0', fontSize: '13px' }}>
-                  <Row label="Market id" value={state.marketId} mono />
+                  <Row label="MetaMorpho vault" value={state.vault} mono />
                   <Row label="Amount" value={`${state.amountUsdc} USDC`} />
                   {state.calls.map((call, index) => (
                     <Row
                       key={`${call.to}-${index}`}
-                      label={index === 0 ? 'Call 1 · approve' : 'Call 2 · supply'}
+                      label={index === 0 ? 'Call 1 · approve' : 'Call 2 · deposit'}
                       value={`${call.to} · ${call.selector}`}
                       mono
                     />
