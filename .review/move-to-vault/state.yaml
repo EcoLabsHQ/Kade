@@ -1,0 +1,27 @@
+iteration: move-to-vault
+profile: NORMAL
+known_good: d6360a46c18b09e32350438fe221b50c527d565f
+candidate: 3811cf3f43379354ff592b4c5e3a0f433f67cf08
+mode: resume
+reviewed_scopes:
+  frontend: complete
+  database: complete
+  signing_safe: complete
+  onboarding: complete
+  docs_config: complete
+active_findings: []
+resolved_findings: [F1, F2, F6]
+next_finding_id: F8
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F6: 1
+review_complete: true
+verdict: review_passed
+notes:
+  - "F1 RESOLVED: SDK-derived address recorded via SECURITY DEFINER writer; privilege escalation closed."
+  - "F2 RESOLVED: KADE_SAFE_EXECUTION_* removed from .env.example; known-gaps row 31 corrected."
+  - "F6 RESOLVED: abandoned direct-signer deployment path removed coherently."
+  - "WARN F3: createPasskeySigner double-converts an already-hex rawId; no caller, latent."
+  - "WARN F4: ownerAddressOf passes the P256 verifier as a Safe owner; inert under threshold 1."
+  - "WARN F7: known-gaps declares the signer gap None while the frozen contract and morpho comments still cite D-EXE-011. CHANGE-CONTROL: amend the frozen contract and correct the stale comment/gate name."
