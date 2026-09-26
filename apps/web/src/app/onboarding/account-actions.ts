@@ -1,6 +1,5 @@
 'use server';
 
-import type { Address } from 'viem';
 import { CHAIN_IDS } from '@kade/shared';
 import { createSupabaseServerClient, getSessionUser } from '@/lib/supabase/server';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
@@ -15,13 +14,19 @@ import { deriveAccountFromPasskey } from '@/lib/safe/derive-account';
  * is an address until its first user operation, so the row is written as
  * `predicted` and the shell shows it as created.
  *
- * Why a direct insert rather than the existing store
+ * Why an RPC rather than the existing store
  *   `safeDeploymentStore().recordPrediction` is built for Kade's own create2
  *   derivation and takes `initializer`, `initializerHash`, `saltNonce`, `salt`
  *   and `initCodeHash`. Safe's SDK composes those itself and does not report
  *   them, so the store cannot be used without fabricating six values. This
- *   writes the three fields the SDK does give — the address, the chain and the
- *   status — and leaves the rest NULL. The store and its callers are untouched.
+ *   writes only what the SDK reports — the address, the chain, the status and
+ *   the caller's own profile_id — and leaves the rest NULL. The store and its
+ *   callers are untouched.
+ *
+ *   The write goes through `record_safe_sdk_address`, a SECURITY DEFINER
+ *   function scoped to `profile_id = auth.uid()`. A direct insert is refused:
+ *   `authenticated` has no column privilege on `safe_address`, so it could
+ *   never have written this row on a fresh database.
  *
  * The credential is read from the database, never taken from the caller.
  */
@@ -91,12 +96,11 @@ export async function deriveAndRecordAccount(): Promise<RecordAccountOutcome> {
     return { status: 'failed', safeAddress: null, deployed: false };
   }
 
-  const { error } = await client.from('safe_deployments').insert({
-    profile_id: session.userId,
-    safe_address: derived.safeAddress as Address,
+  const { error } = await client.rpc('record_safe_sdk_address', {
+    p_safe_address: derived.safeAddress,
+    p_deployment_chain_id: derived.chainId,
     // The account is an address until its first user operation deploys it.
-    status: derived.deployed ? 'deployed' : 'predicted',
-    deployment_chain_id: derived.chainId,
+    p_status: derived.deployed ? 'deployed' : 'predicted',
   });
 
   if (error) {

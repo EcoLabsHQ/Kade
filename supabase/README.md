@@ -148,7 +148,7 @@ cap extension plus `delete_wallet_addresses` for pasted EVM addresses (migration
 | `applications` | none | read own, insert own, update `tier` | read | all |
 | `household_members` | none | read/write own (via application) | none | all |
 | `passkey_credentials` | none | read own, insert own, update `last_used_at` (`signer_address` excluded) | none | all |
-| `safe_deployments` | none | read own. A direct insert cannot produce a row — every manifest column is `NOT NULL` and outside the grant — but the resident **can** call `record_safe_prediction`, a SECURITY DEFINER function scoped to their own row, which is how the prediction is written. See the note below | none | all |
+| `safe_deployments` | none | read own. A direct insert cannot produce a row — `safe_address` and `deployment_chain_id` are `NOT NULL` and outside the column grant — but the resident **can** call `record_safe_prediction` (Kade's create2 derivation) or `record_safe_sdk_address` (Safe's SDK path), both SECURITY DEFINER functions scoped to their own row. `owner` is `NULL` on the SDK path. See the note below | none | all |
 | `safe_pre_deposits` | none | read own, insert own (`verification_status`, `verified_at` excluded) | none | all |
 | `chains` | none | read | read | all |
 | `fee_schedule` | none | read | read | all |
@@ -160,7 +160,7 @@ equals `auth.uid()`. A second resident sees zero rows and can change zero rows.
 
 ### The SECURITY DEFINER writers
 
-Four functions write columns the `authenticated` role has no privilege on, each
+Five functions write columns the `authenticated` role has no privilege on, each
 scoped to the caller's own row by an explicit `profile_id = auth.uid()` predicate
 (RLS is bypassed by the definition, so that predicate is the only thing deciding
 which row may be touched):
@@ -170,6 +170,7 @@ which row may be touched):
 | `save_passkey_signer` | `passkey_credentials.signer_address` | 17 |
 | `record_safe_prediction` | the `safe_deployments` manifest columns | 18 |
 | `record_safe_deployment_outcome` | `safe_deployments` status, tx hash, timestamps | 18 |
+| `record_safe_sdk_address` | `safe_deployments.safe_address`, `status`, `deployment_chain_id` for an SDK-derived account | `20260925000003` |
 | `record_preapproval_fee_tx` | `applications.fee_tx` | 22 |
 
 They exist because the alternative was a service-role key in the deployed
@@ -200,11 +201,13 @@ described there:
 - `profiles.safe_address`
 - `passkey_credentials.signer_address` (derived from the public key; the
   resident may write the other credential columns)
-- every `safe_deployments` column except `profile_id`: the counterfactual
-  address, the status, the deployment transaction hash and all the manifest
-  inputs. A direct write is refused; `record_safe_prediction` can write them for
-  the caller's own row, so a resident can record their own prediction but cannot
-  touch another resident's
+- `safe_deployments.safe_address`, `.status`, `.deployment_chain_id` and the
+  manifest columns: the counterfactual address, the deployment state, the
+  transaction hash and the create2 inputs. A direct write is refused;
+  `record_safe_sdk_address` (Safe's SDK path) writes the address, state and chain
+  for the caller's own row, and `record_safe_prediction` writes the full
+  create2 manifest for a Kade-derived prediction. Neither can touch another
+  resident's row, and `owner` stays `NULL` when the SDK does not report it
 - `safe_pre_deposits.verification_status`, `verified_at`: the resident may
   propose a deposit, but only a server-side check may mark it verified
 - `wallets.siwe_sig`, `wallets.verified_at`: the resident may add and remove
