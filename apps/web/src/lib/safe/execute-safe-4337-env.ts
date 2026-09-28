@@ -1,14 +1,19 @@
 import { CHAIN_IDS } from '@kade/shared';
 import type { Address } from 'viem';
 import {
+  buildResidentSafeBatch,
   executeResidentSafeBatch,
   PIMLICO_ENV_KEYS,
   pimlicoUrl,
   readPimlicoConfig,
+  submitResidentSafeOperation,
   type Safe4337PackLike,
+  type SafeAssertionParts,
+  type SafeBuildOutcome,
   type SafeCall,
   type SafeExecutionDependencies,
   type SafeExecutionOutcome,
+  type SafeSubmitOutcome,
 } from './execute-safe-4337';
 import type { PasskeySigner } from './passkey-signer';
 
@@ -148,6 +153,48 @@ export async function executeResidentSafeBatchFromEnv(input: {
     chainId: input.chainId ?? CHAIN_IDS.sepolia,
   };
   return executeResidentSafeBatch(input.calls, deps);
+}
+
+/**
+ * The environment-wired build phase: no signing, just the operation and the
+ * hash the browser passkey must sign.
+ */
+export async function buildResidentSafeBatchFromEnv(input: {
+  readonly signer: PasskeySigner;
+  readonly safeAddress: Address | null;
+  readonly calls: readonly SafeCall[];
+  readonly chainId?: number;
+}): Promise<SafeBuildOutcome> {
+  const deps: SafeExecutionDependencies = {
+    initPack: initSafe4337Pack,
+    signer: input.signer,
+    safeAddress: input.safeAddress,
+    chainId: input.chainId ?? CHAIN_IDS.sepolia,
+  };
+  return buildResidentSafeBatch(input.calls, deps);
+}
+
+/**
+ * The environment-wired submit phase: the client's assertion over the hash the
+ * build phase returned. The operation itself never comes from the client.
+ */
+export async function submitResidentSafeOperationFromEnv(input: {
+  readonly token: string;
+  readonly assertion: SafeAssertionParts;
+  readonly signer: PasskeySigner;
+  readonly safeAddress: Address | null;
+  readonly chainId?: number;
+}): Promise<SafeSubmitOutcome> {
+  const deps: SafeExecutionDependencies = {
+    initPack: initSafe4337Pack,
+    signer: input.signer,
+    safeAddress: input.safeAddress,
+    chainId: input.chainId ?? CHAIN_IDS.sepolia,
+  };
+  return submitResidentSafeOperation(
+    { token: input.token, assertion: input.assertion },
+    deps,
+  );
 }
 
 // Re-exported so callers do not need two imports for the pair.
