@@ -18,9 +18,12 @@ import type { InvestVaultSummary } from '@/app/invest/actions';
  * screen must never do: it must not claim a deposit happened unless the server
  * confirmed it, it must show the configured vault address as a value (never a
  * literal of its own), it must not quote a yield figure it has no source for,
- * and it must refuse to allocate until the vault, the Safe and a valid amount
- * are all present. It must also call the three phases in order and report a
- * dismissed prompt truthfully.
+ * and it must keep the control disabled until an instrument is wired, a vault
+ * is configured, a Safe is recorded and the amount is valid. It must not gate
+ * on the Safe's deployment state — the server verifies the deposit-chain Safe
+ * and a counterfactual Safe is deployed by its first sponsored operation — and
+ * it must surface a server refusal reason rather than swallow it. It must also
+ * call the three phases in order and report a dismissed prompt truthfully.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -85,15 +88,11 @@ const ASSERTION = {
 function renderScreen(overrides: {
   vault?: InvestVaultSummary;
   safeAddress?: string | null;
-  safeDeployed?: boolean;
-  mainnetConfigured?: boolean;
 } = {}) {
   return render(
     <InvestScreen
       vault={overrides.vault ?? CONFIGURED_VAULT}
       safeAddress={overrides.safeAddress === undefined ? SAFE : overrides.safeAddress}
-      safeDeployed={overrides.safeDeployed ?? true}
-      mainnetConfigured={overrides.mainnetConfigured ?? false}
     />,
   );
 }
@@ -187,16 +186,28 @@ describe('InvestScreen configuration', () => {
     expect(confirmButton(dialog)).toBeDisabled();
   });
 
-  it('locks Allocate when the resident has no Safe', () => {
-    renderScreen({ safeAddress: null, safeDeployed: false });
+  it('locks Allocate when the resident has no Safe recorded', () => {
+    renderScreen({ safeAddress: null });
     const dialog = openDialog('Morpho USDC vault');
-    expect(confirmButton(dialog)).toBeDisabled();
+    const button = confirmButton(dialog);
+    expect(button).toBeDisabled();
+    // The lock says what is actually missing; it must not claim a deployment.
+    expect(button).toHaveAttribute(
+      'title',
+      'No Safe is recorded for this account yet',
+    );
   });
 
-  it('locks Allocate when the Safe is not deployed', () => {
-    renderScreen({ safeDeployed: false });
+  it('enables Allocate for a recorded Safe that is not yet deployed on the deposit chain', () => {
+    // The recorded Safe can still be counterfactual on the deposit chain (its
+    // record status is `predicted`). The server verifies the derived address
+    // there and the first sponsored user operation deploys it, so deployment
+    // state must not lock the control.
+    renderScreen();
     const dialog = openDialog('Morpho USDC vault');
-    expect(confirmButton(dialog)).toBeDisabled();
+    const button = confirmButton(dialog);
+    expect(button).toBeEnabled();
+    expect(button.getAttribute('title') ?? '').not.toMatch(/deployed/i);
   });
 
   it('locks Allocate for a malformed or zero amount', () => {
@@ -264,13 +275,18 @@ describe('InvestScreen allocate flow', () => {
     expect(within(dialog).getByText('0xfeed')).toBeInTheDocument();
   });
 
-  it('reports a gated build without prompting the passkey', async () => {
+  it('reports a gated build with the server reason, without prompting the passkey', async () => {
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
 
     await clickAllocate(dialog);
 
     expect(await within(dialog).findByText(/deposit gated/i)).toBeInTheDocument();
+    // The server's refusal reason reaches the screen; a refusal is never
+    // swallowed or replaced with a generic message.
+    expect(
+      within(dialog).getByText(/ethereum-mainnet rail is not configured/i),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText(/nothing was signed or sent/i)).toBeInTheDocument();
     expect(hoisted.promptPasskeyAssertionParts).not.toHaveBeenCalled();
     expect(hoisted.completeDeposit).not.toHaveBeenCalled();

@@ -11,7 +11,7 @@ import {
   type DerivedAccount,
 } from '@/lib/safe/derive-account';
 import { prepareMorphoVaultDeposit } from '@/lib/invest/morpho-execution';
-import { morphoChainId } from '@/lib/invest/morpho-config';
+import { isMainnetRailConfigured, morphoChainId } from '@/lib/invest/morpho-config';
 import {
   buildResidentSafeBatchFromEnv,
   submitResidentSafeOperationFromEnv,
@@ -269,11 +269,11 @@ export async function beginDeposit(input: {
 
   // Gate state is resolved here, server-side. `prepareMorphoVaultDeposit`
   // resolves the vault configuration from the environment; the mainnet rail is
-  // the reserved `ETHEREUM_RPC_URL`, read here. No gate flag is taken from the
-  // caller, so a client cannot turn a gate off.
+  // judged on that configuration plus the reserved `ETHEREUM_RPC_URL`. No gate
+  // flag is taken from the caller, so a client cannot turn a gate off.
   const result = await prepareMorphoVaultDeposit(
     { safeAddress: context.safeAddress, amountUsdc: input.amountUsdc },
-    { mainnetConfigured: Boolean(process.env.ETHEREUM_RPC_URL?.trim()) },
+    { mainnetConfigured: isMainnetRailConfigured() },
   );
 
   if (result.status === 'gated') {

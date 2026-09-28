@@ -59,6 +59,7 @@ import { beginDeposit, completeDeposit } from '@/app/invest/actions';
 const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address;
 const OTHER_SAFE = '0x9999999999999999999999999999999999999999';
 const VAULT = '0x1111222233334444555566667777888899990000' as Address;
+const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as Address;
 const SAFE_OP_HASH = `0x${'ab'.repeat(32)}` as Hex;
 const USER_OP_HASH = `0x${'fe'.repeat(32)}` as Hex;
 const TOKEN = 'tok-1';
@@ -252,8 +253,18 @@ describe('beginDeposit', () => {
   });
 
   it('resolves the mainnet gate from the environment, not the caller', async () => {
-    const previous = process.env.ETHEREUM_RPC_URL;
+    const previous = {
+      rpc: process.env.ETHEREUM_RPC_URL,
+      vault: process.env.KADE_MORPHO_VAULT_ADDRESS,
+      usdc: process.env.KADE_MORPHO_USDC_ADDRESS,
+    };
     try {
+      // The rail is judged on its own two pieces — a complete vault
+      // configuration and the reserved mainnet RPC — so both are set here and
+      // only the RPC is varied. The value is never taken from the caller.
+      process.env.KADE_MORPHO_VAULT_ADDRESS = VAULT;
+      process.env.KADE_MORPHO_USDC_ADDRESS = USDC;
+
       delete process.env.ETHEREUM_RPC_URL;
       await beginDeposit(BEGIN_INPUT);
       expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
@@ -268,8 +279,13 @@ describe('beginDeposit', () => {
         { mainnetConfigured: true },
       );
     } finally {
-      if (previous === undefined) delete process.env.ETHEREUM_RPC_URL;
-      else process.env.ETHEREUM_RPC_URL = previous;
+      const restore = (key: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      };
+      restore('ETHEREUM_RPC_URL', previous.rpc);
+      restore('KADE_MORPHO_VAULT_ADDRESS', previous.vault);
+      restore('KADE_MORPHO_USDC_ADDRESS', previous.usdc);
     }
   });
 

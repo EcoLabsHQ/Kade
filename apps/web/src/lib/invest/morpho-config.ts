@@ -85,6 +85,26 @@ export function isMorphoVaultConfigured(env: MorphoEnv = process.env): boolean {
 }
 
 /**
+ * Whether the vault rail — the Ethereum-mainnet MetaMorpho deposit — is
+ * configured well enough to build a deposit.
+ *
+ * The owner's model is **mixed** (contract v1.9, §8): the vault is on Ethereum
+ * mainnet, while the pre-approval fee and the remaining tooling stay on Sepolia.
+ * A single global `KADE_CHAIN_ENV` cannot express that, so the rail is judged on
+ * its own two pieces — a complete vault configuration and the reserved mainnet
+ * `ETHEREUM_RPC_URL` — and never on `KADE_CHAIN_ENV`, which may legitimately
+ * read `testnet` while the vault path is live.
+ *
+ * It stays honest: false when the vault address, the underlying USDC or the
+ * mainnet RPC is missing. It lives here rather than on the route so it has a
+ * name and a test of its own; the `beginDeposit` action resolves it server-side
+ * and never takes a gate flag from the caller.
+ */
+export function isMainnetRailConfigured(env: MorphoEnv = process.env): boolean {
+  return isMorphoVaultConfigured(env) && Boolean(env.ETHEREUM_RPC_URL?.trim());
+}
+
+/**
  * The chain id the configured vault must live on.
  *
  * Read from the frozen chain registry in `@kade/shared`, never hard-coded in a

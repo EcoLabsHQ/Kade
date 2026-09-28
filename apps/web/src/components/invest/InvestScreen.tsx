@@ -27,20 +27,25 @@ import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
  */
 
 export interface InvestScreenProps {
-  /** The resolved vault, so the screen can name the configured instrument. */
-  readonly vault: InvestVaultSummary;
-  /** The resident Safe that would own the position, or null when none yet. */
-  readonly safeAddress: string | null;
-  /** Whether the Safe has been deployed on chain. */
-  readonly safeDeployed: boolean;
   /**
-   * Whether the mainnet rail is configured, as resolved server-side by the page.
+   * The resolved vault, so the screen can name the configured instrument.
    *
-   * The screen does not forward this to the server: `beginDeposit` resolves
-   * every gate itself, so a client cannot turn one off. It is retained so the
-   * route can keep passing it; the action ignores any caller-supplied gate.
+   * `configured` is a server-resolved **UI hint** only, to keep the control
+   * disabled until an instrument that can be built is present. It is not a
+   * security gate: `beginDeposit` re-reads the vault configuration and the
+   * mainnet rail itself and refuses honestly with a reason.
    */
-  readonly mainnetConfigured: boolean;
+  readonly vault: InvestVaultSummary;
+  /**
+   * The resident Safe that would own the position, or null when none is yet
+   * recorded.
+   *
+   * This is the recorded address alone. Whether it is deployed on the deposit
+   * chain is read and verified server-side, and the first sponsored user
+   * operation can deploy a counterfactual Safe, so the screen does not gate on
+   * deployment state.
+   */
+  readonly safeAddress: string | null;
 }
 
 interface Instrument {
@@ -155,22 +160,23 @@ function describeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export function InvestScreen({
-  vault,
-  safeAddress,
-  safeDeployed,
-}: InvestScreenProps) {
+export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
   const [state, setState] = useState<AllocateState>({ kind: 'idle' });
 
   const amountValid = AMOUNT_PATTERN.test(amount.trim()) && Number(amount) > 0;
+  // The client precondition is deliberately shallow and is not a security gate:
+  // `beginDeposit` resolves every gate server-side (the vault configuration,
+  // the mainnet rail and the Safe's state on the deposit chain) and refuses
+  // honestly with a reason. In particular there is no deployment requirement:
+  // a recorded Safe that is not yet deployed on the deposit chain can still
+  // start a deposit, because its first sponsored user operation deploys it.
   const canAllocate =
     selected !== null &&
     selected.wired &&
     vault.configured &&
     safeAddress !== null &&
-    safeDeployed &&
     amountValid;
   const busy =
     state.kind === 'building' ||
@@ -550,8 +556,8 @@ export function InvestScreen({
                     title={
                       !vault.configured
                         ? 'Configure the MetaMorpho vault first'
-                        : !safeDeployed || safeAddress === null
-                          ? 'Your Safe must be deployed first'
+                        : safeAddress === null
+                          ? 'No Safe is recorded for this account yet'
                           : !amountValid
                             ? 'Enter a positive USDC amount'
                             : 'Build, sign and submit the deposit'

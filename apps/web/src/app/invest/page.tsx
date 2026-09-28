@@ -19,15 +19,13 @@ export const dynamic = 'force-dynamic';
  *
  * Resolves the resident's Safe and the server-only MetaMorpho vault
  * configuration and renders the screen. The vault address, its underlying USDC
- * and the chain are passed to the client as values, so the browser neither
- * reads nor hard-codes them.
+ * and the chain are passed to the client as display values, so the browser
+ * neither reads nor hard-codes them.
  *
- * Execution state is resolved honestly. The chain model is mixed (contract
- * v1.9, §8): the vault rail is judged on the vault configuration and the
- * mainnet `ETHEREUM_RPC_URL`, independently of `KADE_CHAIN_ENV`, which may stay
- * on Sepolia for the pre-approval fee and the remaining tooling. When the rail
- * is not configured the screen can only build, never send. The passkey signer
- * needs no deployment.
+ * Execution is resolved server-side by the `beginDeposit` action, which reads
+ * the vault configuration and the reserved mainnet `ETHEREUM_RPC_URL` itself
+ * and verifies the Safe's state on the deposit chain. The page therefore passes
+ * only what the screen needs to render; it adds no execution gate of its own.
  */
 export default async function InvestPage() {
   const session = await getSessionUser();
@@ -63,30 +61,8 @@ export default async function InvestPage() {
             usdc: config?.usdc ?? null,
           }}
           safeAddress={shellSafe.address}
-          safeDeployed={shellSafe.deployed}
-          mainnetConfigured={isMainnetRailConfigured()}
         />
       </ContentContainer>
     </AppShell>
   );
-}
-
-/**
- * Whether the vault rail — the Ethereum-mainnet MetaMorpho deposit — is
- * configured well enough to build a deposit.
- *
- * The owner's model is **mixed** (contract v1.9, §8): the vault is on Ethereum
- * mainnet, while the pre-approval fee and the remaining tooling stay on Sepolia.
- * A single global `KADE_CHAIN_ENV` cannot express that, so this rail is judged
- * on its own two pieces — a complete vault configuration and the reserved
- * mainnet `ETHEREUM_RPC_URL` — and never on `KADE_CHAIN_ENV`, which may
- * legitimately read `testnet` while the vault path is live.
- *
- * It stays honest: false when the vault address, the underlying USDC or the
- * mainnet RPC is missing.
- */
-export function isMainnetRailConfigured(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return isMorphoVaultConfigured(env) && Boolean(env.ETHEREUM_RPC_URL?.trim());
 }

@@ -1,27 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 /**
- * The vault rail's readiness predicate on the Invest route.
+ * The vault rail's readiness predicate.
  *
  * The owner's model is mixed (contract v1.9, §8): the Morpho vault is on
  * Ethereum mainnet while the pre-approval fee and the remaining Sepolia tooling
  * stay on the testnet. `KADE_CHAIN_ENV` therefore cannot gate the vault rail —
  * it is legitimately `testnet` while the mainnet vault is configured — so the
- * predicate must key off the vault configuration and the mainnet RPC alone.
+ * predicate keys off the vault configuration and the mainnet RPC alone.
  *
- * The page's heavy collaborators are mocked so only the predicate is exercised;
- * every case supplies its own env, so no global state is touched.
+ * It lives in `@/lib/invest/morpho-config`, beside `isMorphoVaultConfigured`:
+ * the `beginDeposit` action resolves it server-side and never takes a gate flag
+ * from the caller, so the route carries no execution gate of its own. Every
+ * case supplies its own env, so no global state is touched.
  */
 
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
-vi.mock('@/lib/supabase/server', () => ({ getSessionUser: vi.fn() }));
-vi.mock('@/lib/safe/shell', () => ({ loadShellSafe: vi.fn() }));
-vi.mock('@/lib/review/review-bar', () => ({ loadReviewBar: vi.fn() }));
-vi.mock('@/components/shell/AppShell', () => ({ AppShell: () => null }));
-vi.mock('@/components/shell/ContentContainer', () => ({ ContentContainer: () => null }));
-vi.mock('@/components/invest/InvestScreen', () => ({ InvestScreen: () => null }));
-
-import { isMainnetRailConfigured } from '@/app/invest/page';
+import { isMainnetRailConfigured } from '@/lib/invest/morpho-config';
 
 const VAULT = '0x1111222233334444555566667777888899990000';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
