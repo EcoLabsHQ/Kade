@@ -2,6 +2,7 @@ import { CHAIN_IDS } from '@kade/shared';
 import type { Address } from 'viem';
 import {
   executeResidentSafeBatch,
+  PIMLICO_ENV_KEYS,
   pimlicoUrl,
   readPimlicoConfig,
   type Safe4337PackLike,
@@ -44,10 +45,14 @@ export async function initSafe4337Pack(input: {
     options: input.safeAddress
       ? { safeAddress: input.safeAddress }
       : { owners: [ownerAddressOf(input.signer)], threshold: 1 },
-    // Sponsored: the paymaster pays, so the resident's Safe needs no ETH.
+    // Sponsored: the paymaster pays, so the resident's Safe needs no ETH. The
+    // sponsorship policy constrains what Pimlico will sponsor; the SDK only
+    // forwards it when `sponsorshipPolicyId` is set, so it is attached whenever
+    // the configuration supplies one.
     paymasterOptions: {
       paymasterUrl: input.bundlerUrl,
       isSponsored: true,
+      ...sponsorshipPolicyOption(input.chainId),
     },
   } as never);
 
@@ -55,33 +60,78 @@ export async function initSafe4337Pack(input: {
 }
 
 /**
- * The owner address a passkey signer commits to.
+ * The owner address the resident Safe is created with.
  *
- * The Safe is created with one owner; the SDK derives that owner's address from
- * the credential's coordinates and the verifier. `Safe.init` resolves it, so the
- * value only has to be a valid address for the `options.owners` shape — the SDK
- * replaces it with the derived owner when it builds the deployment.
+ * The value is the signer's verifier-derived address, and it is the **first**
+ * entry of `options.owners`. `@safe-global/relay-kit` (6.1.1) does **not**
+ * replace it with a derived owner: for a passkey signer it **appends**
+ * `SafeWebAuthnSharedSigner` to `options.owners` (when it is not already there)
+ * and then uses that list verbatim in the predicted initializer, e.g.
+ *
+ *   options.owners = [verifierAddress, SafeWebAuthnSharedSigner]
+ *   Safe.init({ predictedSafe: { safeAccountConfig: { owners: options.owners,
+ *     threshold: 1, ... } } })
+ *
+ * The owner set and the threshold are therefore inputs to the counterfactual
+ * Safe address. **Do not change either**: the address recorded in
+ * `safe_deployments` for existing residents was derived from exactly this pair,
+ * and any change would produce a different Safe.
  */
 function ownerAddressOf(signer: PasskeySigner): string {
-  // The coordinates identify the credential; the SDK's own account abstraction
-  // turns them into the on-chain owner. Passing the verifier-derived address
-  // keeps `owners` non-empty, which is what the create-Safe path requires.
+  // The coordinates identify the credential; this verifier-derived address is
+  // the owner entry Safe uses verbatim. Keeping `owners` non-empty is what the
+  // create-Safe path requires.
   return signer.verifierAddress;
 }
 
-/** The RPC endpoint, reusing the project's existing Sepolia variable. */
+/**
+ * The Pimlico sponsorship policy, as paymaster options the SDK reads.
+ *
+ * `readPimlicoConfig` is the single source of truth and already yields the
+ * policy id when the server keys are both set, so it is tried first. The env
+ * read is the fallback for a caller that reaches `initSafe4337Pack` without
+ * going through `executeResidentSafeBatch` (which is what enforces that both
+ * keys are present). When neither yields a value, nothing is attached: the
+ * pre-existing unconfigured behaviour is unchanged, never weakened.
+ */
+function sponsorshipPolicyOption(chainId: number): { sponsorshipPolicyId?: string } {
+  const policyId =
+    readPimlicoConfig(chainId)?.policyId ??
+    process.env[PIMLICO_ENV_KEYS.policyId]?.trim();
+  return policyId ? { sponsorshipPolicyId: policyId } : {};
+}
+
+/**
+ * The RPC endpoint for the chain the Safe runs on.
+ *
+ * The vault rail is Ethereum **mainnet** (contract §2.2/§6.3), while the rest
+ * of the tooling may stay on Sepolia, so both chains resolve to their own
+ * variable. Any other chain, or a supported chain whose variable is missing,
+ * refuses rather than reaching for the wrong endpoint.
+ */
 function rpcUrlFor(chainId: number): string {
-  if (chainId !== CHAIN_IDS.sepolia) {
-    throw new Error(
-      `The resident-Safe path is wired for Sepolia (${CHAIN_IDS.sepolia}); ` +
-        `chain ${chainId} has no RPC variable.`,
-    );
-  }
-  const url = process.env.SEPOLIA_RPC_URL?.trim();
+  const variable = rpcVariableFor(chainId);
+  const url = process.env[variable]?.trim();
   if (!url) {
-    throw new Error('SEPOLIA_RPC_URL is not set, so the bundler cannot be reached.');
+    throw new Error(`${variable} is not set, so the bundler cannot be reached.`);
   }
   return url;
+}
+
+/** The env variable that holds the RPC for a supported chain, or a refusal. */
+function rpcVariableFor(chainId: number): string {
+  switch (chainId) {
+    case CHAIN_IDS.sepolia:
+      return 'SEPOLIA_RPC_URL';
+    case CHAIN_IDS.ethereum:
+      return 'ETHEREUM_RPC_URL';
+    default:
+      throw new Error(
+        `The resident-Safe path supports Sepolia (${CHAIN_IDS.sepolia}) and ` +
+          `Ethereum mainnet (${CHAIN_IDS.ethereum}); chain ${chainId} has no ` +
+          'RPC variable.',
+      );
+  }
 }
 
 /** The environment-wired entry point: the passkey signer and the batch. */

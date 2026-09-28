@@ -190,6 +190,20 @@ export async function executeResidentSafeBatch(
     };
   }
 
+  // The SDK submits whatever `encodedSignatures()` returns, and that is `"0x"`
+  // when the passkey attached nothing. Refuse here rather than broadcast an
+  // unsigned operation: no signature means no authorisation, so nothing is sent.
+  if (!hasSignature(signed)) {
+    return {
+      status: 'failed',
+      sent: false,
+      stage: 'sign',
+      reason:
+        'The passkey attached no signature to the operation, so it was not ' +
+        'submitted.',
+    };
+  }
+
   let userOperationHash: Hex;
   try {
     userOperationHash = await pack.executeTransaction({ executable: signed });
@@ -232,4 +246,22 @@ export async function executeResidentSafeBatch(
 
 function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Whether the signed Safe operation actually carries a signature.
+ *
+ * `SafeOperation.encodedSignatures()` returns `"0x"` when no signature was
+ * attached — for example when a passkey assertion resolves with nothing — and
+ * the SDK's `executeTransaction` would submit that empty payload anyway. The
+ * engine checks the encoded value first, so an operation with no signature can
+ * never reach the bundler. Anything that is not a non-empty `0x` string is
+ * treated as unsigned, which keeps the guard fail-closed.
+ */
+function hasSignature(signed: unknown): boolean {
+  if (typeof signed !== 'object' || signed === null) return false;
+  const encoded = (signed as { encodedSignatures?: unknown }).encodedSignatures;
+  if (typeof encoded !== 'function') return false;
+  const value = (encoded as () => unknown).call(signed);
+  return typeof value === 'string' && value.startsWith('0x') && value.length > 2;
 }

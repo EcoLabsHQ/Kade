@@ -22,6 +22,8 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
 
 const SAFE = '0x1111111111111111111111111111111111111111' as Address;
 const HASH = '0xabc0000000000000000000000000000000000000000000000000000000000abc' as Hex;
+/** A non-empty encoded signature, the shape `SafeOperation` exposes. */
+const SIGNATURE = '0xdeadbeef' as Hex;
 
 const env = (values: Record<string, string>): NodeJS.ProcessEnv =>
   values as unknown as NodeJS.ProcessEnv;
@@ -55,7 +57,9 @@ function fakePack(overrides: Partial<Safe4337PackLike> = {}): {
     }),
     signSafeOperation: vi.fn(async () => {
       order.push('sign');
-      return { signed: true };
+      // The SDK's signed object exposes `encodedSignatures()`; the engine reads
+      // it to refuse submitting an unsigned operation.
+      return { encodedSignatures: () => SIGNATURE };
     }),
     executeTransaction: vi.fn(async () => {
       order.push('submit');
@@ -158,6 +162,38 @@ describe('executeResidentSafeBatch', () => {
       expect(outcome.stage).toBe('sign');
       expect(outcome.reason).toMatch(/rejected/);
     }
+  });
+
+  it('refuses to submit when no signature was attached', async () => {
+    // The SDK's `encodedSignatures()` is `"0x"` when nothing was attached, and
+    // `executeTransaction` would submit that empty payload anyway. The engine
+    // must refuse first: no signature means no authorisation.
+    const { pack } = fakePack({
+      signSafeOperation: vi.fn(async () => ({ encodedSignatures: () => '0x' })),
+    });
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack), ENV);
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.sent).toBe(false);
+    if (outcome.status === 'failed') {
+      expect(outcome.stage).toBe('sign');
+      expect(outcome.reason).toMatch(/no signature/i);
+    }
+    expect(pack.executeTransaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the signed operation exposes no encoded signature at all', async () => {
+    // A signed value without `encodedSignatures()` cannot prove authorisation,
+    // so the guard stays fail-closed rather than assuming the operation is fine.
+    const { pack } = fakePack({
+      signSafeOperation: vi.fn(async () => ({ signed: true })),
+    });
+    const outcome = await executeResidentSafeBatch(CALLS, deps(pack), ENV);
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.sent).toBe(false);
+    if (outcome.status === 'failed') expect(outcome.stage).toBe('sign');
+    expect(pack.executeTransaction).not.toHaveBeenCalled();
   });
 
   it('does nothing for an empty batch, and sends nothing', async () => {
