@@ -657,6 +657,48 @@ Affected clauses:
 | §4.3, D20 | eligibility derived from `kade.kyc.v1`/permit | derived from the Self verification outcome / permit |
 | §10 | identity check from a `kade.kyc.v1` mirror | identity check from a valid Self verification |
 
+**v1.9 — 28 September 2026. Approved by the project owner.**
+
+The **Onchain gate is relaxed for the testing phase**. §7 checkpoint 3 reads
+"agents … may not perform irreversible on-chain writes before the corresponding
+approval"; for the current testing work, that veto is lifted for the Invest
+call path, and the MetaMorpho deposit **may be broadcast on Ethereum mainnet**
+without a separate Onchain approval.
+
+Scope of the relaxation:
+
+- the resident-Safe (ERC-4337) Morpho deposit path, and only that path;
+- Ethereum **mainnet**, because the frozen vault (§2.2, §6.3) is a mainnet
+  MetaMorpho vault. There is no testnet vault for this deliverable, so "testing"
+  here means mainnet with test-sized balances, not a testnet;
+- a deposit moves the resident Safe's USDC and spends the shared Pimlico
+  sponsorship budget. The owner accepted both as testing costs.
+
+What this does **not** change:
+
+- **fail-closed behaviour.** Every gate that is not deliberately relaxed stays:
+  a partial configuration still refuses, and no path fabricates a `sent: true`;
+- **honest reporting.** Success is still shown only for a confirmed receipt;
+  a refusal still names the stage it stopped at;
+- the Account and Foundation gates, the EAS issuance gate (§4.2 D16), and the
+  KadeLock enforcement boundary;
+- the chain model: vaults on **mainnet**; the pre-approval fee and the remaining
+  Sepolia tooling stay on Sepolia.
+
+Rationale, for the record: the owner directed that on-chain writes are testing
+activity and the gates should be softened so the deposit can be exercised end to
+end. The relaxation is recorded here rather than applied silently, so a reviewer
+can see it was a deliberate, owner-approved testing decision and not a removed
+control. It is scoped to the Invest path and is expected to be withdrawn before
+the Acceptance gate.
+
+Affected clauses:
+
+| Clause | Before (v1.8) | After (v1.9) |
+|---|---|---|
+| §7, checkpoint 3 | no irreversible on-chain write before Onchain approval | relaxed for the Invest Morpho path during testing |
+| §4.3, D18 / EXE-014 | Morpho call path approved before irreversible writes | the Mainnet deposit may be broadcast during testing without that approval |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
