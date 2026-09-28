@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildAssertionOptions,
   promptPasskeyAssertion,
+  promptPasskeyAssertionParts,
   withAssertionPrompt,
 } from '@/lib/passkey/assertion';
 import {
@@ -132,5 +133,56 @@ describe('credentialIdToRawId', () => {
     });
     // Hex in, base64url out — the two forms must agree on the same bytes.
     expect(options.allowCredentials?.[0]?.id).toBe('Y3JlZA');
+  });
+});
+
+describe('promptPasskeyAssertionParts', () => {
+  // A 32-byte SafeOp hash, the shape the build phase returns.
+  const HASH = `0x${'ab'.repeat(32)}`;
+
+  it('converts the hex challenge to base64url and serialises the three pieces', async () => {
+    const authenticatorData = new Uint8Array([1, 2, 3, 4]);
+    const signature = new Uint8Array([48, 6, 2, 1, 1, 2, 1, 2]);
+    const clientDataJSON = new Uint8Array([123, 125]);
+    const get = vi.fn(async () => ({
+      response: { authenticatorData, signature, clientDataJSON },
+    }) as unknown as Credential);
+    vi.stubGlobal('navigator', { credentials: { get } });
+    vi.stubGlobal('atob', (s: string) => Buffer.from(s, 'base64').toString('binary'));
+
+    const parts = await promptPasskeyAssertionParts({
+      credentialId: CREDENTIAL_ID,
+      challenge: HASH,
+      rpId: 'localhost',
+    });
+
+    // The platform sees the hash's bytes as the challenge, base64url-encoded in
+    // the JSON form (43 chars for 32 bytes, no padding).
+    const request = (
+      get as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls[0]?.[0] as { publicKey: { challenge: Uint8Array } };
+    expect(Buffer.from(request.publicKey.challenge).toString('hex')).toBe(HASH.slice(2));
+    expect(Buffer.from(request.publicKey.challenge).toString('base64url')).toHaveLength(43);
+
+    // The three pieces come back as base64url for transport, byte-for-byte.
+    expect(parts.authenticatorData).toBe(Buffer.from(authenticatorData).toString('base64url'));
+    expect(parts.signature).toBe(Buffer.from(signature).toString('base64url'));
+    expect(parts.clientDataJSON).toBe(Buffer.from(clientDataJSON).toString('base64url'));
+  });
+
+  it('fails loudly when the assertion is missing a response field', async () => {
+    const get = vi.fn(async () => ({
+      response: { authenticatorData: new Uint8Array([1]) },
+    }) as unknown as Credential);
+    vi.stubGlobal('navigator', { credentials: { get } });
+    vi.stubGlobal('atob', (s: string) => Buffer.from(s, 'base64').toString('binary'));
+
+    await expect(
+      promptPasskeyAssertionParts({
+        credentialId: CREDENTIAL_ID,
+        challenge: HASH,
+        rpId: 'localhost',
+      }),
+    ).rejects.toThrow(/authenticatorData/);
   });
 });

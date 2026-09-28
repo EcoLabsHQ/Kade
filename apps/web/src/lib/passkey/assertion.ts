@@ -120,6 +120,86 @@ export function withAssertionPrompt(
   };
 }
 
+/** The three WebAuthn assertion pieces, base64url, ready to cross the network. */
+export interface SerializedPasskeyAssertion {
+  readonly authenticatorData: string;
+  readonly signature: string;
+  readonly clientDataJSON: string;
+}
+
+export interface PasskeyAssertionPartsOptions {
+  /**
+   * The credential id as Safe's SDK carries it: the credential's **bytes** as
+   * lowercase hex, with no `0x`. Converted inside, exactly as
+   * `promptPasskeyAssertion` does.
+   */
+  readonly credentialId: string;
+  /**
+   * The challenge the passkey must sign, as **hex** — here the SafeOp EIP-712
+   * hash the build phase returned. It is converted to the base64url form
+   * WebAuthn's JSON representation uses, so the signature covers exactly the
+   * bytes the hash denotes.
+   */
+  readonly challenge: string;
+  readonly rpId: string;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Prompt the passkey and return the assertion in transportable form.
+ *
+ * This is the client half of the two-phase resident flow: the server builds the
+ * operation and hands the browser the SafeOp hash, the browser signs it, and
+ * the three raw assertion pieces travel back to the server for the SDK to
+ * verify. Only these three byte fields are needed — the SDK reads nothing else
+ * off the assertion — so a parsed object is enough; a `Credential` never
+ * crosses the network.
+ */
+export async function promptPasskeyAssertionParts(
+  options: PasskeyAssertionPartsOptions,
+): Promise<SerializedPasskeyAssertion> {
+  const credential = (await promptPasskeyAssertion({
+    credentialId: options.credentialId,
+    // Safe issues the challenge as hex; WebAuthn carries it as base64url.
+    // Convert once, here, and sign the same bytes the server hashed.
+    challenge: hexToBase64url(options.challenge),
+    rpId: options.rpId,
+    timeoutMs: options.timeoutMs,
+  })) as PublicKeyCredential;
+
+  const response = credential.response as AuthenticatorAssertionResponse;
+  if (
+    !response ||
+    !response.authenticatorData ||
+    !response.signature ||
+    !response.clientDataJSON
+  ) {
+    throw new Error(
+      'The passkey assertion did not carry authenticatorData, signature and clientDataJSON.',
+    );
+  }
+
+  return {
+    authenticatorData: bytesToBase64url(response.authenticatorData),
+    signature: bytesToBase64url(response.signature),
+    clientDataJSON: bytesToBase64url(response.clientDataJSON),
+  };
+}
+
+/** bytes (or an `ArrayBuffer`) → base64url with no padding. */
+function bytesToBase64url(value: ArrayBuffer | Uint8Array): string {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i] as number);
+  }
+  const base64 =
+    typeof btoa === 'function'
+      ? btoa(binary)
+      : Buffer.from(bytes).toString('base64');
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 /** base64url (no padding) → bytes, as WebAuthn credential ids are encoded. */
 function base64urlToBytes(value: string): Uint8Array {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/');
