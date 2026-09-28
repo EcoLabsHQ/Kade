@@ -7,7 +7,8 @@ import { ChainChip } from '@/components/ui/ChainChip';
 import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
 import { tokens } from '@/components/ui/tokens';
-import { buildDeposit, type InvestVaultSummary } from '@/app/invest/actions';
+import { beginDeposit, completeDeposit, type InvestVaultSummary } from '@/app/invest/actions';
+import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
 
 /**
  * The Invest screen (D18 / EXE-014).
@@ -17,12 +18,12 @@ import { buildDeposit, type InvestVaultSummary } from '@/app/invest/actions';
  * cards are the reference's. The instruments themselves are the reference's
  * demo list; only the MetaMorpho vault is wired in this iteration.
  *
- * "Allocate" asks the server to build the deposit for the configured vault. The
- * server returns either a gated outcome (the vault, mainnet or signer is
- * missing) or the built calls. **Nothing is sent**: the Onchain gate is not
- * approved and the Safe WebAuthn signer is not deployed, so the dialog builds
- * and reports, and the screen says so plainly rather than implying a deposit
- * happened.
+ * "Allocate" runs the two-phase passkey flow: the server builds the deposit and
+ * returns the SafeOp hash (`beginDeposit`), the browser signs it with the
+ * resident's passkey (`promptPasskeyAssertionParts`), and the server submits the
+ * retained operation and confirms the receipt (`completeDeposit`). Success is
+ * reported only for a confirmed receipt; a gated build, a dismissed prompt and a
+ * failed submission each report their own honest state.
  */
 
 export interface InvestScreenProps {
@@ -32,7 +33,7 @@ export interface InvestScreenProps {
   readonly safeAddress: string | null;
   /** Whether the Safe has been deployed on chain. */
   readonly safeDeployed: boolean;
-  /** Whether the mainnet rail and the Safe signer are ready for execution. */
+  /** Whether the mainnet rail (vault + RPC) is ready for execution. */
   readonly mainnetConfigured: boolean;
 }
 
@@ -117,22 +118,36 @@ const INSTRUMENTS: readonly Instrument[] = [
   },
 ];
 
-type BuildState =
+type AllocateState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'building' }
+  | { readonly kind: 'awaiting-passkey' }
+  | { readonly kind: 'submitting' }
   | { readonly kind: 'not-wired' }
   | { readonly kind: 'gated'; readonly reason: string }
   | {
-      readonly kind: 'built';
-      readonly vault: string;
+      readonly kind: 'failed';
+      readonly stage: string;
+      readonly reason: string;
+      /** Whether the operation reached the bundler before the refusal. */
+      readonly sent: boolean;
+    }
+  | {
+      readonly kind: 'sent';
+      readonly transactionHash: string | null;
+      readonly userOperationHash: string;
       readonly amountUsdc: string;
-      readonly calls: readonly { readonly to: string; readonly selector: string }[];
     };
 
 const AMOUNT_PATTERN = /^\d+(\.\d{1,6})?$/;
 const PRESETS = ['10000', '25000', '50000'] as const;
 
 const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 110px';
+
+/** A readable message from an unknown thrown value. */
+function describeError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 export function InvestScreen({
   vault,
@@ -142,7 +157,7 @@ export function InvestScreen({
 }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
-  const [state, setState] = useState<BuildState>({ kind: 'idle' });
+  const [state, setState] = useState<AllocateState>({ kind: 'idle' });
 
   const amountValid = AMOUNT_PATTERN.test(amount.trim()) && Number(amount) > 0;
   const canAllocate =
@@ -152,6 +167,10 @@ export function InvestScreen({
     safeAddress !== null &&
     safeDeployed &&
     amountValid;
+  const busy =
+    state.kind === 'building' ||
+    state.kind === 'awaiting-passkey' ||
+    state.kind === 'submitting';
 
   function openInstrument(instrument: Instrument) {
     setSelected(instrument);
@@ -172,23 +191,74 @@ export function InvestScreen({
       return;
     }
     if (!canAllocate || safeAddress === null) return;
+
+    const amountUsdc = amount.trim();
+
+    // Phase 1: the server builds the operation (signs nothing) and returns the
+    // SafeOp hash the passkey must sign.
     setState({ kind: 'building' });
-    const result = await buildDeposit({
-      safeAddress,
-      amountUsdc: amount.trim(),
-      vaultConfigured: vault.configured,
-      mainnetConfigured,
-    });
-    if (result.status === 'gated') {
+    let begin;
+    try {
+      begin = await beginDeposit({
+        safeAddress,
+        amountUsdc,
+        vaultConfigured: vault.configured,
+        mainnetConfigured,
+      });
+    } catch (cause) {
+      setState({ kind: 'failed', stage: 'build', reason: describeError(cause), sent: false });
+      return;
+    }
+
+    if (begin.status === 'gated') {
+      setState({ kind: 'gated', reason: begin.reason });
+      return;
+    }
+
+    // The browser half: sign the server's hash with the resident's passkey.
+    setState({ kind: 'awaiting-passkey' });
+    let assertion;
+    try {
+      assertion = await promptPasskeyAssertionParts({
+        credentialId: begin.credentialId,
+        challenge: begin.hash,
+        // The relying party is this page's own host, exactly as enrolment uses.
+        rpId:
+          typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+      });
+    } catch (cause) {
+      // A dismissed or failed prompt must say so rather than fall silently back
+      // to the form.
+      setState({ kind: 'failed', stage: 'passkey', reason: describeError(cause), sent: false });
+      return;
+    }
+
+    // Phase 2: the server attaches the assertion and submits the retained op.
+    setState({ kind: 'submitting' });
+    let result;
+    try {
+      result = await completeDeposit({ token: begin.token, assertion });
+    } catch (cause) {
+      setState({ kind: 'failed', stage: 'submit', reason: describeError(cause), sent: false });
+      return;
+    }
+
+    if (result.status === 'sent') {
+      setState({
+        kind: 'sent',
+        transactionHash: result.transactionHash,
+        userOperationHash: result.userOperationHash,
+        amountUsdc,
+      });
+      return;
+    }
+
+    if (result.status === 'not-configured') {
       setState({ kind: 'gated', reason: result.reason });
       return;
     }
-    setState({
-      kind: 'built',
-      vault: result.vault,
-      amountUsdc: result.amountUsdc,
-      calls: result.calls,
-    });
+
+    setState({ kind: 'failed', stage: result.stage, reason: result.reason, sent: result.sent });
   }
 
   return (
@@ -469,7 +539,7 @@ export function InvestScreen({
                 <div style={{ marginTop: '16px' }}>
                   <Button
                     variant={canAllocate ? 'primary' : 'locked'}
-                    disabled={!canAllocate || state.kind === 'building'}
+                    disabled={!canAllocate || busy}
                     onClick={allocate}
                     ariaLabel="Build the deposit"
                     title={
@@ -479,12 +549,16 @@ export function InvestScreen({
                           ? 'Your Safe must be deployed first'
                           : !amountValid
                             ? 'Enter a positive USDC amount'
-                            : 'Build the deposit'
+                            : 'Build, sign and submit the deposit'
                     }
                   >
                     {state.kind === 'building'
                       ? 'Building…'
-                      : `Allocate ${amount} USDC`}
+                      : state.kind === 'awaiting-passkey'
+                        ? 'Confirm with your passkey…'
+                        : state.kind === 'submitting'
+                          ? 'Submitting…'
+                          : `Allocate ${amount} USDC`}
                   </Button>
                 </div>
               </>
@@ -499,30 +573,47 @@ export function InvestScreen({
             {state.kind === 'gated' ? (
               <Notice tone="warning" title="Deposit gated">
                 {state.reason}
+                <div style={{ marginTop: '6px' }}>Nothing was signed or sent.</div>
+              </Notice>
+            ) : null}
+
+            {state.kind === 'awaiting-passkey' ? (
+              <Notice tone="info" title="Awaiting your passkey">
+                Confirm the deposit with your passkey to authorise the Safe
+                transaction. The operation is built; nothing is sent until it is
+                signed.
+              </Notice>
+            ) : null}
+
+            {state.kind === 'submitting' ? (
+              <Notice tone="info" title="Submitting">
+                The signed operation is being submitted and its receipt confirmed.
+              </Notice>
+            ) : null}
+
+            {state.kind === 'failed' ? (
+              <Notice tone="error" title="Deposit failed">
+                The deposit stopped at the <strong>{state.stage}</strong> step:{' '}
+                {state.reason}
                 <div style={{ marginTop: '6px' }}>
-                  Nothing was signed or sent. The MetaMorpho vault, mainnet and
-                  the Safe WebAuthn signer deployment must be in place before a
-                  deposit can execute.
+                  {state.sent
+                    ? 'The operation reached the bundler but was not confirmed.'
+                    : 'Nothing was sent.'}
                 </div>
               </Notice>
             ) : null}
 
-            {state.kind === 'built' ? (
-              <Notice tone="info" title="Deposit built · not sent">
-                The deposit is prepared as {state.calls.length} calls and{' '}
-                <strong>nothing has been sent</strong>: execution is gated until
-                the vault, mainnet and signer deployment are approved.
+            {state.kind === 'sent' ? (
+              <Notice tone="success" title="Deposit submitted">
+                The deposit of {state.amountUsdc} USDC was submitted and its{' '}
+                receipt confirmed.
                 <dl style={{ margin: '10px 0 0', fontSize: '13px' }}>
-                  <Row label="MetaMorpho vault" value={state.vault} mono />
-                  <Row label="Amount" value={`${state.amountUsdc} USDC`} />
-                  {state.calls.map((call, index) => (
-                    <Row
-                      key={`${call.to}-${index}`}
-                      label={index === 0 ? 'Call 1 · approve' : 'Call 2 · deposit'}
-                      value={`${call.to} · ${call.selector}`}
-                      mono
-                    />
-                  ))}
+                  <Row
+                    label="Transaction"
+                    value={state.transactionHash ?? 'Not reported'}
+                    mono
+                  />
+                  <Row label="User operation" value={state.userOperationHash} mono />
                 </dl>
               </Notice>
             ) : null}

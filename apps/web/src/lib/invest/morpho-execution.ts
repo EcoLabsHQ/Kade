@@ -1,4 +1,4 @@
-import type { Address, Hex } from 'viem';
+import type { Address } from 'viem';
 import {
   buildMorphoVaultDepositCall,
   InvalidDepositAmountError,
@@ -7,61 +7,49 @@ import {
   type MorphoVaultDepositPlan,
 } from './morpho-deposit';
 import { readMorphoVaultConfig, type MorphoEnv } from './morpho-config';
-import { executeResidentSafeBatchFromEnv } from '../safe/execute-safe-4337-env';
-import type { PasskeySigner } from '../safe/passkey-signer';
-import type { SafeExecutionOutcome } from '../safe/execute-safe-4337';
 
 /**
- * The config-gated MetaMorpho vault deposit execution path (Week 2, D18 /
- * EXE-014).
+ * The config-gated MetaMorpho vault deposit build path (Week 2, D18 / EXE-014).
  *
  * D18 requires the deposit to be "fully functional end to end: build the call,
- * sign with the passkey (Safe WebAuthn signer), submit, and confirm". Three
- * project dependencies are **not supplied** (contract §5 and the freeze
- * checklist), so the execution boundary is gated and honest:
+ * sign with the passkey (Safe WebAuthn signer), submit, and confirm". This
+ * module owns the **build** half: it resolves the server-only vault
+ * configuration and builds the plan (`approve` + `deposit`, from
+ * `./morpho-deposit.ts`, which is unit-tested against the vault ABI).
+ *
+ * It never signs and never sends: there is no `writeContract`, no signing and no
+ * broadcast here, so no result can claim a deposit happened. The sign-and-submit
+ * half is the two-phase passkey flow in `@/app/invest/actions`
+ * (`beginDeposit` / `completeDeposit`), which retains the built operation
+ * server-side and takes only the browser's assertion.
+ *
+ * ## There is no signer gate
+ *
+ * The resident's passkey **is** the Safe owner and nothing needs deploying:
+ * Safe's SDK verifies the WebAuthn assertion itself and deploys a counterfactual
+ * Safe with its first user operation. The old `signer-not-deployed` gate
+ * belonged to the abandoned direct-signer path, where a signer contract had to
+ * exist before a signature could validate. It is gone; a signer is always
+ * available once the resident holds a credential, and this module no longer
+ * takes one.
+ *
+ * Two project dependencies remain unsupplied (contract §5 and the freeze
+ * checklist), so the build is still gated and honest:
  *
  *   1. the MetaMorpho vault address — no `KADE_MORPHO_VAULT_ADDRESS` value;
- *   2. Ethereum mainnet — no RPC, payer or treasury;
- *   3. the direct Safe WebAuthn signer — not deployed (`docs/known-gaps.md`,
- *      D-EXE-011), so a passkey signature cannot validate.
- *
- * This module therefore **builds** the plan (from `./morpho-deposit.ts`, which is
- * unit-tested against the vault ABI) and then **refuses to execute**, returning a
- * machine-checkable `gated: true` outcome naming the missing dependency. It has
- * no send path: there is no `writeContract`, no signing and no broadcast, so no
- * result can claim a deposit happened. That is the same shape front 01's signer
- * preparation uses for its closed Account gate.
- *
- * When the gate opens, the caller supplies a Safe execution callback
- * (`execute`) — the ERC-4337 / Safe transaction submission that signs with the
- * passkey. This module is where that callback would be invoked; wiring it is
- * deliberately left until the vault, mainnet and signer exist, so nothing here
- * pretends the half that cannot run is done.
- *
- * The seam is now connected: instead of the opaque `execute` callback, a caller
- * may supply `safeExecution`, the injected dependencies of the resident-Safe
- * engine (`../safe/execute`). The plan's `calls` are then handed to
- * `executeSafeTransaction`, which is itself fail-closed on the Onchain gate and
- * sends nothing unless it is given a signer and a submitter. A confirmed send is
- * a distinct `sent: true` variant; the plan is never reported as a deposit.
+ *   2. Ethereum mainnet — no RPC rail configured.
  */
 
-/** Why execution is refused. `vault`/`mainnet`/`signer` are the three gates. */
-export type VaultDepositGate =
-  | 'vault-not-configured'
-  | 'mainnet-not-configured'
-  | 'signer-not-deployed'
-  /** The resident-Safe engine refused: its own gate, signer or deps. */
-  | 'execution-blocked';
+/** Why the deposit cannot be built. */
+export type VaultDepositGate = 'vault-not-configured' | 'mainnet-not-configured';
 
 /**
- * The outcome of asking to execute a deposit.
+ * The outcome of asking to build a deposit.
  *
- * A `gated`/`ready-to-execute` result is unsent (`gated: true` means the plan was
- * built but nothing was sent; `ready-to-execute` carries the plan and, when the
- * engine was wired in, the engine's own unsent outcome). A `sent` result is a
- * confirmed on-chain deposit with a transaction hash. The two can never be
- * confused.
+ * `gated` means the environment refused, and nothing was built against a
+ * fabricated value. `ready-to-execute` carries the built plan; it is still
+ * unsent — the caller signs and submits it through the two-phase flow — so it
+ * is never a deposit.
  */
 export type MorphoVaultDepositResult =
   | {
@@ -76,42 +64,18 @@ export type MorphoVaultDepositResult =
       readonly status: 'ready-to-execute';
       readonly plan: MorphoVaultDepositPlan;
       readonly gated: true;
-      /** The engine's own outcome, when the engine was wired in. */
-      readonly execution?: SafeExecutionOutcome;
-    }
-  | {
-      /** A confirmed on-chain deposit. Only after a successful receipt. */
-      readonly status: 'sent';
-      readonly sent: true;
-      readonly plan: MorphoVaultDepositPlan;
-      readonly transactionHash: Hex | null;
-      readonly userOperationHash: Hex;
-      readonly gated: false;
-      readonly reason: string;
     };
 
-/** The gate-approved Safe execution callback, injected only post-gate. */
+/**
+ * The build-time inputs this module reads.
+ *
+ * There is deliberately no `execute` or `safeExecution` here: building is a pure
+ * server-side step with no provider and no signer, and the sign/submit path is
+ * the two-phase flow in the server actions rather than an injected callback.
+ */
 export interface MorphoVaultExecutionDependencies {
-  /**
-   * Submit the built calls as one Safe transaction, signed with the passkey.
-   *
-   * Supplied by a post-gate caller. Absent by default, which is what keeps this
-   * module from sending anything today.
-   */
-  readonly execute?: (
-    plan: MorphoVaultDepositPlan,
-  ) => Promise<{ readonly txHash: `0x${string}` }>;
-  /**
-   * The resident-Safe request: the Safe that executes the deposit and the
-   * WebAuthn signer that owns it. When supplied, the plan's exact calls go
-   * through Safe's ERC-4337 flow, sponsored by Pimlico.
-   */
-  readonly safeExecution?: {
-    readonly signer: PasskeySigner;
-    readonly safeAddress: `0x${string}` | null;
-  };
   readonly env?: MorphoEnv;
-  /** Whether the mainnet rail (RPC/payer) is configured. Defaults to `false`. */
+  /** Whether the mainnet rail (RPC) is configured. Defaults to `false`. */
   readonly mainnetConfigured?: boolean;
 }
 
@@ -126,20 +90,17 @@ function describe(error: unknown): string {
 }
 
 /**
- * Prepare, and only prepare, a MetaMorpho USDC deposit.
+ * Build, and only build, a MetaMorpho USDC deposit.
  *
  * Order, and why:
  *
  *   1. Resolve the vault config. Absent → `vault-not-configured`; nothing is
  *      built against a fabricated address.
  *   2. Check the mainnet rail. Absent → `mainnet-not-configured`.
- *   3. Check the Safe WebAuthn signer. Not deployed → `signer-not-deployed`. The
- *      passkey cannot authorise a Safe transaction without it, so a plan built
- *      here could never be signed.
- *   4. Build the plan. A malformed amount, a wrong chain or a bad Safe address is
- *      a failure, not a gate.
- *   5. Only when a gate-approved `execute` callback is present does this invoke
- *      it. Today it never is, so no result here can describe a sent transaction.
+ *   3. Build the plan. A malformed amount, a wrong chain or a bad Safe address is
+ *      a refusal, not a sent transaction.
+ *
+ * Nothing here signs or sends; the caller owns the passkey flow.
  */
 export async function prepareMorphoVaultDeposit(
   request: MorphoVaultDepositRequest,
@@ -170,19 +131,6 @@ export async function prepareMorphoVaultDeposit(
     };
   }
 
-  if (!deps.safeExecution) {
-    // No passkey signer is wired, so there is nothing that could authorise the
-    // Safe transaction. The plan is still built and returned for review.
-    return {
-      status: 'gated',
-      gate: 'signer-not-deployed',
-      reason:
-        'No passkey signer is available to authorise the Safe transaction. ' +
-        'Nothing was signed or sent.',
-      gated: true,
-    };
-  }
-
   let plan: MorphoVaultDepositPlan;
   try {
     plan = buildMorphoVaultDepositCall({
@@ -207,53 +155,5 @@ export async function prepareMorphoVaultDeposit(
     throw error;
   }
 
-  const execute = deps.execute;
-  if (execute) {
-    // A post-gate caller supplied the opaque callback. It owns the Safe
-    // submission; this module still reports only that the plan is ready.
-    await execute(plan);
-    return { status: 'ready-to-execute', plan, gated: true };
-  }
-
-  const safeExecution = deps.safeExecution;
-  if (!safeExecution) {
-    // Every gate is open and the plan is built, but no Safe is wired: this is
-    // the honest "ready, not sent" state. Nothing was broadcast.
-    return { status: 'ready-to-execute', plan, gated: true };
-  }
-
-  // Route the plan's exact calls through Safe's ERC-4337 flow. A `sent: true`
-  // means the user operation was submitted and its receipt confirmed.
-  const outcome = await executeResidentSafeBatchFromEnv({
-    ...safeExecution,
-    calls: plan.calls,
-    chainId: plan.chainId,
-  });
-
-  if (outcome.status === 'sent') {
-    return {
-      status: 'sent',
-      sent: true,
-      plan,
-      userOperationHash: outcome.userOperationHash,
-      transactionHash: outcome.transactionHash,
-      gated: false,
-      reason: 'The deposit was submitted and its receipt confirmed.',
-    };
-  }
-
-  if (outcome.status === 'ready') {
-    return { status: 'ready-to-execute', plan, gated: true, execution: outcome };
-  }
-
-  return {
-    status: 'gated',
-    gate: 'execution-blocked',
-    reason:
-      'reason' in outcome && typeof outcome.reason === 'string'
-        ? outcome.reason
-        : 'The resident-Safe execution could not proceed.',
-    plan,
-    gated: true,
-  };
+  return { status: 'ready-to-execute', plan, gated: true };
 }

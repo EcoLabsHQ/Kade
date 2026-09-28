@@ -1,0 +1,314 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Address, Hex } from 'viem';
+
+/**
+ * The Invest two-phase server actions (D18 / EXE-014).
+ *
+ * `beginDeposit` must resolve the signer from the **stored credential** (never
+ * from the caller), build the deposit through the existing plan builder, and
+ * return only `{ token, hash, credentialId }` — signing nothing. `completeDeposit`
+ * must resolve the same signer and Safe and return the engine's outcome
+ * verbatim: success only for a confirmed receipt, every refusal naming its
+ * stage. A resident with no session, no stored passkey or no recorded Safe is
+ * refused honestly.
+ *
+ * Every collaborator is mocked, so nothing touches the network, the database or
+ * a bundler.
+ */
+
+const hoisted = vi.hoisted(() => ({
+  getSessionUser: vi.fn(),
+  loadPasskeyCredential: vi.fn(),
+  parseP256PublicKey: vi.fn(),
+  toPasskeySigner: vi.fn(),
+  loadShellSafe: vi.fn(),
+  prepareMorphoVaultDeposit: vi.fn(),
+  buildResidentSafeBatchFromEnv: vi.fn(),
+  submitResidentSafeOperationFromEnv: vi.fn(),
+}));
+
+vi.mock('@/lib/supabase/server', () => ({
+  getSessionUser: hoisted.getSessionUser,
+}));
+vi.mock('@/app/account/passkey-actions', () => ({
+  loadPasskeyCredential: hoisted.loadPasskeyCredential,
+}));
+vi.mock('@/lib/passkey/public-key', () => ({
+  parseP256PublicKey: hoisted.parseP256PublicKey,
+}));
+vi.mock('@/lib/safe/passkey-signer', () => ({
+  toPasskeySigner: hoisted.toPasskeySigner,
+}));
+vi.mock('@/lib/safe/shell', () => ({
+  loadShellSafe: hoisted.loadShellSafe,
+}));
+vi.mock('@/lib/invest/morpho-execution', () => ({
+  prepareMorphoVaultDeposit: hoisted.prepareMorphoVaultDeposit,
+}));
+vi.mock('@/lib/safe/execute-safe-4337-env', () => ({
+  buildResidentSafeBatchFromEnv: hoisted.buildResidentSafeBatchFromEnv,
+  submitResidentSafeOperationFromEnv: hoisted.submitResidentSafeOperationFromEnv,
+}));
+
+import { beginDeposit, completeDeposit } from '@/app/invest/actions';
+
+const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address;
+const OTHER_SAFE = '0x9999999999999999999999999999999999999999';
+const VAULT = '0x1111222233334444555566667777888899990000' as Address;
+const SAFE_OP_HASH = `0x${'ab'.repeat(32)}` as Hex;
+const USER_OP_HASH = `0x${'fe'.repeat(32)}` as Hex;
+const TOKEN = 'tok-1';
+
+const SIGNER = {
+  rawId: 'abcdef',
+  coordinates: { x: '1', y: '2' },
+  verifierAddress: '0x4444444444444444444444444444444444444444',
+} as const;
+
+const CALLS = [
+  { to: '0xaaaa000000000000000000000000000000000001' as Address, value: 0n, data: '0xdead' as Hex },
+  { to: '0xaaaa000000000000000000000000000000000002' as Address, value: 0n, data: '0xbeef' as Hex },
+];
+
+const PLAN = {
+  chainId: 1,
+  vault: VAULT,
+  safeAddress: SAFE,
+  amountUsdc: '25000',
+  amountUnits: 25_000_000_000n,
+  approve: CALLS[0],
+  deposit: CALLS[1],
+  calls: CALLS,
+};
+
+const ASSERTION = {
+  authenticatorData: 'AQIDBA',
+  signature: 'MAYCAQECAQI',
+  clientDataJSON: 'e30',
+};
+
+function seedHappyPath(): void {
+  hoisted.getSessionUser.mockResolvedValue({
+    domain: 'application-session',
+    provider: 'email',
+    userId: 'user-1',
+    email: 'resident@example.com',
+  });
+  hoisted.loadPasskeyCredential.mockResolvedValue({
+    credentialId: 'Y3JlZA',
+    publicKey: 'pk-1',
+    signerAddress: null,
+    transports: ['internal'],
+    userVerification: true,
+    createdAt: '2026-01-02T03:04:05.000Z',
+    lastUsedAt: null,
+  });
+  hoisted.parseP256PublicKey.mockReturnValue({ x: 1n, y: 2n });
+  hoisted.toPasskeySigner.mockReturnValue(SIGNER);
+  hoisted.loadShellSafe.mockResolvedValue({
+    address: SAFE,
+    deployed: false,
+    explorerUrl: null,
+    status: 'predicted',
+  });
+  hoisted.prepareMorphoVaultDeposit.mockResolvedValue({
+    status: 'ready-to-execute',
+    plan: PLAN,
+    gated: true,
+  });
+  hoisted.buildResidentSafeBatchFromEnv.mockResolvedValue({
+    status: 'built',
+    sent: false,
+    token: TOKEN,
+    hash: SAFE_OP_HASH,
+  });
+  hoisted.submitResidentSafeOperationFromEnv.mockResolvedValue({
+    status: 'sent',
+    sent: true,
+    userOperationHash: USER_OP_HASH,
+    transactionHash: '0xfeed' as Hex,
+  });
+}
+
+const BEGIN_INPUT = {
+  safeAddress: SAFE,
+  amountUsdc: '25000',
+  vaultConfigured: true,
+  mainnetConfigured: true,
+} as const;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  seedHappyPath();
+});
+
+describe('beginDeposit', () => {
+  it('returns a token + hash + credentialId and signs nothing', async () => {
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result).toEqual({
+      status: 'ready',
+      token: TOKEN,
+      hash: SAFE_OP_HASH,
+      credentialId: SIGNER.rawId,
+    });
+
+    // The signer is built from the stored credential, with no `getFn`: the
+    // browser owns the assertion, which is the whole point of the split.
+    expect(hoisted.toPasskeySigner).toHaveBeenCalledTimes(1);
+    expect(hoisted.toPasskeySigner.mock.calls[0]).toHaveLength(1);
+
+    const buildInput = hoisted.buildResidentSafeBatchFromEnv.mock.calls[0]?.[0];
+    expect(buildInput).toEqual({
+      signer: SIGNER,
+      safeAddress: SAFE,
+      calls: CALLS,
+      chainId: 1,
+    });
+    // Building retains the operation; it never submits.
+    expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('refuses honestly when the resident has no stored passkey', async () => {
+    hoisted.loadPasskeyCredential.mockResolvedValue(null);
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('not-authenticated');
+      expect(result.reason).toMatch(/passkey/i);
+    }
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('refuses honestly when there is no session', async () => {
+    hoisted.getSessionUser.mockResolvedValue(null);
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') expect(result.gate).toBe('not-authenticated');
+  });
+
+  it('refuses honestly when no Safe is recorded for the account', async () => {
+    hoisted.loadShellSafe.mockResolvedValue({
+      address: null,
+      deployed: false,
+      explorerUrl: null,
+      status: null,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('not-authenticated');
+      expect(result.reason).toMatch(/safe/i);
+    }
+  });
+
+  it('refuses a Safe that is not the one recorded for the account', async () => {
+    const result = await beginDeposit({ ...BEGIN_INPUT, safeAddress: OTHER_SAFE });
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') expect(result.gate).toBe('safe-mismatch');
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('passes the vault/mainnet gates through without building', async () => {
+    hoisted.prepareMorphoVaultDeposit.mockResolvedValue({
+      status: 'gated',
+      gate: 'mainnet-not-configured',
+      reason: 'The Ethereum-mainnet rail is not configured (no RPC/payer).',
+      gated: true,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result).toEqual({
+      status: 'gated',
+      gate: 'mainnet-not-configured',
+      reason: 'The Ethereum-mainnet rail is not configured (no RPC/payer).',
+    });
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('maps an engine build failure to a gated outcome naming the stage', async () => {
+    hoisted.buildResidentSafeBatchFromEnv.mockResolvedValue({
+      status: 'failed',
+      sent: false,
+      stage: 'create',
+      reason: 'The Safe operation could not be built: boom',
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('build-create');
+      expect(result.reason).toBe('The Safe operation could not be built: boom');
+    }
+  });
+});
+
+describe('completeDeposit', () => {
+  it('submits the retained operation and reports a confirmed send', async () => {
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+
+    expect(result).toEqual({
+      status: 'sent',
+      sent: true,
+      userOperationHash: USER_OP_HASH,
+      transactionHash: '0xfeed',
+    });
+    expect(hoisted.submitResidentSafeOperationFromEnv).toHaveBeenCalledWith({
+      token: TOKEN,
+      assertion: ASSERTION,
+      signer: SIGNER,
+      safeAddress: SAFE,
+      chainId: 1,
+    });
+  });
+
+  it('returns an engine refusal verbatim, naming its stage', async () => {
+    hoisted.submitResidentSafeOperationFromEnv.mockResolvedValue({
+      status: 'failed',
+      sent: false,
+      stage: 'sign',
+      reason: 'The passkey attached no signature to the operation.',
+    });
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+
+    expect(result).toEqual({
+      status: 'failed',
+      sent: false,
+      stage: 'sign',
+      reason: 'The passkey attached no signature to the operation.',
+    });
+  });
+
+  it('refuses before the engine when there is no stored passkey', async () => {
+    hoisted.loadPasskeyCredential.mockResolvedValue(null);
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+
+    expect(result).toEqual({
+      status: 'failed',
+      sent: false,
+      stage: 'resolve',
+      reason: expect.stringMatching(/passkey/i),
+    });
+    expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('refuses before the engine when there is no session', async () => {
+    hoisted.getSessionUser.mockResolvedValue(null);
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+
+    expect(result).toMatchObject({ status: 'failed', sent: false, stage: 'resolve' });
+    expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+  });
+});

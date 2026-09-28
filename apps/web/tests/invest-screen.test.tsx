@@ -13,25 +13,37 @@ import type { InvestVaultSummary } from '@/app/invest/actions';
 /**
  * The Invest screen (D18 / EXE-014), laid out to match the deployed baseline.
  *
- * The server action is mocked so the screen is exercised against recorded server
- * outcomes, but the assertions are about what the screen must never do: it must
- * not claim a deposit happened, it must show the configured vault address as a
- * value (never a literal of its own), it must not quote a yield figure it has no
- * source for, and it must refuse to allocate until the vault, the Safe and a
- * valid amount are all present.
+ * The two server actions and the passkey prompt are mocked so the screen is
+ * exercised against recorded outcomes, but the assertions are about what the
+ * screen must never do: it must not claim a deposit happened unless the server
+ * confirmed it, it must show the configured vault address as a value (never a
+ * literal of its own), it must not quote a yield figure it has no source for,
+ * and it must refuse to allocate until the vault, the Safe and a valid amount
+ * are all present. It must also call the three phases in order and report a
+ * dismissed prompt truthfully.
  */
 
 const hoisted = vi.hoisted(() => ({
-  buildDeposit: vi.fn(),
+  beginDeposit: vi.fn(),
+  completeDeposit: vi.fn(),
+  promptPasskeyAssertionParts: vi.fn(),
 }));
 
 vi.mock('@/app/invest/actions', () => ({
-  buildDeposit: hoisted.buildDeposit,
+  beginDeposit: hoisted.beginDeposit,
+  completeDeposit: hoisted.completeDeposit,
+}));
+
+vi.mock('@/lib/passkey/assertion', () => ({
+  promptPasskeyAssertionParts: hoisted.promptPasskeyAssertionParts,
 }));
 
 const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const VAULT = '0x1111222233334444555566667777888899990000';
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+const HASH = `0x${'ab'.repeat(32)}`;
+const CREDENTIAL_ID = 'abcdef';
+const TOKEN = 'tok-1';
 
 const CONFIGURED_VAULT: InvestVaultSummary = {
   configured: true,
@@ -56,6 +68,19 @@ const REFERENCE_INSTRUMENTS = [
   'Morpho USDC vault',
   'LATAM EM Fund · Portfolio B',
 ];
+
+const READY = {
+  status: 'ready' as const,
+  token: TOKEN,
+  hash: HASH,
+  credentialId: CREDENTIAL_ID,
+};
+
+const ASSERTION = {
+  authenticatorData: 'AQIDBA',
+  signature: 'MAYCAQECAQI',
+  clientDataJSON: 'e30',
+};
 
 function renderScreen(overrides: {
   vault?: InvestVaultSummary;
@@ -83,16 +108,33 @@ function openDialog(name: string) {
   return screen.getByRole('dialog');
 }
 
+function confirmButton(dialog: HTMLElement) {
+  return within(dialog).getByRole('button', { name: /build the deposit/i });
+}
+
+async function clickAllocate(dialog: HTMLElement) {
+  fireEvent.click(confirmButton(dialog));
+  // Let the async handler reach its first await before asserting.
+  await waitFor(() => expect(hoisted.beginDeposit).toHaveBeenCalled());
+}
+
 afterEach(() => {
   cleanup();
-  hoisted.buildDeposit.mockReset();
+  vi.clearAllMocks();
 });
 
 beforeEach(() => {
-  hoisted.buildDeposit.mockResolvedValue({
+  hoisted.beginDeposit.mockResolvedValue({
     status: 'gated',
     gate: 'mainnet-not-configured',
     reason: 'The Ethereum-mainnet rail is not configured (no RPC/payer).',
+  });
+  hoisted.promptPasskeyAssertionParts.mockResolvedValue(ASSERTION);
+  hoisted.completeDeposit.mockResolvedValue({
+    status: 'sent',
+    sent: true,
+    userOperationHash: `0x${'fe'.repeat(32)}`,
+    transactionHash: '0xfeed',
   });
 });
 
@@ -142,107 +184,135 @@ describe('InvestScreen configuration', () => {
     const dialog = openDialog('Morpho USDC vault');
     expect(within(dialog).queryByText(VAULT)).toBeNull();
     expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
-    expect(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    ).toBeDisabled();
+    expect(confirmButton(dialog)).toBeDisabled();
   });
 
   it('locks Allocate when the resident has no Safe', () => {
     renderScreen({ safeAddress: null, safeDeployed: false });
     const dialog = openDialog('Morpho USDC vault');
-    expect(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    ).toBeDisabled();
+    expect(confirmButton(dialog)).toBeDisabled();
   });
 
   it('locks Allocate when the Safe is not deployed', () => {
     renderScreen({ safeDeployed: false });
     const dialog = openDialog('Morpho USDC vault');
-    expect(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    ).toBeDisabled();
+    expect(confirmButton(dialog)).toBeDisabled();
   });
 
   it('locks Allocate for a malformed or zero amount', () => {
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
     const input = within(dialog).getByLabelText(/amount to allocate/i);
-    const confirm = () =>
-      within(dialog).getByRole('button', { name: /build the deposit/i });
 
     for (const bad of ['0', '-5', 'abc', '1.1234567', '']) {
       fireEvent.change(input, { target: { value: bad } });
-      expect(confirm()).toBeDisabled();
+      expect(confirmButton(dialog)).toBeDisabled();
     }
   });
 
   it('enables Allocate when the vault, Safe and amount are all present', () => {
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
-    expect(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    ).toBeEnabled();
+    expect(confirmButton(dialog)).toBeEnabled();
   });
 });
 
-describe('InvestScreen building', () => {
-  it('asks the server to build the deposit with the resolved inputs', async () => {
+describe('InvestScreen allocate flow', () => {
+  it('runs begin → passkey → complete in order', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
     fireEvent.change(within(dialog).getByLabelText(/amount to allocate/i), {
       target: { value: '1500.5' },
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    );
 
-    await waitFor(() => expect(hoisted.buildDeposit).toHaveBeenCalledTimes(1));
-    expect(hoisted.buildDeposit).toHaveBeenCalledWith({
+    await clickAllocate(dialog);
+
+    await waitFor(() => expect(hoisted.completeDeposit).toHaveBeenCalledTimes(1));
+
+    expect(hoisted.beginDeposit).toHaveBeenCalledWith({
       safeAddress: SAFE,
       amountUsdc: '1500.5',
       vaultConfigured: true,
       mainnetConfigured: false,
     });
+    // The browser signs the server's hash with the stored credential, against
+    // this page's own host as the relying party.
+    expect(hoisted.promptPasskeyAssertionParts).toHaveBeenCalledWith({
+      credentialId: CREDENTIAL_ID,
+      challenge: HASH,
+      rpId: window.location.hostname,
+    });
+    // The client sends only the token and the three assertion parts.
+    expect(hoisted.completeDeposit).toHaveBeenCalledWith({
+      token: TOKEN,
+      assertion: ASSERTION,
+    });
   });
 
-  it('reports a gated outcome without claiming anything was sent', async () => {
+  it('reports a confirmed deposit only after the receipt', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    );
 
-    expect(await within(dialog).findByText(/deposit gated/i)).toBeInTheDocument();
+    await clickAllocate(dialog);
+
     expect(
-      within(dialog).getByText(/nothing was signed or sent/i),
+      await within(dialog).findByText(/deposit submitted/i),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/receipt confirmed/i),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText('0xfeed')).toBeInTheDocument();
   });
 
-  it('shows the built calls and states plainly that nothing was sent', async () => {
-    hoisted.buildDeposit.mockResolvedValue({
-      status: 'ready-to-execute',
-      callCount: 2,
-      calls: [
-        { to: USDC, selector: '0x095ea7b3' },
-        { to: VAULT, selector: '0x6e553f65' },
-      ],
-      vault: VAULT,
-      amountUsdc: '25000',
+  it('reports a gated build without prompting the passkey', async () => {
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault');
+
+    await clickAllocate(dialog);
+
+    expect(await within(dialog).findByText(/deposit gated/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/nothing was signed or sent/i)).toBeInTheDocument();
+    expect(hoisted.promptPasskeyAssertionParts).not.toHaveBeenCalled();
+    expect(hoisted.completeDeposit).not.toHaveBeenCalled();
+  });
+
+  it('reports a dismissed passkey prompt truthfully instead of returning to the form', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    hoisted.promptPasskeyAssertionParts.mockRejectedValue(
+      new Error('The passkey prompt returned no assertion.'),
+    );
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault');
+
+    await clickAllocate(dialog);
+
+    expect(await within(dialog).findByText(/deposit failed/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('passkey')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/no assertion/i),
+    ).toBeInTheDocument();
+    expect(hoisted.completeDeposit).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed submission with its stage and no false success', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    hoisted.completeDeposit.mockResolvedValue({
+      status: 'failed',
+      sent: false,
+      stage: 'sign',
+      reason: 'The passkey attached no signature to the operation.',
     });
     renderScreen();
     const dialog = openDialog('Morpho USDC vault');
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: /build the deposit/i }),
-    );
 
-    expect(
-      await within(dialog).findByText(/deposit built · not sent/i),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText(/nothing has been sent/i)).toBeInTheDocument();
-    // The vault address is shown both as the configured vault and on the plan.
-    expect(within(dialog).getAllByText(VAULT).length).toBeGreaterThan(0);
-    expect(within(dialog).getByText('Call 1 · approve')).toBeInTheDocument();
-    expect(within(dialog).getByText('Call 2 · deposit')).toBeInTheDocument();
+    await clickAllocate(dialog);
+
+    expect(await within(dialog).findByText(/deposit failed/i)).toBeInTheDocument();
+    expect(within(dialog).getByText('sign')).toBeInTheDocument();
+    expect(within(dialog).getByText(/nothing was sent/i)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/deposit submitted/i)).toBeNull();
   });
 
   it('puts Morpho first and disables the instruments with no execution path', () => {
