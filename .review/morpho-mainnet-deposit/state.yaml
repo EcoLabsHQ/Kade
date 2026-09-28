@@ -1,0 +1,31 @@
+iteration: morpho-mainnet-deposit
+profile: NORMAL
+known_good: fa8851c5043b783c73cb4af78968518384c47f3e
+candidate: 24d759b
+mode: recheck
+reviewed_scopes:
+  engine_two_phase: complete
+  invest_wiring: complete
+  env_config: complete
+  contract_amendment: complete
+active_findings: []
+resolved_findings: [F1, F2, F3, F4, F5]
+next_finding_id: F9
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+  F4: 1
+  F5: 1
+review_complete: true
+verdict: review_passed
+notes:
+  - "F1 RESOLVED: the Safe is SDK-derived on the DEPOSIT chain, verified equal to the record (safe-not-verified on mismatch, safe-not-resolved on derivation failure), and the predicted-vs-existing branch is chosen from protocolKit.isSafeDeployed() over the mainnet provider. No signed or sent artifact can target an unverified address."
+  - "F2 RESOLVED: beginDeposit takes no gate flags; the vault is resolved in prepareMorphoVaultDeposit and the rail by isMainnetRailConfigured(), both server-side."
+  - "F3 RESOLVED: the legacy one-call send path is gone repo-wide; the fail-closed no-signature and receipt-revert coverage moved onto the surviving submit path."
+  - "F4 RESOLVED: known-gaps.md:31 and morpho-deposit.ts match the code and do not overstate readiness."
+  - "F5 RESOLVED: the Deposit control no longer gates on the record's deployment state; the locked copy is true; the predicate moved to morpho-config.ts with its test."
+  - "WARN F6: docs/planning/week-2-todo-02-invest.md:71 still places isMainnetRailConfigured on page.tsx; it now lives in morpho-config.ts. Documentation placement only; introduced by 24d759b."
+  - "WARN F7: the client vault.configured hint can enable the control before the rail/sponsor is ready; the server refuses with its reason (honest, not silent)."
+  - "WARN F8: the retained-operation store is per-process/in-memory; documented; a miss is an honest lookup refusal and the resident rebuilds."
+  - "Benign: completeDeposit re-resolves the Safe branch after the build, so a deployment between phases yields an honest receipt-stage failure, never a misdirected deposit."
