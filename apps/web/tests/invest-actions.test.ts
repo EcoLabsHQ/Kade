@@ -22,6 +22,7 @@ const hoisted = vi.hoisted(() => ({
   parseP256PublicKey: vi.fn(),
   toPasskeySigner: vi.fn(),
   loadShellSafe: vi.fn(),
+  deriveAccountFromPasskey: vi.fn(),
   prepareMorphoVaultDeposit: vi.fn(),
   buildResidentSafeBatchFromEnv: vi.fn(),
   submitResidentSafeOperationFromEnv: vi.fn(),
@@ -41,6 +42,9 @@ vi.mock('@/lib/safe/passkey-signer', () => ({
 }));
 vi.mock('@/lib/safe/shell', () => ({
   loadShellSafe: hoisted.loadShellSafe,
+}));
+vi.mock('@/lib/safe/derive-account', () => ({
+  deriveAccountFromPasskey: hoisted.deriveAccountFromPasskey,
 }));
 vi.mock('@/lib/invest/morpho-execution', () => ({
   prepareMorphoVaultDeposit: hoisted.prepareMorphoVaultDeposit,
@@ -111,6 +115,11 @@ function seedHappyPath(): void {
     explorerUrl: null,
     status: 'predicted',
   });
+  hoisted.deriveAccountFromPasskey.mockResolvedValue({
+    safeAddress: SAFE,
+    deployed: false,
+    chainId: 1,
+  });
   hoisted.prepareMorphoVaultDeposit.mockResolvedValue({
     status: 'ready-to-execute',
     plan: PLAN,
@@ -133,8 +142,6 @@ function seedHappyPath(): void {
 const BEGIN_INPUT = {
   safeAddress: SAFE,
   amountUsdc: '25000',
-  vaultConfigured: true,
-  mainnetConfigured: true,
 } as const;
 
 beforeEach(() => {
@@ -161,12 +168,109 @@ describe('beginDeposit', () => {
     const buildInput = hoisted.buildResidentSafeBatchFromEnv.mock.calls[0]?.[0];
     expect(buildInput).toEqual({
       signer: SIGNER,
-      safeAddress: SAFE,
+      // Not deployed on the deposit chain, so the predicted branch is used; the
+      // calls themselves still target the verified SAFE address.
+      safeAddress: null,
       calls: CALLS,
+      chainId: 1,
+    });
+    // The deposit-chain state is read, not assumed from the record.
+    expect(hoisted.deriveAccountFromPasskey).toHaveBeenCalledWith(SIGNER, {
       chainId: 1,
     });
     // Building retains the operation; it never submits.
     expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('uses the predicted Safe when it is not deployed on the deposit chain', async () => {
+    hoisted.deriveAccountFromPasskey.mockResolvedValue({
+      safeAddress: SAFE,
+      deployed: false,
+      chainId: 1,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('ready');
+    const buildInput = hoisted.buildResidentSafeBatchFromEnv.mock.calls[0]?.[0];
+    // `safeAddress: null` selects the SDK's predicted branch (`owners`/
+    // `threshold`), so the first user operation deploys the Safe, sponsored.
+    expect(buildInput.safeAddress).toBeNull();
+    // The calls still target the verified recorded address, not the derived
+    // object's identity.
+    expect(buildInput.calls).toEqual(CALLS);
+  });
+
+  it('uses the existing Safe when it is deployed on the deposit chain', async () => {
+    hoisted.deriveAccountFromPasskey.mockResolvedValue({
+      safeAddress: SAFE,
+      deployed: true,
+      chainId: 1,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('ready');
+    const buildInput = hoisted.buildResidentSafeBatchFromEnv.mock.calls[0]?.[0];
+    expect(buildInput.safeAddress).toBe(SAFE);
+  });
+
+  it('refuses when the derived Safe is not the recorded one', async () => {
+    // Fail closed: the derived address is what the passkey controls on the
+    // deposit chain, and it must match the recorded target before anything is
+    // built. A mismatch means funds could go to an address that is not the
+    // resident's Safe, so the deposit stops here.
+    hoisted.deriveAccountFromPasskey.mockResolvedValue({
+      safeAddress: OTHER_SAFE,
+      deployed: false,
+      chainId: 1,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('safe-not-verified');
+      expect(result.reason).toMatch(/not the Safe recorded/i);
+    }
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('refuses honestly when the deposit-chain Safe cannot be resolved', async () => {
+    hoisted.deriveAccountFromPasskey.mockRejectedValue(
+      new Error('ETHEREUM_RPC_URL is not set, so the bundler cannot be reached.'),
+    );
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('safe-not-resolved');
+      expect(result.reason).toMatch(/ETHEREUM_RPC_URL/);
+    }
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('resolves the mainnet gate from the environment, not the caller', async () => {
+    const previous = process.env.ETHEREUM_RPC_URL;
+    try {
+      delete process.env.ETHEREUM_RPC_URL;
+      await beginDeposit(BEGIN_INPUT);
+      expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
+        { safeAddress: SAFE, amountUsdc: '25000' },
+        { mainnetConfigured: false },
+      );
+
+      process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+      await beginDeposit(BEGIN_INPUT);
+      expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
+        { safeAddress: SAFE, amountUsdc: '25000' },
+        { mainnetConfigured: true },
+      );
+    } finally {
+      if (previous === undefined) delete process.env.ETHEREUM_RPC_URL;
+      else process.env.ETHEREUM_RPC_URL = previous;
+    }
   });
 
   it('refuses honestly when the resident has no stored passkey', async () => {
@@ -266,9 +370,23 @@ describe('completeDeposit', () => {
       token: TOKEN,
       assertion: ASSERTION,
       signer: SIGNER,
-      safeAddress: SAFE,
+      // Not deployed on the deposit chain, so the predicted branch is used.
+      safeAddress: null,
       chainId: 1,
     });
+  });
+
+  it('refuses at the resolve stage when the deposit-chain Safe does not match', async () => {
+    hoisted.deriveAccountFromPasskey.mockResolvedValue({
+      safeAddress: OTHER_SAFE,
+      deployed: false,
+      chainId: 1,
+    });
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+
+    expect(result).toMatchObject({ status: 'failed', sent: false, stage: 'resolve' });
+    expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
   });
 
   it('returns an engine refusal verbatim, naming its stage', async () => {

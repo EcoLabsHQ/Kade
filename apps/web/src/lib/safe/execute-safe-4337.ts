@@ -25,9 +25,8 @@ import type { PasskeySigner } from './passkey-signer';
  * ## The passkey assertion is browser-only
  *
  * `navigator.credentials.get` exists only in the browser, while the Pimlico
- * API key is a server secret. `executeResidentSafeBatch` is therefore kept for
- * callers whose signer can produce the assertion in-process, but the resident
- * flow is split in two:
+ * API key is a server secret, so building and signing cannot happen in one
+ * server call. The resident flow is therefore split in two:
  *
  *   1. `buildResidentSafeBatch` — server, no signing. Initialises the pack,
  *      builds the operation and returns its SafeOp EIP-712 `hash` plus a
@@ -35,6 +34,10 @@ import type { PasskeySigner } from './passkey-signer';
  *   2. `submitResidentSafeOperation` — server, after the browser signs. Takes
  *      `{ token, assertion }`, re-checks the retained operation's hash and lets
  *      the SDK attach the client's assertion through the signer's `getFn`.
+ *
+ * There is no one-call send path: a signer that could produce the assertion
+ * in-process does not exist in this product (the passkey is browser-only), so
+ * the earlier one-call send seam was removed rather than kept production-dead.
  */
 
 /** One call in the batch, the shape the rest of the repo already produces. */
@@ -108,153 +111,6 @@ export interface SafeExecutionDependencies {
   /** The Safe to execute from, or `null` to deploy a fresh one on first use. */
   readonly safeAddress: Address | null;
   readonly chainId?: number;
-}
-
-export type SafeExecutionOutcome =
-  | { readonly status: 'not-configured'; readonly sent: false; readonly reason: string }
-  | { readonly status: 'ready'; readonly sent: false; readonly calls: readonly SafeCall[] }
-  | {
-      readonly status: 'failed';
-      readonly sent: boolean;
-      readonly stage: 'init' | 'create' | 'sign' | 'submit' | 'receipt';
-      readonly reason: string;
-      readonly userOperationHash?: Hex;
-    }
-  | {
-      readonly status: 'sent';
-      readonly sent: true;
-      readonly userOperationHash: Hex;
-      readonly transactionHash: Hex | null;
-    };
-
-/**
- * Execute a batch from the resident Safe, signed with the passkey and sponsored
- * by Pimlico.
- *
- * A `sent: true` appears only after the user-operation receipt confirms; every
- * other outcome is `sent: false`, so a prepared batch can never be mistaken for
- * an executed transaction.
- */
-export async function executeResidentSafeBatch(
-  calls: readonly SafeCall[],
-  deps: SafeExecutionDependencies,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<SafeExecutionOutcome> {
-  const chainId = deps.chainId ?? CHAIN_IDS.sepolia;
-
-  const pimlico = readPimlicoConfig(chainId, env);
-  if (pimlico === null) {
-    return {
-      status: 'not-configured',
-      sent: false,
-      reason: pimlicoNotConfiguredReason(),
-    };
-  }
-
-  if (calls.length === 0) {
-    return { status: 'ready', sent: false, calls };
-  }
-
-  let pack: Safe4337PackLike;
-  try {
-    pack = await deps.initPack({
-      chainId,
-      signer: deps.signer,
-      safeAddress: deps.safeAddress,
-      bundlerUrl: pimlicoUrl(pimlico),
-    });
-  } catch (cause) {
-    return {
-      status: 'failed',
-      sent: false,
-      stage: 'init',
-      reason: `Safe4337Pack could not be initialised: ${describe(cause)}`,
-    };
-  }
-
-  let safeOperation: unknown;
-  try {
-    safeOperation = await pack.createTransaction({
-      transactions: calls.map((call) => ({
-        to: call.to,
-        value: call.value.toString(),
-        data: call.data,
-      })),
-    });
-  } catch (cause) {
-    return {
-      status: 'failed',
-      sent: false,
-      stage: 'create',
-      reason: `The Safe operation could not be built: ${describe(cause)}`,
-    };
-  }
-
-  let signed: unknown;
-  try {
-    // The passkey assertion is produced here: Safe asks the signer for it.
-    signed = await pack.signSafeOperation(safeOperation);
-  } catch (cause) {
-    return {
-      status: 'failed',
-      sent: false,
-      stage: 'sign',
-      reason: `The passkey could not sign the operation: ${describe(cause)}`,
-    };
-  }
-
-  // The SDK submits whatever `encodedSignatures()` returns, and that is `"0x"`
-  // when the passkey attached nothing. Refuse here rather than broadcast an
-  // unsigned operation: no signature means no authorisation, so nothing is sent.
-  if (!hasSignature(signed)) {
-    return {
-      status: 'failed',
-      sent: false,
-      stage: 'sign',
-      reason:
-        'The passkey attached no signature to the operation, so it was not ' +
-        'submitted.',
-    };
-  }
-
-  let userOperationHash: Hex;
-  try {
-    userOperationHash = await pack.executeTransaction({ executable: signed });
-  } catch (cause) {
-    return {
-      status: 'failed',
-      sent: false,
-      stage: 'submit',
-      reason: `The user operation could not be submitted: ${describe(cause)}`,
-    };
-  }
-
-  try {
-    const receipt = await pack.getUserOperationReceipt(userOperationHash);
-    if (receipt?.receipt?.status !== 'success') {
-      return {
-        status: 'failed',
-        sent: true,
-        stage: 'receipt',
-        reason: 'The user operation reverted.',
-        userOperationHash,
-      };
-    }
-    return {
-      status: 'sent',
-      sent: true,
-      userOperationHash,
-      transactionHash: receipt.receipt.transactionHash ?? null,
-    };
-  } catch (cause) {
-    return {
-      status: 'failed',
-      sent: true,
-      stage: 'receipt',
-      reason: `The receipt could not be read: ${describe(cause)}`,
-      userOperationHash,
-    };
-  }
 }
 
 function describe(cause: unknown): string {

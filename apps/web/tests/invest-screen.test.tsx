@@ -233,8 +233,6 @@ describe('InvestScreen allocate flow', () => {
     expect(hoisted.beginDeposit).toHaveBeenCalledWith({
       safeAddress: SAFE,
       amountUsdc: '1500.5',
-      vaultConfigured: true,
-      mainnetConfigured: false,
     });
     // The browser signs the server's hash with the stored credential, against
     // this page's own host as the relying party.

@@ -2,7 +2,6 @@ import { CHAIN_IDS } from '@kade/shared';
 import type { Address } from 'viem';
 import {
   buildResidentSafeBatch,
-  executeResidentSafeBatch,
   PIMLICO_ENV_KEYS,
   pimlicoUrl,
   readPimlicoConfig,
@@ -12,7 +11,6 @@ import {
   type SafeBuildOutcome,
   type SafeCall,
   type SafeExecutionDependencies,
-  type SafeExecutionOutcome,
   type SafeSubmitOutcome,
 } from './execute-safe-4337';
 import type { PasskeySigner } from './passkey-signer';
@@ -95,8 +93,8 @@ function ownerAddressOf(signer: PasskeySigner): string {
  * `readPimlicoConfig` is the single source of truth and already yields the
  * policy id when the server keys are both set, so it is tried first. The env
  * read is the fallback for a caller that reaches `initSafe4337Pack` without
- * going through `executeResidentSafeBatch` (which is what enforces that both
- * keys are present). When neither yields a value, nothing is attached: the
+ * going through the build/submit phases (which are what enforce that both keys
+ * are present). When neither yields a value, nothing is attached: the
  * pre-existing unconfigured behaviour is unchanged, never weakened.
  */
 function sponsorshipPolicyOption(chainId: number): { sponsorshipPolicyId?: string } {
@@ -137,22 +135,6 @@ function rpcVariableFor(chainId: number): string {
           'RPC variable.',
       );
   }
-}
-
-/** The environment-wired entry point: the passkey signer and the batch. */
-export async function executeResidentSafeBatchFromEnv(input: {
-  readonly signer: PasskeySigner;
-  readonly safeAddress: Address | null;
-  readonly calls: readonly SafeCall[];
-  readonly chainId?: number;
-}): Promise<SafeExecutionOutcome> {
-  const deps: SafeExecutionDependencies = {
-    initPack: initSafe4337Pack,
-    signer: input.signer,
-    safeAddress: input.safeAddress,
-    chainId: input.chainId ?? CHAIN_IDS.sepolia,
-  };
-  return executeResidentSafeBatch(input.calls, deps);
 }
 
 /**

@@ -33,7 +33,13 @@ export interface InvestScreenProps {
   readonly safeAddress: string | null;
   /** Whether the Safe has been deployed on chain. */
   readonly safeDeployed: boolean;
-  /** Whether the mainnet rail (vault + RPC) is ready for execution. */
+  /**
+   * Whether the mainnet rail is configured, as resolved server-side by the page.
+   *
+   * The screen does not forward this to the server: `beginDeposit` resolves
+   * every gate itself, so a client cannot turn one off. It is retained so the
+   * route can keep passing it; the action ignores any caller-supplied gate.
+   */
   readonly mainnetConfigured: boolean;
 }
 
@@ -153,7 +159,6 @@ export function InvestScreen({
   vault,
   safeAddress,
   safeDeployed,
-  mainnetConfigured,
 }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
@@ -199,11 +204,11 @@ export function InvestScreen({
     setState({ kind: 'building' });
     let begin;
     try {
+      // Gate state is not sent: `beginDeposit` resolves the vault and the
+      // mainnet rail itself, so the caller cannot turn a gate off.
       begin = await beginDeposit({
         safeAddress,
         amountUsdc,
-        vaultConfigured: vault.configured,
-        mainnetConfigured,
       });
     } catch (cause) {
       setState({ kind: 'failed', stage: 'build', reason: describeError(cause), sent: false });

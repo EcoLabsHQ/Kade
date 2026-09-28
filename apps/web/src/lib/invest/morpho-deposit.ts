@@ -27,11 +27,15 @@ import type { MorphoVaultConfig } from './morpho-config';
  * Because `deposit` is assets-denominated (ERC-4626), exactly `amount` of USDC
  * is taken, so a deposit cannot move less than the resident approved.
  *
- * This module **builds** the calls and never sends them. There is no
- * `writeContract`, no signing and no broadcast here: the Week 2 Onchain gate is
- * not approved, the vault address and mainnet are not supplied, and the Safe
- * WebAuthn signer is not deployed (D-EXE-011). Execution is config-gated and
- * lives behind `./morpho-execution.ts`, which refuses until those land.
+ * This module **builds** the calls and never sends them: there is no
+ * `writeContract`, no signing and no broadcast here. Execution is the two-phase
+ * passkey flow in `@/app/invest/actions` (`beginDeposit` / `completeDeposit`),
+ * which is config-gated on the MetaMorpho vault (`KADE_MORPHO_VAULT_ADDRESS` /
+ * `KADE_MORPHO_USDC_ADDRESS`) and the mainnet rail (`ETHEREUM_RPC_URL`), and
+ * initialises the resident Safe on **mainnet** — the existing Safe when deployed
+ * there, otherwise the predicted one its first user operation deploys. The Week
+ * 2 Onchain gate is relaxed for the testing phase (contract v1.9). The live
+ * end-to-end send has not yet been exercised.
  *
  * The amount is supplied by the caller as a whole-USDC decimal string (the server
  * resolves it from vault USDC) and converted here with USDC's 6 decimals.

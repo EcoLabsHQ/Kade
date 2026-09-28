@@ -334,6 +334,37 @@ describe('submitResidentSafeOperation', () => {
     expect(fake.executeTransaction).not.toHaveBeenCalled();
   });
 
+  it('refuses a signed operation that exposes no encoded signature at all', async () => {
+    // A signed value without `encodedSignatures()` cannot prove authorisation,
+    // so the guard stays fail-closed rather than assuming the operation is fine.
+    const fake = fakePack({ signResult: () => ({ signed: true }) });
+    const { token } = await build(fake);
+
+    const outcome = await submitResidentSafeOperation({ token, assertion: ASSERTION }, fake.deps, ENV);
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') return;
+    expect(outcome.stage).toBe('sign');
+    expect(outcome.sent).toBe(false);
+    expect(fake.executeTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does not report sent when the receipt reverted', async () => {
+    const fake = fakePack();
+    fake.getUserOperationReceipt.mockResolvedValueOnce({
+      receipt: { status: 'reverted' },
+    });
+    const { token } = await build(fake);
+
+    const outcome = await submitResidentSafeOperation({ token, assertion: ASSERTION }, fake.deps, ENV);
+
+    expect(outcome.status).toBe('failed');
+    // It was submitted, so `sent` is true — but the status is a failure, never
+    // a success. The two are separate on purpose.
+    expect(outcome.sent).toBe(true);
+    if (outcome.status === 'failed') expect(outcome.stage).toBe('receipt');
+  });
+
   it('reports a signing failure without claiming anything was sent', async () => {
     const fake = fakePack();
     fake.signSafeOperation.mockRejectedValueOnce(new Error('user rejected the passkey prompt'));

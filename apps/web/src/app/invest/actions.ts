@@ -6,6 +6,10 @@ import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { parseP256PublicKey } from '@/lib/passkey/public-key';
 import { toPasskeySigner, type PasskeySigner } from '@/lib/safe/passkey-signer';
 import { loadShellSafe } from '@/lib/safe/shell';
+import {
+  deriveAccountFromPasskey,
+  type DerivedAccount,
+} from '@/lib/safe/derive-account';
 import { prepareMorphoVaultDeposit } from '@/lib/invest/morpho-execution';
 import { morphoChainId } from '@/lib/invest/morpho-config';
 import {
@@ -164,18 +168,86 @@ async function resolveDepositContext(): Promise<DepositContext> {
 }
 
 /**
+ * The Safe's state on the **deposit chain**, verified against the record.
+ *
+ * The recorded Safe is Sepolia-scoped (`deployment_chain_id = 11155111`), but
+ * the deposit executes on Ethereum mainnet. Safe's contracts live at the same
+ * addresses on every chain and the address was derived from the passkey, so the
+ * same address is expected on mainnet — counterfactual there until its first
+ * user operation deploys it. This re-derives the account on the deposit chain
+ * rather than assuming the record's deployment state, because initialising a
+ * pack for an address with no code on that chain makes the SDK read
+ * `getModules()`/`getFallbackHandler()` from nothing and fail.
+ *
+ * It is deliberately fail-closed: the derived address must equal the address
+ * the calls target (the recorded one) before anything is built or signed.
+ */
+type DepositSafe =
+  | {
+      readonly ok: true;
+      /**
+       * What `Safe4337Pack.init` is given: the verified existing address when
+       * the Safe is deployed on the deposit chain, or `null` so its first
+       * sponsored user operation deploys the predicted Safe. Either way the
+       * calls target the verified, recorded address.
+       */
+      readonly packSafeAddress: Address | null;
+    }
+  | { readonly ok: false; readonly gate: string; readonly reason: string };
+
+async function resolveDepositSafe(
+  signer: PasskeySigner,
+  recorded: Address,
+  chainId: number,
+): Promise<DepositSafe> {
+  let derived: DerivedAccount;
+  try {
+    // Reads only: the address (counterfactual or deployed) and whether it is
+    // deployed on the deposit chain. Nothing is deployed here.
+    derived = await deriveAccountFromPasskey(signer, { chainId });
+  } catch (cause) {
+    return {
+      ok: false,
+      gate: 'safe-not-resolved',
+      reason:
+        'The Safe could not be resolved on the deposit chain, so nothing was ' +
+        `built or sent (${cause instanceof Error ? cause.message : String(cause)}).`,
+    };
+  }
+
+  // Never target an address that this passkey did not derive: a mismatch means
+  // funds would go to an address that is not verified to be the resident's Safe.
+  if (derived.safeAddress.toLowerCase() !== recorded.toLowerCase()) {
+    return {
+      ok: false,
+      gate: 'safe-not-verified',
+      reason:
+        'The Safe derived from this account on the deposit chain is not the ' +
+        'Safe recorded for it, so nothing was built or sent.',
+    };
+  }
+
+  return {
+    ok: true,
+    // Deployed on the deposit chain → use the existing Safe. Otherwise use the
+    // predicted branch (`owners`/`threshold` unchanged), so the first user
+    // operation deploys it, sponsored.
+    packSafeAddress: derived.deployed ? derived.safeAddress : null,
+  };
+}
+
+/**
  * Phase 1 — build the deposit and return the hash the passkey must sign.
  *
  * This **signs nothing**: it builds the plan and the user operation, retains the
  * operation server-side and returns `{ token, hash, credentialId }`. Gate state
- * is passed in by the page (which resolves the vault and the environment);
- * everything the resident could not be trusted to name is resolved here.
+ * is resolved here, server-side, from the environment and the resident's own
+ * state; no gate flag is taken from the caller, so a client cannot turn a gate
+ * off.
  */
 export async function beginDeposit(input: {
   readonly safeAddress: string;
   readonly amountUsdc: string;
-  readonly vaultConfigured: boolean;
-  readonly mainnetConfigured: boolean;
 }): Promise<BuildDepositResult> {
   const context = await resolveDepositContext();
   if (!context.ok) {
@@ -195,9 +267,13 @@ export async function beginDeposit(input: {
     };
   }
 
+  // Gate state is resolved here, server-side. `prepareMorphoVaultDeposit`
+  // resolves the vault configuration from the environment; the mainnet rail is
+  // the reserved `ETHEREUM_RPC_URL`, read here. No gate flag is taken from the
+  // caller, so a client cannot turn a gate off.
   const result = await prepareMorphoVaultDeposit(
     { safeAddress: context.safeAddress, amountUsdc: input.amountUsdc },
-    { mainnetConfigured: input.mainnetConfigured },
+    { mainnetConfigured: Boolean(process.env.ETHEREUM_RPC_URL?.trim()) },
   );
 
   if (result.status === 'gated') {
@@ -205,9 +281,24 @@ export async function beginDeposit(input: {
   }
 
   const plan = result.plan;
+
+  // The deposit executes on the plan's chain (Ethereum mainnet). The Safe's
+  // state *there* is read and verified, not assumed from the Sepolia-scoped
+  // record; the plan's calls already target the verified address.
+  const safe = await resolveDepositSafe(
+    context.signer,
+    context.safeAddress,
+    plan.chainId,
+  );
+  if (!safe.ok) {
+    return { status: 'gated', gate: safe.gate, reason: safe.reason };
+  }
+
   const built = await buildResidentSafeBatchFromEnv({
     signer: context.signer,
-    safeAddress: context.safeAddress,
+    // Existing Safe when it exists on the deposit chain; `null` otherwise so
+    // the first sponsored user operation deploys the predicted Safe.
+    safeAddress: safe.packSafeAddress,
     calls: plan.calls,
     // The vault's own chain (mainnet), not a value the client supplied.
     chainId: plan.chainId,
@@ -260,11 +351,21 @@ export async function completeDeposit(input: {
     return { status: 'failed', sent: false, stage: 'resolve', reason: context.reason };
   }
 
+  const chainId = morphoChainId();
+
+  // Re-resolve the deposit-chain Safe exactly as the build phase did, so the
+  // submit pack is initialised for the right branch (existing vs predicted) and
+  // the address is verified again before anything is signed or submitted.
+  const safe = await resolveDepositSafe(context.signer, context.safeAddress, chainId);
+  if (!safe.ok) {
+    return { status: 'failed', sent: false, stage: 'resolve', reason: safe.reason };
+  }
+
   return submitResidentSafeOperationFromEnv({
     token: input.token,
     assertion: input.assertion,
     signer: context.signer,
-    safeAddress: context.safeAddress,
-    chainId: morphoChainId(),
+    safeAddress: safe.packSafeAddress,
+    chainId,
   });
 }
