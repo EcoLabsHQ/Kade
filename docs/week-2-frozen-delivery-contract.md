@@ -699,6 +699,49 @@ Affected clauses:
 | §7, checkpoint 3 | no irreversible on-chain write before Onchain approval | relaxed for the Invest Morpho path during testing |
 | §4.3, D18 / EXE-014 | Morpho call path approved before irreversible writes | the Mainnet deposit may be broadcast during testing without that approval |
 
+**v1.10 — 28 September 2026. Approved by the project owner.**
+
+The **Onchain gate relaxation of v1.9 is widened** from the Invest call path
+alone to the **Holdings "Move to vault" path**, which moves a resident's own
+holding from their connected wallet into their own Safe. The owner directed that
+Holdings may send funds on **any network** the holding sits on, not on Ethereum
+mainnet only.
+
+Scope of the widening:
+
+- the wallet-signed EOA → Safe transfer in Holdings, and only that path in
+  addition to the Invest path v1.9 already covered;
+- **any chain** the app reads and can display a holding for. The wallet's
+  supported-network list is the same set, so a holding that is shown is always
+  movable: a chain added to the balance reads is added to the wallet networks in
+  the same change;
+- the write is the resident's own: they sign it in their own wallet, from their
+  own address, and they pay its gas. Kade never holds the key and cannot send it.
+
+What this does **not** change:
+
+- **fail-closed behaviour.** A chain that is not supported, a wallet that is not
+  the holding's wallet, an invalid amount or an unreadable balance still refuse,
+  and no path fabricates a success;
+- **honest reporting.** Success is still shown only for a confirmed receipt, and
+  a refusal still names what stopped it — including a rejected network switch;
+- the Account and Foundation gates, the EAS issuance gate (§4.2 D16), and the
+  KadeLock enforcement boundary;
+- the chain model: vaults on **mainnet**; the pre-approval fee stays on Sepolia.
+
+Rationale, for the record: the owner asked that no listed holding be locked and
+that Holdings be able to move funds on any chain. v1.9 had scoped its relaxation
+to Invest because that was the path being built; this records the wider intent
+rather than leaving the Holdings path covered only by implication. It is
+expected to be withdrawn before the Acceptance gate.
+
+Affected clauses:
+
+| Clause | Before (v1.9) | After (v1.10) |
+|---|---|---|
+| §7, checkpoint 3 | relaxed for the Invest Morpho path | also relaxed for the Holdings EOA → Safe transfer, on any chain |
+| §4.3 | the Mainnet deposit may be broadcast during testing | the Holdings transfer may be sent on any supported chain during testing |
+
 ## 9. Explicit Week 2 development exclusions
 
 Unless introduced through change control, Week 2 excludes:
