@@ -171,6 +171,68 @@ describe('VerifyWalletsModal', () => {
     expect(screen.queryByText('$0')).toBeNull();
   });
 
+  it('names a whole-chain failure instead of leaving only a dash', async () => {
+    const message =
+      'Ethereum (chain 1): the balance provider did not respond in time. The endpoint may be overloaded.';
+    renderModal({
+      wallets: [
+        {
+          ...wallet(CONNECTED, 'connected-wallet'),
+          // The whole chain failed: the reason lives on `failures` (the
+          // holdings aggregate leaves `readError` null unless the read threw).
+          chainIds: [1],
+          chains: [],
+          usd: null,
+          readError: null,
+          failures: [
+            {
+              chainId: 1,
+              chainName: 'Ethereum',
+              reason: 'timeout',
+              message,
+            },
+          ],
+        },
+      ],
+    });
+    await openModal();
+
+    // The specific reason is named rather than the resident seeing a dead dash.
+    expect(screen.getByText(/did not respond in time/)).toBeInTheDocument();
+    // The value stays the honest dash, never a fabricated zero.
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('$0')).toBeNull();
+  });
+
+  it('leaves a successful wallet unchanged and shows no reason', async () => {
+    renderModal({
+      wallets: [
+        {
+          ...wallet(CONNECTED, 'connected-wallet'),
+          chainIds: [1],
+          chains: [
+            {
+              chainId: 1,
+              name: 'Ethereum',
+              nativeSymbol: 'ETH',
+              nativeAmount: '1.000000',
+              nativeUsd: 2000,
+              usdc: null,
+              usd: 2000,
+            },
+          ],
+          usd: 2000,
+          readError: null,
+        },
+      ],
+    });
+    await openModal();
+
+    expect(screen.getByText('$2,000')).toBeInTheDocument();
+    expect(screen.queryByText(/USDC —/)).toBeNull();
+    expect(screen.queryByText(/did not respond|rate limiting/)).toBeNull();
+  });
+
   it('persists an address that is not listed yet, then signs it', async () => {
     const newAddress = '0x9E4b00000000000000000000000000000000c113';
     hoisted.connections = [

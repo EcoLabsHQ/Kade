@@ -6,8 +6,8 @@ import { useConnections, useSignMessage } from 'wagmi';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { UnverifiedHoldingWallet } from '@/lib/wealth/holdings';
-import type { EvmReadFailure } from '@/lib/wealth/types';
 import { shortAddress } from '@/lib/wealth/format';
+import { readFailureNotes } from '@/components/wallet/read-failure';
 import { type WalletConnection } from './connected-addresses';
 import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
 import { useConnectPersistSign } from '@/components/wallet/useConnectPersistSign';
@@ -193,17 +193,27 @@ function LockedBody() {
 }
 
 /**
- * The specific reasons this wallet's USDC sub-read failed, one per chain, so the
- * row can name *why* the token amount is unread instead of leaving the
- * native-only total as if nothing were missing. A successful read, and a chain
- * that was never read for USDC, contribute nothing; no zero is fabricated.
+ * The specific reasons this wallet's read is incomplete, through the shared
+ * `readFailureNotes` helper so the modal and the onboarding step name them the
+ * same way: a chain whose USDC sub-read failed is `USDC — <reason>`, and a chain
+ * that failed entirely keeps its own reason.
+ *
+ * The helper reads whole-chain reasons from a record's `readError`; this
+ * aggregate carries them on `failures` instead (its `readError` is only set when
+ * the read threw), so they are folded into the helper's input here rather than
+ * re-rendered a second way. A successful read contributes nothing and no zero is
+ * fabricated.
  */
-function tokenFailuresOf(
-  wallet: UnverifiedHoldingWallet,
-): readonly EvmReadFailure[] {
-  return wallet.chains.flatMap((chain) =>
-    chain.tokenFailure ? [chain.tokenFailure] : [],
-  );
+function failureNotesOf(wallet: UnverifiedHoldingWallet): readonly string[] {
+  const readErrorParts: string[] = [];
+  if (wallet.readError) readErrorParts.push(wallet.readError);
+  for (const failure of wallet.failures ?? []) {
+    readErrorParts.push(failure.message);
+  }
+  return readFailureNotes({
+    chains: wallet.chains,
+    readError: readErrorParts.join(' '),
+  });
 }
 
 function ConfiguredBody({
@@ -283,7 +293,7 @@ function ConfiguredBody({
       {remaining.length > 0 ? (
         <ul style={list}>
           {remaining.map((wallet) => {
-            const tokenFailures = tokenFailuresOf(wallet);
+            const failureNotes = failureNotesOf(wallet);
             return (
               <li key={wallet.address} style={row}>
                 <div style={{ minWidth: 0 }}>
@@ -299,11 +309,9 @@ function ConfiguredBody({
                       {wallet.chainIds.join(', ')}
                     </span>
                   </div>
-                  {tokenFailures.length > 0 ? (
-                    <div style={rowTokenNote}>
-                      {tokenFailures
-                        .map((failure) => `USDC — ${failure.message}`)
-                        .join(' ')}
+                  {failureNotes.length > 0 ? (
+                    <div style={rowFailureNote}>
+                      {failureNotes.join(' ')}
                     </div>
                   ) : null}
                 </div>
@@ -455,8 +463,11 @@ const rowProvenance: React.CSSProperties = {
   color: tokens.muted,
 };
 
-/** The specific reason a row's USDC sub-read is unread, never a silent gap. */
-const rowTokenNote: React.CSSProperties = {
+/**
+ * The specific reason a row's read is incomplete — a failed USDC sub-read or a
+ * chain that failed entirely — never a silent gap.
+ */
+const rowFailureNote: React.CSSProperties = {
   marginTop: '4px',
   fontSize: '11.5px',
   color: tokens.danger,
