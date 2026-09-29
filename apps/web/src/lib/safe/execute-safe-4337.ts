@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, createPublicKey, createVerify, randomBytes } from 'node:crypto';
 import { CHAIN_IDS } from '@kade/shared';
 import type { Address, Hex } from 'viem';
 import type { PasskeySigner } from './passkey-signer';
@@ -902,6 +902,16 @@ export async function submitResidentSafeOperation(
   try {
     userOperationHash = await pack.executeTransaction({ executable: signed });
   } catch (cause) {
+    // The app's gate above proves the retained operation still hashes to the
+    // value the passkey signed, but neither gate can see the operation the
+    // EntryPoint validated: the bundler may change a hashed field after this
+    // point (for example re-issuing `paymasterData`), and the failure that
+    // results is only visible as `AA24`. Capture a secret-free snapshot of the
+    // signed hash, the challenge the assertion actually signed, whether the
+    // assertion verifies over that hash, and the exact operation fields the SDK
+    // hands the bundler, so the next rejection can be settled by comparison
+    // rather than inferred. This never changes the outcome.
+    logSubmitIntegrity(retained.hash, signed, input.assertion, deps.signer.coordinates, cause);
     return {
       status: 'failed',
       sent: false,
@@ -972,4 +982,222 @@ function hasSignature(signed: unknown): boolean {
   if (typeof encoded !== 'function') return false;
   const value = (encoded as () => unknown).call(signed);
   return typeof value === 'string' && value.startsWith('0x') && value.length > 2;
+}
+
+/**
+ * ## The submit integrity gate cannot see past the bundler
+ *
+ * `submitResidentSafeOperation` proves, before sending, that the retained
+ * operation still hashes to the value the passkey signed
+ * (`operationHash(retained.operation) === retained.hash`). That gate is
+ * necessary but not sufficient: it compares the app's view with the app's view.
+ * The EntryPoint validates the operation **as the bundler submits it**, and a
+ * bundler is free to touch fields after `eth_sendUserOperation` is called — in
+ * particular, a sponsored operation's `paymasterData` is a hashed field that a
+ * bundler can re-issue. When it does, only the account's signature covers the
+ * old value, and the only signal is `AA24 signature error`.
+ *
+ * The three facts below are enough to settle that question on the next live
+ * attempt, all recovered server-side from data that already crosses the wire:
+ *
+ *   1. `signedHash` — the app's `getHash()` at submit, i.e. the SafeOp EIP-712
+ *      hash the passkey was asked to sign.
+ *   2. `assertionChallenge` — the value the assertion's own `clientDataJSON`
+ *      carries. A WebAuthn assertion signs its challenge, and the Safe passkey
+ *      verifier checks that challenge is `base64url(getHash())`, so this is the
+ *      value the passkey actually signed. It is compared with (1).
+ *   3. `assertionSignatureValid` — an independent local P-256 verification of
+ *      the assertion's raw signature over
+ *      `authenticatorData || sha256(clientDataJSON)`, against the stored
+ *      credential's public key. It distinguishes "the passkey signed the right
+ *      hash, so the mismatch was introduced after signing" from "the assertion
+ *      itself is invalid".
+ *
+ * The diagnostic also carries the operation fields the SDK serialises for the
+ * bundler (minus the signature bytes). Everything here is either public
+ * on-chain data or derived from it; no key, secret or credential material is
+ * included, and nothing here alters the submission or its fail-closed outcome.
+ */
+
+/** The WebAuthn challenge a client assertion actually signed, or `null`. */
+export function recoverAssertionChallenge(
+  assertion: SafeAssertionParts,
+): string | null {
+  let decoded: string;
+  try {
+    decoded = new TextDecoder().decode(base64urlToBytes(assertion.clientDataJSON));
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(decoded) as { challenge?: unknown };
+    return typeof parsed.challenge === 'string' ? parsed.challenge : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `base64url` (no padding) of a 32-byte hash — the WebAuthn challenge form. */
+export function operationHashToChallenge(hash: Hex): string {
+  return bytesToBase64url(hexToBytes(hash));
+}
+
+/** bytes → base64url with no padding. */
+function bytesToBase64url(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** `0x`-hex → bytes. */
+function hexToBytes(value: Hex): Uint8Array {
+  const hex = value.startsWith('0x') ? value.slice(2) : value;
+  return new Uint8Array(Buffer.from(hex, 'hex'));
+}
+
+/** A decimal or `0x`-hex P-256 coordinate as the 32-byte base64url JWK form. */
+function coordinateToJwk(value: string): string | null {
+  try {
+    const n = BigInt(value.startsWith('0x') ? value : value.trim());
+    if (n < 0n || n >= 1n << 256n) return null;
+    return bytesToBase64url(hexToBytes(`0x${n.toString(16).padStart(64, '0')}` as Hex));
+  } catch {
+    return null;
+  }
+}
+
+/** The result of comparing a client assertion with the operation it must cover. */
+export interface AssertionIntegrityCheck {
+  /** `base64url(operationHash)` — the challenge the verifier demands. */
+  readonly expectedChallenge: string;
+  /** The challenge the assertion actually carries, or `null` if unreadable. */
+  readonly assertionChallenge: string | null;
+  readonly challengeMatches: boolean;
+  /**
+   * Whether the assertion's raw P-256 signature verifies against the stored
+   * credential over `authenticatorData || sha256(clientDataJSON)`. `null` means
+   * it could not be attempted (e.g. an unreadable coordinate).
+   */
+  readonly signatureValid: boolean | null;
+}
+
+/**
+ * Compare a client assertion with the operation hash it must authorise.
+ *
+ * `true` for `challengeMatches` **and** `signatureValid` means the passkey's
+ * assertion is a valid authorisation of exactly `operationHash`; an `AA24` that
+ * follows then cannot come from the signature or its message, only from the
+ * operation the EntryPoint validated differing from this one.
+ */
+export function checkAssertionAgainstOperation(
+  assertion: SafeAssertionParts,
+  operationHash: Hex,
+  coordinates: { readonly x: string; readonly y: string },
+): AssertionIntegrityCheck {
+  const expectedChallenge = operationHashToChallenge(operationHash);
+  const assertionChallenge = recoverAssertionChallenge(assertion);
+  const challengeMatches = assertionChallenge === expectedChallenge;
+
+  let signatureValid: boolean | null = null;
+  try {
+    const x = coordinateToJwk(coordinates.x);
+    const y = coordinateToJwk(coordinates.y);
+    if (x !== null && y !== null) {
+      const key = createPublicKey({
+        key: { kty: 'EC', crv: 'P-256', x, y },
+        format: 'jwk',
+      });
+      const clientDataJSON = base64urlToBytes(assertion.clientDataJSON);
+      const clientHash = createHash('sha256').update(clientDataJSON).digest();
+      const signed = Buffer.concat([
+        Buffer.from(base64urlToBytes(assertion.authenticatorData)),
+        clientHash,
+      ]);
+      const signature = base64urlToBytes(assertion.signature);
+      signatureValid = createVerify('SHA256')
+        .update(signed)
+        .verify({ key, dsaEncoding: 'der' }, signature);
+    }
+  } catch {
+    signatureValid = null;
+  }
+
+  return { expectedChallenge, assertionChallenge, challengeMatches, signatureValid };
+}
+
+/** The operation the SDK serialises for the bundler, without signature bytes. */
+function operationForDiagnostics(signed: unknown): Record<string, unknown> | null {
+  if (typeof signed !== 'object' || signed === null) return null;
+  const getUserOperation = (signed as { getUserOperation?: unknown }).getUserOperation;
+  if (typeof getUserOperation !== 'function') return null;
+  let operation: unknown;
+  try {
+    operation = (getUserOperation as () => unknown).call(signed);
+  } catch {
+    return null;
+  }
+  if (typeof operation !== 'object' || operation === null) return null;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(operation as Record<string, unknown>)) {
+    if (key === 'signature') {
+      // The signature is not a hashed field and is not logged; only its size is
+      // recorded so an empty/missing signature stays visible.
+      out.signatureLength = typeof value === 'string' ? value.length : null;
+      continue;
+    }
+    out[key] = typeof value === 'bigint' ? `0x${value.toString(16)}` : (value ?? null);
+  }
+  return out;
+}
+
+/** The complete secret-free integrity snapshot logged when submit is rejected. */
+export interface SubmitIntegrityDiagnostic extends AssertionIntegrityCheck {
+  readonly signedHash: Hex;
+  readonly operation: Record<string, unknown> | null;
+}
+
+/** Build the snapshot {@link logSubmitIntegrity} writes. */
+export function describeSubmitIntegrity(
+  operationHash: Hex,
+  signed: unknown,
+  assertion: SafeAssertionParts,
+  coordinates: { readonly x: string; readonly y: string },
+): SubmitIntegrityDiagnostic {
+  return {
+    signedHash: operationHash,
+    ...checkAssertionAgainstOperation(assertion, operationHash, coordinates),
+    operation: operationForDiagnostics(signed),
+  };
+}
+
+/**
+ * Log the integrity snapshot on a rejected submission.
+ *
+ * Observational only: it never throws and never changes the returned outcome,
+ * so a diagnostic bug cannot mask or alter the fail-closed refusal.
+ */
+function logSubmitIntegrity(
+  operationHash: Hex,
+  signed: unknown,
+  assertion: SafeAssertionParts,
+  coordinates: { readonly x: string; readonly y: string },
+  cause: unknown,
+): void {
+  try {
+    const diagnostic = describeSubmitIntegrity(
+      operationHash,
+      signed,
+      assertion,
+      coordinates,
+    );
+    console.warn(
+      '[kade] resident-Safe submission rejected; submit-integrity diagnostic:',
+      JSON.stringify({ ...diagnostic, cause: describe(cause) }),
+    );
+  } catch {
+    // Diagnostics must never mask the submit failure.
+  }
 }
