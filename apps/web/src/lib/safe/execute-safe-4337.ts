@@ -385,17 +385,34 @@ function operationHash(operation: unknown): Hex | null {
  *
  * `eth_estimateUserOperationGas` runs against Safe's **dummy** WebAuthn
  * signature (relay-kit's `getDummySignature`), while the operation the resident
- * signs carries a real P-256 assertion. On the Base rail the EntryPoint rejected
- * **two** real deposits with `AA26 over verificationGasLimit`, at the exact
- * estimate the app had computed:
+ * signs carries a real P-256 assertion. The estimator therefore undercounts the
+ * validation cost, and the shortfall is not small. The gas fields are part of
+ * the SafeOp hash the passkey signs, so the allowance cannot be corrected at
+ * submit time.
  *
- *   - failures (nonce 0x1, no deployment): verificationGasLimit 51,698
- *   - success  (nonce 0x0, with deployment): verificationGasLimit 1,050,355
+ * ## Calibration — measured on a live sponsored reproduction
  *
- * The one operation that succeeded included the Safe deployment, so its headroom
- * says nothing about the validation-only cost. The gas fields are part of the
- * SafeOp hash the passkey signs, so the allowance cannot be corrected at submit
- * time.
+ * A diagnosis task reproduced the live Base failure on Sepolia with a throwaway
+ * passkey Safe and a throwaway P-256 credential (the same pinned pack factory
+ * the app uses, sponsored through the same Pimlico account, a harmless no-op
+ * batch). On a **deployed** passkey Safe, changing only `verificationGasLimit`:
+ *
+ *   | `verificationGasLimit`              | result                      |
+ *   |-------------------------------------|-----------------------------|
+ *   | 250,000 (`0x3d090`) — the old floor | **`AA24 signature error`**  |
+ *   | 300,000                             | rejected                    |
+ *   | 400,000                             | rejected                    |
+ *   | 450,000 (`0x6ddd0`)                 | accepted                    |
+ *   | 600,000 (`0x927c0`)                 | accepted, receipt `success` |
+ *
+ * The **mechanism** is why this looked like a signing defect for so long: when
+ * validation runs out of gas, the Safe's `checkNSignatures` path treats the
+ * failed inner call as an *invalid signature*, the account returns
+ * `SIG_VALIDATION_FAILED`, and the EntryPoint reports `AA24 signature error` — a
+ * signature error for a gas shortfall. The deploying operation escapes it
+ * because `initCode` inflates its estimate to ~1.5 M (`0x17d07d`), far above the
+ * floor; a deployed Safe's raw estimate is only ~51,698, which is what the old
+ * 250,000 floor was applied to.
  *
  * ## Where the buffer sits, and why it must sit there
  *
@@ -417,37 +434,55 @@ function operationHash(operation: unknown): Hex | null {
  * `addEstimations`. The paymaster and the passkey therefore commit to the same
  * allowance.
  *
- * ## Calibration
- *
- * The two failing operations prove 51,698 is insufficient. The succeeding
- * operation is ≈20× larger, and `initCode` deployment is billed to
- * `verificationGasLimit`, so the deployment *is* a real contributor — but the
- * available data cannot decompose 1,050,355 into deployment versus validation,
- * and a routine Safe deployment is not obviously close to a megagas. The
- * shortfall is therefore **not fully explained**, and an unexplained factor of
- * twenty is a reason for a wider margin, not a narrower one.
- *
  * ## The rule
  *
- *     buffer(g) = max(ceil(g × 3 / 2), 250,000)
+ *     buffer(g) = max(ceil(g × 3 / 2), 600,000)
  *
- * — at least **1.5×** the estimate, and never below an absolute **250,000**
- * allowance. The floor is the part that matters here: it lifts the observed
- * 51,698 to 250,000, roughly **4.8×** the estimator value the EntryPoint
- * rejected and ~198,000 gas above it. That is deliberately below the 1,050,355
- * the same Pimlico sponsorship already accepted for the deployment operation, so
- * it stays within what the paymaster will sponsor. `verificationGasLimit` is a
- * ceiling, not a charge — unused verification gas is simply not consumed — so
- * the wider floor is nearly free and is the right side to err on. The 1.5×
- * multiplier bounds proportional underestimation for larger estimates without
- * inflating a ~1M deployment estimate past what was already sponsored.
+ * The **600,000 floor** is the value the measurement above accepts with
+ * `success:true`. It sits 50% above the highest rejected allowance (400,000) and
+ * 33% above the lowest accepted one (450,000), and is ~200,000 above the highest
+ * rejection and ~150,000 above the lowest acceptance. `verificationGasLimit` is
+ * a **ceiling, not a charge** — unused verification gas is simply not consumed —
+ * so the margin is nearly free and belongs on the safe side. The floor is the
+ * part that matters: it lifts the observed 51,698 to 600,000, ~11.6× the
+ * estimator value the EntryPoint rejected. The value is deliberately the largest
+ * allowance the measurement explicitly accepts, so it needs no leap of faith
+ * beyond the data.
+ *
+ * ## The 1.5× multiplier is deliberately left uncapped
+ *
+ * The deploying case was checked. A ~1.5 M deploy estimate scales to ~2.34 M
+ * under the multiplier. No cap is applied, because every value that could be
+ * called "known safe" is **below the deploying operation's own estimate**: the
+ * only hard sponsorship ceiling on record, 1,050,355 (the live Base deploy), is
+ * already smaller than the Sepolia deploy estimate of ~1.5 M, so capping there
+ * would force the deploy allowance below what the estimator itself asks for — a
+ * guaranteed shortfall, which is strictly worse than an over-large ceiling.
+ * Capping anywhere above the estimate would be an unsupported guess. More
+ * fundamentally, **this change only raises the floor**: `buffer` is
+ * monotonically non-decreasing, and every estimate at or above
+ * `floor × 2/3 = 400,000` — which includes every deployment-scale estimate —
+ * receives exactly the same allowance as before. A deploying operation that the
+ * previous rule handled is therefore untouched, byte for byte.
+ *
+ * ## The `AA24` mislabel cannot be distinguished after the fact
+ *
+ * Because an out-of-gas validation and a genuine bad signature both surface as
+ * `AA24 signature error` — the EntryPoint collapses each account
+ * `SIG_VALIDATION_FAILED` into the same error — the app cannot honestly tell
+ * them apart from the bundler's response. No bounded, app-local signal separates
+ * them (a fresh `validateUserOp` re-simulation at a higher ceiling would need
+ * another network round-trip and is not the fail-closed path this module owns),
+ * so no heuristic is invented here. The honest remedy is prevention: the floor
+ * above removes the gas-shortfall cause by construction, so the remaining
+ * `AA24`s are genuinely attributable to the signature.
  *
  * `preVerificationGas`, `callGasLimit` and the paymaster's own
  * `paymasterVerificationGasLimit` are deliberately **not** touched.
  */
 export const VERIFICATION_GAS_BUFFER_NUMERATOR = 3n;
 export const VERIFICATION_GAS_BUFFER_DENOMINATOR = 2n;
-export const VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE = 250_000n;
+export const VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE = 600_000n;
 
 /**
  * Apply the documented buffer to an estimated verification-gas allowance.

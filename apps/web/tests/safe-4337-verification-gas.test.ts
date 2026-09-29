@@ -16,20 +16,27 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
 /**
  * The verification-gas buffer on the resident-Safe build phase.
  *
- * ## Calibration, from the live Base rail
+ * ## Calibration, measured on a live sponsored reproduction
  *
  * `eth_estimateUserOperationGas` estimates against Safe's **dummy** WebAuthn
  * signature (relay-kit's `getDummySignature`), while the operation the resident
- * signs carries a real P-256 assertion. On Base the EntryPoint rejected **two**
- * real deposits with `AA26 over verificationGasLimit`, at the exact estimate the
- * app had computed:
+ * signs carries a real P-256 assertion. A diagnosis task reproduced the live
+ * Base failure on Sepolia (same pinned pack factory, same Pimlico account,
+ * harmless no-op batch) and, on a **deployed** passkey Safe, changed only
+ * `verificationGasLimit`:
  *
- *   - failures (nonce 0x1, no deployment): verificationGasLimit 51,698
- *   - success  (nonce 0x0, with deployment): verificationGasLimit 1,050,355
+ *   | verificationGasLimit                | result                      |
+ *   |-------------------------------------|-----------------------------|
+ *   | 250,000 (`0x3d090`) — the old floor | **`AA24 signature error`**  |
+ *   | 300,000                             | rejected                    |
+ *   | 400,000                             | rejected                    |
+ *   | 450,000 (`0x6ddd0`)                 | accepted                    |
+ *   | 600,000 (`0x927c0`)                 | accepted, receipt `success` |
  *
- * The success included the Safe deployment, so it does not bound the
- * validation-only cost; the ≈20× gap cannot be decomposed from the data and is
- * treated as unexplained.
+ * The mechanism is why it looked like a signing defect: an out-of-gas validation
+ * makes the Safe return `SIG_VALIDATION_FAILED`, which the EntryPoint reports as
+ * `AA24 signature error`. These tests pin the calibration, the branch crossover
+ * and the fact that the raise is monotone and does not cap the deploy scale.
  *
  * ## Why the buffer runs in the fee estimator, and what these tests model
  *
@@ -55,16 +62,41 @@ const SIGNATURE = '0xdeadbeef' as Hex;
 const PAYMASTER = '0x7777777777777777777777777777777777777777';
 const DUMMY_SIGNATURE = '0xdummy' as Hex;
 
-/** The estimate the two live Base rejections came back with (AA26 twice). */
+/** The estimate a deployed Safe's build comes back with (the rejected value). */
 const RAW_ESTIMATE = 51_698n;
-/** The one live Base success; inflated by the Safe deployment, so only an upper anchor. */
+/** The live Base deploy allowance; only an upper anchor for the multiplier. */
 const DEPLOY_ESTIMATE = 1_050_355n;
-/** buffer(51,698) = max(ceil(51,698 × 3 / 2), 250,000) = 250,000 (the floor). */
-const BUFFERED_ESTIMATE = 250_000n;
+/** buffer(51,698) = max(ceil(51,698 × 3 / 2), 600,000) = 600,000 (the floor). */
+const BUFFERED_ESTIMATE = 600_000n;
 /** buffer(1,050,355) = ceil(1,050,355 × 3 / 2) = 1,575,533 (the multiplier). */
 const DEPLOY_BUFFERED = 1_575_533n;
+/** The estimate a deploying operation produces on Sepolia; `initCode` inflates it. */
+const DEPLOY_ESTIMATE_SEPOLIA = 1_560_701n;
+/** buffer(1,560,701) = ceil(1,560,701 × 3 / 2) = 2,341,052 (the multiplier, uncapped). */
+const DEPLOY_BUFFERED_SEPOLIA = 2_341_052n;
+/** The highest allowance the live measurement rejected. */
+const HIGHEST_REJECTED = 400_000n;
+/** The lowest allowance the live measurement accepted. */
+const LOWEST_ACCEPTED = 450_000n;
+/** The previous floor, kept only to prove the raise is monotone. */
+const OLD_FLOOR = 250_000n;
+/** Where the multiplier overtakes the floor: floor × 2/3 = 400,000. */
+const FLOOR_CROSSOVER = 400_000n;
 /** A non-zero callGasLimit, so accountGasLimits packing has both halves. */
 const CALL_GAS = 60_000n;
+
+/**
+ * The previous rule (`max(ceil(g × 3 / 2), 250,000)`), kept only as an oracle.
+ *
+ * The new rule must never hand an operation *less* allowance than the rule it
+ * replaces: this is the property that says the floor raise cannot introduce a
+ * verification-gas shortfall anywhere, deploy scale included.
+ */
+function oldBuffer(estimated: bigint): bigint {
+  if (estimated <= 0n) return 0n;
+  const scaled = (estimated * 3n + 1n) / 2n;
+  return scaled > OLD_FLOOR ? scaled : OLD_FLOOR;
+}
 
 const env = (values: Record<string, string>): NodeJS.ProcessEnv =>
   values as unknown as NodeJS.ProcessEnv;
@@ -292,22 +324,75 @@ afterEach(() => {
 
 describe('bufferVerificationGas', () => {
   it('applies 1.5x when that exceeds the absolute floor', () => {
-    expect(bufferVerificationGas(200_000n)).toBe(300_000n);
+    expect(bufferVerificationGas(500_000n)).toBe(750_000n);
     expect(bufferVerificationGas(DEPLOY_ESTIMATE)).toBe(DEPLOY_BUFFERED);
   });
 
-  it('applies the 250,000 floor when 1.5x would be smaller', () => {
+  it('applies the 600,000 floor when 1.5x would be smaller', () => {
+    expect(VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE).toBe(600_000n);
     expect(bufferVerificationGas(1_000n)).toBe(VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE);
     expect(bufferVerificationGas(100_000n)).toBe(VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE);
   });
 
-  it('lifts the rejected Base estimate well clear while staying under the sponsored deployment allowance', () => {
-    // The exact value the EntryPoint rejected twice ...
+  it('lifts the rejected estimate above every measured rejection, with margin', () => {
+    // The exact value the deployed passkey Safe was rejected at ...
     expect(bufferVerificationGas(RAW_ESTIMATE)).toBe(BUFFERED_ESTIMATE);
-    // ... is raised to roughly 4.8x its size ...
+    // ... is raised to many times its size ...
     expect(BUFFERED_ESTIMATE).toBeGreaterThan(4n * RAW_ESTIMATE);
-    // ... but stays below the 1,050,355 the same paymaster already sponsored.
-    expect(BUFFERED_ESTIMATE).toBeLessThan(DEPLOY_ESTIMATE);
+    // ... clears both the highest rejection and the lowest acceptance with
+    // margin ...
+    expect(BUFFERED_ESTIMATE).toBeGreaterThan(HIGHEST_REJECTED);
+    expect(BUFFERED_ESTIMATE - HIGHEST_REJECTED).toBeGreaterThanOrEqual(150_000n);
+    expect(BUFFERED_ESTIMATE).toBeGreaterThan(LOWEST_ACCEPTED);
+    // ... and is itself the value the measurement accepted with success:true.
+    expect(BUFFERED_ESTIMATE).toBe(600_000n);
+  });
+
+  it('switches branches exactly at floor x 2/3 = 400,000', () => {
+    // At the crossover both branches agree.
+    expect(bufferVerificationGas(FLOOR_CROSSOVER)).toBe(VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE);
+    // Just below, the floor binds and clamps to 600,000.
+    expect(bufferVerificationGas(FLOOR_CROSSOVER - 1n)).toBe(
+      VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE,
+    );
+    // Just above, the multiplier wins and is strictly larger.
+    expect(bufferVerificationGas(FLOOR_CROSSOVER + 1n)).toBe(600_002n);
+    expect(bufferVerificationGas(FLOOR_CROSSOVER + 1n)).toBeGreaterThan(
+      VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE,
+    );
+  });
+
+  it('handles the deploy-scale estimate with no cap and no shortfall', () => {
+    // A deploying operation's ~1.5M estimate is multiplied, not capped ...
+    expect(bufferVerificationGas(DEPLOY_ESTIMATE_SEPOLIA)).toBe(DEPLOY_BUFFERED_SEPOLIA);
+    // ... so it stays strictly above the raw estimate: no shortfall.
+    expect(DEPLOY_BUFFERED_SEPOLIA).toBeGreaterThan(DEPLOY_ESTIMATE_SEPOLIA);
+    // The multiplier branch is unchanged by the floor raise: the old rule gives
+    // the same value here, which is why the deployment path cannot regress.
+    expect(DEPLOY_BUFFERED_SEPOLIA).toBe(oldBuffer(DEPLOY_ESTIMATE_SEPOLIA));
+  });
+
+  it('only ever raises an allowance relative to the old rule', () => {
+    const estimates = [
+      1n,
+      1_000n,
+      RAW_ESTIMATE,
+      200_000n,
+      FLOOR_CROSSOVER - 1n,
+      FLOOR_CROSSOVER,
+      500_000n,
+      DEPLOY_ESTIMATE,
+      DEPLOY_ESTIMATE_SEPOLIA,
+    ];
+    for (const estimate of estimates) {
+      expect(bufferVerificationGas(estimate)).toBeGreaterThanOrEqual(oldBuffer(estimate));
+    }
+    // Above the crossover the two rules are identical ...
+    for (const estimate of [FLOOR_CROSSOVER, 500_000n, DEPLOY_ESTIMATE, DEPLOY_ESTIMATE_SEPOLIA]) {
+      expect(bufferVerificationGas(estimate)).toBe(oldBuffer(estimate));
+    }
+    // ... and below it the new floor is the only difference.
+    expect(OLD_FLOOR).toBeLessThan(VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE);
   });
 
   it('is strict: a buffered estimate is always strictly greater than the raw one', () => {
