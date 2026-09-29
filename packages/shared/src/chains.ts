@@ -68,6 +68,19 @@ export interface ChainConfig {
    */
   readonly paymasterPolicyId: Sourced<string | null>;
   readonly explorerUrl: string;
+  /**
+   * Safe{Wallet}'s short name for this chain (`eth`, `sep`, `base`, …).
+   *
+   * [external] Safe Client Gateway chain config, `GET
+   * https://safe-client.safe.global/v1/chains/{chainId}`, field `shortName`.
+   * Safe{Wallet} addresses the chain by this short name rather than by id, in
+   * the deep link `https://app.safe.global/home?safe=<shortName>:<address>`, so
+   * a wrong value sends the resident to the wrong network's account. `null`
+   * where Safe{Wallet} does not list the chain (the gateway returns 404 for
+   * Arbitrum Sepolia), which the caller renders as no link rather than a
+   * broken one.
+   */
+  readonly safeAppShortName: Sourced<string | null>;
 }
 
 const ZERO = '0x0000000000000000000000000000000000000000' as const;
@@ -98,6 +111,7 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'compiled and tested only in Week 1'),
     paymasterPolicyId: sourced(null, 'arbitrary', 'paymaster policy is out of Week 1 scope'),
     explorerUrl: 'https://sepolia.etherscan.io',
+    safeAppShortName: sourced('sep', 'external', 'Safe Client Gateway /v1/chains/11155111'),
   },
   {
     key: 'arbitrum',
@@ -123,6 +137,11 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'L2 deployment is out of Week 1 scope'),
     paymasterPolicyId: sourced(null, 'arbitrary'),
     explorerUrl: 'https://sepolia.arbiscan.io',
+    safeAppShortName: sourced(
+      null,
+      'external',
+      'Safe{Wallet} does not list Arbitrum Sepolia (gateway 404)',
+    ),
   },
   {
     key: 'base',
@@ -148,6 +167,7 @@ export const TESTNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'L2 deployment is out of Week 1 scope'),
     paymasterPolicyId: sourced(null, 'arbitrary'),
     explorerUrl: 'https://sepolia.basescan.org',
+    safeAppShortName: sourced('basesep', 'external', 'Safe Client Gateway /v1/chains/84532'),
   },
 ];
 
@@ -173,6 +193,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'no mainnet deployment in Week 1'),
     paymasterPolicyId: sourced(null, 'arbitrary'),
     explorerUrl: 'https://etherscan.io',
+    safeAppShortName: sourced('eth', 'external', 'Safe Client Gateway /v1/chains/1'),
   },
   {
     key: 'arbitrum',
@@ -190,6 +211,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'no mainnet deployment in Week 1'),
     paymasterPolicyId: sourced(null, 'arbitrary'),
     explorerUrl: 'https://arbiscan.io',
+    safeAppShortName: sourced('arb1', 'external', 'Safe Client Gateway /v1/chains/42161'),
   },
   {
     key: 'base',
@@ -207,6 +229,7 @@ export const MAINNET_CHAINS: readonly ChainConfig[] = [
     kadeLockAddress: sourced(null, 'arbitrary', 'no mainnet deployment in Week 1'),
     paymasterPolicyId: sourced(null, 'arbitrary'),
     explorerUrl: 'https://basescan.org',
+    safeAppShortName: sourced('base', 'external', 'Safe Client Gateway /v1/chains/8453'),
   },
 ];
 
