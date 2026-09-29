@@ -249,7 +249,8 @@ export async function loadVaultHoldings(
     if (read.usdc === null) {
       // The native read succeeded but the USDC sub-read failed. Surface it as
       // an unread row rather than a silent gap, exactly like a whole chain that
-      // could not be read.
+      // could not be read — and carry the sub-read's own reason, so the row says
+      // *why* the token amount is unread instead of a generic sentence.
       rows.push({
         key: `${address}:${chain.chainId}:usdc-unread`,
         kind: 'unread',
@@ -259,7 +260,9 @@ export async function loadVaultHoldings(
         name: 'USDC',
         amount: '—',
         usd: null,
-        readError: `The USDC balance on ${chain.name} could not be read.`,
+        readError:
+          read.tokenFailure?.message ??
+          `The USDC balance on ${chain.name} could not be read.`,
       });
     } else if (isPositive(read.usdc.amount)) {
       rows.push({

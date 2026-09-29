@@ -211,6 +211,65 @@ describe('HoldingsScreen', () => {
     expect(screen.queryByText('$0')).toBeNull();
   });
 
+  it('shows a failed USDC sub-read as a — row with its specific reason, never a zero', () => {
+    const message =
+      'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).';
+    render(
+      <HoldingsScreen
+        aggregate={aggregate({
+          total: 3000,
+          walletCount: 1,
+          valuedCount: 1,
+          unvaluedCount: 0,
+          wallets: [
+            {
+              address: ADDRESS,
+              verifiedAt: '2026-09-22T10:00:00.000Z',
+              chainIds: [8453],
+              chains: [
+                {
+                  chainId: 8453,
+                  name: 'Base',
+                  nativeSymbol: 'ETH',
+                  nativeAmount: '1.000000',
+                  nativeUsd: 3000,
+                  usdc: null,
+                  tokenFailure: {
+                    chainId: 8453,
+                    chainName: 'Base',
+                    reason: 'rejected',
+                    message,
+                  },
+                  usd: 3000,
+                },
+              ],
+              usd: 3000,
+              readError: null,
+            },
+          ],
+        })}
+      />,
+    );
+
+    // The native row is still real, and the unread token is its own row carrying
+    // the specific reason rather than disappearing.
+    expect(screen.getByText('1.000000 ETH')).toBeInTheDocument();
+    expect(screen.getByText(/rate limiting this read/)).toBeInTheDocument();
+    // No fabricated zero: no USDC amount and no $0 value.
+    expect(screen.queryByText('0.000000 USDC')).toBeNull();
+    expect(screen.queryByText('$0')).toBeNull();
+
+    // The unread USDC row is not movable; it carries the honest "nothing to
+    // move" reason rather than being offered as a real holding.
+    const unread = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('could not be read'),
+      );
+    expect(unread).toBeDefined();
+    expect(unread).toBeDisabled();
+  });
+
   it('uses the reference card labels and the reference vault figures', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
 

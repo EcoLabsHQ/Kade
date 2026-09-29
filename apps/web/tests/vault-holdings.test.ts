@@ -196,6 +196,40 @@ describe('loadVaultHoldings', () => {
     );
   });
 
+  it('surfaces the specific token sub-read reason instead of the generic sentence', async () => {
+    const message =
+      'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).';
+    const rows = await loadVaultHoldings(SAFE, {
+      chains: CHAINS,
+      morphoConfig: null,
+      readBalances: async () => [
+        chainBalance({ chainId: 1, name: 'Ethereum', usdc: null }),
+        chainBalance({
+          chainId: 8453,
+          name: 'Base',
+          usdc: null,
+          tokenFailure: {
+            chainId: 8453,
+            chainName: 'Base',
+            reason: 'rejected',
+            message,
+          },
+        }),
+      ],
+    });
+
+    expect(rows).toHaveLength(2);
+    const base = rows.find((row) => row.chainId === 8453)!;
+    // The real reason, not "The USDC balance on Base could not be read."
+    expect(base.readError).toBe(message);
+    expect(base.amount).toBe('—');
+    // The chain without a carrier keeps the generic fallback, unchanged.
+    const ethereum = rows.find((row) => row.chainId === 1)!;
+    expect(ethereum.readError).toMatch(
+      /USDC balance on Ethereum could not be read/,
+    );
+  });
+
   it('shows a failed Morpho read with its reason and no amount', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,

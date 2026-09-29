@@ -242,6 +242,59 @@ describe('loadVerifiedHoldings', () => {
     expect(aggregate.wallets[0]!.failures?.[0]?.message).toMatch(/rate limit/i);
   });
 
+  it('carries a failed token sub-read on the chain, with its specific reason', async () => {
+    const { client } = createFakeClient([
+      {
+        id: 1,
+        address: VERIFIED,
+        chain: 1,
+        provider: 'siwe',
+        verified_at: '2026-09-22T10:00:00.000Z',
+      },
+    ]);
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+    const tokenFailure = {
+      chainId: 8453,
+      chainName: 'Base',
+      reason: 'rejected' as const,
+      message:
+        'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).',
+    };
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      {
+        chain: {
+          chainId: 8453,
+          name: 'Base',
+          symbol: 'ETH',
+          baseUrl: 'https://base.invalid',
+          usdcAddress: '0x0000000000000000000000000000000000000000',
+        },
+        ok: true,
+        balance: {
+          chainId: 8453,
+          name: 'Base',
+          nativeSymbol: 'ETH',
+          nativeAmount: '1.000000',
+          nativeUsd: 3000,
+          usdc: null,
+          tokenFailure,
+          usd: 3000,
+        },
+      },
+    ]);
+
+    const aggregate = await loadVerifiedHoldings('user-1');
+    const wallet = aggregate.wallets[0]!;
+
+    // The chain's token sub-read reason survives the loader, on the chain.
+    expect(wallet.chains[0]!.tokenFailure).toEqual(tokenFailure);
+    // A token sub-read failure is not a whole-chain failure and does not land in
+    // the per-wallet whole-chain failure list.
+    expect(wallet.failures).toEqual([]);
+    // The native value is counted; the unread token is not turned into a zero.
+    expect(aggregate.total).toBe(3000);
+  });
+
   it('returns an empty aggregate with no verified rows and no reads', async () => {
     const { client } = createFakeClient([]);
     hoisted.createSupabaseServerClient.mockResolvedValue(client);

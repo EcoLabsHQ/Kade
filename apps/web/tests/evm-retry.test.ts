@@ -210,6 +210,55 @@ describe('readEvmChainBalances failure reasons', () => {
   });
 });
 
+describe('token sub-read failure reaches the carrier', () => {
+  it('keeps the native balance ok and names the token sub-read reason', async () => {
+    // The native summary succeeds; the tokenbalance read is rate-limited on
+    // every attempt. The chain is read (ok: true) with the native balance, and
+    // the token failure rides on the balance rather than being dropped.
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('action=tokenbalance')) {
+        return jsonResponse({}, { ok: false, status: 429 });
+      }
+      return summary('2000000000000000000', '3000');
+    }) as unknown as typeof fetch;
+
+    const reads = await readEvmChainBalances(ADDRESS, {
+      chains: [BASE],
+      fetchImpl,
+    });
+
+    const read = reads[0]!;
+    expect(read.ok).toBe(true);
+    expect(read.balance?.nativeAmount).toBe('2.000000000000000000');
+    expect(read.balance?.usdc).toBeNull();
+    expect(read.balance?.tokenFailure).toMatchObject({
+      chainId: 8453,
+      chainName: 'Base',
+      reason: 'rejected',
+    });
+    expect(read.balance?.tokenFailure?.message).toMatch(/rate limit/i);
+  });
+
+  it('is absent on a fully successful read', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('action=tokenbalance')) {
+        return jsonResponse({ status: '1', result: '2500000' });
+      }
+      return summary('1000000000000000000', '2000');
+    }) as unknown as typeof fetch;
+
+    const reads = await readEvmChainBalances(ADDRESS, {
+      chains: [BASE],
+      fetchImpl,
+    });
+
+    const read = reads[0]!;
+    expect(read.ok).toBe(true);
+    expect(read.balance?.usdc?.amount).toBe('2.500000');
+    expect(read.balance?.tokenFailure).toBeUndefined();
+  });
+});
+
 describe('no fabricated zero on failure', () => {
   it('returns no balance at all for a failed chain, never a zero', async () => {
     const fetchImpl = vi.fn(async () =>

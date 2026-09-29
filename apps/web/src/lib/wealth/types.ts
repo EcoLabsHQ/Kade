@@ -35,6 +35,30 @@ export const BITCOIN_PROVIDER = 'bitcoin-address';
 export const MAX_BITCOIN_ADDRESSES = 5;
 
 /**
+ * Why a chain's balance could not be read, as a stable machine-readable code.
+ *
+ * `no-endpoint` never reaches the network: the chain has no RPC/explorer base.
+ * The other three are produced from the provider's response or the transport.
+ *
+ * Defined here, with `EvmChainBalance`, so the failure carrier travels with the
+ * read it explains (`evm.ts` re-exports these for its existing callers).
+ */
+export type EvmReadFailureReason =
+  | 'no-endpoint'
+  | 'rejected'
+  | 'timeout'
+  | 'unexpected';
+
+/** A final, explained failure to read one chain's balance. */
+export interface EvmReadFailure {
+  readonly chainId: number;
+  readonly chainName: string;
+  readonly reason: EvmReadFailureReason;
+  /** Human-readable, specific and safe to show to the resident. */
+  readonly message: string;
+}
+
+/**
  * A native-coin balance read on one EVM chain for a pasted address.
  *
  * `amount` is the formatted native amount (18 decimals, fixed), so it is
@@ -56,6 +80,14 @@ export interface EvmChainBalance {
   readonly nativeUsd: number | null;
   /** Null when the USDC read failed for this chain, so nothing is fabricated. */
   readonly usdc: EvmTokenBalance | null;
+  /**
+   * The specific reason the USDC sub-read failed, when the chain's native read
+   * succeeded but its token read did not. `usdc` stays null and no zero is
+   * fabricated: the reason travels with the chain so every consumer can say
+   * *why* the token amount is unread instead of silently omitting the row.
+   * Absent when the token read succeeded.
+   */
+  readonly tokenFailure?: EvmReadFailure;
   /** Native + USDC in USD, or null when neither could be valued. */
   readonly usd: number | null;
 }

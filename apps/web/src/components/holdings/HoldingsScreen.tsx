@@ -33,8 +33,9 @@ import { provenanceLabel } from './provenance';
  * a `connected-wallet` / `pasted-address` row is marked unverified, carries its
  * provenance, is excluded from the total, and carries the sign action. A stored
  * chain whose balance could not be read is shown as its own `—` row rather than
- * hidden, and a wallet whose read failed entirely still gets a row with the real
- * error.
+ * hidden, a chain that read natively but whose USDC sub-read failed gets an
+ * explicit `—` USDC row carrying the specific reason, and a wallet whose read
+ * failed entirely still gets a row with the real error.
  *
  * Copy policy (owner override, this iteration): every visible string is taken
  * **verbatim from the reference**, even where it describes an intended state the
@@ -306,10 +307,12 @@ function verifiedProvenance(wallet: HoldingWallet): string {
  * Turn one wallet's real reads into the table's per-holding rows.
  *
  * Every row's amount and value come straight from the read: a native coin row
- * per readable chain, a USDC row only when the read produced one, and an
- * explicit `—` row for a stored chain whose balance could not be read. Nothing
- * is fabricated and no zero is invented; a wallet with nothing readable at all
- * still gets one honest `—` row rather than disappearing.
+ * per readable chain, a USDC row when the read produced one, an explicit `—`
+ * USDC row with the specific reason when the chain read natively but its token
+ * sub-read failed, and an explicit `—` row for a stored chain whose balance
+ * could not be read. Nothing is fabricated and no zero is invented; a wallet
+ * with nothing readable at all still gets one honest `—` row rather than
+ * disappearing.
  */
 function assetRows(
   wallet: HoldingWallet | UnverifiedHoldingWallet,
@@ -355,6 +358,27 @@ function assetRows(
         tokenAddress: usdcAddressForChain(chain.chainId),
         decimals: USDC_DECIMALS,
         tokenAmount: chain.usdc.amount,
+      });
+    } else if (chain.tokenFailure) {
+      // The native read succeeded but the USDC sub-read failed: show the token
+      // as an explicit `—` row carrying the specific reason, rather than
+      // omitting it. A missing token is never fabricated as a zero, and the
+      // row is never movable because there is no known amount.
+      rows.push({
+        key: `${wallet.address}:${chain.chainId}:usdc-unread`,
+        symbol: '—',
+        circleColor: tokens.locked,
+        name: 'USDC',
+        provenance: `${provenance} · ${chain.tokenFailure.message}`,
+        chain: chain.name,
+        chainColor: chainColor(chain.name),
+        amount: '—',
+        value: '—',
+        chainId: chain.chainId,
+        kind: 'unread',
+        tokenAddress: null,
+        decimals: 18,
+        tokenAmount: null,
       });
     }
   }

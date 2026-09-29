@@ -234,7 +234,34 @@ describe('readEvmBalances', () => {
 
     expect(balance.nativeUsd).toBe(2);
     expect(balance.usdc).toBeNull();
+    // The token sub-read's failure is carried with the chain, with its specific
+    // reason, instead of being dropped: the amount is unread, not zero.
+    expect(balance.tokenFailure).toMatchObject({
+      chainId: 1,
+      chainName: 'Ethereum',
+      reason: 'unexpected',
+    });
+    expect(balance.tokenFailure?.message).toContain('500');
+    // No fabricated zero anywhere: the token stays null and the chain's USD is
+    // the native value alone.
     expect(balance.usd).toBe(2);
+  });
+
+  it('does not invent a tokenFailure when the USDC read succeeds with zero', async () => {
+    const fetchImpl = routedFetch([
+      ['/api/v2/addresses/', summary('1000000000000000000', '2')],
+      ['action=tokenbalance', tokenBalance('0')],
+    ]);
+
+    const balances = await readEvmBalances(CHECKSUMMED, {
+      chains: [CHAIN_ONE],
+      fetchImpl,
+    });
+
+    const balance = balances[0]!;
+    // A successful zero read is a real zero balance, not a failure.
+    expect(balance.usdc).toEqual({ symbol: 'USDC', amount: '0.000000', usd: 0 });
+    expect(balance.tokenFailure).toBeUndefined();
   });
 
   it('does not fabricate a zero USDC when its body has no result', async () => {

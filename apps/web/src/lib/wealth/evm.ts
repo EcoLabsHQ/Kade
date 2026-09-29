@@ -1,7 +1,13 @@
 import { chainByChainId } from '@kade/shared';
 import { getAddress } from 'viem';
 import { readEvmExplorerApiBase } from '@/lib/env';
-import type { EvmChainBalance, EvmTokenBalance } from './types';
+import type {
+  EvmChainBalance,
+  EvmReadFailure,
+  EvmTokenBalance,
+} from './types';
+
+export type { EvmReadFailure, EvmReadFailureReason } from './types';
 
 /**
  * Read-only balances (native coin and USDC) for a pasted EVM address.
@@ -35,27 +41,6 @@ export class EvmReadError extends Error {
     super(message, options);
     this.name = 'EvmReadError';
   }
-}
-
-/**
- * Why a chain's balance could not be read, as a stable machine-readable code.
- *
- * `no-endpoint` never reaches the network: the chain has no RPC/explorer base.
- * The other three are produced from the provider's response or the transport.
- */
-export type EvmReadFailureReason =
-  | 'no-endpoint'
-  | 'rejected'
-  | 'timeout'
-  | 'unexpected';
-
-/** A final, explained failure to read one chain's balance. */
-export interface EvmReadFailure {
-  readonly chainId: number;
-  readonly chainName: string;
-  readonly reason: EvmReadFailureReason;
-  /** Human-readable, specific and safe to show to the resident. */
-  readonly message: string;
 }
 
 /** One chain's read outcome: either the balance or an explained failure. */
@@ -414,8 +399,8 @@ function resolveChains(
 /**
  * Read the USDC balance for the chain's known contract.
  *
- * Returns the balance, or null when the read fails — but the failure is
- * **classified**, so the caller can name it rather than silently reporting a
+ * Returns the balance, or a **classified** `EvmReadFailure` when the read fails,
+ * so the caller can name the specific reason rather than silently reporting a
  * missing token. A missing token balance is never fabricated as zero.
  */
 async function readUsdcBalance(
@@ -479,7 +464,8 @@ async function readUsdcBalance(
  * fabricated as a zero balance.
  *
  * A failed USDC read keeps the chain's native balance and records the failure
- * separately, so the token amount stays unread rather than becoming zero.
+ * on the balance as `tokenFailure`, so the token amount stays unread rather
+ * than becoming zero and the specific reason survives to every consumer.
  */
 async function readChainBalance(
   chain: EvmReadChain,
@@ -534,6 +520,10 @@ async function readChainBalance(
 
   const usdcRead = await readUsdcBalance(chain, address, fetchImpl);
   const usdc = usdcRead.ok ? usdcRead.token : null;
+  // The token sub-read's failure is not dropped: it rides on the balance so the
+  // screen can name the specific reason the USDC amount is unread. The native
+  // balance is still returned; nothing is fabricated as a zero.
+  const tokenFailure = usdcRead.ok ? undefined : usdcRead.failure;
 
   const parts = [nativeUsd, usdc?.usd].filter(
     (value): value is number => value !== null && value !== undefined,
@@ -549,6 +539,7 @@ async function readChainBalance(
       nativeAmount,
       nativeUsd,
       usdc,
+      tokenFailure,
       usd: parts.length === 0 ? null : parts.reduce((sum, value) => sum + value, 0),
     },
   };
