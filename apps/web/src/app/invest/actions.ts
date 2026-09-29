@@ -10,7 +10,11 @@ import {
   deriveAccountFromPasskey,
   type DerivedAccount,
 } from '@/lib/safe/derive-account';
-import { prepareMorphoVaultDeposit } from '@/lib/invest/morpho-execution';
+import {
+  prepareMorphoVaultDeposit,
+  prepareMorphoVaultWithdraw,
+} from '@/lib/invest/morpho-execution';
+import type { WithdrawAmount } from '@/lib/invest/morpho-withdraw';
 import {
   isMorphoRailConfiguredForChain,
   isMorphoVaultConfiguredForChain,
@@ -436,6 +440,197 @@ export async function completeDeposit(input: {
   // Re-resolve the deposit-chain Safe exactly as the build phase did, so the
   // submit pack is initialised for the right branch (existing vs predicted) and
   // the address is verified again before anything is signed or submitted.
+  const safe = await resolveDepositSafe(context.signer, context.safeAddress, chainId);
+  if (!safe.ok) {
+    return { status: 'failed', sent: false, stage: 'resolve', reason: safe.reason };
+  }
+
+  return submitResidentSafeOperationFromEnv({
+    token: input.token,
+    assertion: input.assertion,
+    signer: context.signer,
+    safeAddress: safe.packSafeAddress,
+    chainId,
+  });
+}
+
+/**
+ * What the client receives when it asks to build (not send) an un-allocate.
+ *
+ * The shape mirrors {@link BuildDepositResult}: the withdraw call is a new call
+ * type through the **same** build → passkey → submit plumbing, not a forked
+ * engine. `chainId` is the chain the server built for, from the resolved plan.
+ */
+export type BuildWithdrawResult =
+  | {
+      readonly status: 'gated';
+      readonly gate: string;
+      readonly reason: string;
+    }
+  | {
+      readonly status: 'ready';
+      /** A cryptographically random, single-use token for the retained operation. */
+      readonly token: string;
+      /** The SafeOp EIP-712 hash the passkey must sign, as hex. */
+      readonly hash: string;
+      /** The credential id in the hex form Safe and the WebAuthn prompt use. */
+      readonly credentialId: string;
+      /** The chain the retained operation was built for, resolved server-side. */
+      readonly chainId: number;
+    };
+
+/**
+ * What the client receives when it submits the signed un-allocate.
+ *
+ * Identical honesty rules to {@link CompleteDepositResult}: the success variant
+ * exists only for a confirmed receipt; every refusal is a `failed` outcome that
+ * names the stage it stopped at, so a built or submitted operation can never be
+ * mistaken for an un-allocate.
+ */
+export type CompleteWithdrawResult =
+  | SafeSubmitOutcome
+  | {
+      readonly status: 'failed';
+      readonly sent: false;
+      /** The refusal happened before the engine, resolving the signer/Safe. */
+      readonly stage: 'resolve';
+      readonly reason: string;
+    };
+
+/**
+ * Phase 1 — build the un-allocate and return the hash the passkey must sign.
+ *
+ * This is the inverse of {@link beginDeposit} through the same seams. The
+ * server resolves the resident's Safe and stored credential, resolves the named
+ * chain's vault and rail, **pre-flights the Safe's share balance** before
+ * building anything (the inverse of the deposit's funding gate), builds the
+ * single ERC-4626 `withdraw` / `redeem` call with the Safe as both `owner` and
+ * `receiver`, and retains the Safe operation server-side. It **signs nothing**
+ * and returns only `{ token, hash, credentialId, chainId }`.
+ *
+ * The chain is **explicit**, exactly as the deposit: a chain with no pinned
+ * vault or no configured rail is refused with a reason naming it, and no other
+ * chain's vault is ever substituted.
+ */
+export async function beginWithdraw(input: {
+  readonly safeAddress: string;
+  readonly amount: WithdrawAmount;
+  readonly chainId: number;
+}): Promise<BuildWithdrawResult> {
+  const context = await resolveDepositContext();
+  if (!context.ok) {
+    return { status: 'gated', gate: 'not-authenticated', reason: context.reason };
+  }
+
+  // The server's recorded Safe is authoritative, exactly as for a deposit.
+  if (context.safeAddress.toLowerCase() !== input.safeAddress.toLowerCase()) {
+    return {
+      status: 'gated',
+      gate: 'safe-mismatch',
+      reason:
+        'The Safe named for the un-allocate is not the Safe recorded for this ' +
+        'account, so nothing was built.',
+    };
+  }
+
+  // Gate state (including the inverted share pre-flight) is resolved
+  // server-side: the named chain's vault, that chain's own rail, and the Safe's
+  // shares there. No gate flag is taken from the caller.
+  const result = await prepareMorphoVaultWithdraw(
+    {
+      safeAddress: context.safeAddress,
+      amount: input.amount,
+      chainId: input.chainId,
+    },
+    { railConfigured: isMorphoRailConfiguredForChain(input.chainId) },
+  );
+  if (result.status === 'gated') {
+    return { status: 'gated', gate: result.gate, reason: result.reason };
+  }
+
+  const plan = result.plan;
+
+  // The Safe's state on the redemption chain is read and verified against the
+  // record before anything is signed, exactly as the deposit does.
+  const safe = await resolveDepositSafe(
+    context.signer,
+    context.safeAddress,
+    plan.chainId,
+  );
+  if (!safe.ok) {
+    return { status: 'gated', gate: safe.gate, reason: safe.reason };
+  }
+
+  const built = await buildResidentSafeBatchFromEnv({
+    signer: context.signer,
+    safeAddress: safe.packSafeAddress,
+    // The single withdraw/redeem call, already pre-flighted against the Safe's
+    // shares. Same batch seam as the deposit.
+    calls: plan.calls,
+    chainId: plan.chainId,
+  });
+
+  if (built.status === 'built') {
+    return {
+      status: 'ready',
+      token: built.token,
+      hash: built.hash,
+      credentialId: context.credentialId,
+      chainId: plan.chainId,
+    };
+  }
+
+  if (built.status === 'failed') {
+    return {
+      status: 'gated',
+      gate: `build-${built.stage}`,
+      reason: built.reason,
+    };
+  }
+
+  return {
+    status: 'gated',
+    gate: built.status === 'not-configured' ? 'sponsor-not-configured' : 'build-empty',
+    reason:
+      built.status === 'not-configured'
+        ? built.reason
+        : 'No calls were built for the un-allocate, so there is nothing to sign.',
+  };
+}
+
+/**
+ * Phase 2 — attach the browser's assertion to the retained un-allocate and
+ * submit it.
+ *
+ * The inverse of {@link completeDeposit}, over the same engine. The client
+ * supplies only `{ token, assertion, chainId }`; the signer and Safe are
+ * resolved server-side and the chain is validated against the vault registry,
+ * so a chain with no pinned vault is refused rather than submitted on a
+ * default network. The outcome is returned verbatim: a `sent` result appears
+ * only for a confirmed receipt, and every refusal names its stage.
+ */
+export async function completeWithdraw(input: {
+  readonly token: string;
+  readonly assertion: SafeAssertionParts;
+  readonly chainId: number;
+}): Promise<CompleteWithdrawResult> {
+  const context = await resolveDepositContext();
+  if (!context.ok) {
+    return { status: 'failed', sent: false, stage: 'resolve', reason: context.reason };
+  }
+
+  if (!isMorphoVaultConfiguredForChain(input.chainId)) {
+    return {
+      status: 'failed',
+      sent: false,
+      stage: 'resolve',
+      reason:
+        `No MetaMorpho vault is configured for chain ${input.chainId}, so ` +
+        'nothing was submitted.',
+    };
+  }
+  const chainId = input.chainId;
+
   const safe = await resolveDepositSafe(context.signer, context.safeAddress, chainId);
   if (!safe.ok) {
     return { status: 'failed', sent: false, stage: 'resolve', reason: safe.reason };

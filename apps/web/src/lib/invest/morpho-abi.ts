@@ -25,9 +25,18 @@ import { getAddress, type Address } from 'viem';
  * `receiver` is what makes the position theirs: the vault pulls the USDC from
  * the Safe (`msg.sender`, which is why the Safe must approve first) and mints
  * the shares to the Safe.
+ *
+ * The inverse is a single ERC-4626 redemption, and it needs **no approval**: it
+ * draws on the Safe's own share balance rather than on an allowance. Two
+ * functions cover the two amount cases — `withdraw(assets, receiver, owner)`
+ * for a stated USDC amount (the vault burns the shares required for `assets`)
+ * and `redeem(shares, receiver, owner)` for the full balance. For "all" the
+ * redeem path is preferred so no dust share remains that could later be
+ * stranded. In both, `owner` is the Safe whose shares are burned and `receiver`
+ * is the resident Safe, so the USDC returns to the same account.
  */
 
-/** The MetaMorpho vault surface needed for the USDC deposit path. */
+/** The MetaMorpho vault surface needed for the USDC deposit and redeem paths. */
 export const METAMORPHO_VAULT_ABI = [
   {
     type: 'function',
@@ -38,6 +47,32 @@ export const METAMORPHO_VAULT_ABI = [
       { name: 'receiver', type: 'address' },
     ],
     outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+  {
+    // ERC-4626 withdraw: burn the shares needed for exactly `assets` and send
+    // `assets` of the underlying to `receiver`. Used for a stated USDC amount.
+    type: 'function',
+    name: 'withdraw',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'assets', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+      { name: 'owner', type: 'address' },
+    ],
+    outputs: [{ name: 'shares', type: 'uint256' }],
+  },
+  {
+    // ERC-4626 redeem: burn exactly `shares` and send the resulting underlying
+    // to `receiver`. Used for "all", so no dust is left behind.
+    type: 'function',
+    name: 'redeem',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'shares', type: 'uint256' },
+      { name: 'receiver', type: 'address' },
+      { name: 'owner', type: 'address' },
+    ],
+    outputs: [{ name: 'assets', type: 'uint256' }],
   },
   {
     type: 'function',

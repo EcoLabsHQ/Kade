@@ -96,7 +96,7 @@ function reasonOf(cause: unknown): string {
  * The endpoint itself comes from the chain's own RPC variable, never from the
  * chain definition's public default.
  */
-const VIEM_CHAIN_BY_ID: Readonly<Record<number, Chain>> = {
+export const VIEM_CHAIN_BY_ID: Readonly<Record<number, Chain>> = {
   [CHAIN_IDS.ethereum]: mainnet,
   [CHAIN_IDS.base]: base,
   [CHAIN_IDS.arbitrum]: arbitrum,
@@ -107,8 +107,11 @@ const VIEM_CHAIN_BY_ID: Readonly<Record<number, Chain>> = {
  * The human name of the deposit chain, from the frozen chain registry. Falls
  * back to `chain <id>` for a chain the registry does not list, so a message
  * still names where the funds must be rather than guessing a name.
+ *
+ * Exported so the inverse (share) gate in `./safe-vault-shares.ts` names chains
+ * the same way without a second, drifting copy.
  */
-function chainNameOf(chainId: number): string {
+export function chainNameOf(chainId: number): string {
   return chainByChainId(chainId)?.name ?? `chain ${chainId}`;
 }
 

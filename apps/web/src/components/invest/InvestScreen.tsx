@@ -11,7 +11,9 @@ import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
 import {
   beginDeposit,
+  beginWithdraw,
   completeDeposit,
+  completeWithdraw,
   type InvestVaultSummary,
 } from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
@@ -41,6 +43,13 @@ import {
  * row the resident clicks is the chain the deposit is built for, shown before
  * signing and carried through `beginDeposit` / `completeDeposit`. The modal has
  * no chain selector, so the row's chain cannot be contradicted at signing time.
+ *
+ * The same row carries the inverse, **Un-allocate**: it runs the same two-phase
+ * flow through `beginWithdraw` / `completeWithdraw` and a single ERC-4626
+ * `withdraw` / `redeem` call built by the same server seam. The modal states,
+ * before signing, that un-allocating lowers the qualified tier (the total the
+ * app describes as the resident's tier across all three chains). "All" is the
+ * default and redeems the whole share balance, so no dust is left behind.
  */
 
 export interface InvestScreenProps {
@@ -172,7 +181,10 @@ type AllocateState =
 const AMOUNT_PATTERN = /^\d+(\.\d{1,6})?$/;
 const PRESETS = ['10000', '25000', '50000'] as const;
 
-const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 110px';
+const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 210px';
+
+/** Which direction the open modal is running. */
+type Direction = 'allocate' | 'unallocate';
 
 /** A readable message from an unknown thrown value. */
 function describeError(cause: unknown): string {
@@ -181,7 +193,11 @@ function describeError(cause: unknown): string {
 
 export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
+  const [direction, setDirection] = useState<Direction>('allocate');
   const [amount, setAmount] = useState('25000');
+  // For an un-allocate, "all" redeems the whole share balance (no dust). It
+  // defaults on when the un-allocate modal opens.
+  const [withdrawAll, setWithdrawAll] = useState(false);
   const [state, setState] = useState<AllocateState>({ kind: 'idle' });
 
   // The rail a Morpho row deposits into, resolved from the row's own chain id —
@@ -207,46 +223,83 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
     selectedRail.configured &&
     safeAddress !== null &&
     amountValid;
+  // The inverse precondition. "All" needs no amount; a partial needs the same
+  // shallow USDC check as the deposit. As with the deposit, this is not a
+  // security gate: `beginWithdraw` re-reads the named chain's vault and rail and
+  // pre-flights the Safe's actual share balance server-side.
+  const canWithdraw =
+    selected !== null &&
+    selected.wired &&
+    selectedRail !== null &&
+    selectedRail.configured &&
+    safeAddress !== null &&
+    (withdrawAll || amountValid);
+  const canTransact = direction === 'unallocate' ? canWithdraw : canAllocate;
   const busy =
     state.kind === 'building' ||
     state.kind === 'awaiting-passkey' ||
     state.kind === 'submitting';
 
-  function openInstrument(instrument: Instrument) {
+  function openInstrument(
+    instrument: Instrument,
+    nextDirection: Direction = 'allocate',
+  ) {
     setSelected(instrument);
+    setDirection(nextDirection);
     setState({ kind: 'idle' });
     const min = Number(instrument.minimum.replace(/[^0-9]/g, ''));
     setAmount(String(Math.max(10000, Number.isFinite(min) ? min : 10000)));
+    // An un-allocate defaults to the whole position so `redeem` leaves no dust
+    // share that could not later be withdrawn.
+    setWithdrawAll(nextDirection === 'unallocate');
   }
 
   function closeModal() {
     setSelected(null);
+    setDirection('allocate');
+    setWithdrawAll(false);
     setState({ kind: 'idle' });
   }
 
-  async function allocate() {
+  async function runTransaction(kind: Direction) {
     if (selected === null) return;
     if (!selected.wired) {
       setState({ kind: 'not-wired' });
       return;
     }
-    if (!canAllocate || safeAddress === null || selectedRail === null) return;
+    const canRun = kind === 'unallocate' ? canWithdraw : canAllocate;
+    if (!canRun || safeAddress === null || selectedRail === null) return;
 
-    const amountUsdc = amount.trim();
     const chainName = selectedRail.chainName;
+    // The amount the success copy reports: "all" for a full redemption, the
+    // typed figure for a partial. The server resolves the exact shares for
+    // "all"; the client never fabricates a share or USDC figure.
+    const amountUsdc =
+      kind === 'unallocate' && withdrawAll ? 'all' : amount.trim();
 
     // Phase 1: the server builds the operation (signs nothing) for the named
-    // chain and returns the SafeOp hash the passkey must sign.
+    // chain and returns the SafeOp hash the passkey must sign. A deposit and an
+    // un-allocate go through the same two server actions' seam.
     setState({ kind: 'building' });
     let begin;
     try {
-      // Gate state is not sent: `beginDeposit` resolves the named chain's vault
-      // and rail itself, so the caller cannot turn a gate off.
-      begin = await beginDeposit({
-        safeAddress,
-        amountUsdc,
-        chainId: selectedRail.chainId,
-      });
+      // Gate state is not sent: the server resolves the named chain's vault and
+      // rail (and, for an un-allocate, pre-flights the Safe's shares) itself, so
+      // the caller cannot turn a gate off.
+      begin =
+        kind === 'allocate'
+          ? await beginDeposit({
+              safeAddress,
+              amountUsdc: amount.trim(),
+              chainId: selectedRail.chainId,
+            })
+          : await beginWithdraw({
+              safeAddress,
+              amount: withdrawAll
+                ? { kind: 'all' }
+                : { kind: 'partial', amountUsdc: amount.trim() },
+              chainId: selectedRail.chainId,
+            });
     } catch (cause) {
       setState({
         kind: 'failed',
@@ -298,11 +351,18 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
     setState({ kind: 'submitting' });
     let result;
     try {
-      result = await completeDeposit({
-        token: begin.token,
-        assertion,
-        chainId: builtChainId,
-      });
+      result =
+        kind === 'allocate'
+          ? await completeDeposit({
+              token: begin.token,
+              assertion,
+              chainId: builtChainId,
+            })
+          : await completeWithdraw({
+              token: begin.token,
+              assertion,
+              chainId: builtChainId,
+            });
     } catch (cause) {
       setState({
         kind: 'failed',
@@ -467,30 +527,62 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   />
                   Yes
                 </span>
-                <button
-                  type='button'
-                  aria-label={`Allocate into ${instrument.name}`}
-                  onClick={() => openInstrument(instrument)}
-                  disabled={!instrument.wired}
-                  title={
-                    instrument.wired
-                      ? undefined
-                      : 'Only the MetaMorpho vaults are wired in this iteration.'
-                  }
+                <div
                   style={{
-                    height: '32px',
-                    border: 0,
-                    borderRadius: '999px',
-                    background: instrument.wired ? tokens.ink : tokens.chipBg,
-                    color: instrument.wired ? '#fff' : tokens.locked,
-                    fontFamily: 'inherit',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    gap: '6px',
+                    justifyContent: 'flex-end',
                   }}
                 >
-                  Allocate
-                </button>
+                  <button
+                    type='button'
+                    aria-label={`Allocate into ${instrument.name}`}
+                    onClick={() => openInstrument(instrument, 'allocate')}
+                    disabled={!instrument.wired}
+                    title={
+                      instrument.wired
+                        ? undefined
+                        : 'Only the MetaMorpho vaults are wired in this iteration.'
+                    }
+                    style={{
+                      height: '32px',
+                      border: 0,
+                      borderRadius: '999px',
+                      background: instrument.wired ? tokens.ink : tokens.chipBg,
+                      color: instrument.wired ? '#fff' : tokens.locked,
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Allocate
+                  </button>
+                  <button
+                    type='button'
+                    aria-label={`Un-allocate from ${instrument.name}`}
+                    onClick={() => openInstrument(instrument, 'unallocate')}
+                    disabled={!instrument.wired}
+                    title={
+                      instrument.wired
+                        ? 'Redeem USDC from this chain’s MetaMorpho vault'
+                        : 'Only the MetaMorpho vaults are wired in this iteration.'
+                    }
+                    style={{
+                      height: '32px',
+                      border: `1px solid ${tokens.border}`,
+                      borderRadius: '999px',
+                      background: '#fff',
+                      color: instrument.wired ? tokens.chipFg : tokens.locked,
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Un-allocate
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -531,7 +623,13 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
       <Modal
         open={selected !== null}
         onClose={closeModal}
-        title={selected?.name ?? 'Allocate'}
+        title={
+          selected
+            ? direction === 'unallocate'
+              ? `Un-allocate from ${selected.name}`
+              : selected.name
+            : 'Allocate'
+        }
         maxWidth={460}
       >
         {selected ? (
@@ -551,7 +649,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
               <>
                 <div style={{ marginTop: '14px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                    Deposit chain
+                    {direction === 'unallocate' ? 'Redemption chain' : 'Deposit chain'}
                   </div>
                   <div
                     style={{
@@ -560,7 +658,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                       color: tokens.muted,
                     }}
                   >
-                    This investment deposits on{' '}
+                    {direction === 'unallocate'
+                      ? 'This investment redeems from '
+                      : 'This investment deposits on '}
                     <strong style={{ color: tokens.chipFg }}>
                       {selected.chain}
                     </strong>
@@ -579,7 +679,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     fontWeight: 600,
                   }}
                 >
-                  Amount to allocate (USDC)
+                  {direction === 'unallocate'
+                    ? 'Amount to un-allocate (USDC)'
+                    : 'Amount to allocate (USDC)'}
                 </label>
                 <input
                   id='invest-amount'
@@ -587,6 +689,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   inputMode='decimal'
                   value={amount}
                   spellCheck={false}
+                  disabled={direction === 'unallocate' && withdrawAll}
                   onChange={(event) => setAmount(event.target.value)}
                   style={{
                     marginTop: '8px',
@@ -599,7 +702,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     fontWeight: 700,
                     fontVariantNumeric: 'tabular-nums',
                     fontFamily: 'inherit',
-                    background: '#fff',
+                    background: direction === 'unallocate' && withdrawAll ? tokens.chipBg : '#fff',
                     color: tokens.ink,
                     outline: 'none',
                   }}
@@ -616,7 +719,11 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     <button
                       key={preset}
                       type='button'
-                      onClick={() => setAmount(preset)}
+                      onClick={() => {
+                        setAmount(preset);
+                        // A preset is a stated amount, so it clears "all".
+                        if (direction === 'unallocate') setWithdrawAll(false);
+                      }}
                       style={{
                         flex: '1 1 0',
                         minWidth: '80px',
@@ -635,6 +742,29 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     </button>
                   ))}
                 </div>
+
+                {direction === 'unallocate' ? (
+                  <label
+                    htmlFor='invest-withdraw-all'
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginTop: '12px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      id='invest-withdraw-all'
+                      type='checkbox'
+                      checked={withdrawAll}
+                      onChange={(event) => setWithdrawAll(event.target.checked)}
+                    />
+                    Un-allocate everything on {selected.chain} (redeem all shares)
+                  </label>
+                ) : null}
 
                 <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
                   <Row
@@ -657,13 +787,31 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   />
                 </dl>
 
+                {direction === 'unallocate' ? (
+                  <div
+                    data-testid='invest-unallocate-tier-warning'
+                    style={{ marginTop: '16px' }}
+                  >
+                    <Notice tone='warning' title='This lowers your qualified tier'>
+                      Un-allocating reduces the total the app describes as your
+                      tier — your tier is the total across all three chains.
+                      Withdrawing lowers that total and can start the 90-day cure
+                      period. Shown before you sign.
+                    </Notice>
+                  </div>
+                ) : null}
+
                 <div style={{ marginTop: '16px', marginBottom: '16px'}}>
                   <Button
                     style={{ width: '100%' }}
-                    variant={canAllocate ? 'primary' : 'locked'}
-                    disabled={!canAllocate || busy}
-                    onClick={allocate}
-                    ariaLabel='Build the deposit'
+                    variant={canTransact ? 'primary' : 'locked'}
+                    disabled={!canTransact || busy}
+                    onClick={() => runTransaction(direction)}
+                    ariaLabel={
+                      direction === 'unallocate'
+                        ? 'Build the un-allocate'
+                        : 'Build the deposit'
+                    }
                     title={
                       selectedRail === null
                         ? 'No MetaMorpho vault rail is configured on any chain'
@@ -671,9 +819,15 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                           ? `The ${selectedRail.chainName} vault rail is not configured`
                           : safeAddress === null
                             ? 'No Safe is recorded for this account yet'
-                            : !amountValid
-                              ? 'Enter a positive USDC amount'
-                              : 'Build, sign and submit the deposit'
+                            : direction === 'unallocate'
+                              ? withdrawAll
+                                ? 'Build, sign and submit the un-allocate of the full position'
+                                : !amountValid
+                                  ? 'Enter a positive USDC amount'
+                                  : 'Build, sign and submit the un-allocate'
+                              : !amountValid
+                                ? 'Enter a positive USDC amount'
+                                : 'Build, sign and submit the deposit'
                     }
                   >
                     {state.kind === 'building'
@@ -682,7 +836,11 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                         ? 'Confirm with your passkey…'
                         : state.kind === 'submitting'
                           ? 'Submitting…'
-                          : `Allocate ${amount} USDC`}
+                          : direction === 'unallocate'
+                            ? withdrawAll
+                              ? 'Un-allocate all USDC'
+                              : `Un-allocate ${amount} USDC`
+                            : `Allocate ${amount} USDC`}
                   </Button>
                 </div>
               </>
@@ -695,7 +853,14 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
             )}
 
             {state.kind === 'gated' ? (
-              <Notice tone='warning' title='Deposit gated'>
+              <Notice
+                tone='warning'
+                title={
+                  direction === 'unallocate'
+                    ? 'Un-allocate gated'
+                    : 'Deposit gated'
+                }
+              >
                 {state.reason}
                 <div style={{ marginTop: '6px' }}>
                   Nothing was signed or sent.
@@ -705,29 +870,55 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
 
             {state.kind === 'building' ? (
               <TransactionProgress
-                label='Building the deposit…'
-                progressLabel='Building the deposit'
+                label={
+                  direction === 'unallocate'
+                    ? 'Building the un-allocate…'
+                    : 'Building the deposit…'
+                }
+                progressLabel={
+                  direction === 'unallocate'
+                    ? 'Building the un-allocate'
+                    : 'Building the deposit'
+                }
               />
             ) : null}
 
             {state.kind === 'awaiting-passkey' ? (
               <TransactionProgress
-                label='Waiting for your passkey to authorise the deposit…'
+                label={
+                  direction === 'unallocate'
+                    ? 'Waiting for your passkey to authorise the un-allocate…'
+                    : 'Waiting for your passkey to authorise the deposit…'
+                }
                 progressLabel='Awaiting your passkey'
               />
             ) : null}
 
             {state.kind === 'submitting' ? (
               <TransactionProgress
-                label={`Submitting and confirming the deposit on ${selectedRail?.chainName ?? ''}…`}
-                progressLabel='Confirming the deposit'
+                label={`Submitting and confirming the ${
+                  direction === 'unallocate' ? 'un-allocate' : 'deposit'
+                } on ${selectedRail?.chainName ?? ''}…`}
+                progressLabel={
+                  direction === 'unallocate'
+                    ? 'Confirming the un-allocate'
+                    : 'Confirming the deposit'
+                }
               />
             ) : null}
 
             {state.kind === 'failed' ? (
-              <Notice tone='error' title='Deposit failed'>
-                The deposit on {state.chainName} stopped at the{' '}
-                <strong>{state.stage}</strong> step: {state.reason}
+              <Notice
+                tone='error'
+                title={
+                  direction === 'unallocate'
+                    ? 'Un-allocate failed'
+                    : 'Deposit failed'
+                }
+              >
+                The {direction === 'unallocate' ? 'un-allocate' : 'deposit'} on{' '}
+                {state.chainName} stopped at the <strong>{state.stage}</strong>{' '}
+                step: {state.reason}
                 <div style={{ marginTop: '6px' }}>
                   {state.sent
                     ? 'The operation reached the bundler but was not confirmed.'
@@ -738,12 +929,28 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
 
             {state.kind === 'sent' ? (
               <div
-                data-testid='invest-deposit-complete'
+                data-testid={
+                  direction === 'unallocate'
+                    ? 'invest-unallocate-complete'
+                    : 'invest-deposit-complete'
+                }
                 style={{ marginTop: '14px' }}
               >
-                <Notice tone='success' title='Deposit submitted'>
-                  The deposit of {state.amountUsdc} USDC was submitted and its
-                  receipt confirmed on {state.chainName}.
+                <Notice
+                  tone='success'
+                  title={
+                    direction === 'unallocate'
+                      ? 'Un-allocate submitted'
+                      : 'Deposit submitted'
+                  }
+                >
+                  {direction === 'unallocate'
+                    ? `The un-allocate of ${
+                        state.amountUsdc === 'all'
+                          ? 'the full position'
+                          : `${state.amountUsdc} USDC`
+                      } was submitted and its receipt confirmed on ${state.chainName}.`
+                    : `The deposit of ${state.amountUsdc} USDC was submitted and its receipt confirmed on ${state.chainName}.`}
                 </Notice>
                 <dl style={{ margin: '12px 0 0', fontSize: '13px' }}>
                   <Detail label='Transaction'>

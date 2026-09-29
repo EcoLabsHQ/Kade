@@ -7,6 +7,19 @@ import {
   type MorphoVaultDepositPlan,
 } from './morpho-deposit';
 import {
+  buildMorphoVaultWithdrawCall,
+  InvalidWithdrawAmountError,
+  MissingShareBalanceError,
+  WrongWithdrawChainError,
+  withdrawAmountUnits,
+  type MorphoVaultWithdrawPlan,
+  type WithdrawAmount,
+} from './morpho-withdraw';
+import {
+  checkSafeWithdrawShares,
+  type SafeVaultShareReader,
+} from './safe-vault-shares';
+import {
   morphoChainName,
   readMorphoVaultConfig,
   readMorphoVaultConfigForChain,
@@ -209,6 +222,181 @@ export async function prepareMorphoVaultDeposit(
       return {
         status: 'gated',
         gate: 'vault-not-configured',
+        reason: describe(error),
+        gated: true,
+      };
+    }
+    throw error;
+  }
+
+  return { status: 'ready-to-execute', plan, gated: true };
+}
+
+/** Why an un-allocate cannot be built. */
+export type VaultWithdrawGate =
+  | VaultDepositGate
+  | 'safe-insufficient-shares'
+  | 'safe-shares-unreadable';
+
+/**
+ * The outcome of asking to build an un-allocate.
+ *
+ * `gated` means the environment or the Safe's own share balance refused, and
+ * nothing was built against a fabricated value. `ready-to-execute` carries the
+ * single redemption plan; it is still unsent — the caller signs and submits it
+ * through the **same** two-phase flow as the deposit.
+ */
+export type MorphoVaultWithdrawResult =
+  | {
+      readonly status: 'gated';
+      readonly gate: VaultWithdrawGate;
+      readonly reason: string;
+      /** The plan that would be executed, when configuration was complete. */
+      readonly plan?: MorphoVaultWithdrawPlan;
+      readonly gated: true;
+    }
+  | {
+      readonly status: 'ready-to-execute';
+      readonly plan: MorphoVaultWithdrawPlan;
+      readonly gated: true;
+    };
+
+/**
+ * The build-time inputs an un-allocate reads.
+ *
+ * `sharesReader` is the injectable pre-flight seam (the inverse of the
+ * deposit's funding read); production uses the real vault-chain RPC read and
+ * tests inject a deterministic one so no network is touched.
+ */
+export interface MorphoVaultWithdrawDependencies {
+  readonly env?: MorphoEnv;
+  /** Whether the named chain's rail (RPC/payer) is configured. Defaults false. */
+  readonly railConfigured?: boolean;
+  /** The share-balance read seam; defaults to the real RPC read. */
+  readonly sharesReader?: SafeVaultShareReader;
+}
+
+export interface MorphoVaultWithdrawRequest {
+  readonly safeAddress: Address;
+  readonly amount: WithdrawAmount;
+  readonly chainId?: number;
+}
+
+/**
+ * Build, and only build, a MetaMorpho USDC un-allocate.
+ *
+ * Order, and why:
+ *
+ *   1. Resolve the vault config. Absent → `vault-not-configured`; nothing is
+ *      built against a fabricated address.
+ *   2. Check the named chain's rail. Absent → `rail-not-configured`, naming the
+ *      chain.
+ *   3. **Pre-flight the shares** (the inverse of the deposit's funding gate):
+ *      read the Safe's share balance and its USDC value and refuse before
+ *      building when the shares cannot cover the requested USDC, or when the
+ *      read fails. For "all", any positive balance suffices and the read shares
+ *      become the amount `redeem` burns.
+ *   4. Build the single `withdraw` / `redeem` call with the Safe as both `owner`
+ *      and `receiver`. A malformed amount, a wrong chain or a bad Safe address
+ *      is a refusal, not a sent transaction.
+ *
+ * Nothing here signs or sends; the caller owns the passkey flow. The withdraw
+ * call is a new call type through the **same** plan → build → passkey → submit
+ * plumbing, never a second engine.
+ */
+export async function prepareMorphoVaultWithdraw(
+  request: MorphoVaultWithdrawRequest,
+  deps: MorphoVaultWithdrawDependencies = {},
+): Promise<MorphoVaultWithdrawResult> {
+  const env = deps.env ?? process.env;
+  const config = resolveVaultConfig(request.chainId, env);
+  if (!config) {
+    return {
+      status: 'gated',
+      gate: 'vault-not-configured',
+      reason: missingVaultReason(request.chainId),
+      gated: true,
+    };
+  }
+
+  if (!deps.railConfigured) {
+    return {
+      status: 'gated',
+      gate: 'rail-not-configured',
+      reason: missingRailReason(request.chainId),
+      gated: true,
+    };
+  }
+
+  // Resolve the partial amount before reading: the pre-flight needs the USDC
+  // figure to compare against the shares' value. A malformed amount is a
+  // refusal, and nothing is read or built against it.
+  let amountUnits: bigint | null;
+  try {
+    amountUnits = withdrawAmountUnits(request.amount);
+  } catch (error) {
+    if (error instanceof InvalidWithdrawAmountError) {
+      return {
+        status: 'gated',
+        gate: 'vault-not-configured',
+        reason: describe(error),
+        gated: true,
+      };
+    }
+    throw error;
+  }
+
+  // Pre-flight, inverted from the deposit's funding gate: a Safe holding too few
+  // shares for the requested USDC can never execute, so it is refused with the
+  // chain and the shortfall before a plan exists. A read that fails refuses with
+  // its real reason rather than assuming sufficiency.
+  const shares = await checkSafeWithdrawShares(
+    {
+      safeAddress: request.safeAddress,
+      vault: config.vault,
+      chainId: config.chainId,
+      chainName: morphoChainName(config.chainId),
+      amountUnits,
+    },
+    deps.sharesReader,
+  );
+  if (!shares.ok) {
+    return {
+      status: 'gated',
+      gate: shares.gate,
+      reason: shares.reason,
+      gated: true,
+    };
+  }
+
+  let plan: MorphoVaultWithdrawPlan;
+  try {
+    plan = buildMorphoVaultWithdrawCall({
+      config,
+      safeAddress: request.safeAddress,
+      amount: request.amount,
+      shareBalance: shares.shares,
+      chainId: request.chainId,
+    });
+  } catch (error) {
+    if (
+      error instanceof InvalidWithdrawAmountError ||
+      error instanceof InvalidSafeAddressError ||
+      error instanceof WrongWithdrawChainError
+    ) {
+      return {
+        status: 'gated',
+        gate: 'vault-not-configured',
+        reason: describe(error),
+        gated: true,
+      };
+    }
+    if (error instanceof MissingShareBalanceError) {
+      // Defensive: the pre-flight should have caught an empty position. If it
+      // ever does not, the refusal still names the real reason.
+      return {
+        status: 'gated',
+        gate: 'safe-insufficient-shares',
         reason: describe(error),
         gated: true,
       };
