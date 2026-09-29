@@ -74,6 +74,20 @@ export function pimlicoUrl(config: PimlicoConfig): string {
   return `https://api.pimlico.io/v2/${config.chainId}/rpc?add_balance_override&apikey=${config.apiKey}`;
 }
 
+/**
+ * The bundler's user-operation receipt.
+ *
+ * `getUserOperationReceipt` returns `null` until the bundler has indexed the
+ * mined operation, so a `null` read means "not mined yet" — it is **not** a
+ * revert. Only a non-null receipt whose `status` is not `success` is a revert.
+ */
+export interface UserOperationReceipt {
+  readonly receipt?: {
+    readonly status?: string;
+    readonly transactionHash?: Hex;
+  };
+}
+
 /** The SDK surface this module uses, declared so it is stubable in tests. */
 export interface Safe4337PackLike {
   createTransaction(input: {
@@ -85,15 +99,7 @@ export interface Safe4337PackLike {
   }): Promise<unknown>;
   signSafeOperation(safeOperation: unknown): Promise<unknown>;
   executeTransaction(input: { readonly executable: unknown }): Promise<Hex>;
-  getUserOperationReceipt(hash: Hex): Promise<
-    | {
-        readonly receipt?: {
-          readonly status?: string;
-          readonly transactionHash?: Hex;
-        };
-      }
-    | null
-  >;
+  getUserOperationReceipt(hash: Hex): Promise<UserOperationReceipt | null>;
   /** The Safe address, deployed or counterfactual. */
   readonly protocolKit?: { getAddress(): Promise<string> };
 }
@@ -111,6 +117,12 @@ export interface SafeExecutionDependencies {
   /** The Safe to execute from, or `null` to deploy a fresh one on first use. */
   readonly safeAddress: Address | null;
   readonly chainId?: number;
+  /**
+   * How the receipt poll waits between reads. Injected so tests stay offline
+   * and deterministic; production uses the real timer. See
+   * `RECEIPT_POLL_DELAYS_MS`.
+   */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 function describe(cause: unknown): string {
@@ -178,6 +190,12 @@ export type SafeSubmitOutcome =
       readonly stage: 'init' | 'lookup' | 'integrity' | 'sign' | 'submit' | 'receipt';
       readonly reason: string;
       readonly userOperationHash?: Hex;
+      /**
+       * The mined transaction's hash, when one exists. A reverted user operation
+       * still has a transaction on chain, so its hash is surfaced alongside the
+       * refusal; a null-receipt pending outcome has no transaction hash.
+       */
+      readonly transactionHash?: Hex | null;
     }
   | {
       readonly status: 'sent';
@@ -188,6 +206,25 @@ export type SafeSubmitOutcome =
 
 /** How long a retained operation may be signed and submitted before it expires. */
 export const RETAINED_OPERATION_TTL_MS = 5 * 60_000;
+
+/**
+ * The bounded backoff schedule for reading a user-operation receipt.
+ *
+ * `executeTransaction` can return before the bundler has indexed the mined
+ * operation, so `getUserOperationReceipt` may answer `null` for a while. The
+ * schedule caps the extra wait at 30 seconds and backs off so a slow bundler is
+ * polled politely; it is a fixed list, so the loop can never run unbounded. When
+ * the schedule is exhausted a `null` is reported as **pending**, never as a
+ * revert.
+ */
+export const RECEIPT_POLL_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
+
+/** Real wall-clock sleep; injected away in tests so no timer runs. */
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 interface RetainedOperation {
   readonly operation: unknown;
@@ -386,6 +423,33 @@ export async function buildResidentSafeBatch(
 }
 
 /**
+ * Read the user-operation receipt, polling with a bounded backoff while the
+ * operation has not been mined yet.
+ *
+ * A `null` answer is the bundler saying "no receipt has been indexed yet"; it
+ * is not a failure and never a revert. The loop is bounded by the fixed
+ * `RECEIPT_POLL_DELAYS_MS` schedule, so it can add at most 30 seconds to a
+ * request and can never spin. The final `null` is returned to the caller, which
+ * reports it as pending rather than reverted.
+ *
+ * Only this read path is retried: the operation is submitted exactly once, by
+ * `submitResidentSafeOperation`, and the one-time token is already consumed.
+ */
+async function waitForUserOperationReceipt(
+  pack: Safe4337PackLike,
+  userOperationHash: Hex,
+  sleep: (ms: number) => Promise<void>,
+): Promise<UserOperationReceipt | null> {
+  let receipt = await pack.getUserOperationReceipt(userOperationHash);
+  for (const delayMs of RECEIPT_POLL_DELAYS_MS) {
+    if (receipt !== null) return receipt;
+    await sleep(delayMs);
+    receipt = await pack.getUserOperationReceipt(userOperationHash);
+  }
+  return receipt;
+}
+
+/**
  * Phase 2 — attach the client's passkey assertion to the retained operation and
  * submit it.
  *
@@ -492,22 +556,40 @@ export async function submitResidentSafeOperation(
     };
   }
 
+  const sleep = deps.sleep ?? defaultSleep;
   try {
-    const receipt = await pack.getUserOperationReceipt(userOperationHash);
-    if (receipt?.receipt?.status !== 'success') {
+    const receipt = await waitForUserOperationReceipt(pack, userOperationHash, sleep);
+    if (receipt === null) {
+      // The operation was broadcast — `sent` is true — but the bundler has not
+      // indexed a receipt within the bounded wait. That is "not mined yet", not
+      // a revert, so it is reported as pending with the hash the resident can
+      // follow. It is never resubmitted; the token was already consumed.
+      return {
+        status: 'failed',
+        sent: true,
+        stage: 'receipt',
+        reason:
+          'The user operation reached the bundler but has not been confirmed ' +
+          'yet; it may still be mined. Track it with its user-operation hash: ' +
+          `${userOperationHash}. Do not resubmit.`,
+        userOperationHash,
+      };
+    }
+    if (receipt.receipt?.status !== 'success') {
       return {
         status: 'failed',
         sent: true,
         stage: 'receipt',
         reason: 'The user operation reverted.',
         userOperationHash,
+        transactionHash: receipt.receipt?.transactionHash ?? null,
       };
     }
     return {
       status: 'sent',
       sent: true,
       userOperationHash,
-      transactionHash: receipt.receipt.transactionHash ?? null,
+      transactionHash: receipt.receipt?.transactionHash ?? null,
     };
   } catch (cause) {
     return {
