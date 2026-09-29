@@ -168,9 +168,10 @@ describe('HoldingsScreen', () => {
     expect(screen.getAllByTitle(ADDRESS)).toHaveLength(1);
     expect(screen.getAllByTitle(ADDRESS_2)).toHaveLength(2);
     expect(screen.getByText('1.000000 ETH')).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/signature-verified/).length,
-    ).toBeGreaterThan(0);
+    // Owner-directed: a verified wallet's provenance is its address alone.
+    // The old "· signature-verified" suffix is gone; the contract requires the
+    // row to be listed, not any particular label.
+    expect(screen.queryByText(/signature-verified/)).toBeNull();
   });
 
   it('renders a USDC holding as its own row when the read produced one', () => {

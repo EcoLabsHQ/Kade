@@ -290,7 +290,7 @@ interface LinkedRow extends WalletAssetRow {
 
 /** The provenance line for a signature-verified wallet. */
 function verifiedProvenance(wallet: HoldingWallet): string {
-  return `${shortAddress(wallet.address)} · signature-verified`;
+  return `${shortAddress(wallet.address)}`;
 }
 
 /**
