@@ -12,18 +12,27 @@ import {
 import type { PasskeySigner } from '@/lib/safe/passkey-signer';
 
 /**
- * Regression: a user operation that is simply not mined yet must never be
- * reported as reverted.
+ * Receipt-handling regressions for the resident-Safe 4337 flow.
+ *
+ * ## A null receipt is not a revert
  *
  * `getUserOperationReceipt` answers `null` until the bundler has indexed the
- * mined operation. The engine used to read that `null` as `status !== 'success'`
- * and report "The user operation reverted." even when the chain later showed the
- * operation had succeeded. These tests pin the honest behaviour:
+ * mined operation. The engine used to read that `null` as a failed status and
+ * report "The user operation reverted." even when the chain later showed the
+ * operation had succeeded. These tests pin the honest behaviour: a null receipt
+ * is pending / not confirmed, carries the user-operation hash, and is never
+ * resubmitted.
  *
- *   - a null receipt is pending / not confirmed, carries the user-operation
- *     hash, and is never resubmitted;
- *   - only an existing, non-`success` receipt is a revert (with its tx hash);
- *   - a successful receipt still confirms.
+ * ## The provider never returns `status: 'success'`
+ *
+ * `getUserOperationReceipt` is a straight passthrough of the standard
+ * `eth_getUserOperationReceipt` response (`@safe-global/relay-kit`), so the
+ * transaction status arrives in raw JSON-RPC form and the user-operation
+ * outcome arrives as the top-level `success` boolean. The engine used to
+ * compare `receipt.status` against the literal `'success'` — a value the
+ * provider never produces — so `'0x1' !== 'success'` was always true and every
+ * successful deposit was reported as reverted. The outcome tests below use the
+ * **real** payload shape (`success` boolean plus hex `status`).
  *
  * The pack and the poll delay are injected, so no network and no timer runs.
  */
@@ -227,5 +236,157 @@ describe('submitResidentSafeOperation receipt handling', () => {
     expect(total).toBeLessThanOrEqual(30_000);
     // Backoff is non-decreasing and fixed; a future change must be deliberate.
     expect([...RECEIPT_POLL_DELAYS_MS]).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);
+  });
+});
+
+/**
+ * Regression (T32): decide the outcome from what the provider actually returns.
+ *
+ * `getUserOperationReceipt` is a straight passthrough of the standard
+ * `eth_getUserOperationReceipt` response, so the payload carries the
+ * user-operation-level `success` boolean alongside the raw JSON-RPC
+ * transaction `status`. The `success: true, receipt.status: '0x1'` fixture
+ * below is the **actual observed shape** returned by the live Pimlico bundler
+ * for a Base deposit that succeeded (userOp hash
+ * 0x9cfeb58a1207d2c0c41307664f8e554e1d0625f7eda94237d79247d77b71033e). The
+ * operation's call really succeeded: the resident Safe has an EntryPoint nonce
+ * of 1 and a vault position exists. Under the old `status !== 'success'` check
+ * this fixture was reported as "The user operation reverted."
+ */
+const SUCCESS_STATUSES: readonly (string | number | boolean)[] = [
+  '0x1',
+  1,
+  true,
+  // The legacy string form: a provider may normalise to this one day, and it
+  // must remain accepted — but it is no longer the only accepted form.
+  'success',
+];
+const REVERT_STATUSES: readonly (string | number | boolean)[] = [
+  '0x0',
+  0,
+  false,
+  'reverted',
+];
+
+describe('provider receipt outcome', () => {
+  it('confirms the real provider payload: success true with hex status 0x1', async () => {
+    const fake = fakePack([
+      {
+        success: true,
+        receipt: { status: '0x1', transactionHash: CONFIRMED_TX_HASH },
+      },
+    ]);
+    const { token } = await build(fake);
+
+    const outcome = await submitResidentSafeOperation(
+      { token, assertion: ASSERTION },
+      fake.deps,
+      ENV,
+    );
+
+    expect(outcome.status).toBe('sent');
+    if (outcome.status !== 'sent') return;
+    expect(outcome.sent).toBe(true);
+    expect(outcome.userOperationHash).toBe(USER_OP_HASH);
+    expect(outcome.transactionHash).toBe(CONFIRMED_TX_HASH);
+    expect(fake.sleep).not.toHaveBeenCalled();
+    expect(fake.executeTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the user-op success boolean as authoritative over the transaction status', async () => {
+    // success false with a 0x1 transaction status is still a revert: the
+    // user-op outcome distinguishes a call revert from a mined success.
+    const reverted = fakePack([
+      { success: false, receipt: { status: '0x1', transactionHash: REVERTED_TX_HASH } },
+    ]);
+    const { token: revertToken } = await build(reverted);
+    const revertOutcome = await submitResidentSafeOperation(
+      { token: revertToken, assertion: ASSERTION },
+      reverted.deps,
+      ENV,
+    );
+    expect(revertOutcome.status).toBe('failed');
+    if (revertOutcome.status !== 'failed') return;
+    expect(revertOutcome.reason).toBe('The user operation reverted.');
+    expect(revertOutcome.transactionHash).toBe(REVERTED_TX_HASH);
+
+    // success true with a 0x0 transaction status is still a success.
+    const confirmed = fakePack([
+      { success: true, receipt: { status: '0x0', transactionHash: CONFIRMED_TX_HASH } },
+    ]);
+    const { token: confirmToken } = await build(confirmed);
+    const confirmOutcome = await submitResidentSafeOperation(
+      { token: confirmToken, assertion: ASSERTION },
+      confirmed.deps,
+      ENV,
+    );
+    expect(confirmOutcome.status).toBe('sent');
+    if (confirmOutcome.status !== 'sent') return;
+    expect(confirmOutcome.transactionHash).toBe(CONFIRMED_TX_HASH);
+  });
+
+  it.each(SUCCESS_STATUSES)(
+    'falls back to transaction status %p as success when the user-op outcome is absent',
+    async (status) => {
+      const fake = fakePack([
+        { receipt: { status, transactionHash: CONFIRMED_TX_HASH } },
+      ]);
+      const { token } = await build(fake);
+
+      const outcome = await submitResidentSafeOperation(
+        { token, assertion: ASSERTION },
+        fake.deps,
+        ENV,
+      );
+
+      expect(outcome.status).toBe('sent');
+      if (outcome.status !== 'sent') return;
+      expect(outcome.transactionHash).toBe(CONFIRMED_TX_HASH);
+    },
+  );
+
+  it.each(REVERT_STATUSES)(
+    'falls back to transaction status %p as a revert when the user-op outcome is absent',
+    async (status) => {
+      const fake = fakePack([
+        { receipt: { status, transactionHash: REVERTED_TX_HASH } },
+      ]);
+      const { token } = await build(fake);
+
+      const outcome = await submitResidentSafeOperation(
+        { token, assertion: ASSERTION },
+        fake.deps,
+        ENV,
+      );
+
+      expect(outcome.status).toBe('failed');
+      if (outcome.status !== 'failed') return;
+      expect(outcome.sent).toBe(true);
+      expect(outcome.stage).toBe('receipt');
+      expect(outcome.reason).toBe('The user operation reverted.');
+      expect(outcome.transactionHash).toBe(REVERTED_TX_HASH);
+      expect(outcome.userOperationHash).toBe(USER_OP_HASH);
+    },
+  );
+
+  it('does not treat an unrecognised or missing status as success', async () => {
+    for (const receipt of [
+      { receipt: { status: '0x2' } },
+      { receipt: {} },
+      {},
+    ] as UserOperationReceipt[]) {
+      const fake = fakePack([receipt]);
+      const { token } = await build(fake);
+
+      const outcome = await submitResidentSafeOperation(
+        { token, assertion: ASSERTION },
+        fake.deps,
+        ENV,
+      );
+
+      expect(outcome.status).toBe('failed');
+      if (outcome.status !== 'failed') return;
+      expect(outcome.reason).toBe('The user operation reverted.');
+    }
   });
 });
