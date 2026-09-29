@@ -9,21 +9,29 @@ import {
 } from '@testing-library/react';
 import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
+import { MORPHO_VAULT_CHAIN_IDS } from '@kade/shared';
+import {
+  morphoChainName,
+  readMorphoVaultConfigForChain,
+} from '@/lib/invest/morpho-config';
 
 /**
- * The Invest screen (D18 / EXE-014), laid out to match the deployed baseline.
+ * The Invest screen (D18 / EXE-014).
  *
- * The two server actions and the passkey prompt are mocked so the screen is
- * exercised against recorded outcomes, but the assertions are about what the
- * screen must never do: it must not claim a deposit happened unless the server
- * confirmed it, it must show the configured vault address as a value (never a
- * literal of its own), it must not quote a yield figure it has no source for,
- * and it must keep the control disabled until an instrument is wired, a vault
- * is configured, a Safe is recorded and the amount is valid. It must not gate
- * on the Safe's deployment state — the server verifies the deposit-chain Safe
- * and a counterfactual Safe is deployed by its first sponsored operation — and
- * it must surface a server refusal reason rather than swallow it. It must also
- * call the three phases in order and report a dismissed prompt truthfully.
+ * The three MetaMorpho rails are three distinct investments, one per network,
+ * each named with its own chain. These tests pin the owner's requirement and the
+ * screen's honesty: the removed instruments (`aqua`, `soms`, `latam`) do not
+ * render, an unconfigured rail is never a selectable investment, starting from a
+ * row prepares the deposit for **that row's** chain (not the default), the two
+ * server actions and the passkey prompt run in order against recorded outcomes,
+ * a deposit is never claimed unless the server confirmed it, the configured
+ * vault address is shown as a value (never a literal of its own), no yield figure
+ * without a source is quoted, and the control stays disabled until an instrument
+ * is wired, a rail is configured, a Safe is recorded and the amount is valid. It
+ * must not gate on the Safe's deployment state — the server verifies the
+ * deposit-chain Safe and a counterfactual Safe is deployed by its first
+ * sponsored operation — and it must surface a server refusal reason rather than
+ * swallow it.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -85,11 +93,21 @@ const UNCONFIGURED_VAULTS: InvestVaultSummary[] = CONFIGURED_VAULTS.map(
   (rail) => ({ ...rail, configured: false, vault: null, usdc: null }),
 );
 
-const REFERENCE_INSTRUMENTS = [
+/**
+ * The three MetaMorpho rails, each its own investment named with its chain,
+ * followed by the one instrument retained from the reference's locked list.
+ */
+const MORPHO_ETHEREUM = 'Morpho USDC vault · Ethereum';
+const MORPHO_BASE = 'Morpho USDC vault · Base';
+const MORPHO_ARBITRUM = 'Morpho USDC vault · Arbitrum One';
+const MORPHO_INSTRUMENTS = [MORPHO_ETHEREUM, MORPHO_BASE, MORPHO_ARBITRUM];
+const RETAINED_INSTRUMENT = 'Ondo USDY';
+const EXPECTED_INSTRUMENTS = [...MORPHO_INSTRUMENTS, RETAINED_INSTRUMENT];
+
+/** The instruments the owner asked to remove; none may render or be clickable. */
+const REMOVED_INSTRUMENTS = [
   'Aqualectra 2025–2032 · AQUA-A1',
   'Staatsolie 2025–2033 · SOMS-25-A1',
-  'Ondo USDY',
-  'Morpho USDC vault',
   'LATAM EM Fund · Portfolio B',
 ];
 
@@ -166,18 +184,42 @@ describe('InvestScreen reference layout', () => {
     expect(
       screen.getByText(/Allocate from the vault into qualifying instruments/i),
     ).toBeInTheDocument();
-    for (const name of REFERENCE_INSTRUMENTS) {
+    for (const name of EXPECTED_INSTRUMENTS) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
     expect(
       screen.getAllByRole('button', { name: /allocate into/i }),
-    ).toHaveLength(REFERENCE_INSTRUMENTS.length);
+    ).toHaveLength(EXPECTED_INSTRUMENTS.length);
+  });
+
+  it('shows the three Morpho vaults, one per network, and drops aqua, soms and latam', () => {
+    // The owner's requirement: the three MetaMorpho rails are three distinct
+    // investments on three networks, and instruments 2, 3 and 5 are removed
+    // while Ondo USDY stays.
+    renderScreen();
+    for (const name of MORPHO_INSTRUMENTS) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    for (const name of REMOVED_INSTRUMENTS) {
+      expect(screen.queryByText(name)).toBeNull();
+      expect(
+        screen.queryByRole('button', {
+          name: new RegExp(`allocate into ${name}`, 'i'),
+        }),
+      ).toBeNull();
+    }
+    expect(screen.getByText(RETAINED_INSTRUMENT)).toBeInTheDocument();
   });
 
   it('names the vault instrument accurately and does not quote a yield', () => {
     renderScreen();
-    expect(screen.getByText('MetaMorpho · multichain vault')).toBeInTheDocument();
-    expect(screen.getByText('Variable APY · not quoted')).toBeInTheDocument();
+    // Every Morpho row is a MetaMorpho USDC vault, not a Morpho Blue market.
+    expect(screen.getAllByText('MetaMorpho · USDC vault')).toHaveLength(
+      MORPHO_INSTRUMENTS.length,
+    );
+    expect(screen.getAllByText('Variable APY · not quoted')).toHaveLength(
+      MORPHO_INSTRUMENTS.length,
+    );
     // The reference's demo APY must never be presented as the real figure.
     expect(screen.queryByText(/4\.62%/)).toBeNull();
   });
@@ -192,54 +234,117 @@ describe('InvestScreen reference layout', () => {
 describe('InvestScreen configuration', () => {
   it('shows the configured vault values from props, not literals', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     expect(within(dialog).getByText(VAULT)).toBeInTheDocument();
     expect(within(dialog).getByText(USDC)).toBeInTheDocument();
-    // The default rail (first configured, Ethereum) and its chain id are shown.
+    // The Ethereum row deposits on Ethereum mainnet, named before signing.
     expect(within(dialog).getByText('Ethereum · 1')).toBeInTheDocument();
   });
 
-  it('lists every rail and lets the resident choose one before signing', () => {
-    renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+  it('opens each Morpho investment on its own chain, vault and USDC — never shared', () => {
+    const cases = [
+      { name: MORPHO_ETHEREUM, chainId: 1, chain: 'Ethereum', vault: VAULT, usdc: USDC },
+      { name: MORPHO_BASE, chainId: 8453, chain: 'Base', vault: BASE_VAULT, usdc: BASE_USDC },
+      {
+        name: MORPHO_ARBITRUM,
+        chainId: 42161,
+        chain: 'Arbitrum One',
+        vault: ARBITRUM_VAULT,
+        usdc: ARBITRUM_USDC,
+      },
+    ];
 
-    // All three rails are visible; the first configured one is selected by
-    // default and its vault and USDC are shown before signing.
-    expect(
-      within(dialog).getByRole('button', { name: 'Ethereum' }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    expect(
-      within(dialog).getByRole('button', { name: 'Base' }),
-    ).toHaveAttribute('aria-pressed', 'false');
-    expect(within(dialog).getByText(VAULT)).toBeInTheDocument();
+    for (const current of cases) {
+      renderScreen();
+      const dialog = openDialog(current.name);
 
-    // Choosing Base swaps in Base's own vault and USDC — never shared across
-    // chains.
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Base' }));
-    expect(within(dialog).getByText('Base · 8453')).toBeInTheDocument();
-    expect(within(dialog).getByText(BASE_VAULT)).toBeInTheDocument();
-    expect(within(dialog).getByText(BASE_USDC)).toBeInTheDocument();
-    expect(within(dialog).queryByText(VAULT)).toBeNull();
+      // The modal names the row's own chain and shows that chain's vault/USDC.
+      expect(
+        within(dialog).getByText(`${current.chain} · ${current.chainId}`),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText(current.vault)).toBeInTheDocument();
+      expect(within(dialog).getByText(current.usdc)).toBeInTheDocument();
+
+      // No other chain's vault leaks into this investment's modal, and there is
+      // no chain selector to contradict the row.
+      for (const other of cases) {
+        if (other.vault !== current.vault) {
+          expect(within(dialog).queryByText(other.vault)).toBeNull();
+        }
+      }
+      expect(
+        within(dialog).queryByRole('button', { name: 'Base' }),
+      ).toBeNull();
+
+      cleanup();
+    }
   });
 
-  it('cannot allocate when no chain has a configured vault rail', () => {
-    renderScreen({ vaults: UNCONFIGURED_VAULTS });
-    const dialog = openDialog('Morpho USDC vault');
-    expect(within(dialog).queryByText(VAULT)).toBeNull();
-    expect(within(dialog).getAllByText('Not configured').length).toBeGreaterThan(0);
-    expect(confirmButton(dialog)).toBeDisabled();
-    // Every rail is shown, so the resident can see which chains exist and that
-    // none is configured yet.
-    expect(within(dialog).getByRole('button', { name: 'Ethereum' })).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Base' })).toBeDisabled();
+  it('never renders an unconfigured rail as a selectable investment', () => {
+    // Base's rail is pinned but not configured: it must not appear as a row or a
+    // clickable investment, while the configured rails are unaffected.
+    const baseUnconfigured = CONFIGURED_VAULTS.map((rail) =>
+      rail.chainId === 8453
+        ? { ...rail, configured: false, vault: null, usdc: null }
+        : rail,
+    );
+    renderScreen({ vaults: baseUnconfigured });
+
+    expect(screen.queryByText(MORPHO_BASE)).toBeNull();
     expect(
-      within(dialog).getByRole('button', { name: 'Arbitrum One' }),
-    ).toBeDisabled();
+      screen.queryByRole('button', {
+        name: /allocate into morpho usdc vault · base/i,
+      }),
+    ).toBeNull();
+    expect(screen.getByText(MORPHO_ETHEREUM)).toBeInTheDocument();
+    expect(screen.getByText(MORPHO_ARBITRUM)).toBeInTheDocument();
+  });
+
+  it('renders no selectable Morpho investment when no rail is configured', () => {
+    renderScreen({ vaults: UNCONFIGURED_VAULTS });
+    for (const name of MORPHO_INSTRUMENTS) {
+      expect(screen.queryByText(name)).toBeNull();
+    }
+    // Only the retained, non-wired instrument remains, and it stays locked.
+    expect(screen.getByText(RETAINED_INSTRUMENT)).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button', { name: /allocate into/i });
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toBeDisabled();
+  });
+
+  it('renders exactly the pinned per-chain rails the registry can execute', () => {
+    // Build the summaries the route builds, from the real registry, so the test
+    // fails if a chain is added or removed without the screen following. This is
+    // the drift guard: the Morpho rows are derived, not three literals.
+    const registryRails: InvestVaultSummary[] = MORPHO_VAULT_CHAIN_IDS.map(
+      (chainId) => {
+        const config = readMorphoVaultConfigForChain(chainId, {});
+        return {
+          configured: true,
+          chainId,
+          chainName: morphoChainName(chainId),
+          vault: config?.vault ?? null,
+          usdc: config?.usdc ?? null,
+        };
+      },
+    );
+    renderScreen({ vaults: registryRails });
+
+    expect(
+      screen.getAllByRole('button', {
+        name: /allocate into morpho usdc vault/i,
+      }),
+    ).toHaveLength(MORPHO_VAULT_CHAIN_IDS.length);
+    for (const chainId of MORPHO_VAULT_CHAIN_IDS) {
+      expect(
+        screen.getByText(`Morpho USDC vault · ${morphoChainName(chainId)}`),
+      ).toBeInTheDocument();
+    }
   });
 
   it('locks Allocate when the resident has no Safe recorded', () => {
     renderScreen({ safeAddress: null });
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     const button = confirmButton(dialog);
     expect(button).toBeDisabled();
     // The lock says what is actually missing; it must not claim a deployment.
@@ -255,7 +360,7 @@ describe('InvestScreen configuration', () => {
     // there and the first sponsored user operation deploys it, so deployment
     // state must not lock the control.
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     const button = confirmButton(dialog);
     expect(button).toBeEnabled();
     expect(button.getAttribute('title') ?? '').not.toMatch(/deployed/i);
@@ -263,7 +368,7 @@ describe('InvestScreen configuration', () => {
 
   it('locks Allocate for a malformed or zero amount', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     const input = within(dialog).getByLabelText(/amount to allocate/i);
 
     for (const bad of ['0', '-5', 'abc', '1.1234567', '']) {
@@ -274,7 +379,7 @@ describe('InvestScreen configuration', () => {
 
   it('enables Allocate when the vault, Safe and amount are all present', () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     expect(confirmButton(dialog)).toBeEnabled();
   });
 });
@@ -283,7 +388,7 @@ describe('InvestScreen allocate flow', () => {
   it('runs begin → passkey → complete in order', async () => {
     hoisted.beginDeposit.mockResolvedValue(READY);
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     fireEvent.change(within(dialog).getByLabelText(/amount to allocate/i), {
       target: { value: '1500.5' },
     });
@@ -313,11 +418,11 @@ describe('InvestScreen allocate flow', () => {
     });
   });
 
-  it('sends the chosen non-Ethereum chain explicitly and names it on success', async () => {
+  it('prepares the deposit for the row’s own chain, not the default one', async () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
-    // Choose Base before signing; the server build returns the Base chain id.
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Base' }));
+    // Open the Base investment row directly. Its deposit must be built for Base
+    // (8453), never the default Ethereum rail.
+    const dialog = openDialog(MORPHO_BASE);
     hoisted.beginDeposit.mockResolvedValue({ ...READY, chainId: 8453 });
 
     await clickAllocate(dialog);
@@ -339,10 +444,30 @@ describe('InvestScreen allocate flow', () => {
     ).toBeInTheDocument();
   });
 
+  it('prepares the Arbitrum investment for Arbitrum One', async () => {
+    renderScreen();
+    const dialog = openDialog(MORPHO_ARBITRUM);
+    hoisted.beginDeposit.mockResolvedValue({ ...READY, chainId: 42161 });
+
+    await clickAllocate(dialog);
+
+    await waitFor(() => expect(hoisted.completeDeposit).toHaveBeenCalledTimes(1));
+    expect(hoisted.beginDeposit).toHaveBeenCalledWith({
+      safeAddress: SAFE,
+      amountUsdc: '10000',
+      chainId: 42161,
+    });
+    expect(hoisted.completeDeposit).toHaveBeenCalledWith({
+      token: TOKEN,
+      assertion: ASSERTION,
+      chainId: 42161,
+    });
+  });
+
   it('reports a confirmed deposit only after the receipt', async () => {
     hoisted.beginDeposit.mockResolvedValue(READY);
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
 
     await clickAllocate(dialog);
 
@@ -357,7 +482,7 @@ describe('InvestScreen allocate flow', () => {
 
   it('reports a gated build with the server reason, without prompting the passkey', async () => {
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
 
     await clickAllocate(dialog);
 
@@ -378,7 +503,7 @@ describe('InvestScreen allocate flow', () => {
       new Error('The passkey prompt returned no assertion.'),
     );
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
 
     await clickAllocate(dialog);
 
@@ -399,7 +524,7 @@ describe('InvestScreen allocate flow', () => {
       reason: 'The passkey attached no signature to the operation.',
     });
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
 
     await clickAllocate(dialog);
 
@@ -409,14 +534,20 @@ describe('InvestScreen allocate flow', () => {
     expect(within(dialog).queryByText(/deposit submitted/i)).toBeNull();
   });
 
-  it('puts Morpho first and disables the instruments with no execution path', () => {
+  it('puts the wired Morpho investments first and disables the instrument with no execution path', () => {
     renderScreen();
     const buttons = screen.getAllByRole('button', { name: /allocate into/i });
-    expect(buttons[0]).toHaveAccessibleName(/allocate into morpho usdc vault/i);
-    expect(buttons[0]).toBeEnabled();
-    for (const button of buttons.slice(1)) {
-      expect(button).toBeDisabled();
+    // One button per investment, in order: the three Morpho rails, then USDY.
+    expect(buttons).toHaveLength(EXPECTED_INSTRUMENTS.length);
+    for (const [index, name] of MORPHO_INSTRUMENTS.entries()) {
+      expect(buttons[index]).toHaveAccessibleName(
+        new RegExp(`allocate into ${name}`, 'i'),
+      );
+      expect(buttons[index]).toBeEnabled();
     }
+    const usdy = buttons[buttons.length - 1];
+    expect(usdy).toHaveAccessibleName(/allocate into ondo usdy/i);
+    expect(usdy).toBeDisabled();
   });
 });
 
@@ -441,7 +572,7 @@ describe('InvestScreen transaction modal', () => {
     );
 
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     await clickAllocate(dialog);
     await waitFor(() => expect(hoisted.completeDeposit).toHaveBeenCalledTimes(1));
 
@@ -476,7 +607,7 @@ describe('InvestScreen transaction modal', () => {
     });
 
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');
@@ -514,8 +645,8 @@ describe('InvestScreen transaction modal', () => {
   });
 
   it('points the deposit link at the chain the vault is on', async () => {
-    // A Base-only rail: the default selection is Base, so the confirmed link
-    // must point at Basescan, not Etherscan.
+    // A Base-only rail: the row is Base, so the confirmed link must point at
+    // Basescan, not Etherscan.
     hoisted.beginDeposit.mockResolvedValue({ ...READY, chainId: 8453 });
     hoisted.completeDeposit.mockResolvedValue({
       status: 'sent',
@@ -525,7 +656,7 @@ describe('InvestScreen transaction modal', () => {
     });
 
     renderScreen({ vaults: [BASE_RAIL] });
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_BASE);
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');
@@ -546,7 +677,7 @@ describe('InvestScreen transaction modal', () => {
     });
 
     renderScreen();
-    const dialog = openDialog('Morpho USDC vault');
+    const dialog = openDialog(MORPHO_ETHEREUM);
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');

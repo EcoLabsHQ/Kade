@@ -26,8 +26,9 @@ import {
  *
  * Laid out to match the deployed baseline (`mvp.onchainisland.co`, Invest
  * screen): the instrument table, its columns, the footer note and the two stat
- * cards are the reference's. The instruments themselves are the reference's
- * demo list; only the MetaMorpho vault is wired in this iteration.
+ * cards are the reference's. The three MetaMorpho rails are wired in this
+ * iteration — one investment per network; the other instruments render locked,
+ * as the baseline does.
  *
  * "Allocate" runs the two-phase passkey flow: the server builds the deposit and
  * returns the SafeOp hash (`beginDeposit`), the browser signs it with the
@@ -36,20 +37,23 @@ import {
  * reported only for a confirmed receipt; a gated build, a dismissed prompt and a
  * failed submission each report their own honest state.
  *
- * The deposit's chain is always explicit: the modal lists the MetaMorpho rails
- * (Ethereum, Base, Arbitrum One) and the resident picks one, which is shown
- * before signing and carried through `beginDeposit` / `completeDeposit`.
+ * Each MetaMorpho rail is its own investment row, named with its chain: the
+ * row the resident clicks is the chain the deposit is built for, shown before
+ * signing and carried through `beginDeposit` / `completeDeposit`. The modal has
+ * no chain selector, so the row's chain cannot be contradicted at signing time.
  */
 
 export interface InvestScreenProps {
   /**
-   * The MetaMorpho rails, one summary per chain (Ethereum, Base, Arbitrum One).
+   * The MetaMorpho rails, one summary per pinned chain (Ethereum, Base,
+   * Arbitrum One).
    *
-   * Every rail is rendered so the resident can see which chains have a
-   * configured vault and choose exactly one. `configured` is a server-resolved
-   * **UI hint** only, to keep the control disabled until a rail that can be
-   * built is selected. It is not a security gate: `beginDeposit` re-reads the
-   * named chain's vault configuration and its own rail and refuses honestly
+   * Each **configured** rail becomes its own investment row, named with its
+   * chain, so the resident deposits into exactly the network they clicked
+   * rather than choosing one in the modal. `configured` is a server-resolved
+   * **UI hint** only: a rail that is not configured is not rendered as a
+   * selectable investment. It is not a security gate — `beginDeposit` re-reads
+   * the named chain's vault configuration and its own rail and refuses honestly
    * with a reason.
    */
   readonly vaults: readonly InvestVaultSummary[];
@@ -76,77 +80,66 @@ interface Instrument {
   readonly minimum: string;
   /** Whether this iteration wires an execution path for the instrument. */
   readonly wired: boolean;
+  /**
+   * The rail chain a wired Morpho row deposits into, or `null` for an
+   * instrument with no execution path. Carried by the row, so no separate
+   * selector can point the deposit at a different chain than the row names.
+   */
+  readonly chainId: number | null;
 }
 
 /**
- * The reference's instrument list. The Morpho row's label and venue now name
- * the instrument accurately — a **MetaMorpho vault**, not a Morpho Blue market.
- * `wired` marks the one instrument this iteration has a call path for; the rest
- * render as the baseline does. The Morpho row's chain cell is derived at render
- * from the configured rails, so it names the chains that can actually take the
- * deposit rather than a hard-coded one.
+ * The one non-Morpho instrument this iteration renders. It has no execution
+ * path and stays visibly locked, as the baseline does.
  *
- * The vault's row carries no yield figure: this build has no source for the
- * vault's current APY, so it is presented as unavailable rather than quoting the
- * reference's demo number as if it were real.
+ * The MetaMorpho rows are **not** here: they are derived at render from the
+ * configured per-chain rails (see `morphoInstruments`), so the list cannot drift
+ * from what can actually execute and an unconfigured rail never becomes
+ * something a resident can click.
  */
-const INSTRUMENTS: readonly Instrument[] = [
-  {
-    key: 'morpho',
-    name: 'Morpho USDC vault',
-    venue: 'MetaMorpho · multichain vault',
-    type: 'Lending vault',
-    terms: 'Variable APY · not quoted',
-    minimum: '$100',
-    chain: 'Ethereum',
-    chainColor: '#627EEA',
-    wired: true,
-  },
-  {
-    key: 'aqua',
-    name: 'Aqualectra 2025–2032 · AQUA-A1',
-    venue: 'DCSX · feeder',
-    type: 'Bond',
-    terms: '5.00% semi-annual',
-    minimum: '$2,800',
-    chain: 'Ethereum',
-    chainColor: '#627EEA',
-    wired: false,
-  },
-  {
-    key: 'soms',
-    name: 'Staatsolie 2025–2033 · SOMS-25-A1',
-    venue: 'DCSX',
-    type: 'Bond',
-    terms: 'USD · 7.75%',
-    minimum: '$100',
-    chain: 'Ethereum',
-    chainColor: '#627EEA',
-    wired: false,
-  },
-  {
-    key: 'usdy',
-    name: 'Ondo USDY',
-    venue: 'Ondo · Arbitrum vault',
-    type: 'Tokenized treasury',
-    terms: '3.37% APY',
-    minimum: '$500',
-    chain: 'Arbitrum',
-    chainColor: '#2D374B',
-    wired: false,
-  },
-  {
-    key: 'latam',
-    name: 'LATAM EM Fund · Portfolio B',
-    venue: 'DCSX',
-    type: 'Fund',
-    terms: 'Growth & fintech',
-    minimum: '$10,000',
-    chain: 'Ethereum',
-    chainColor: '#627EEA',
-    wired: false,
-  },
-];
+const USDY_INSTRUMENT: Instrument = {
+  key: 'usdy',
+  name: 'Ondo USDY',
+  venue: 'Ondo · Arbitrum vault',
+  type: 'Tokenized treasury',
+  terms: '3.37% APY',
+  minimum: '$500',
+  chain: 'Arbitrum',
+  chainColor: '#2D374B',
+  wired: false,
+  chainId: null,
+};
+
+/**
+ * One investment row per **configured** MetaMorpho rail, named with its chain.
+ *
+ * The rows come from the registry-derived `vaults` prop, in registry order
+ * (Ethereum, Base, Arbitrum One), so the list is exactly the set of rails that
+ * can execute. An unconfigured rail produces no row, and nothing to click.
+ *
+ * The vault's label and venue name the instrument accurately — a **MetaMorpho
+ * vault**, not a Morpho Blue market. The row carries no yield figure: this build
+ * has no source for the vault's current APY, so it is presented as unavailable
+ * rather than quoting the reference's demo number as if it were real.
+ */
+function morphoInstruments(
+  vaults: readonly InvestVaultSummary[],
+): readonly Instrument[] {
+  return vaults
+    .filter((rail) => rail.configured)
+    .map((rail) => ({
+      key: `morpho-${rail.chainId}`,
+      name: `Morpho USDC vault · ${rail.chainName}`,
+      venue: 'MetaMorpho · USDC vault',
+      type: 'Lending vault',
+      terms: 'Variable APY · not quoted',
+      minimum: '$100',
+      chain: rail.chainName,
+      chainColor: chainColor(rail.chainName),
+      wired: true,
+      chainId: rail.chainId,
+    }));
+}
 
 type AllocateState =
   | { readonly kind: 'idle' }
@@ -190,19 +183,15 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
   const [state, setState] = useState<AllocateState>({ kind: 'idle' });
-  // The resident's chosen rail, or null to fall back to the first configured
-  // one. The chain is never implicit on the wire: the resolved rail's chainId is
-  // always sent to the server.
-  const [railChoice, setRailChoice] = useState<number | null>(null);
 
-  const configuredRails = vaults.filter((rail) => rail.configured);
-  // The resident's choice when it is still configured, otherwise the first
-  // configured rail (registry order: Ethereum, Base, Arbitrum). Null only when
-  // no chain has a usable rail.
+  // The rail a Morpho row deposits into, resolved from the row's own chain id —
+  // never a separate selection, so the row's chain and the deposit's chain
+  // cannot disagree. Null for a non-Morpho row (no rail) or a row whose chain is
+  // no longer among the configured rails.
   const selectedRail =
-    vaults.find((rail) => rail.chainId === railChoice && rail.configured) ??
-    configuredRails[0] ??
-    null;
+    selected?.chainId != null
+      ? (vaults.find((rail) => rail.chainId === selected.chainId) ?? null)
+      : null;
 
   const amountValid = AMOUNT_PATTERN.test(amount.trim()) && Number(amount) > 0;
   // The client precondition is deliberately shallow and is not a security gate:
@@ -226,9 +215,6 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
   function openInstrument(instrument: Instrument) {
     setSelected(instrument);
     setState({ kind: 'idle' });
-    // Reset to the first configured rail so each deposit starts from a visible,
-    // deterministic chain rather than a stale choice.
-    setRailChoice(null);
     const min = Number(instrument.minimum.replace(/[^0-9]/g, ''));
     setAmount(String(Math.max(10000, Number.isFinite(min) ? min : 10000)));
   }
@@ -358,22 +344,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
     });
   }
 
-  // The Morpho row's chain cell names the rails that can take the deposit, so
-  // the table does not falsely imply the vault is Ethereum-only. The swatch
-  // takes the first configured rail's colour.
-  const morphoChainLabel =
-    configuredRails.length > 0
-      ? configuredRails.map((rail) => rail.chainName).join(' · ')
-      : 'Not configured';
-  const instruments = INSTRUMENTS.map((instrument) =>
-    instrument.key === 'morpho'
-      ? {
-          ...instrument,
-          chain: morphoChainLabel,
-          chainColor: chainColor(configuredRails[0]?.chainName ?? 'Ethereum'),
-        }
-      : instrument,
-  );
+  // The configured MetaMorpho rails become one row each, named with their own
+  // chain, followed by the one instrument that has no execution path.
+  const instruments = [...morphoInstruments(vaults), USDY_INSTRUMENT];
 
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
@@ -502,7 +475,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   title={
                     instrument.wired
                       ? undefined
-                      : 'Only the MetaMorpho vault is wired in this iteration.'
+                      : 'Only the MetaMorpho vaults are wired in this iteration.'
                   }
                   style={{
                     height: '32px',
@@ -577,53 +550,23 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
             {selected.wired ? (
               <>
                 <div style={{ marginTop: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>Chain</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>
+                    Deposit chain
+                  </div>
                   <div
                     style={{
-                      display: 'flex',
-                      gap: '8px',
-                      marginTop: '8px',
-                      flexWrap: 'wrap',
+                      marginTop: '6px',
+                      fontSize: '12.5px',
+                      color: tokens.muted,
                     }}
                   >
-                    {vaults.map((rail) => {
-                      const isSelected = selectedRail?.chainId === rail.chainId;
-                      return (
-                        <button
-                          key={rail.chainId}
-                          type='button'
-                          onClick={() => setRailChoice(rail.chainId)}
-                          disabled={!rail.configured || busy}
-                          aria-pressed={isSelected}
-                          title={
-                            rail.configured
-                              ? `${rail.chainName} · chain ${rail.chainId}`
-                              : `No MetaMorpho vault rail is configured on ${rail.chainName}`
-                          }
-                          style={{
-                            height: '34px',
-                            border: `1px solid ${isSelected ? tokens.ink : tokens.border}`,
-                            borderRadius: '999px',
-                            padding: '0 14px',
-                            fontFamily: 'inherit',
-                            fontSize: '12.5px',
-                            fontWeight: 600,
-                            cursor:
-                              rail.configured && !busy
-                                ? 'pointer'
-                                : 'not-allowed',
-                            background: isSelected ? tokens.ink : '#fff',
-                            color: isSelected
-                              ? '#fff'
-                              : rail.configured
-                                ? tokens.chipFg
-                                : tokens.locked,
-                          }}
-                        >
-                          {rail.chainName}
-                        </button>
-                      );
-                    })}
+                    This investment deposits on{' '}
+                    <strong style={{ color: tokens.chipFg }}>
+                      {selected.chain}
+                    </strong>
+                    {selectedRail ? ` · chain ${selectedRail.chainId}` : ''}. The
+                    chain is set by the investment you chose, not selected at
+                    signing time.
                   </div>
                 </div>
 
@@ -745,7 +688,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
               </>
             ) : (
               <Notice tone='warning' title='Not wired yet'>
-                Only the MetaMorpho vault is wired in this iteration. This
+                Only the MetaMorpho vaults are wired in this iteration. This
                 instrument renders as the baseline does but has no execution
                 path yet.
               </Notice>
