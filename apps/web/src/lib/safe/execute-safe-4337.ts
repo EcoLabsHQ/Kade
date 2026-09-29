@@ -190,7 +190,13 @@ export type SafeBuildOutcome =
   | {
       readonly status: 'failed';
       readonly sent: false;
-      readonly stage: 'init' | 'create';
+      /**
+       * `estimate` is its own stage because a built operation that carries no
+       * usable verification-gas estimate must refuse before anything is signed
+       * — the allowance is part of the hash the passkey signs, so it cannot be
+       * corrected at submit time.
+       */
+      readonly stage: 'init' | 'create' | 'estimate';
       readonly reason: string;
     }
   | {
@@ -324,6 +330,130 @@ function operationHash(operation: unknown): Hex | null {
 }
 
 /**
+ * The bounded safety buffer applied to the account's estimated verification gas
+ * **before** the operation is hashed and signed.
+ *
+ * ## Why a buffer is needed
+ *
+ * `eth_estimateUserOperationGas` runs against Safe's **dummy** WebAuthn
+ * signature (relay-kit's `getDummySignature`), while the operation the resident
+ * signs carries a real P-256 assertion. On the Base rail the EntryPoint rejected
+ * **two** real deposits with `AA26 over verificationGasLimit`, at the exact
+ * estimate the app had computed:
+ *
+ *   - failures (nonce 0x1, no deployment): verificationGasLimit 51,698
+ *   - success  (nonce 0x0, with deployment): verificationGasLimit 1,050,355
+ *
+ * The one operation that succeeded included the Safe deployment, so its headroom
+ * says nothing about the validation-only cost. The gas fields are part of the
+ * SafeOp hash the passkey signs, so the allowance cannot be corrected at submit
+ * time — it is raised here, after the SDK estimate and before `getHash()`.
+ *
+ * ## Calibration
+ *
+ * The two failing operations prove 51,698 is insufficient. The succeeding
+ * operation is ≈20× larger, and `initCode` deployment is billed to
+ * `verificationGasLimit`, so the deployment *is* a real contributor — but the
+ * available data cannot decompose 1,050,355 into deployment versus validation,
+ * and a routine Safe deployment is not obviously close to a megagas. The
+ * shortfall is therefore **not fully explained**, and an unexplained factor of
+ * twenty is a reason for a wider margin, not a narrower one.
+ *
+ * ## The rule
+ *
+ *     buffer(g) = max(ceil(g × 3 / 2), 250,000)
+ *
+ * — at least **1.5×** the estimate, and never below an absolute **250,000**
+ * allowance. The floor is the part that matters here: it lifts the observed
+ * 51,698 to 250,000, roughly **4.8×** the estimator value the EntryPoint
+ * rejected and ~198,000 gas above it. That is deliberately below the 1,050,355
+ * the same Pimlico sponsorship already accepted for the deployment operation, so
+ * it stays within what the paymaster will sponsor. `verificationGasLimit` is a
+ * ceiling, not a charge — unused verification gas is simply not consumed — so
+ * the wider floor is nearly free and is the right side to err on. The 1.5×
+ * multiplier bounds proportional underestimation for larger estimates without
+ * inflating a ~1M deployment estimate past what was already sponsored.
+ *
+ * `preVerificationGas`, `callGasLimit` and the paymaster's own
+ * `paymasterVerificationGasLimit` are deliberately **not** touched — see the
+ * build phase's comment.
+ */
+export const VERIFICATION_GAS_BUFFER_NUMERATOR = 3n;
+export const VERIFICATION_GAS_BUFFER_DENOMINATOR = 2n;
+export const VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE = 250_000n;
+
+/**
+ * Apply the documented buffer to an estimated verification-gas allowance.
+ *
+ * A non-positive estimate yields `0n`; the caller treats that as "no estimate"
+ * and refuses, so nothing is ever buffered out of thin air.
+ */
+export function bufferVerificationGas(estimated: bigint): bigint {
+  if (estimated <= 0n) return 0n;
+  const scaled =
+    (estimated * VERIFICATION_GAS_BUFFER_NUMERATOR +
+      VERIFICATION_GAS_BUFFER_DENOMINATOR -
+      1n) /
+    VERIFICATION_GAS_BUFFER_DENOMINATOR;
+  return scaled > VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE
+    ? scaled
+    : VERIFICATION_GAS_BUFFER_MIN_ALLOWANCE;
+}
+
+/**
+ * Read the operation's estimated verification-gas allowance, or `null` when the
+ * built operation does not expose one.
+ *
+ * relay-kit assigns the bundler's `eth_estimateUserOperationGas` result onto the
+ * operation, so `getUserOperation().verificationGasLimit` is the real estimate —
+ * never a default. A missing or unreadable value is `null`, which the build
+ * phase treats as a failed estimate rather than a zero to be padded.
+ */
+function estimatedVerificationGas(operation: unknown): bigint | null {
+  if (typeof operation !== 'object' || operation === null) return null;
+  const getUserOperation = (operation as { getUserOperation?: unknown }).getUserOperation;
+  if (typeof getUserOperation !== 'function') return null;
+  let userOperation: unknown;
+  try {
+    userOperation = (getUserOperation as () => unknown).call(operation);
+  } catch {
+    return null;
+  }
+  if (typeof userOperation !== 'object' || userOperation === null) return null;
+  const value = (userOperation as { verificationGasLimit?: unknown }).verificationGasLimit;
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
+  if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|\d+)$/.test(value)) return BigInt(value);
+  return null;
+}
+
+/**
+ * Assign the buffered allowance back onto the operation through the SDK's own
+ * `addEstimations`.
+ *
+ * relay-kit's v0.7 `SafeOperation.addEstimations` **assigns**
+ * `verificationGasLimit` (it computes
+ * `estimations.verificationGasLimit || this.userOperation.verificationGasLimit`),
+ * so passing the buffered value sets it rather than adding to the estimate. The
+ * method must be present and must not throw; otherwise this returns `false` and
+ * the build phase fails closed instead of signing an operation whose allowance
+ * was never buffered.
+ */
+function applyVerificationGasBuffer(operation: unknown, buffered: bigint): boolean {
+  if (typeof operation !== 'object' || operation === null) return false;
+  const addEstimations = (operation as { addEstimations?: unknown }).addEstimations;
+  if (typeof addEstimations !== 'function') return false;
+  try {
+    (addEstimations as (estimations: { verificationGasLimit: bigint }) => void).call(operation, {
+      verificationGasLimit: buffered,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Attach the client's assertion to the signer the submit-phase SDK will ask.
  *
  * The SDK's passkey `sign` reads **only**
@@ -371,6 +501,11 @@ function base64urlToBytes(value: string): Uint8Array {
  * operation is retained server-side under a one-time token; only `{ token,
  * hash }` is returned, so the calls, nonce, gas and target never round-trip
  * through the client.
+ *
+ * Before the hash is read, the account's estimated `verificationGasLimit` is
+ * raised by the documented {@link bufferVerificationGas} rule. This is the only
+ * point at which it can be done: the allowance is part of the hash the passkey
+ * signs, so it must be final before `getHash()`.
  */
 export async function buildResidentSafeBatch(
   calls: readonly SafeCall[],
@@ -424,6 +559,41 @@ export async function buildResidentSafeBatch(
       sent: false,
       stage: 'create',
       reason: `The Safe operation could not be built: ${describe(cause)}`,
+    };
+  }
+
+  // Buffer the account's verification allowance **here**, after the SDK's
+  // estimate and before `operationHash` — the buffered value becomes part of
+  // the SafeOp hash the passkey signs. Applying it at submit time would change
+  // the hash and invalidate the signature, which is precisely the failure this
+  // avoids.
+  //
+  // Only the account's own `verificationGasLimit` is touched. `preVerificationGas`
+  // is already estimated against a padded dummy `clientDataJSON` (relay-kit's
+  // `getDummySignature` comment), `callGasLimit` pays for the batch calls and is
+  // unaffected by which signature validated, and `paymasterVerificationGasLimit`
+  // is the paymaster's own allowance, set by `pm_sponsorUserOperation` — it is
+  // not the client's to choose.
+  const estimated = estimatedVerificationGas(operation);
+  if (estimated === null || estimated <= 0n) {
+    return {
+      status: 'failed',
+      sent: false,
+      stage: 'estimate',
+      reason:
+        'The built Safe operation reported no verification gas estimate, so its ' +
+        'validation allowance could not be safely buffered and nothing was signed.',
+    };
+  }
+  const buffered = bufferVerificationGas(estimated);
+  if (!applyVerificationGasBuffer(operation, buffered)) {
+    return {
+      status: 'failed',
+      sent: false,
+      stage: 'estimate',
+      reason:
+        'The verification gas estimate could not be buffered onto the built Safe ' +
+        'operation, so nothing was signed.',
     };
   }
 

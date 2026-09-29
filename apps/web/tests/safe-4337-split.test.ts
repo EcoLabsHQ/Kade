@@ -31,6 +31,9 @@ const OTHER_HASH = `0x${'cd'.repeat(32)}` as Hex;
 const USER_OP_HASH = `0x${'fe'.repeat(32)}` as Hex;
 const SIGNATURE = '0xdeadbeef' as Hex;
 
+/** The estimate relay-kit assigns before the build phase buffers it. */
+const RAW_VERIFICATION_GAS = 51_698n;
+
 const env = (values: Record<string, string>): NodeJS.ProcessEnv =>
   values as unknown as NodeJS.ProcessEnv;
 
@@ -62,11 +65,25 @@ const ASSERTION: SafeAssertionParts = {
 
 type InitInput = Parameters<SafeExecutionDependencies['initPack']>[0];
 
+/**
+ * The slice of relay-kit's `SafeOperation` the build phase reads now that it
+ * buffers the estimate: the allowance (`getUserOperation`), the assignment the
+ * SDK exposes (`addEstimations`) and the hash it signs. The real v0.7 class
+ * assigns `verificationGasLimit`, so the fake does too.
+ */
+interface RetainedOperation {
+  getUserOperation: () => { verificationGasLimit: bigint };
+  addEstimations: (estimations: { verificationGasLimit?: bigint }) => void;
+  getHash: () => Hex;
+}
+
 interface FakePack {
   readonly deps: SafeExecutionDependencies;
   readonly order: string[];
   /** The exact object the build phase retained and returned for signing. */
-  readonly retained: { getHash: () => Hex };
+  readonly retained: RetainedOperation;
+  /** The operation's live verification allowance, for assertions. */
+  readonly gas: { value: bigint };
   readonly initPack: Mock;
   readonly createTransaction: Mock;
   readonly signSafeOperation: Mock;
@@ -81,7 +98,14 @@ interface FakePack {
  */
 function fakePack(options: { hashOf?: () => Hex; signResult?: () => unknown } = {}): FakePack {
   const order: string[] = [];
-  const retained = { getHash: options.hashOf ?? (() => SAFE_OP_HASH) };
+  const gas = { value: RAW_VERIFICATION_GAS };
+  const retained: RetainedOperation = {
+    getUserOperation: () => ({ verificationGasLimit: gas.value }),
+    addEstimations: (estimations) => {
+      if (estimations.verificationGasLimit) gas.value = estimations.verificationGasLimit;
+    },
+    getHash: options.hashOf ?? (() => SAFE_OP_HASH),
+  };
 
   const createTransaction = vi.fn(async () => {
     order.push('create');
@@ -114,6 +138,7 @@ function fakePack(options: { hashOf?: () => Hex; signResult?: () => unknown } = 
     deps,
     order,
     retained,
+    gas,
     initPack,
     createTransaction,
     signSafeOperation,
@@ -177,10 +202,16 @@ describe('buildResidentSafeBatch', () => {
 
   it('names the create stage and retains nothing when no hash is exposed', async () => {
     const order: string[] = [];
+    // The estimate is present and buffered, but the operation exposes no
+    // signable hash, so it is refused after buffering and before retention.
+    const noHashOperation = {
+      getUserOperation: () => ({ verificationGasLimit: RAW_VERIFICATION_GAS }),
+      addEstimations: () => {},
+    };
     const noHashPack = {
       createTransaction: vi.fn(async () => {
         order.push('create');
-        return { op: 1 };
+        return noHashOperation;
       }),
       signSafeOperation: vi.fn(async () => ({})),
       executeTransaction: vi.fn(async () => USER_OP_HASH),

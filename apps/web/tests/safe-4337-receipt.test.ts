@@ -85,7 +85,14 @@ interface FakePack {
  */
 function fakePack(receipts: readonly (UserOperationReceipt | null)[]): FakePack {
   let read = 0;
-  const retained = { getHash: () => SAFE_OP_HASH };
+  const gas = { value: 51_698n };
+  const retained = {
+    getUserOperation: () => ({ verificationGasLimit: gas.value }),
+    addEstimations: (estimations: { verificationGasLimit?: bigint }) => {
+      if (estimations.verificationGasLimit) gas.value = estimations.verificationGasLimit;
+    },
+    getHash: () => SAFE_OP_HASH,
+  };
 
   const createTransaction = vi.fn(async () => retained);
   const signSafeOperation = vi.fn(async () => ({ encodedSignatures: () => SIGNATURE }));

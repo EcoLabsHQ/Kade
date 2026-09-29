@@ -101,7 +101,14 @@ function fakePack(): {
   executeTransaction: Mock;
   getUserOperationReceipt: Mock;
 } {
-  const retained = { getHash: () => SAFE_OP_HASH };
+  const gas = { value: 51_698n };
+  const retained = {
+    getUserOperation: () => ({ verificationGasLimit: gas.value }),
+    addEstimations: (estimations: { verificationGasLimit?: bigint }) => {
+      if (estimations.verificationGasLimit) gas.value = estimations.verificationGasLimit;
+    },
+    getHash: () => SAFE_OP_HASH,
+  };
   return {
     createTransaction: vi.fn(async () => retained),
     signSafeOperation: vi.fn(async () => ({ encodedSignatures: () => SIGNATURE })),
