@@ -24,8 +24,14 @@ import {
  * invented here.
  *
  * Kept beside the Safe engine (`apps/web/src/lib/safe/`) so both movement paths
- * — the wallet-signed ERC-20 transfer and the passkey-signed Safe transaction —
- * live in one module tree and cannot drift.
+ * — the wallet-signed transfer and the passkey-signed Safe transaction — live in
+ * one module tree and cannot drift.
+ *
+ * A holding can be an **ERC-20** (USDC) or the chain's **native coin** (ETH).
+ * `buildEoaToSafeTransfer` builds the ERC-20 `transfer(safe, amount)`; the
+ * native coin has no contract and no calldata, so
+ * `buildEoaToSafeNativeTransfer` builds the `{ to, value }` send instead. Both
+ * apply the same amount and address validation, and neither signs nor sends.
  */
 
 /** Raised when a transfer amount is not a positive decimal. */
@@ -131,6 +137,34 @@ export interface EoaToSafeTransferPlan {
   readonly value: 0n;
 }
 
+export interface BuildEoaToSafeNativeTransferInput {
+  /** The chain the wallet must be on. Carried; never used to pick an address. */
+  readonly chainId: number;
+  /** The resident's Safe (or vault): the recipient. */
+  readonly safeAddress: Address;
+  /** The amount as a whole-coin decimal string (e.g. "1" or "0.25"). */
+  readonly amount: string;
+}
+
+/**
+ * The built native-coin send for the connected wallet.
+ *
+ * There is no token contract and no calldata: the whole transaction is the
+ * recipient plus the `value` moved, exactly what wagmi's `sendTransaction`
+ * (`to`, `value`) wants. `value` equals `amountUnits`; nothing here is signed or
+ * sent.
+ */
+export interface EoaToSafeNativeTransferPlan {
+  readonly chainId: number;
+  readonly to: Address;
+  readonly amount: string;
+  readonly amountUnits: bigint;
+  readonly value: bigint;
+}
+
+/** The native coin is 18 decimals on every chain this app reads. */
+export const NATIVE_DECIMALS = 18;
+
 function assertAddress(field: string, value: string): Address {
   if (!isAddress(value, { strict: false })) {
     throw new InvalidTransferAddressError(field, value);
@@ -181,5 +215,27 @@ export function buildEoaToSafeTransfer(
       args: [safeAddress, amountUnits],
     }),
     value: 0n,
+  };
+}
+
+/**
+ * Build the native-coin send to `safeAddress`, without signing or sending.
+ *
+ * Pure and deterministic: the same input yields the same `{ to, value }`. The
+ * amount is validated exactly like the ERC-20 builder (a positive decimal with
+ * at most 18 places); the recipient uses the same 20-byte address guard.
+ */
+export function buildEoaToSafeNativeTransfer(
+  input: BuildEoaToSafeNativeTransferInput,
+): EoaToSafeNativeTransferPlan {
+  const safeAddress = assertAddress('safeAddress', input.safeAddress);
+  const amountUnits = parseAmount(input.amount, NATIVE_DECIMALS);
+
+  return {
+    chainId: input.chainId,
+    to: safeAddress,
+    amount: input.amount.trim(),
+    amountUnits,
+    value: amountUnits,
   };
 }

@@ -1,20 +1,38 @@
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
-import { sepolia } from '@reown/appkit/networks';
+import { base, mainnet, sepolia } from '@reown/appkit/networks';
 import type { AppKitNetwork } from '@reown/appkit/networks';
 
 /**
- * Reown AppKit configuration for the pre-approval fee payment (contract 8.9).
+ * Reown AppKit configuration for the pre-approval fee payment (contract 8.9)
+ * and for moving a holding to the vault.
  *
- * The wallet connection exists only to pay the fee: the resident connects a
- * browser wallet or WalletConnect and sends USDC to the Kade treasury on
- * Sepolia. It is not a login and confers no authority over the resident Safe.
+ * The connected wallet does two jobs: it pays the fee (USDC to the Kade
+ * treasury) and it signs the "Move to vault" transfer of a holding the resident
+ * actually owns. It is not a login and confers no authority over the resident
+ * Safe.
  *
  * Everything here is client-side. The treasury address and the amount stay on
  * the server and are passed to the payment screen as props.
  */
 
-/** Iteration 1 pays on Ethereum Sepolia only (contract v1.9). */
-export const WALLET_NETWORKS: [AppKitNetwork, ...AppKitNetwork[]] = [sepolia];
+/**
+ * Every chain the wallet may be asked to reach.
+ *
+ * The fee controls (contract 8.9) settle on Ethereum Sepolia and switch to it
+ * explicitly, so **Sepolia stays first**: it is the default the wallet connects
+ * on, and the fee/service-fee controls are unchanged.
+ *
+ * Holdings reads balances on Ethereum mainnet and Base (`EVM_READ_CHAINS` in
+ * `@/lib/wealth/evm`) and moves each holding on the chain it was read from. A
+ * chain the app reads but the wallet cannot reach would make a displayed
+ * holding unmovable, so **the two lists are kept aligned**: every chain added
+ * to the balance reads must be added here in the same change, and vice versa.
+ */
+export const WALLET_NETWORKS: [AppKitNetwork, ...AppKitNetwork[]] = [
+  sepolia,
+  mainnet,
+  base,
+];
 
 /** The project id, or null when the environment has not configured one. */
 export const walletProjectId: string | null =

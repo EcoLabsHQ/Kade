@@ -15,7 +15,10 @@ const hoisted = vi.hoisted(() => ({
   open: vi.fn(),
   disconnect: vi.fn(),
   writeContract: vi.fn(),
+  sendTransaction: vi.fn(),
   reset: vi.fn(),
+  switchChainAsync: vi.fn(),
+  chainId: 1,
   account: {
     isConnected: false,
     address: undefined as string | undefined,
@@ -33,9 +36,18 @@ vi.mock('wagmi', () => ({
   useConnections: () => [],
   useSignMessage: () => ({ signMessageAsync: vi.fn() }),
   useDisconnect: () => ({ disconnect: hoisted.disconnect }),
+  useChainId: () => hoisted.chainId,
+  useSwitchChain: () => ({ switchChainAsync: hoisted.switchChainAsync }),
   useWriteContract: () => ({
     data: undefined,
     writeContract: hoisted.writeContract,
+    isPending: false,
+    error: null,
+    reset: hoisted.reset,
+  }),
+  useSendTransaction: () => ({
+    data: undefined,
+    sendTransaction: hoisted.sendTransaction,
     isPending: false,
     error: null,
     reset: hoisted.reset,
@@ -97,12 +109,13 @@ describe('HoldingsView move-to-vault wiring', () => {
     hoisted.account.address = ADDRESS;
     renderView();
 
-    const moveButtons = screen.getAllByRole('button', { name: 'Move to vault' });
-    // The native ETH row is locked; the USDC row is enabled.
-    const usdcButton = moveButtons.find(
-      (button) => !(button as HTMLButtonElement).disabled,
-    );
+    const usdcButton = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('Move USDC from'),
+      );
     expect(usdcButton).toBeDefined();
+    expect(usdcButton).not.toBeDisabled();
 
     fireEvent.click(usdcButton!);
 
@@ -115,15 +128,25 @@ describe('HoldingsView move-to-vault wiring', () => {
     expect(within(dialog).getByText('0x222222…222222')).toBeInTheDocument();
   });
 
-  it('leaves the native row locked with a true reason', () => {
+  it('opens the native row’s dialog and warns that moving it all leaves no gas', () => {
+    hoisted.account.isConnected = true;
+    hoisted.account.address = ADDRESS;
     renderView();
 
     const native = screen
       .getAllByRole('button', { name: 'Move to vault' })
       .find((button) =>
-        (button.getAttribute('title') ?? '').includes('native coin'),
+        (button.getAttribute('title') ?? '').includes('Move ETH from'),
       );
     expect(native).toBeDefined();
-    expect(native).toBeDisabled();
+    expect(native).not.toBeDisabled();
+
+    fireEvent.click(native!);
+
+    const dialog = screen.getByRole('dialog', { name: /move to vault/i });
+    expect(within(dialog).getByText('ETH · Ethereum')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/native coin\. If you move all of it/i),
+    ).toBeInTheDocument();
   });
 });

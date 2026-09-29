@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeFunctionData, erc20Abi, getAddress, type Address } from 'viem';
 import {
   assertCorrectWallet,
+  buildEoaToSafeNativeTransfer,
   buildEoaToSafeTransfer,
   InvalidTransferAddressError,
   InvalidTransferAmountError,
@@ -95,6 +96,54 @@ describe('buildEoaToSafeTransfer', () => {
       buildEoaToSafeTransfer({
         chainId: 1,
         token: USDC,
+        safeAddress: '0x1234' as unknown as Address,
+        amount: '1',
+      }),
+    ).toThrow(InvalidTransferAddressError);
+  });
+});
+
+describe('buildEoaToSafeNativeTransfer', () => {
+  it('builds the native { to, value } send with 18 decimals', () => {
+    const plan = buildEoaToSafeNativeTransfer({
+      chainId: 1,
+      safeAddress: SAFE,
+      amount: '1.5',
+    });
+
+    expect(plan.to).toBe(SAFE);
+    expect(plan.chainId).toBe(1);
+    expect(plan.amountUnits).toBe(1_500_000_000_000_000_000n);
+    expect(plan.value).toBe(1_500_000_000_000_000_000n);
+    expect(plan.amount).toBe('1.5');
+  });
+
+  it('refuses a non-positive, malformed or over-precise amount', () => {
+    const base = { chainId: 1, safeAddress: SAFE } as const;
+    expect(() => buildEoaToSafeNativeTransfer({ ...base, amount: '0' })).toThrow(
+      InvalidTransferAmountError,
+    );
+    expect(() => buildEoaToSafeNativeTransfer({ ...base, amount: '-1' })).toThrow(
+      InvalidTransferAmountError,
+    );
+    // 19 decimal places: one more than a native coin has.
+    expect(() =>
+      buildEoaToSafeNativeTransfer({ ...base, amount: '1.0000000000000000000' }),
+    ).toThrow(InvalidTransferAmountError);
+  });
+
+  it('accepts exactly 18 decimals and refuses a malformed recipient', () => {
+    expect(
+      buildEoaToSafeNativeTransfer({
+        chainId: 8453,
+        safeAddress: SAFE,
+        amount: '1.000000000000000001',
+      }).value,
+    ).toBe(1_000_000_000_000_000_001n);
+
+    expect(() =>
+      buildEoaToSafeNativeTransfer({
+        chainId: 1,
         safeAddress: '0x1234' as unknown as Address,
         amount: '1',
       }),

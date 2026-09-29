@@ -310,22 +310,66 @@ describe('HoldingsScreen', () => {
     expect(screen.queryByText('$5,230')).toBeNull();
   });
 
-  it('locks a native holding with a true reason, never the stale tooltip', () => {
+  it('locks every row with a true reason when no Safe or wallet is supplied', () => {
     render(<HoldingsScreen aggregate={aggregate()} />);
 
     // ADDRESS has one readable native holding; ADDRESS_2 has two unread rows.
     const move = screen.getAllByRole('button', { name: 'Move to vault' });
     expect(move).toHaveLength(3);
-    const native = move.find((button) =>
-      (button.getAttribute('title') ?? '').includes('native coin'),
-    );
-    expect(native).toBeDefined();
-    expect(native).toBeDisabled();
     for (const button of move) {
+      expect(button).toBeDisabled();
       const title = button.getAttribute('title') ?? '';
       // No removed internals leak into a disabled control's reason.
       expect(title).not.toMatch(/EXE-011|KadeLock|Week 2/);
     }
+    // The readable native row is movable in principle but has no vault here,
+    // so it carries the honest "vault address is not ready" reason — not a
+    // claim that the native coin itself is locked.
+    expect(
+      move.some((button) =>
+        (button.getAttribute('title') ?? '').includes('vault address is not ready'),
+      ),
+    ).toBe(true);
+    expect(
+      move.some((button) =>
+        (button.getAttribute('title') ?? '').includes('native coin'),
+      ),
+    ).toBe(false);
+  });
+
+  it('enables the native holding’s action and hands up a native target', () => {
+    const onMoveToVault = vi.fn();
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        onMoveToVault={onMoveToVault}
+      />,
+    );
+
+    const native = screen
+      .getAllByRole('button', { name: 'Move to vault' })
+      .find((button) =>
+        (button.getAttribute('title') ?? '').includes('Move ETH from'),
+      );
+    expect(native).toBeDefined();
+    expect(native).not.toBeDisabled();
+    fireEvent.click(native!);
+
+    expect(onMoveToVault).toHaveBeenCalledTimes(1);
+    expect(onMoveToVault).toHaveBeenCalledWith({
+      key: `${ADDRESS}:1:native`,
+      kind: 'native',
+      symbol: 'ETH',
+      name: 'Ether',
+      address: ADDRESS,
+      chainId: 1,
+      chainName: 'Ethereum',
+      // The native coin has no ERC-20 contract.
+      tokenAddress: null,
+      decimals: 18,
+      amount: '1.000000',
+    });
   });
 
   it('locks an unread balance with the real "nothing to move" reason', () => {
@@ -366,16 +410,19 @@ describe('HoldingsScreen', () => {
     );
 
     const buttons = screen.getAllByRole('button', { name: 'Move to vault' });
-    // The native ETH row stays locked; the USDC row is the enabled control.
-    const usdcButton = buttons.find(
-      (button) => !(button as HTMLButtonElement).disabled,
+    // Both the native ETH row and the USDC row are movable now; this pins that
+    // the USDC click hands up exactly the USDC row.
+    const usdcButton = buttons.find((button) =>
+      (button.getAttribute('title') ?? '').includes('Move USDC from'),
     );
     expect(usdcButton).toBeDefined();
+    expect(usdcButton).not.toBeDisabled();
     fireEvent.click(usdcButton!);
 
     expect(onMoveToVault).toHaveBeenCalledTimes(1);
     expect(onMoveToVault).toHaveBeenCalledWith({
       key: `${ADDRESS}:1:usdc`,
+      kind: 'erc20',
       symbol: 'USDC',
       name: 'USDC',
       address: ADDRESS,

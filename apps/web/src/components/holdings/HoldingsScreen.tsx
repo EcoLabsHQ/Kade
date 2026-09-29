@@ -42,12 +42,12 @@ import { provenanceLabel } from './provenance';
  * total / not-qualified figures still come from the real aggregate, an unverified
  * wallet is still excluded from the total, and a chain whose read failed still
  * shows `—`. The per-row "Move to vault" on a verified row is now a real
- * control for an ERC-20 holding: it opens the injected dialog so the resident's
- * own wallet can sign `transfer(safe, amount)`. A row with nothing movable (a
- * native balance, an unread balance, a chain whose token is not configured) or
- * no known Safe address stays disabled with its **true** reason. "Fund from
- * bank" and "Convert to USDT+" stay disabled with their real reason, and the
- * unverified per-row state stays visible.
+ * control for a **movable** holding: both a USDC token and the chain's native
+ * coin open the injected dialog so the resident's own wallet can sign the move.
+ * A row with nothing movable (an unread balance, a chain whose token is not
+ * configured, an empty balance) or no known Safe address stays disabled with
+ * its **true** reason. "Fund from bank" and "Convert to USDT+" stay disabled
+ * with their real reason, and the unverified per-row state stays visible.
  *
  * "Balances by chain" renders only the chains we actually read (Ethereum and
  * Base); the reference's Arbitrum/Optimism/Celo cards are not invented. Reflect/
@@ -84,13 +84,16 @@ export interface HoldingsScreenProps {
 /**
  * What a row's "Move to vault" action hands to the dialog.
  *
- * The token is the row's own token, resolved from the chain read that produced
- * the row; it is never chosen in the dialog. `tokenAddress` is null for a native
- * or unread row, which the screen keeps locked instead of guessing.
+ * The asset is the row's own: `kind` distinguishes the chain's native coin
+ * (`tokenAddress` null) from an ERC-20 token (`tokenAddress`, the row's own
+ * contract). It is never chosen in the dialog. An unread row is never movable
+ * and never reaches the dialog.
  */
 export interface MoveToVaultTarget {
   /** The row's stable key, so the dialog can be tied back to it in tests. */
   readonly key: string;
+  /** Whether the row is an ERC-20 token or the chain's native coin. */
+  readonly kind: 'erc20' | 'native';
   /** The token symbol shown on the row (e.g. `USDC`). */
   readonly symbol: string;
   /** The token's display name (e.g. `USDC`). */
@@ -100,7 +103,7 @@ export interface MoveToVaultTarget {
   /** The chain the token sits on. */
   readonly chainId: number;
   readonly chainName: string;
-  /** The ERC-20 contract to move, or null for a native/unread holding. */
+  /** The ERC-20 contract to move, or null for the chain's native coin. */
   readonly tokenAddress: string | null;
   /** The token's decimals, so the amount is validated and parsed correctly. */
   readonly decimals: number;
@@ -125,18 +128,18 @@ const CHAIN_NAMES = new Map<number, string>(
 
 /**
  * The honest reasons the vault action is unavailable on a given row. Each is
- * true of the state that produces it; a verified ERC-20 row with a known Safe is
- * never disabled, so it never carries one of these.
+ * true of the state that produces it; a verified ERC-20 or native row with a
+ * known Safe is never disabled, so it never carries one of these.
  */
 /** The Safe address has not been recorded, so there is nowhere to send. */
 const NO_SAFE_REASON =
   'Your vault address is not ready yet, so there is nowhere to send this holding.';
-/** The row is the chain's native coin, which is not an ERC-20 transfer. */
-const NATIVE_REASON =
-  'Only USDC can be moved to your vault right now. This is the chain’s native coin, so it stays in your wallet to pay gas.';
-/** The balance could not be read, so there is nothing known to move. */
+/**
+ * The balance could not be read, so there is no asset to move. The row is not a
+ * token and nothing is "locked": there is simply no known amount.
+ */
 const UNREAD_REASON =
-  'This balance could not be read, so there is nothing to move yet.';
+  'This balance could not be read, so there is no known amount to move.';
 /** The read produced no balance at all. */
 const EMPTY_REASON = 'This holding is empty, so there is nothing to move.';
 /** USDC exists on the chain but this build has no contract address for it. */
@@ -246,9 +249,9 @@ function chainTotals(wallets: readonly HoldingWallet[]): ChainTotal[] {
 /**
  * What kind of holding a row is, from the read that produced it.
  *
- * `erc20` is the only kind the EOA → Safe transfer can move; `native` and
- * `unread` are deliberately not ERC-20 transfers, and `none` is a wallet with
- * nothing readable at all.
+ * `erc20` and `native` are the two kinds the EOA → Safe path can move; `unread`
+ * (a chain whose balance could not be read) and `none` (a wallet with nothing
+ * readable at all) have no asset to move and stay without an action.
  */
 type HoldingKind = 'erc20' | 'native' | 'unread' | 'none';
 
@@ -317,7 +320,8 @@ function assetRows(
       amount: `${chain.nativeAmount} ${chain.nativeSymbol}`,
       value: chain.nativeUsd === null ? '—' : usd(chain.nativeUsd),
       chainId: chain.chainId,
-      // The native coin is not an ERC-20, so it carries no token contract.
+      // The native coin has no ERC-20 contract: it moves as `{ to, value }`,
+      // so `tokenAddress` stays null and the dialog sends it natively.
       kind: 'native',
       tokenAddress: null,
       decimals: 18,
@@ -438,11 +442,14 @@ function moveToVaultLockedReason(
   safeAddress: string | null,
   onMoveToVault: ((target: MoveToVaultTarget) => void) | undefined,
 ): string {
-  if (row.kind === 'native') return NATIVE_REASON;
   if (row.kind === 'unread') return UNREAD_REASON;
   if (row.kind === 'none') return EMPTY_REASON;
   // An ERC-20 row without a contract cannot be built into a transfer.
-  if (row.tokenAddress === null) return UNSUPPORTED_TOKEN_REASON;
+  if (row.kind === 'erc20' && row.tokenAddress === null) {
+    return UNSUPPORTED_TOKEN_REASON;
+  }
+  if (row.kind !== 'erc20' && row.kind !== 'native') return EMPTY_REASON;
+  if (row.chainId === null) return EMPTY_REASON;
   if (row.tokenAmount === null || !(Number(row.tokenAmount) > 0)) {
     return EMPTY_REASON;
   }
@@ -452,9 +459,9 @@ function moveToVaultLockedReason(
 }
 
 /**
- * The per-row vault control: a real button for a movable ERC-20 row, and a
- * disabled control carrying its true reason for every other state. It owns no
- * wallet machinery; the click is handed to the injected `onMoveToVault`.
+ * The per-row vault control: a real button for a movable ERC-20 or native row,
+ * and a disabled control carrying its true reason for every other state. It owns
+ * no wallet machinery; the click is handed to the injected `onMoveToVault`.
  */
 function MoveToVaultButton({
   row,
@@ -465,18 +472,20 @@ function MoveToVaultButton({
   readonly safeAddress: string | null;
   readonly onMoveToVault?: (target: MoveToVaultTarget) => void;
 }) {
-  if (
-    row.kind === 'erc20' &&
-    row.tokenAddress !== null &&
+  const movable =
+    (row.kind === 'erc20' || row.kind === 'native') &&
+    !(row.kind === 'erc20' && row.tokenAddress === null) &&
     row.chainId !== null &&
     row.tokenAmount !== null &&
     Number(row.tokenAmount) > 0 &&
     safeAddress !== null &&
     safeAddress.trim() !== '' &&
-    onMoveToVault
-  ) {
+    !!onMoveToVault;
+
+  if (movable && onMoveToVault && row.chainId !== null && row.tokenAmount !== null) {
     const target: MoveToVaultTarget = {
       key: row.key,
+      kind: row.kind === 'native' ? 'native' : 'erc20',
       symbol: row.symbol,
       name: row.name,
       address: row.address,

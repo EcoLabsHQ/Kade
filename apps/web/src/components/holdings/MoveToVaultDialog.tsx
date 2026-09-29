@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useAppKit, useAppKitAccount } from '@reown/appkit/react';
 import {
+  useChainId,
   useDisconnect,
+  useSendTransaction,
+  useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from 'wagmi';
@@ -13,6 +16,7 @@ import { tokens } from '@/components/ui/tokens';
 import { shortAddress } from '@/lib/wealth/format';
 import {
   assertCorrectWallet,
+  buildEoaToSafeNativeTransfer,
   buildEoaToSafeTransfer,
   validateTransferAmount,
   WrongWalletError,
@@ -22,12 +26,23 @@ import type { MoveToVaultTarget } from './HoldingsScreen';
 /**
  * The "Move to vault" dialog.
  *
- * It moves the token of the row that was clicked — never a token chosen here.
- * The amount is the only free input; the destination is the resident's Safe and
- * the signer is the resident's own connected wallet, which pays the gas. The
- * call is built by `buildEoaToSafeTransfer` (a plain ERC-20 `transfer(safe,
- * amount)`) and sent through wagmi's `useWriteContract`, the same house idiom as
- * the fee payment.
+ * It moves the holding of the row that was clicked — never an asset chosen
+ * here. The amount is the only free input; the destination is the resident's
+ * Safe and the signer is the resident's own connected wallet, which pays the
+ * gas.
+ *
+ * The holding sits on a specific chain, and the transfer must run on that
+ * chain. If the wallet is elsewhere it is asked to switch (`useSwitchChain`);
+ * a refused or unavailable switch is reported and **nothing is sent**, so a
+ * transfer is never broadcast on the wrong chain. The builders pass the
+ * holding's `chainId` to wagmi, which refuses if the wallet did not in fact
+ * switch.
+ *
+ * An ERC-20 holding is sent through wagmi's `useWriteContract` (a plain
+ * `transfer(safe, amount)`, the same house idiom as the fee payment); the
+ * chain's native coin has no contract, so it is sent through
+ * `useSendTransaction` as `{ to, value }`. Moving the native coin can leave the
+ * wallet without gas, which the dialog warns about.
  *
  * The wallet must be the one the row belongs to. A mismatch is refused with an
  * error and the wallet is disconnected, so a transfer can never be signed by
@@ -91,13 +106,23 @@ function ConfiguredBody({
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
   const { disconnect } = useDisconnect();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
   const {
-    data: hash,
+    data: writeHash,
     writeContract,
-    isPending,
+    isPending: isWritePending,
     error: writeError,
-    reset,
+    reset: resetWrite,
   } = useWriteContract();
+  const {
+    data: sendHash,
+    sendTransaction,
+    isPending: isSendPending,
+    error: sendError,
+    reset: resetSend,
+  } = useSendTransaction();
+  const hash = writeHash ?? sendHash;
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
   });
@@ -105,11 +130,20 @@ function ConfiguredBody({
   const [amount, setAmount] = useState(target.amount);
   const [error, setError] = useState<string | null>(null);
   const [announced, setAnnounced] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
+  const isNative = target.kind === 'native';
   const amountError = validateTransferAmount(amount, target.decimals);
   const safeReady = typeof safeAddress === 'string' && safeAddress.trim() !== '';
-  const tokenReady = target.tokenAddress !== null;
-  const busy = isPending || isConfirming;
+  const tokenReady = isNative || target.tokenAddress !== null;
+  const txError = writeError ?? sendError;
+  const isPending = isWritePending || isSendPending;
+  const busy = isPending || isConfirming || switching;
+
+  function reset() {
+    resetWrite();
+    resetSend();
+  }
 
   // Report the confirmed move upward exactly once, so the page can re-read the
   // vault balance. The dialog stays open on its success state.
@@ -120,11 +154,11 @@ function ConfiguredBody({
     }
   }, [isSuccess, announced, onDone]);
 
-  function confirm() {
+  async function confirm() {
     setError(null);
     reset();
 
-    // The row's token belongs to one wallet: only that wallet may sign. A
+    // The row's holding belongs to one wallet: only that wallet may sign. A
     // mismatch is an error AND the wrong wallet is disconnected.
     try {
       assertCorrectWallet(target.address, address ?? null);
@@ -143,21 +177,52 @@ function ConfiguredBody({
       return;
     }
 
+    // The transfer must run on the holding's own chain. If the wallet is
+    // elsewhere, ask it to switch; a refusal (or a connector that cannot
+    // switch) is reported and nothing is sent.
+    if (chainId !== target.chainId) {
+      setSwitching(true);
+      try {
+        await switchChainAsync({ chainId: target.chainId });
+      } catch (cause) {
+        setError(
+          `Could not switch your wallet to ${target.chainName}: ` +
+            `${errorReason(cause)} Nothing was sent.`,
+        );
+        return;
+      } finally {
+        setSwitching(false);
+      }
+    }
+
     try {
-      const plan = buildEoaToSafeTransfer({
-        chainId: target.chainId,
-        token: target.tokenAddress as Address,
-        safeAddress: safeAddress as Address,
-        amount,
-        decimals: target.decimals,
-      });
-      writeContract({
-        abi: erc20Abi,
-        address: plan.token,
-        functionName: 'transfer',
-        args: [plan.to, plan.amountUnits],
-        chainId: plan.chainId,
-      });
+      if (isNative) {
+        const plan = buildEoaToSafeNativeTransfer({
+          chainId: target.chainId,
+          safeAddress: safeAddress as Address,
+          amount,
+        });
+        sendTransaction({
+          to: plan.to,
+          value: plan.value,
+          chainId: plan.chainId,
+        });
+      } else {
+        const plan = buildEoaToSafeTransfer({
+          chainId: target.chainId,
+          token: target.tokenAddress as Address,
+          safeAddress: safeAddress as Address,
+          amount,
+          decimals: target.decimals,
+        });
+        writeContract({
+          abi: erc20Abi,
+          address: plan.token,
+          functionName: 'transfer',
+          args: [plan.to, plan.amountUnits],
+          chainId: plan.chainId,
+        });
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -233,6 +298,14 @@ function ConfiguredBody({
     <div style={body}>
       <Summary target={target} safeAddress={safeAddress} connected={address ?? null} />
 
+      {isNative ? (
+        <p style={warningText} role="note">
+          {target.symbol} is {target.chainName}&rsquo;s native coin. If you move
+          all of it, nothing is left in this wallet to pay gas for later
+          transfers.
+        </p>
+      ) : null}
+
       <label style={fieldLabel} htmlFor="move-to-vault-amount">
         Amount ({target.symbol})
       </label>
@@ -259,16 +332,16 @@ function ConfiguredBody({
         </div>
       ) : null}
 
-      {writeError ? (
+      {txError ? (
         <div role="alert" style={errorText}>
-          The wallet rejected or could not send the transfer.
+          The wallet rejected or could not send the transfer: {errorReason(txError)}
         </div>
       ) : null}
 
       <div style={actions}>
         <button
           type="button"
-          onClick={confirm}
+          onClick={() => void confirm()}
           disabled={busy || amountError !== null}
           style={{
             ...primaryButton,
@@ -276,11 +349,13 @@ function ConfiguredBody({
             cursor: busy ? 'wait' : 'pointer',
           }}
         >
-          {isPending
-            ? 'Waiting for your wallet…'
-            : isConfirming
-              ? 'Confirming…'
-              : `Move ${amount || '0'} ${target.symbol}`}
+          {switching
+            ? `Switching to ${target.chainName}…`
+            : isPending
+              ? 'Waiting for your wallet…'
+              : isConfirming
+                ? 'Confirming…'
+                : `Move ${amount || '0'} ${target.symbol}`}
         </button>
         <button type="button" onClick={onClose} style={secondaryButton}>
           Cancel
@@ -288,6 +363,24 @@ function ConfiguredBody({
       </div>
     </div>
   );
+}
+
+/**
+ * The readable reason behind a wallet/chain/contract failure.
+ *
+ * viem and wallet connectors put the useful explanation on `shortMessage`
+ * (e.g. "User rejected the request.") or `message`; the dialog shows it rather
+ * than a fixed string that hides the cause.
+ */
+function errorReason(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const short = (error as { shortMessage?: unknown }).shortMessage;
+    if (typeof short === 'string' && short.trim() !== '') return short.trim();
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim() !== '') return message.trim();
+  }
+  if (typeof error === 'string' && error.trim() !== '') return error.trim();
+  return 'the wallet could not complete it.';
 }
 
 /** The row's token, chain, owning wallet and destination Safe. */
@@ -451,4 +544,11 @@ const errorText: React.CSSProperties = {
   margin: '8px 0 0',
   fontSize: '12.5px',
   color: tokens.danger,
+};
+
+const warningText: React.CSSProperties = {
+  margin: '10px 0 0',
+  fontSize: '12.5px',
+  lineHeight: 1.5,
+  color: tokens.warning,
 };
