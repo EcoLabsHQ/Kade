@@ -14,6 +14,7 @@ import type {
   UnverifiedHoldingWallet,
 } from '@/lib/wealth/holdings';
 import type { EvmChainBalance } from '@/lib/wealth/types';
+import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 import { provenanceLabel } from './provenance';
 
 /**
@@ -79,6 +80,12 @@ export interface HoldingsScreenProps {
    * control is still shown, disabled with a true reason.
    */
   readonly onMoveToVault?: (target: MoveToVaultTarget) => void;
+  /**
+   * The resident Safe's on-chain holdings, read server-side and pointed at the
+   * Safe address. Rendered under "Qualified vaults" with chain + instrument +
+   * amount. Empty/absent keeps the truthful empty state.
+   */
+  readonly vaultHoldings?: readonly VaultHoldingRow[];
 }
 
 /**
@@ -196,6 +203,8 @@ const CLOSING_PARAGRAPH =
 
 /** Circle colours for the table's asset glyphs. Presentation only. */
 const USDC_COLOR = '#2775CA';
+/** Morpho's brand blue for the MetaMorpho vault glyph. Presentation only. */
+const MORPHO_COLOR = '#2470FF';
 
 /** The reference's native asset is named "Ethereum"; ours are symbol-first. */
 const NATIVE_ASSET_NAMES: Record<string, string> = { ETH: 'Ether' };
@@ -526,6 +535,14 @@ function MoveToVaultButton({
   );
 }
 
+/** The glyph colour for a vault row: real instrument colour, or unread grey. */
+function vaultCircleColor(row: VaultHoldingRow): string {
+  if (row.readError) return tokens.locked;
+  if (row.kind === 'usdc') return USDC_COLOR;
+  if (row.kind === 'morpho') return MORPHO_COLOR;
+  return chainColor(row.chainName);
+}
+
 /** The reference's summary card: uppercase eyebrow, 26px value, muted sub. */
 function SummaryCard({
   label,
@@ -554,6 +571,7 @@ export function HoldingsScreen({
   safeAddress,
   renderVerifyWallets,
   onMoveToVault,
+  vaultHoldings = [],
 }: HoldingsScreenProps) {
   const { total, walletCount, wallets, unverifiedCount } = aggregate;
 
@@ -663,9 +681,47 @@ export function HoldingsScreen({
           </h2>
           <span style={sectionNote}>{QUALIFIED_NOTE}</span>
         </div>
-        <div style={qualifiedEmpty}>
-          Nothing qualified yet — move assets from your wallets below.
-        </div>
+        {vaultHoldings.length === 0 ? (
+          <div style={qualifiedEmpty}>
+            Nothing qualified yet — move assets from your wallets below.
+          </div>
+        ) : (
+          <>
+            <div style={vaultHead}>
+              <span>Instrument</span>
+              <span>Chain</span>
+              <span style={{ textAlign: 'right' }}>Amount</span>
+            </div>
+            {vaultHoldings.map((row) => (
+              <div key={row.key} style={vaultRow}>
+                <div style={assetCell}>
+                  <span
+                    aria-hidden
+                    style={{ ...assetCircle, background: vaultCircleColor(row) }}
+                  >
+                    {row.symbol}
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={assetName}>{row.name}</div>
+                    {row.readError ? (
+                      <div style={assetProvenance}>{row.readError}</div>
+                    ) : null}
+                  </div>
+                </div>
+                <span style={chainCell}>
+                  <span
+                    aria-hidden
+                    style={{ ...tableSwatch, background: chainColor(row.chainName) }}
+                  />
+                  {row.chainName}
+                </span>
+                <span style={{ ...amountCell, textAlign: 'right' }}>
+                  {row.amount}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
       </Card>
 
       <Card radius={14} style={{ marginBottom: '16px' }}>
@@ -969,6 +1025,31 @@ const qualifiedEmpty: CSSProperties = {
   textAlign: 'center',
   fontSize: '13px',
   color: tokens.muted,
+};
+
+/** The qualified-vaults table: instrument, chain, amount. */
+const vaultHead: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1.6fr .9fr 1fr',
+  gap: '12px',
+  padding: '12px 0 8px',
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '.06em',
+  textTransform: 'uppercase',
+  color: tokens.muted,
+  borderBottom: `1px solid ${tokens.border}`,
+  marginTop: '8px',
+};
+
+const vaultRow: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1.6fr .9fr 1fr',
+  gap: '12px',
+  padding: '12px 0',
+  fontSize: '13.5px',
+  borderBottom: `1px solid ${tokens.border}`,
+  alignItems: 'center',
 };
 
 const listHead: CSSProperties = {

@@ -8,6 +8,7 @@ import { readWalletConnectProjectId } from '@/lib/env';
 import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
+import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import { loadVerifiedHoldings } from './data';
 import { beginWalletLink, completeWalletLink } from './link-actions';
 
@@ -45,6 +46,11 @@ export default async function HoldingsPage() {
     loadVerifiedHoldings(session.userId),
   ]);
 
+  // The Safe's qualified holdings are a fresh on-chain read pointed at the Safe
+  // address. No deposit flow persists a vault position, so the chain is the only
+  // truthful source; a failed read stays visible rather than becoming a zero.
+  const vaultHoldings = await loadVaultHoldings(shellSafe.address);
+
   const walletConfigured = readWalletConnectProjectId() !== null;
   const reviewBar = await loadReviewBar(session.userId);
 
@@ -64,6 +70,7 @@ export default async function HoldingsPage() {
           <HoldingsView
             aggregate={aggregate}
             safeAddress={shellSafe.address}
+            vaultHoldings={vaultHoldings}
             configured={walletConfigured}
             onBegin={beginWalletLink}
             onComplete={completeWalletLink}
