@@ -1,4 +1,4 @@
-import { chainByChainId } from '@kade/shared';
+import { chainByChainId, rpcEnvVarForChain } from '@kade/shared';
 import { getAddress } from 'viem';
 import { readEvmExplorerApiBase } from '@/lib/env';
 import type {
@@ -12,12 +12,20 @@ export type { EvmReadFailure, EvmReadFailureReason } from './types';
 /**
  * Read-only balances (native coin and USDC) for a pasted EVM address.
  *
- * Server-side only: the browser never calls the provider. Two Blockscout
- * endpoints are used per chain, both public and keyless:
+ * Server-side only: the browser never calls the provider. The native balance is
+ * read from several sources per chain, all public and keyless:
  *
- *   - `GET /api/v2/addresses/{address}` returns `coin_balance` (a decimal string
- *     of wei) and `exchange_rate`, the native coin's USD price. One call gives
- *     both the native amount and its USD value.
+ *   1. `GET /api/v2/addresses/{address}` returns `coin_balance` (a decimal string
+ *      of wei) and `exchange_rate`, the native coin's USD price. One call gives
+ *      both the native amount and its USD value, so it is the primary source.
+ *   2. `GET /api?module=account&action=balance&address={address}&tag=latest`
+ *      returns the raw native balance from the same provider's
+ *      Etherscan-compatible module API, but no price.
+ *   3. `eth_getBalance` against the chain's own JSON-RPC endpoint (the per-chain
+ *      RPC variable mapped in `@kade/shared`) returns the authoritative balance.
+ *
+ * The USDC sub-read is a separate call on the module API:
+ *
  *   - `GET /api?module=account&action=tokenbalance&contractaddress={usdc}
  *          &address={address}&tag=latest` returns the raw USDC balance for one
  *     known contract, so the ERC-20 read is deterministic instead of paging
@@ -29,10 +37,14 @@ export type { EvmReadFailure, EvmReadFailureReason } from './types';
  * The public instances are rate-limited and genuinely flaky, so a read that
  * fails once is not treated as a final answer: a transient status (429, 408 or
  * 5xx) or a thrown transport error is retried with bounded backoff before being
- * given up on, within a per-chain time budget. A final failure is reported with
- * a specific reason, so a resident sees *why* a balance could not be read
- * instead of a generic dead end — and a failed read is never turned into a
- * fabricated zero.
+ * given up on, within a per-chain time budget. A single endpoint can also be
+ * durably dead (the observed Base `/api/v2/addresses` returns 500 for every
+ * request while the same provider's module API still serves the balance), so a
+ * failed primary is not the end of the read: the fallback sources above are
+ * tried before the chain is given up on. A final failure is reported with a
+ * specific reason, so a resident sees *why* a balance could not be read instead
+ * of a generic dead end — and a failed read is never turned into a fabricated
+ * zero.
  */
 
 /** Raised for an invalid address, a non-2xx provider response or a bad body. */
@@ -59,6 +71,15 @@ export interface EvmReadChain {
   readonly baseUrl: string;
   /** USDC contract on this chain, from `@kade/shared` (Circle's deployments). */
   readonly usdcAddress: string;
+  /**
+   * Optional per-chain JSON-RPC endpoint for the authoritative native fallback.
+   *
+   * Production leaves this unset: the endpoint is then resolved from the shared
+   * per-chain variable (`rpcEnvVarForChain`), so no URL is restated here. It is
+   * injectable so a test can exercise the RPC fallback with no network and no
+   * ambient environment.
+   */
+  readonly rpcUrl?: string;
 }
 
 /**
@@ -266,14 +287,14 @@ function didChainBudgetRunOut(startedAt: number): boolean {
  * classified as a timeout rather than hanging the render; when the budget is
  * spent, the chain gives up without further attempts.
  *
- * The timeout is enforced by racing the fetch promise, so `fetchImpl` is always
- * called with the URL alone (the same signature the rest of the code and the
- * tests already use).
+ * The request is supplied as a thunk rather than a URL so a caller can send a
+ * POST body (the RPC fallback) without the retry policy knowing how the request
+ * is shaped. A plain GET passes `() => fetchImpl(url)`, which keeps the call
+ * signature the rest of the code and the tests already use.
  */
 async function fetchWithRetry(
-  url: string,
+  request: () => Promise<Response>,
   chain: EvmReadChain,
-  fetchImpl: typeof fetch,
 ): Promise<FetchOutcome> {
   let lastFailure: EvmReadFailure | null = null;
   const chainStartedAt = Date.now();
@@ -285,7 +306,7 @@ async function fetchWithRetry(
     let response: Response;
     try {
       response = await Promise.race([
-        Promise.resolve(fetchImpl(url)),
+        Promise.resolve(request()),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             timedOut = true;
@@ -416,7 +437,7 @@ async function readUsdcBalance(
     `${base}/api?module=account&action=tokenbalance` +
     `&contractaddress=${chain.usdcAddress}&address=${address}&tag=latest`;
 
-  const outcome = await fetchWithRetry(url, chain, fetchImpl);
+  const outcome = await fetchWithRetry(() => fetchImpl(url), chain);
   if ('failure' in outcome) return { ok: false, failure: outcome.failure };
 
   let body: { result?: unknown } | null;
@@ -454,14 +475,258 @@ async function readUsdcBalance(
   };
 }
 
+/** A native-balance source outcome: the real wei, or a classified failure. */
+type NativeReadOutcome =
+  | { readonly ok: true; readonly wei: bigint }
+  | { readonly ok: false; readonly failure: EvmReadFailure };
+
+/** One primary read: the real wei plus the price it carried, or a failure. */
+type NativePrimaryOutcome =
+  | { readonly ok: true; readonly wei: bigint; readonly exchangeRate: unknown }
+  | { readonly ok: false; readonly failure: EvmReadFailure };
+
 /**
- * Read one chain's native coin and USDC balances, with bounded retry.
+ * Parse a decimal quantity (wei) from a provider body.
  *
- * A chain with no configured endpoint, a provider rejection, a timeout or any
- * other unexpected read failure is reported as a specific `EvmReadFailure`
- * rather than a silently skipped chain: the caller can then keep the chain
- * visible with a real, explained reason instead of a dead end. Nothing is
- * fabricated as a zero balance.
+ * Strict on purpose: only an unsigned decimal integer is accepted. In
+ * particular an empty string does **not** become `0n` (`BigInt('')` is `0n`),
+ * so a malformed body can never be read as a zero balance.
+ */
+function parseDecimalQuantity(raw: unknown): bigint | null {
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw >= 0 ? BigInt(raw) : null;
+  }
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return /^\d+$/.test(trimmed) ? BigInt(trimmed) : null;
+}
+
+/** Parse a JSON-RPC hex quantity (`0x…`), or null when it is not one. */
+function parseHexQuantity(raw: unknown): bigint | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return /^0x[0-9a-fA-F]+$/.test(trimmed) ? BigInt(trimmed) : null;
+}
+
+/**
+ * The primary source: the provider's address summary.
+ *
+ * One request yields both the native amount (`coin_balance`) and its USD price
+ * (`exchange_rate`), so it is tried first and a success never touches a
+ * fallback.
+ */
+async function readNativeFromPrimary(
+  chain: EvmReadChain,
+  address: string,
+  fetchImpl: typeof fetch,
+): Promise<NativePrimaryOutcome> {
+  const base = chain.baseUrl.replace(/\/+$/, '');
+  const outcome = await fetchWithRetry(
+    () => fetchImpl(`${base}/api/v2/addresses/${address}`),
+    chain,
+  );
+  if ('failure' in outcome) return { ok: false, failure: outcome.failure };
+
+  let body: { coin_balance?: unknown; exchange_rate?: unknown } | null;
+  try {
+    body = (await outcome.response.json()) as {
+      coin_balance?: unknown;
+      exchange_rate?: unknown;
+    } | null;
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, failure: failureForBody(chain, detail) };
+  }
+
+  const wei = parseDecimalQuantity(body?.coin_balance);
+  if (wei === null) {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'no native balance was present'),
+    };
+  }
+  return { ok: true, wei, exchangeRate: body?.exchange_rate };
+}
+
+/**
+ * Fallback 1: the same provider's Etherscan-compatible module API.
+ *
+ * Ordered before the RPC fallback because it needs no configuration (`baseUrl`
+ * is already known and keyless) and because the observed failure is
+ * endpoint-specific: the provider's `/api/v2` summary can return HTTP 500 for
+ * every request while this module endpoint serves the balance. It carries no
+ * price, so a success here leaves the USD value unknown rather than inventing
+ * one.
+ */
+async function readNativeFromModuleApi(
+  chain: EvmReadChain,
+  address: string,
+  fetchImpl: typeof fetch,
+): Promise<NativeReadOutcome> {
+  const base = chain.baseUrl.replace(/\/+$/, '');
+  const url =
+    `${base}/api?module=account&action=balance` +
+    `&address=${address}&tag=latest`;
+
+  const outcome = await fetchWithRetry(() => fetchImpl(url), chain);
+  if ('failure' in outcome) return { ok: false, failure: outcome.failure };
+
+  let body: { status?: unknown; message?: unknown; result?: unknown } | null;
+  try {
+    body = (await outcome.response.json()) as {
+      status?: unknown;
+      message?: unknown;
+      result?: unknown;
+    } | null;
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, failure: failureForBody(chain, detail) };
+  }
+
+  // A provider-declared failure (`status` "0") is not a zero balance: it is
+  // refused with the provider's own message so it cannot be read as one.
+  if (body?.status !== undefined && String(body.status) !== '1') {
+    const detail =
+      typeof body.message === 'string' && body.message.trim() !== ''
+        ? body.message
+        : 'the provider reported a failed balance read';
+    return { ok: false, failure: failureForBody(chain, detail) };
+  }
+
+  const wei = parseDecimalQuantity(body?.result);
+  if (wei === null) {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'no native balance was present'),
+    };
+  }
+  return { ok: true, wei };
+}
+
+/**
+ * The JSON-RPC endpoint for a chain: the injected `rpcUrl` when present (tests),
+ * otherwise the shared per-chain variable (`BASE_RPC_URL`, `ETHEREUM_RPC_URL`,
+ * …). Null when neither is configured, so a missing endpoint is skipped rather
+ * than used as a fabricated endpoint.
+ */
+function resolveRpcUrl(chain: EvmReadChain): string | null {
+  const explicit = chain.rpcUrl?.trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const variable = rpcEnvVarForChain(chain.chainId);
+  if (!variable) return null;
+  return process.env[variable]?.trim() || null;
+}
+
+/**
+ * Fallback 2: the chain's own `eth_getBalance`.
+ *
+ * Tried last because it is the authoritative balance and does not depend on an
+ * indexer at all, so it is the strongest source and the one to keep in reserve
+ * for when the whole provider is unavailable; it is also the only source that
+ * needs a configured RPC endpoint. Returns `null` when no endpoint is
+ * configured — that is "not available", not a read failure to report on its own.
+ */
+async function readNativeFromRpc(
+  chain: EvmReadChain,
+  address: string,
+  fetchImpl: typeof fetch,
+): Promise<NativeReadOutcome | null> {
+  const rpcUrl = resolveRpcUrl(chain);
+  if (!rpcUrl) return null;
+
+  const payload = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'eth_getBalance',
+    params: [address, 'latest'],
+  });
+
+  const outcome = await fetchWithRetry(
+    () =>
+      fetchImpl(rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: payload,
+      }),
+    chain,
+  );
+  if ('failure' in outcome) return { ok: false, failure: outcome.failure };
+
+  let body: { result?: unknown; error?: unknown } | null;
+  try {
+    body = (await outcome.response.json()) as {
+      result?: unknown;
+      error?: unknown;
+    } | null;
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, failure: failureForBody(chain, detail) };
+  }
+
+  if (body?.error !== undefined && body.error !== null) {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'the RPC returned an error'),
+    };
+  }
+
+  const wei = parseHexQuantity(body?.result);
+  if (wei === null) {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'no native balance was present'),
+    };
+  }
+  return { ok: true, wei };
+}
+
+/**
+ * Read the native balance from the first source that answers.
+ *
+ * Source order: provider summary (amount + price) → provider module API →
+ * chain RPC. The module API is the first fallback because it needs no
+ * configuration and is the endpoint that still answers when `/api/v2` is dead;
+ * the RPC is the deepest fallback because it is authoritative and
+ * indexer-independent, so it is kept for when the provider as a whole is down.
+ * A successful fallback carries no price, so `exchangeRate` is `undefined` and
+ * the USD value is left unknown rather than invented.
+ *
+ * When every source fails, the primary source's specific failure is returned:
+ * it is the reason the resident's screen already names, and it is truthful even
+ * though the fallbacks were also tried. Nothing is fabricated as a zero.
+ */
+async function readNativeWithFallback(
+  chain: EvmReadChain,
+  address: string,
+  fetchImpl: typeof fetch,
+): Promise<NativePrimaryOutcome> {
+  const primary = await readNativeFromPrimary(chain, address, fetchImpl);
+  if (primary.ok) return primary;
+
+  const moduleRead = await readNativeFromModuleApi(chain, address, fetchImpl);
+  if (moduleRead.ok) {
+    return { ok: true, wei: moduleRead.wei, exchangeRate: undefined };
+  }
+
+  const rpcRead = await readNativeFromRpc(chain, address, fetchImpl);
+  if (rpcRead?.ok) {
+    return { ok: true, wei: rpcRead.wei, exchangeRate: undefined };
+  }
+
+  return { ok: false, failure: primary.failure };
+}
+
+/**
+ * Read one chain's native coin and USDC balances.
+ *
+ * The native balance is read from the first source that answers (see
+ * `readNativeWithFallback`); a successful fallback yields the **real** balance
+ * with no price, so the USD value is left `null` rather than invented.
+ *
+ * A chain with no configured endpoint, or a read where every source failed, is
+ * reported as a specific `EvmReadFailure` rather than a silently skipped chain:
+ * the caller can then keep the chain visible with a real, explained reason
+ * instead of a dead end. Nothing is fabricated as a zero balance.
  *
  * A failed USDC read keeps the chain's native balance and records the failure
  * on the balance as `tokenFailure`, so the token amount stays unread rather
@@ -476,47 +741,11 @@ async function readChainBalance(
     return { chain, ok: false, failure: failureForNoEndpoint(chain) };
   }
 
-  const base = chain.baseUrl.replace(/\/+$/, '');
-  const outcome = await fetchWithRetry(
-    `${base}/api/v2/addresses/${address}`,
-    chain,
-    fetchImpl,
-  );
-  if ('failure' in outcome) return { chain, ok: false, failure: outcome.failure };
+  const native = await readNativeWithFallback(chain, address, fetchImpl);
+  if (!native.ok) return { chain, ok: false, failure: native.failure };
 
-  let body: { coin_balance?: unknown; exchange_rate?: unknown } | null;
-  try {
-    body = (await outcome.response.json()) as {
-      coin_balance?: unknown;
-      exchange_rate?: unknown;
-    } | null;
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    return { chain, ok: false, failure: failureForBody(chain, detail) };
-  }
-
-  const raw = body?.coin_balance;
-  if (typeof raw !== 'string' && typeof raw !== 'number') {
-    return {
-      chain,
-      ok: false,
-      failure: failureForBody(chain, 'no native balance was present'),
-    };
-  }
-
-  let wei: bigint;
-  try {
-    wei = BigInt(raw);
-  } catch {
-    return {
-      chain,
-      ok: false,
-      failure: failureForBody(chain, 'the native balance was not a number'),
-    };
-  }
-
-  const nativeAmount = formatNative(wei);
-  const nativeUsd = toUsd(nativeAmount, body?.exchange_rate);
+  const nativeAmount = formatNative(native.wei);
+  const nativeUsd = toUsd(nativeAmount, native.exchangeRate);
 
   const usdcRead = await readUsdcBalance(chain, address, fetchImpl);
   const usdc = usdcRead.ok ? usdcRead.token : null;

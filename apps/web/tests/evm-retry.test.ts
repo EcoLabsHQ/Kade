@@ -116,10 +116,15 @@ describe('readEvmChainBalances retry', () => {
     expect(fetchImpl).toHaveBeenCalled();
   });
 
-  it('does not retry a non-transient status such as 404', async () => {
-    const fetchImpl = vi.fn(async () =>
-      jsonResponse({}, { ok: false, status: 404 }),
-    ) as unknown as typeof fetch;
+  it('does not retry a non-transient primary status', async () => {
+    // A 404 is final for the primary: it is made once and not retried. Since
+    // the fallback sources also fail here, the chain is still unread and the
+    // USDC read is never reached because no native balance was ever obtained.
+    let primaryCalls = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/v2/addresses/')) primaryCalls += 1;
+      return jsonResponse({}, { ok: false, status: 404 });
+    }) as unknown as typeof fetch;
 
     const reads = await readEvmChainBalances(ADDRESS, {
       chains: [BASE],
@@ -127,9 +132,8 @@ describe('readEvmChainBalances retry', () => {
     });
 
     expect(reads[0]!.ok).toBe(false);
-    // A 404 is final: the native request is made once and not retried, and the
-    // USDC read is never reached because there is no native balance.
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(primaryCalls).toBe(1);
+    expect(reads[0]!.failure?.message).toContain('404');
   });
 });
 
