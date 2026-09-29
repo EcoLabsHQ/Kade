@@ -345,6 +345,72 @@ describe('addConnectedWallet', () => {
   });
 });
 
+describe('token sub-read failures', () => {
+  const tokenFailure = {
+    chainId: 8453,
+    chainName: 'Base',
+    reason: 'rejected' as const,
+    message:
+      'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).',
+  };
+
+  it('folds a failed USDC sub-read into the record readError, never a zero', async () => {
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      okChain({
+        chainId: 8453,
+        name: 'Base',
+        symbol: 'ETH',
+        nativeSymbol: 'ETH',
+        nativeAmount: '1.000000000000000000',
+        nativeUsd: 3000,
+        usdc: null,
+        tokenFailure,
+        usd: 3000,
+      }),
+    ]);
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const record = await addWalletAddress(ADDRESS);
+
+    // The chain read natively, so it is kept — carrying the token failure — and
+    // the record's readError names the specific reason rather than silently
+    // leaving the unread token unmentioned.
+    expect(record.chains).toHaveLength(1);
+    expect(record.chains[0]!.tokenFailure).toEqual(tokenFailure);
+    expect(record.readError).toMatch(/rate limiting this read/);
+    // The native figure is real; the unread token is never turned into a zero.
+    expect(record.usd).toBe(3000);
+    expect(rpcCalls.length).toBeGreaterThan(0);
+  });
+
+  it('carries the token reason through listWalletAddresses as well', async () => {
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      okChain({
+        chainId: 8453,
+        name: 'Base',
+        symbol: 'ETH',
+        nativeSymbol: 'ETH',
+        nativeAmount: '1.000000000000000000',
+        nativeUsd: 3000,
+        usdc: null,
+        tokenFailure,
+        usd: 3000,
+      }),
+    ]);
+    const { client } = createFakeClient({
+      wallets: [{ id: 1, address: ADDRESS }],
+    });
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const records = await listWalletAddresses();
+
+    expect(records[0]!.readError).toMatch(/rate limiting this read/);
+    expect(records[0]!.chains[0]!.tokenFailure).toEqual(tokenFailure);
+    expect(records[0]!.usd).toBe(3000);
+  });
+});
+
 describe('removeWalletAddress', () => {
   it('requires an authenticated session', async () => {
     const { client, rpcCalls } = createFakeClient({ user: null });

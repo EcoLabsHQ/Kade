@@ -127,6 +127,44 @@ describe('VerifyWalletsModal', () => {
     expect(screen.getByText(/Pasted address/)).toBeInTheDocument();
   });
 
+  it('names a failed USDC sub-read instead of a silent native-only total', () => {
+    const message =
+      'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).';
+    renderModal({
+      wallets: [
+        {
+          ...wallet(CONNECTED, 'connected-wallet'),
+          chains: [
+            {
+              chainId: 8453,
+              name: 'Base',
+              nativeSymbol: 'ETH',
+              nativeAmount: '1.000000',
+              nativeUsd: 3000,
+              usdc: null,
+              tokenFailure: {
+                chainId: 8453,
+                chainName: 'Base',
+                reason: 'rejected',
+                message,
+              },
+              usd: 3000,
+            },
+          ],
+          usd: 3000,
+        },
+      ],
+    });
+    openModal();
+
+    // The native total is real and kept; the unread token is named with its
+    // specific reason rather than silently omitted.
+    expect(screen.getByText('$3,000')).toBeInTheDocument();
+    expect(screen.getByText(/rate limiting this read/)).toBeInTheDocument();
+    // No fabricated zero for the token that could not be read.
+    expect(screen.queryByText('$0')).toBeNull();
+  });
+
   it('persists an address that is not listed yet, then signs it', async () => {
     const newAddress = '0x9E4b00000000000000000000000000000000c113';
     hoisted.connections = [
