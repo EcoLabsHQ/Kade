@@ -41,7 +41,9 @@ function chainBalance(
     nativeSymbol: 'ETH',
     nativeAmount: '0.000000',
     nativeUsd: 0,
-    usdc: null,
+    // A successful read of an empty USDC balance; pass `usdc: null` to model a
+    // failed sub-read.
+    usdc: { symbol: 'USDC', amount: '0.000000', usd: 0 },
     usd: 0,
     ...overrides,
   };
@@ -171,6 +173,27 @@ describe('loadVaultHoldings', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]!.readError).toContain('HTTP 503');
     expect(rows.every((row) => row.amount === '—')).toBe(true);
+  });
+
+  it('surfaces a failed USDC sub-read as an unread row, not a silent gap', async () => {
+    const rows = await loadVaultHoldings(SAFE, {
+      chains: CHAINS,
+      morphoConfig: null,
+      readBalances: async () => [
+        // The native read worked (zero) but the USDC read failed.
+        chainBalance({ chainId: 1, name: 'Ethereum', usdc: null }),
+        chainBalance({ chainId: 8453, name: 'Base', usdc: null }),
+      ],
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.kind === 'unread')).toBe(true);
+    expect(rows[0]!.name).toBe('USDC');
+    expect(rows[0]!.chainName).toBe('Ethereum');
+    expect(rows[0]!.amount).toBe('—');
+    expect(rows[0]!.readError).toMatch(
+      /USDC balance on Ethereum could not be read/,
+    );
   });
 
   it('shows a failed Morpho read with its reason and no amount', async () => {
