@@ -16,12 +16,25 @@
 import type {
   BitcoinAddressRecord,
   EvmAddressRecord,
+  EvmChainBalance,
 } from '@/lib/wealth/types';
 
-/** The minimal connected-wallet shape the total needs. */
+/**
+ * The connected-wallet shape the total needs.
+ *
+ * The per-chain balances and the record's `readError` travel with the summary so
+ * a connected wallet that read natively but failed its USDC sub-read — or whose
+ * chain read failed entirely — is not reduced to its address and a USD figure
+ * here. The summary is the connected-wallet list of Step 3, so the failure must
+ * survive to it; dropping it is what made the reason invisible.
+ */
 export interface ConnectedWalletSummary {
   readonly address: string;
   readonly usd: number | null;
+  /** Per-chain balances, carrying each chain's `tokenFailure` when unread. */
+  readonly chains?: readonly EvmChainBalance[];
+  /** The specific reason(s) the balance read failed, when it did. */
+  readonly readError?: string | null;
 }
 
 export interface WealthSummary {

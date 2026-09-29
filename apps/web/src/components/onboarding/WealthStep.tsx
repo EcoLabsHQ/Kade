@@ -23,6 +23,7 @@ import {
   type ConnectedWalletOwnership,
   type ConnectedWalletState,
 } from '@/components/wallet/ConnectedWalletPanel';
+import { readFailureNotes } from '@/components/wallet/read-failure';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import { shortAddress, usd } from '@/lib/wealth/format';
 
@@ -127,6 +128,18 @@ export function WealthStep({
     summary.bitcoinCount > 0 ||
     summary.walletAddressCount > 0 ||
     summary.connectedCount > 0;
+
+  // A source that exists but has no USD value (`usd === null`) leaves the total
+  // unknown, not zero: showing `$0` for a wallet whose balance could not be read
+  // would be a fabricated figure. The connected wallets carry their own `usd`
+  // through `ConnectedWalletSummary`, so an unread connected wallet is
+  // detectable here instead of being summed as a zero.
+  const hasUnreadSource = [
+    ...connectedWallets,
+    ...evmAddresses,
+    ...bitcoinAddresses,
+  ].some((source) => source.usd === null);
+  const totalIsUnknown = hasRealRead && total === 0 && hasUnreadSource;
 
   const atCap = bitcoinAddresses.length >= MAX_BITCOIN_ADDRESSES;
   const confirmDisabled = addressInput.trim() === '' || atCap || adding;
@@ -511,7 +524,7 @@ export function WealthStep({
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {usd(total)}
+            {totalIsUnknown ? '—' : usd(total)}
           </div>
           <div
             style={{ fontSize: '13px', color: tokens.muted, marginTop: '4px' }}
@@ -538,6 +551,41 @@ export function WealthStep({
                   .filter(Boolean)
                   .join(' · ')}
           </div>
+
+          {/*
+           * A connected wallet whose balance read is incomplete is named here,
+           * in Step 3's connected-wallet list, with the same specific reason the
+           * panel shows. `ConnectedWalletSummary` carries the per-chain reads and
+           * the record's `readError`, so a failed USDC sub-read — or a whole-chain
+           * failure — is never silently reduced to the wallet's address.
+           */}
+          {connectedWallets.map((wallet) => {
+            const notes = readFailureNotes(wallet);
+            if (notes.length === 0) return null;
+            return (
+              <div key={wallet.address} style={{ marginTop: '12px' }}>
+                <div
+                  style={{
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                  }}
+                >
+                  {shortAddress(wallet.address)}
+                </div>
+                {notes.map((note) => (
+                  <div
+                    key={note}
+                    role='alert'
+                    style={{ ...errorText, marginTop: '2px' }}
+                  >
+                    {note}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
 
           <div style={{ position: 'relative', marginTop: '18px' }}>
             <div style={trackStyle}>
@@ -568,12 +616,18 @@ export function WealthStep({
               marginTop: '12px',
               fontSize: '14px',
               fontWeight: 600,
-              color: shortfall === 0 ? tokens.success : tokens.warning,
+              color: totalIsUnknown
+                ? tokens.muted
+                : shortfall === 0
+                  ? tokens.success
+                  : tokens.warning,
             }}
           >
-            {shortfall === 0
-              ? `${tierName} tier met`
-              : `${usd(shortfall)} short of ${tierName} tier`}
+            {totalIsUnknown
+              ? `${tierName} tier balance could not be read`
+              : shortfall === 0
+                ? `${tierName} tier met`
+                : `${usd(shortfall)} short of ${tierName} tier`}
           </div>
 
           {bitcoinAddresses.map((record) => (

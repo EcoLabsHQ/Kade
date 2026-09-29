@@ -18,6 +18,7 @@ import {
   MAX_WALLET_ADDRESSES,
   type EvmChainBalance,
 } from '@/lib/wealth/types';
+import { readFailureNotes } from '@/components/wallet/read-failure';
 
 /**
  * The two real wallet rows of the proof-of-wealth step.
@@ -257,15 +258,19 @@ function SigningConfiguredWalletPanel({
 /**
  * A single wallet row. Presentational only: it holds no wallet state and calls
  * no hooks, so it can be rendered on both the configured and unconfigured path.
+ * A `note` names the specific reason a live wallet's balance read is incomplete,
+ * so a failed USDC sub-read is never a silent gap.
  */
 function WalletRow({
   row,
   subtitle,
   action,
+  note,
 }: Readonly<{
   row: (typeof ROWS)[number];
   subtitle: string;
   action: ReactNode;
+  note?: ReactNode;
 }>) {
   return (
     <Card padding="14px 16px">
@@ -292,6 +297,7 @@ function WalletRow({
         </div>
         <div style={{ flex: '0 0 auto' }}>{action}</div>
       </div>
+      {note ? <div style={walletNote}>{note}</div> : null}
     </Card>
   );
 }
@@ -681,6 +687,16 @@ function ConfiguredWalletPanel({
         const addresses = rowWallets
           .map((entry) => shortAddress(entry.address))
           .join(', ');
+        // The specific reasons any wallet in this row could not be fully read.
+        // They ride on the same `tokenFailure`/`readError` carrier the other
+        // surfaces use, so a failed USDC sub-read or a whole-chain failure is
+        // named for the wallet the resident is looking at rather than dropped.
+        const failureNotes = rowWallets.flatMap((entry) =>
+          readFailureNotes(entry).map((message) => ({
+            address: entry.address,
+            message,
+          })),
+        );
         const matchesActive =
           activeAddress !== null &&
           rowWallets.some(
@@ -809,7 +825,23 @@ function ConfiguredWalletPanel({
         }
 
         return (
-          <WalletRow key={row.key} row={row} subtitle={subtitle} action={action} />
+          <WalletRow
+            key={row.key}
+            row={row}
+            subtitle={subtitle}
+            action={action}
+            note={
+              failureNotes.length > 0 ? (
+                <div role="alert">
+                  {failureNotes.map((failure) => (
+                    <div key={`${failure.address}:${failure.message}`}>
+                      {shortAddress(failure.address)} — {failure.message}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            }
+          />
         );
       })}
 
@@ -936,6 +968,16 @@ const errorText: React.CSSProperties = {
   marginTop: '6px',
   fontSize: '12.5px',
   color: tokens.danger,
+};
+
+/** A live wallet's specific balance-read failure, named under its row. */
+const walletNote: React.CSSProperties = {
+  marginTop: '8px',
+  borderTop: `1px solid ${tokens.border}`,
+  paddingTop: '8px',
+  fontSize: '11.5px',
+  color: tokens.danger,
+  lineHeight: 1.5,
 };
 
 const stepBar: React.CSSProperties = {

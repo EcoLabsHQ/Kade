@@ -433,6 +433,11 @@ export function OnboardingFlow({
                   ? states.map((state) => ({
                       address: state.address,
                       usd: state.usd,
+                      // Keep the per-chain reads and the specific failure, so a
+                      // failed USDC sub-read stays visible in Step 3's summary
+                      // instead of being reduced to an address and a USD figure.
+                      chains: state.chains,
+                      readError: state.readError,
                     }))
                   : [],
               )
