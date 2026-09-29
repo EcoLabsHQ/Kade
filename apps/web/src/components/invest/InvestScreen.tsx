@@ -9,7 +9,11 @@ import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
 import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
-import { beginDeposit, completeDeposit, type InvestVaultSummary } from '@/app/invest/actions';
+import {
+  beginDeposit,
+  completeDeposit,
+  type InvestVaultSummary,
+} from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import {
@@ -282,7 +286,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
         challenge: begin.hash,
         // The relying party is this page's own host, exactly as enrolment uses.
         rpId:
-          typeof window === 'undefined' ? 'localhost' : window.location.hostname,
+          typeof window === 'undefined'
+            ? 'localhost'
+            : window.location.hostname,
       });
     } catch (cause) {
       // A dismissed or failed prompt must say so rather than fall silently back
@@ -301,7 +307,8 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
     // the chain the server built it for (from the build response, not the UI).
     const builtChainId = begin.chainId;
     const builtChainName =
-      vaults.find((rail) => rail.chainId === builtChainId)?.chainName ?? chainName;
+      vaults.find((rail) => rail.chainId === builtChainId)?.chainName ??
+      chainName;
     setState({ kind: 'submitting' });
     let result;
     try {
@@ -488,7 +495,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   Yes
                 </span>
                 <button
-                  type="button"
+                  type='button'
                   aria-label={`Allocate into ${instrument.name}`}
                   onClick={() => openInstrument(instrument)}
                   disabled={!instrument.wired}
@@ -516,7 +523,13 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
           </div>
         </div>
 
-        <div style={{ padding: '13px 24px', fontSize: '12.5px', color: tokens.muted }}>
+        <div
+          style={{
+            padding: '13px 24px',
+            fontSize: '12.5px',
+            color: tokens.muted,
+          }}
+        >
           Allocations settle from vault USDC in one Safe transaction. Kade runs
           qualified vaults on Ethereum, Base and Arbitrum — the chain is chosen
           per instrument, and bridging is handled for you.
@@ -531,14 +544,14 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
         }}
       >
         <Stat
-          label="Vault USDC available"
-          value="$0"
-          note="Allocating does not change your qualifying balance."
+          label='Vault USDC available'
+          value='$0'
+          note='Allocating does not change your qualifying balance.'
         />
         <Stat
-          label="Allocated this session"
-          value="$0"
-          note="0 instruments · shown in Holdings"
+          label='Allocated this session'
+          value='$0'
+          note='0 instruments · shown in Holdings'
         />
       </div>
 
@@ -578,7 +591,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                       return (
                         <button
                           key={rail.chainId}
-                          type="button"
+                          type='button'
                           onClick={() => setRailChoice(rail.chainId)}
                           disabled={!rail.configured || busy}
                           aria-pressed={isSelected}
@@ -596,7 +609,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                             fontSize: '12.5px',
                             fontWeight: 600,
                             cursor:
-                              rail.configured && !busy ? 'pointer' : 'not-allowed',
+                              rail.configured && !busy
+                                ? 'pointer'
+                                : 'not-allowed',
                             background: isSelected ? tokens.ink : '#fff',
                             color: isSelected
                               ? '#fff'
@@ -613,7 +628,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                 </div>
 
                 <label
-                  htmlFor="invest-amount"
+                  htmlFor='invest-amount'
                   style={{
                     display: 'block',
                     marginTop: '14px',
@@ -624,9 +639,9 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   Amount to allocate (USDC)
                 </label>
                 <input
-                  id="invest-amount"
-                  type="text"
-                  inputMode="decimal"
+                  id='invest-amount'
+                  type='text'
+                  inputMode='decimal'
                   value={amount}
                   spellCheck={false}
                   onChange={(event) => setAmount(event.target.value)}
@@ -657,7 +672,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   {PRESETS.map((preset) => (
                     <button
                       key={preset}
-                      type="button"
+                      type='button'
                       onClick={() => setAmount(preset)}
                       style={{
                         flex: '1 1 0',
@@ -680,7 +695,7 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
 
                 <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
                   <Row
-                    label="Vault chain"
+                    label='Vault chain'
                     value={
                       selectedRail
                         ? `${selectedRail.chainName} · ${selectedRail.chainId}`
@@ -688,23 +703,24 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     }
                   />
                   <Row
-                    label="MetaMorpho vault"
+                    label='MetaMorpho vault'
                     value={selectedRail?.vault ?? 'Not configured'}
                     mono={selectedRail?.vault != null}
                   />
                   <Row
-                    label="Underlying USDC"
+                    label='Underlying USDC'
                     value={selectedRail?.usdc ?? 'Not configured'}
                     mono={selectedRail?.usdc != null}
                   />
                 </dl>
 
-                <div style={{ marginTop: '16px' }}>
+                <div style={{ marginTop: '16px', marginBottom: '16px'}}>
                   <Button
+                    style={{ width: '100%' }}
                     variant={canAllocate ? 'primary' : 'locked'}
                     disabled={!canAllocate || busy}
                     onClick={allocate}
-                    ariaLabel="Build the deposit"
+                    ariaLabel='Build the deposit'
                     title={
                       selectedRail === null
                         ? 'No MetaMorpho vault rail is configured on any chain'
@@ -728,43 +744,45 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                 </div>
               </>
             ) : (
-              <Notice tone="warning" title="Not wired yet">
+              <Notice tone='warning' title='Not wired yet'>
                 Only the MetaMorpho vault is wired in this iteration. This
-                instrument renders as the baseline does but has no execution path
-                yet.
+                instrument renders as the baseline does but has no execution
+                path yet.
               </Notice>
             )}
 
             {state.kind === 'gated' ? (
-              <Notice tone="warning" title="Deposit gated">
+              <Notice tone='warning' title='Deposit gated'>
                 {state.reason}
-                <div style={{ marginTop: '6px' }}>Nothing was signed or sent.</div>
+                <div style={{ marginTop: '6px' }}>
+                  Nothing was signed or sent.
+                </div>
               </Notice>
             ) : null}
 
             {state.kind === 'building' ? (
               <TransactionProgress
-                label="Building the deposit…"
-                progressLabel="Building the deposit"
+                label='Building the deposit…'
+                progressLabel='Building the deposit'
               />
             ) : null}
 
             {state.kind === 'awaiting-passkey' ? (
               <TransactionProgress
-                label="Waiting for your passkey to authorise the deposit…"
-                progressLabel="Awaiting your passkey"
+                label='Waiting for your passkey to authorise the deposit…'
+                progressLabel='Awaiting your passkey'
               />
             ) : null}
 
             {state.kind === 'submitting' ? (
               <TransactionProgress
                 label={`Submitting and confirming the deposit on ${selectedRail?.chainName ?? ''}…`}
-                progressLabel="Confirming the deposit"
+                progressLabel='Confirming the deposit'
               />
             ) : null}
 
             {state.kind === 'failed' ? (
-              <Notice tone="error" title="Deposit failed">
+              <Notice tone='error' title='Deposit failed'>
                 The deposit on {state.chainName} stopped at the{' '}
                 <strong>{state.stage}</strong> step: {state.reason}
                 <div style={{ marginTop: '6px' }}>
@@ -777,19 +795,19 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
 
             {state.kind === 'sent' ? (
               <div
-                data-testid="invest-deposit-complete"
+                data-testid='invest-deposit-complete'
                 style={{ marginTop: '14px' }}
               >
-                <Notice tone="success" title="Deposit submitted">
+                <Notice tone='success' title='Deposit submitted'>
                   The deposit of {state.amountUsdc} USDC was submitted and its
                   receipt confirmed on {state.chainName}.
                 </Notice>
                 <dl style={{ margin: '12px 0 0', fontSize: '13px' }}>
-                  <Detail label="Transaction">
+                  <Detail label='Transaction'>
                     {state.transactionHash ? (
                       <CopyableValue
                         value={state.transactionHash}
-                        label="transaction hash"
+                        label='transaction hash'
                         explorerUrl={transactionExplorerUrl(
                           state.chainId,
                           state.transactionHash,
@@ -799,27 +817,33 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                       <span style={{ color: tokens.muted }}>Not reported</span>
                     )}
                   </Detail>
-                  <Detail label="User operation">
+                  <Detail label='User operation'>
                     <CopyableValue
                       value={state.userOperationHash}
-                      label="user operation hash"
+                      label='user operation hash'
                     />
                   </Detail>
                   {state.vault ? (
-                    <Detail label="MetaMorpho vault">
+                    <Detail label='MetaMorpho vault'>
                       <CopyableValue
                         value={state.vault}
-                        label="MetaMorpho vault address"
-                        explorerUrl={addressExplorerUrl(state.chainId, state.vault)}
+                        label='MetaMorpho vault address'
+                        explorerUrl={addressExplorerUrl(
+                          state.chainId,
+                          state.vault,
+                        )}
                       />
                     </Detail>
                   ) : null}
                   {safeAddress ? (
-                    <Detail label="Your Safe">
+                    <Detail label='Your Safe'>
                       <CopyableValue
                         value={safeAddress}
-                        label="Safe address"
-                        explorerUrl={addressExplorerUrl(state.chainId, safeAddress)}
+                        label='Safe address'
+                        explorerUrl={addressExplorerUrl(
+                          state.chainId,
+                          safeAddress,
+                        )}
                       />
                     </Detail>
                   ) : null}
@@ -843,7 +867,7 @@ function Stat({
   note: string;
 }) {
   return (
-    <Card padding="22px 24px">
+    <Card padding='22px 24px'>
       <div
         style={{
           fontSize: '11px',
@@ -865,7 +889,9 @@ function Stat({
       >
         {value}
       </div>
-      <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}>
+      <div
+        style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}
+      >
         {note}
       </div>
     </Card>
