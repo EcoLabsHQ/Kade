@@ -717,7 +717,12 @@ describe('step 1, the transaction passkey', () => {
   });
 });
 
-describe('pre-registration flow', () => {
+// Several tests here walk the full step 2 → 4 wizard, driving calendar pickers
+// and several async resolvers. Under a fully loaded suite run they exceed the
+// 5s default, which made the mechanical gate fail spuriously while every test
+// passed in isolation. The timeout is raised for the whole suite rather than
+// per test so a new wizard-driving test cannot reintroduce the flake.
+describe('pre-registration flow', { timeout: 20000 }, () => {
   // This walks the full step 2 → 4 path, driving two calendar pickers, so it
   // runs longer than the default timeout under a fully loaded test run.
   it(
