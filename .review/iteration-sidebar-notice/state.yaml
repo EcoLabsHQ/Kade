@@ -1,0 +1,26 @@
+iteration: iteration-sidebar-notice
+profile: QUICKFIX
+candidate: 3499059ab294fb9f445ad5910e9fc1cd4a7d5fd3
+mode: targeted
+reviewed_scopes: {quickfix: complete}
+active_findings: [F1, F2]
+resolved_findings: []
+next_finding_id: F3
+recheck_attempts: {F1: 0, F2: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  targeted_1:
+    candidate: 3499059ab294fb9f445ad5910e9fc1cd4a7d5fd3
+    verdict: review_passed
+    blocking: []
+    warnings: [F1, F2]
+    notes: >
+      The divergence guarantee was proved rather than assumed: show and reviewed
+      are exact complements over the same applications row, and banner and chip
+      render one resolved ShellReviewState, so no reachable state (blocked, null
+      ref, read error) can make them disagree. Bounded QUICKFIX; no escalation.
+carried_warnings:
+  F1: "The green cleared variant is unreachable on /, /holdings and /invest, which still pass the legacy props; the amber notice renders on every route."
+  F2: "The sidebar notice renders below the Safe card; the MVP reference puts it above."
+human_gate: none

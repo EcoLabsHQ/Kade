@@ -1,0 +1,31 @@
+iteration: iteration-invest-position
+profile: NORMAL
+known_good: 77c5590d68915fb2602de2118234dfeb983790e1
+candidate: 3499059ab294fb9f445ad5910e9fc1cd4a7d5fd3
+mode: discovery
+reviewed_scopes: {route_and_data: complete, position_reduction: complete, screen_render: complete, tests_and_evidence: complete, engine_untouched: complete}
+active_findings: [F1, F2, F3, F4]
+resolved_findings: []
+next_finding_id: F5
+recheck_attempts: {F1: 0, F2: 0, F3: 0, F4: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  discovery_1:
+    candidate: 56e84863f0d815d4f4e75e01516a97e15af70a31
+    verdict: review_passed
+    blocking: []
+    warnings: [F1, F2, F3, F4]
+    notes: >
+      Proved that the unknown-vs-zero rule holds end to end: the reader emits an
+      unread row for every failure, so a failed or unrun read cannot arrive as a
+      real $0, and a genuine empty read really does mean empty. The engine is
+      untouched and both directions stay present on every row. Four WARNs, none
+      blocking.
+carried_warnings:
+  F1: "Currently allocated renames the label the owner and the design handoff state; justified (the figure is the current position, not a session total) but should be owner-confirmed."
+  F2: "The stat cards and the row chip are not refreshed after a confirmed deposit or withdraw; the figures are stale until a reload. Pre-existing class, correctly identified."
+  F3: "The route now pays the full multi-chain on-chain read on every render; a degraded RPC can block the page."
+  F4: "no Morpho row = empty depends on MORPHO_VAULT_CHAIN_IDS being a subset of EVM_READ_CHAINS; unasserted."
+verify_status: "./scripts/verify.sh -> VERIFICATION PASSED with a clean tree"
+human_gate: none
