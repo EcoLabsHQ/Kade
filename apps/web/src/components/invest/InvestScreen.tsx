@@ -4,11 +4,17 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChainChip } from '@/components/ui/ChainChip';
+import { CopyableValue } from '@/components/ui/CopyableValue';
 import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
+import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
 import { beginDeposit, completeDeposit, type InvestVaultSummary } from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
+import {
+  addressExplorerUrl,
+  transactionExplorerUrl,
+} from '@/lib/wealth/explorer';
 
 /**
  * The Invest screen (D18 / EXE-014).
@@ -588,18 +594,25 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
               </Notice>
             ) : null}
 
+            {state.kind === 'building' ? (
+              <TransactionProgress
+                label="Building the deposit…"
+                progressLabel="Building the deposit"
+              />
+            ) : null}
+
             {state.kind === 'awaiting-passkey' ? (
-              <Notice tone="info" title="Awaiting your passkey">
-                Confirm the deposit with your passkey to authorise the Safe
-                transaction. The operation is built; nothing is sent until it is
-                signed.
-              </Notice>
+              <TransactionProgress
+                label="Waiting for your passkey to authorise the deposit…"
+                progressLabel="Awaiting your passkey"
+              />
             ) : null}
 
             {state.kind === 'submitting' ? (
-              <Notice tone="info" title="Submitting">
-                The signed operation is being submitted and its receipt confirmed.
-              </Notice>
+              <TransactionProgress
+                label={`Submitting and confirming the deposit on ${vault.chainName}…`}
+                progressLabel="Confirming the deposit"
+              />
             ) : null}
 
             {state.kind === 'failed' ? (
@@ -615,18 +628,55 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
             ) : null}
 
             {state.kind === 'sent' ? (
-              <Notice tone="success" title="Deposit submitted">
-                The deposit of {state.amountUsdc} USDC was submitted and its{' '}
-                receipt confirmed.
-                <dl style={{ margin: '10px 0 0', fontSize: '13px' }}>
-                  <Row
-                    label="Transaction"
-                    value={state.transactionHash ?? 'Not reported'}
-                    mono
-                  />
-                  <Row label="User operation" value={state.userOperationHash} mono />
+              <div
+                data-testid="invest-deposit-complete"
+                style={{ marginTop: '14px' }}
+              >
+                <Notice tone="success" title="Deposit submitted">
+                  The deposit of {state.amountUsdc} USDC was submitted and its
+                  receipt confirmed on {vault.chainName}.
+                </Notice>
+                <dl style={{ margin: '12px 0 0', fontSize: '13px' }}>
+                  <Detail label="Transaction">
+                    {state.transactionHash ? (
+                      <CopyableValue
+                        value={state.transactionHash}
+                        label="transaction hash"
+                        explorerUrl={transactionExplorerUrl(
+                          vault.chainId,
+                          state.transactionHash,
+                        )}
+                      />
+                    ) : (
+                      <span style={{ color: tokens.muted }}>Not reported</span>
+                    )}
+                  </Detail>
+                  <Detail label="User operation">
+                    <CopyableValue
+                      value={state.userOperationHash}
+                      label="user operation hash"
+                    />
+                  </Detail>
+                  {vault.vault ? (
+                    <Detail label="MetaMorpho vault">
+                      <CopyableValue
+                        value={vault.vault}
+                        label="MetaMorpho vault address"
+                        explorerUrl={addressExplorerUrl(vault.chainId, vault.vault)}
+                      />
+                    </Detail>
+                  ) : null}
+                  {safeAddress ? (
+                    <Detail label="Your Safe">
+                      <CopyableValue
+                        value={safeAddress}
+                        label="Safe address"
+                        explorerUrl={addressExplorerUrl(vault.chainId, safeAddress)}
+                      />
+                    </Detail>
+                  ) : null}
                 </dl>
-              </Notice>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -707,6 +757,35 @@ function Row({
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+/**
+ * A labelled detail line whose value is already-rendered node — used for the
+ * finish state, where an address or hash is a copyable, linked control rather
+ * than a plain string.
+ */
+function Detail({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        gap: '12px',
+        padding: '7px 0',
+        borderTop: `1px solid ${tokens.border}`,
+      }}
+    >
+      <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>
+      <span style={{ minWidth: 0, textAlign: 'right' }}>{children}</span>
     </div>
   );
 }

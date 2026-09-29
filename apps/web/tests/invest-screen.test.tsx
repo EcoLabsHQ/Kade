@@ -339,3 +339,130 @@ describe('InvestScreen allocate flow', () => {
     }
   });
 });
+
+/** Capture what the copy buttons write to the clipboard. */
+function stubClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText },
+    configurable: true,
+  });
+  return writeText;
+}
+
+describe('InvestScreen transaction modal', () => {
+  it('shows an in-flight status while confirming, then the finish state', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    let resolveComplete!: (value: unknown) => void;
+    hoisted.completeDeposit.mockReturnValue(
+      new Promise((resolve) => {
+        resolveComplete = resolve;
+      }),
+    );
+
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault');
+    await clickAllocate(dialog);
+    await waitFor(() => expect(hoisted.completeDeposit).toHaveBeenCalledTimes(1));
+
+    // In flight: the user can see it is not finished, and success is not claimed.
+    const status = within(dialog).getByRole('status');
+    expect(status).toHaveTextContent(/confirming the deposit/i);
+    expect(within(status).getByRole('progressbar')).toBeInTheDocument();
+    expect(within(dialog).queryByTestId('invest-deposit-complete')).toBeNull();
+    expect(within(dialog).queryByText(/receipt confirmed/i)).toBeNull();
+
+    resolveComplete({
+      status: 'sent',
+      sent: true,
+      userOperationHash: `0x${'fe'.repeat(32)}`,
+      transactionHash: HASH,
+    });
+
+    expect(
+      await within(dialog).findByText(/receipt confirmed/i),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole('progressbar')).toBeNull();
+  });
+
+  it('links the confirmed deposit to Etherscan and copies the full values', async () => {
+    const writeText = stubClipboard();
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    hoisted.completeDeposit.mockResolvedValue({
+      status: 'sent',
+      sent: true,
+      userOperationHash: `0x${'fe'.repeat(32)}`,
+      transactionHash: HASH,
+    });
+
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault');
+    await clickAllocate(dialog);
+
+    const finish = await within(dialog).findByTestId('invest-deposit-complete');
+
+    const txLink = within(finish).getByRole('link', {
+      name: /transaction hash on the block explorer/i,
+    });
+    expect(txLink).toHaveAttribute('href', `https://etherscan.io/tx/${HASH}`);
+    expect(txLink).toHaveAttribute('target', '_blank');
+    expect(txLink).toHaveAttribute('rel', 'noopener noreferrer');
+
+    // The full vault address is recoverable and copyable, not just truncated.
+    expect(within(finish).getByTitle(VAULT)).toBeInTheDocument();
+    fireEvent.click(
+      within(finish).getByRole('button', {
+        name: /copy MetaMorpho vault address/i,
+      }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(VAULT));
+
+    fireEvent.click(
+      within(finish).getByRole('button', { name: /copy transaction hash/i }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH));
+  });
+
+  it('points the deposit link at the chain the vault is on', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    hoisted.completeDeposit.mockResolvedValue({
+      status: 'sent',
+      sent: true,
+      userOperationHash: `0x${'fe'.repeat(32)}`,
+      transactionHash: HASH,
+    });
+
+    renderScreen({
+      vault: { ...CONFIGURED_VAULT, chainId: 8453, chainName: 'Base' },
+    });
+    const dialog = openDialog('Morpho USDC vault');
+    await clickAllocate(dialog);
+
+    const finish = await within(dialog).findByTestId('invest-deposit-complete');
+    expect(
+      within(finish).getByRole('link', {
+        name: /transaction hash on the block explorer/i,
+      }),
+    ).toHaveAttribute('href', `https://basescan.org/tx/${HASH}`);
+  });
+
+  it('does not invent a transaction link when no transaction hash was reported', async () => {
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    hoisted.completeDeposit.mockResolvedValue({
+      status: 'sent',
+      sent: true,
+      userOperationHash: `0x${'fe'.repeat(32)}`,
+      transactionHash: null,
+    });
+
+    renderScreen();
+    const dialog = openDialog('Morpho USDC vault');
+    await clickAllocate(dialog);
+
+    const finish = await within(dialog).findByTestId('invest-deposit-complete');
+    expect(within(finish).getByText(/not reported/i)).toBeInTheDocument();
+    expect(
+      within(finish).queryByRole('link', { name: /transaction hash/i }),
+    ).toBeNull();
+  });
+});
