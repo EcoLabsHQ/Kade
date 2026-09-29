@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => ({
     connector: { uid: string; id: string; name: string };
   }>,
   disconnect: vi.fn(),
+  disconnectAsync: vi.fn(),
   signMessageAsync: vi.fn(),
 }));
 
@@ -38,7 +39,10 @@ vi.mock('@reown/appkit/react', () => ({
 
 vi.mock('wagmi', () => ({
   useConnections: () => hoisted.connections,
-  useDisconnect: () => ({ disconnect: hoisted.disconnect }),
+  useDisconnect: () => ({
+    disconnect: hoisted.disconnect,
+    disconnectAsync: hoisted.disconnectAsync,
+  }),
   useSignMessage: () => ({ signMessageAsync: hoisted.signMessageAsync }),
 }));
 
@@ -104,30 +108,32 @@ function renderModal(overrides: Partial<{
   return { utils, onAddConnectedWallet, onBegin, onComplete, onLinked };
 }
 
-/** Open the modal from its control. */
-function openModal() {
+/** Open the modal from its control. Opening now disconnects first, so it is async. */
+async function openModal() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Link & verify wallets' }),
   );
+  await screen.findByRole('dialog');
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.connections = [];
+  hoisted.disconnectAsync.mockResolvedValue(undefined);
   hoisted.signMessageAsync.mockResolvedValue('0xsignature');
 });
 
 describe('VerifyWalletsModal', () => {
-  it('lists every unverified wallet with its provenance', () => {
+  it('lists every unverified wallet with its provenance', async () => {
     renderModal();
-    openModal();
+    await openModal();
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Connected wallet/)).toBeInTheDocument();
     expect(screen.getByText(/Pasted address/)).toBeInTheDocument();
   });
 
-  it('names a failed USDC sub-read instead of a silent native-only total', () => {
+  it('names a failed USDC sub-read instead of a silent native-only total', async () => {
     const message =
       'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).';
     renderModal({
@@ -155,7 +161,7 @@ describe('VerifyWalletsModal', () => {
         },
       ],
     });
-    openModal();
+    await openModal();
 
     // The native total is real and kept; the unread token is named with its
     // specific reason rather than silently omitted.
@@ -178,7 +184,7 @@ describe('VerifyWalletsModal', () => {
     const onLinked = vi.fn();
     renderModal({ onAddConnectedWallet, onBegin, onComplete, onLinked });
 
-    openModal();
+    await openModal();
     fireEvent.click(screen.getByRole('button', { name: 'Link & sign a wallet' }));
 
     // Persist happens before the sign, and for the connected address.
@@ -207,7 +213,7 @@ describe('VerifyWalletsModal', () => {
     ];
     renderModal();
 
-    openModal();
+    await openModal();
     fireEvent.click(screen.getByRole('button', { name: 'Link & sign a wallet' }));
 
     await waitFor(() =>
@@ -227,7 +233,7 @@ describe('VerifyWalletsModal', () => {
       onLinked,
     });
 
-    openModal();
+    await openModal();
     fireEvent.click(screen.getByRole('button', { name: 'Link & sign a wallet' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -253,7 +259,7 @@ describe('VerifyWalletsModal', () => {
       onBegin,
     });
 
-    openModal();
+    await openModal();
     fireEvent.click(screen.getByRole('button', { name: 'Link & sign a wallet' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -262,10 +268,10 @@ describe('VerifyWalletsModal', () => {
     expect(onBegin).not.toHaveBeenCalled();
   });
 
-  it('renders static markup with no wallet hook when not configured', () => {
+  it('renders static markup with no wallet hook when not configured', async () => {
     renderModal({ configured: false });
 
-    openModal();
+    await openModal();
 
     expect(
       screen.getByText(/Wallet connection is not configured here/),

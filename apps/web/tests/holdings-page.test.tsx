@@ -8,10 +8,20 @@ import { cleanup, render, screen } from '@testing-library/react';
  * AppKit/wagmi hooks, which throw "useConfig must be used within WagmiProvider"
  * when no provider is mounted. This pins that the page wraps its tree in
  * `WalletProvider`, so the context cannot be dropped again.
+ *
+ * `HoldingsView` now also reads wagmi state at its entry points (it disconnects
+ * the wallet before opening a modal). The wagmi hooks are stubbed here so the
+ * page renders without a real provider; the provider assertion below is what
+ * still fails if `WalletProvider` is dropped from the page.
  */
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+}));
+vi.mock('wagmi', () => ({
+  useConnections: () => [],
+  useDisconnect: () => ({ disconnect: vi.fn(), disconnectAsync: vi.fn() }),
+  useSignMessage: () => ({ signMessageAsync: vi.fn() }),
 }));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),

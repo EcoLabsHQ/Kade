@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 import { HoldingsScreen, type MoveToVaultTarget } from './HoldingsScreen';
 import { MoveToVaultDialog } from './MoveToVaultDialog';
 import { VerifyWalletsModal } from './VerifyWalletsModal';
+import { useDisconnectThenAct } from '@/components/wallet/useDisconnectThenAct';
 import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
 
 /**
@@ -19,9 +20,16 @@ import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
  * connect, persist, sign, disconnect — because linking and signing are one
  * gesture. `onMoveToVault` receives the clicked row and opens the
  * `MoveToVaultDialog`, which owns the connect → sign → send flow for moving that
- * row's token into the resident's Safe. The screen stays presentational; each
- * dialog is gated on `configured` inside itself, so the unconfigured path
- * renders static markup and reaches no AppKit/wagmi hook.
+ * row's token into the resident's Safe. The screen stays presentational; the
+ * dialogs are gated on `configured`, so the unconfigured path renders static
+ * markup and reaches no AppKit/wagmi hook.
+ *
+ * Both entry points disconnect **before** opening their modal: clicking a row's
+ * "Move to vault" tears the connected wallet down and only then opens the
+ * dialog, so it always starts in its "Not connected" state and a carried-over
+ * session is never reused (see `useDisconnectThenAct`). This client half owns
+ * both the wallet machinery and the sequencing; `HoldingsScreen` stays
+ * wallet-free.
  */
 export interface HoldingsViewProps {
   readonly aggregate: HoldingsAggregate;
@@ -50,24 +58,39 @@ export function HoldingsView({
   // owns the wallet machinery behind it, exactly like `renderVerifyWallets`.
   const [moveTarget, setMoveTarget] = useState<MoveToVaultTarget | null>(null);
 
+  const screen = (onMoveToVault: (target: MoveToVaultTarget) => void) => (
+    <HoldingsScreen
+      aggregate={aggregate}
+      safeAddress={safeAddress}
+      vaultHoldings={vaultHoldings}
+      onMoveToVault={onMoveToVault}
+      renderVerifyWallets={() => (
+        <VerifyWalletsModal
+          configured={configured}
+          wallets={aggregate.unverifiedWallets}
+          onAddConnectedWallet={onAddConnectedWallet}
+          onBegin={onBegin}
+          onComplete={onComplete}
+          onLinked={refresh}
+        />
+      )}
+    />
+  );
+
   return (
     <>
-      <HoldingsScreen
-        aggregate={aggregate}
-        safeAddress={safeAddress}
-        vaultHoldings={vaultHoldings}
-        onMoveToVault={setMoveTarget}
-        renderVerifyWallets={() => (
-          <VerifyWalletsModal
-            configured={configured}
-            wallets={aggregate.unverifiedWallets}
-            onAddConnectedWallet={onAddConnectedWallet}
-            onBegin={onBegin}
-            onComplete={onComplete}
-            onLinked={refresh}
-          />
-        )}
-      />
+      {/*
+        The wallet hooks only exist where `WalletProvider` mounted a
+        `WagmiProvider`. When the environment is unconfigured there is no wallet
+        to disconnect, so the screen is rendered on its own and reaches no hook.
+      */}
+      {configured ? (
+        <ConfiguredMoveTrigger onMoveToVault={setMoveTarget}>
+          {screen}
+        </ConfiguredMoveTrigger>
+      ) : (
+        screen(setMoveTarget)
+      )}
       {moveTarget ? (
         <MoveToVaultDialog
           configured={configured}
@@ -79,4 +102,33 @@ export function HoldingsView({
       ) : null}
     </>
   );
+}
+
+/**
+ * The configured move-to-vault trigger. It is mounted only when `WalletProvider`
+ * mounted a `WagmiProvider`, so `useDisconnectThenAct` (which reads wagmi state)
+ * is safe here — the same gating `FeeStep`'s `DepositControl` uses.
+ *
+ * Clicking a row's "Move to vault" disconnects the connected wallet first and
+ * only then opens the dialog, so it always starts in its "Not connected" state
+ * and a carried-over session is never reused. A failed disconnect still opens
+ * the dialog.
+ */
+function ConfiguredMoveTrigger({
+  onMoveToVault,
+  children,
+}: {
+  readonly onMoveToVault: (target: MoveToVaultTarget) => void;
+  readonly children: (onMoveToVault: (target: MoveToVaultTarget) => void) => React.ReactNode;
+}) {
+  const { run: disconnectThenAct } = useDisconnectThenAct();
+
+  const openMoveToVault = useCallback(
+    (target: MoveToVaultTarget) => {
+      void disconnectThenAct(() => onMoveToVault(target));
+    },
+    [disconnectThenAct, onMoveToVault],
+  );
+
+  return <>{children(openMoveToVault)}</>;
 }

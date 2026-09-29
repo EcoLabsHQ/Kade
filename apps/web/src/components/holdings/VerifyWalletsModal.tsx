@@ -11,6 +11,7 @@ import { shortAddress } from '@/lib/wealth/format';
 import { type WalletConnection } from './connected-addresses';
 import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
 import { useConnectPersistSign } from '@/components/wallet/useConnectPersistSign';
+import { useDisconnectThenAct } from '@/components/wallet/useDisconnectThenAct';
 import { provenanceLabel } from './provenance';
 
 /**
@@ -58,20 +59,51 @@ export function VerifyWalletsModal(props: VerifyWalletsModalProps) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="kade-control"
-        style={openButton}
-      >
-        Link &amp; verify wallets
-      </button>
+      {props.configured ? (
+        <ConfiguredTrigger onOpen={() => setOpen(true)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="kade-control"
+          style={openButton}
+        >
+          Link &amp; verify wallets
+        </button>
+      )}
       {open ? (
         <ModalShell onClose={() => setOpen(false)} configured={props.configured}>
           <ModalBody {...props} onClose={() => setOpen(false)} />
         </ModalShell>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The "Link & verify wallets" trigger on the configured path.
+ *
+ * It disconnects the connected wallet **before** it opens the modal, so the
+ * modal always starts in its "Not connected" state and the resident reconnects
+ * deliberately: a carried-over session is never used. The click is a sequence,
+ * not a race — `useDisconnectThenAct` awaits the teardown, then opens — and a
+ * failed disconnect still opens the modal rather than dead-ending the resident.
+ *
+ * It calls wagmi hooks, so it is mounted only when `WalletProvider` mounted a
+ * `WagmiProvider`; the unconfigured path renders a plain button instead.
+ */
+function ConfiguredTrigger({ onOpen }: Readonly<{ onOpen: () => void }>) {
+  const { run: disconnectThenAct } = useDisconnectThenAct();
+
+  return (
+    <button
+      type="button"
+      onClick={() => void disconnectThenAct(onOpen)}
+      className="kade-control"
+      style={openButton}
+    >
+      Link &amp; verify wallets
+    </button>
   );
 }
 

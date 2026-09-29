@@ -14,6 +14,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 const hoisted = vi.hoisted(() => ({
   open: vi.fn(),
   disconnect: vi.fn(),
+  disconnectAsync: vi.fn(),
   writeContract: vi.fn(),
   sendTransaction: vi.fn(),
   reset: vi.fn(),
@@ -35,7 +36,10 @@ vi.mock('@reown/appkit/react', () => ({
 vi.mock('wagmi', () => ({
   useConnections: () => [],
   useSignMessage: () => ({ signMessageAsync: vi.fn() }),
-  useDisconnect: () => ({ disconnect: hoisted.disconnect }),
+  useDisconnect: () => ({
+    disconnect: hoisted.disconnect,
+    disconnectAsync: hoisted.disconnectAsync,
+  }),
   useChainId: () => hoisted.chainId,
   useSwitchChain: () => ({ switchChainAsync: hoisted.switchChainAsync }),
   useWriteContract: () => ({
