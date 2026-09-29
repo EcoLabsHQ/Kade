@@ -132,7 +132,7 @@ describe('HoldingsView move-to-vault wiring', () => {
     expect(within(dialog).getByText('0x222222…222222')).toBeInTheDocument();
   });
 
-  it('opens the native row’s dialog and warns that moving it all leaves no gas', () => {
+  it('opens the native row’s dialog without the removed gas warning', () => {
     hoisted.account.isConnected = true;
     hoisted.account.address = ADDRESS;
     renderView();
@@ -149,8 +149,9 @@ describe('HoldingsView move-to-vault wiring', () => {
 
     const dialog = screen.getByRole('dialog', { name: /move to vault/i });
     expect(within(dialog).getByText('ETH · Ethereum')).toBeInTheDocument();
+    // The ETH gas-warning copy was removed at the owner's request.
     expect(
-      within(dialog).getByText(/native coin\. If you move all of it/i),
-    ).toBeInTheDocument();
+      within(dialog).queryByText(/native coin\. If you move all of it/i),
+    ).toBeNull();
   });
 });

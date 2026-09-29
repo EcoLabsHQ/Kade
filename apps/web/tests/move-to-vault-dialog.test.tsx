@@ -274,13 +274,14 @@ describe('MoveToVaultDialog', () => {
     expect(screen.queryByTestId('move-to-vault-complete')).toBeNull();
   });
 
-  it('sends the native coin with { to, value } and warns about gas', () => {
+  it('sends the native coin with { to, value }', () => {
     renderDialog({ target: NATIVE_TARGET });
 
-    // The honest distinction: moving all the native coin leaves no gas.
+    // The ETH gas-warning copy was removed at the owner's request: the native
+    // row still sends, but the dialog no longer prints that sentence.
     expect(
-      screen.getByText(/native coin\. If you move all of it, nothing is left/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/native coin\. If you move all of it, nothing is left/i),
+    ).toBeNull();
 
     fireEvent.click(
       screen.getByRole('button', { name: /^Move 1\.000000000000000000 ETH$/ }),

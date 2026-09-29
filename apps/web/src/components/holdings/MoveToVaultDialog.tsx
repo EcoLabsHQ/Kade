@@ -43,8 +43,7 @@ import type { MoveToVaultTarget } from './HoldingsScreen';
  * An ERC-20 holding is sent through wagmi's `useWriteContract` (a plain
  * `transfer(safe, amount)`, the same house idiom as the fee payment); the
  * chain's native coin has no contract, so it is sent through
- * `useSendTransaction` as `{ to, value }`. Moving the native coin can leave the
- * wallet without gas, which the dialog warns about.
+ * `useSendTransaction` as `{ to, value }`.
  *
  * The wallet must be the one the row belongs to. A mismatch is refused with an
  * error and the wallet is disconnected, so a transfer can never be signed by
@@ -324,14 +323,6 @@ function ConfiguredBody({
     <div style={body}>
       <Summary target={target} safeAddress={safeAddress} connected={address ?? null} />
 
-      {isNative ? (
-        <p style={warningText} role="note">
-          {target.symbol} is {target.chainName}&rsquo;s native coin. If you move
-          all of it, nothing is left in this wallet to pay gas for later
-          transfers.
-        </p>
-      ) : null}
-
       <label style={fieldLabel} htmlFor="move-to-vault-amount">
         Amount ({target.symbol})
       </label>
@@ -576,11 +567,4 @@ const errorText: React.CSSProperties = {
   margin: '8px 0 0',
   fontSize: '12.5px',
   color: tokens.danger,
-};
-
-const warningText: React.CSSProperties = {
-  margin: '10px 0 0',
-  fontSize: '12.5px',
-  lineHeight: 1.5,
-  color: tokens.warning,
 };
