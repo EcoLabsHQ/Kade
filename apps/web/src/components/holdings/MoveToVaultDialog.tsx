@@ -12,8 +12,10 @@ import {
 } from 'wagmi';
 import { erc20Abi, type Address } from 'viem';
 import { Modal } from '@/components/ui/Modal';
+import { CopyableValue } from '@/components/ui/CopyableValue';
+import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
-import { shortAddress } from '@/lib/wealth/format';
+import { addressExplorerUrl, transactionExplorerUrl } from '@/lib/wealth/explorer';
 import {
   assertCorrectWallet,
   buildEoaToSafeNativeTransfer,
@@ -238,11 +240,35 @@ function ConfiguredBody({
         <p style={{ ...bodyText, color: tokens.success }}>
           Moved {amount} {target.symbol} to your vault.
         </p>
-        {hash ? (
-          <p style={hashLine} title={hash}>
-            Transaction {shortHash(hash)}
-          </p>
-        ) : null}
+        <p style={{ ...bodyText, marginTop: '4px' }}>
+          The transfer is confirmed on {target.chainName}.
+        </p>
+        <dl style={summary}>
+          {hash ? (
+            <div style={summaryRow}>
+              <dt style={summaryKey}>Transaction</dt>
+              <dd style={{ ...summaryValue, minWidth: 0 }}>
+                <CopyableValue
+                  value={hash}
+                  label="transaction hash"
+                  explorerUrl={transactionExplorerUrl(target.chainId, hash)}
+                />
+              </dd>
+            </div>
+          ) : null}
+          {safeReady && safeAddress ? (
+            <div style={summaryRow}>
+              <dt style={summaryKey}>To (your vault)</dt>
+              <dd style={{ ...summaryValue, minWidth: 0 }}>
+                <CopyableValue
+                  value={safeAddress}
+                  label="vault address"
+                  explorerUrl={addressExplorerUrl(target.chainId, safeAddress)}
+                />
+              </dd>
+            </div>
+          ) : null}
+        </dl>
         <div style={actions}>
           <button type="button" onClick={onClose} style={primaryButton}>
             Done
@@ -338,6 +364,19 @@ function ConfiguredBody({
         </div>
       ) : null}
 
+      {busy ? (
+        <TransactionProgress
+          label={
+            switching
+              ? `Switching your wallet to ${target.chainName}…`
+              : isPending
+                ? 'Waiting for your wallet to sign the transfer…'
+                : `Confirming the transfer on ${target.chainName}…`
+          }
+          progressLabel="Confirming move to vault"
+        />
+      ) : null}
+
       <div style={actions}>
         <button
           type="button"
@@ -403,35 +442,40 @@ function Summary({
       </div>
       <div style={summaryRow}>
         <dt style={summaryKey}>From</dt>
-        <dd
-          style={{ ...summaryValue, ...monoValue }}
-          title={target.address}
-        >
-          {shortAddress(target.address)}
+        <dd style={{ ...summaryValue, minWidth: 0 }}>
+          <CopyableValue
+            value={target.address}
+            label="source wallet address"
+            explorerUrl={addressExplorerUrl(target.chainId, target.address)}
+          />
         </dd>
       </div>
       <div style={summaryRow}>
         <dt style={summaryKey}>Connected</dt>
-        <dd style={{ ...summaryValue, ...monoValue }} title={connected ?? undefined}>
-          {connected ? shortAddress(connected) : 'Not connected'}
+        <dd style={{ ...summaryValue, minWidth: 0 }}>
+          {connected ? (
+            <CopyableValue value={connected} label="connected wallet address" />
+          ) : (
+            'Not connected'
+          )}
         </dd>
       </div>
       <div style={summaryRow}>
         <dt style={summaryKey}>To (your vault)</dt>
-        <dd
-          style={{ ...summaryValue, ...monoValue }}
-          title={safeAddress ?? undefined}
-        >
-          {safeAddress ? shortAddress(safeAddress) : 'Not available'}
+        <dd style={{ ...summaryValue, minWidth: 0 }}>
+          {safeAddress ? (
+            <CopyableValue
+              value={safeAddress}
+              label="vault address"
+              explorerUrl={addressExplorerUrl(target.chainId, safeAddress)}
+            />
+          ) : (
+            'Not available'
+          )}
         </dd>
       </div>
     </dl>
   );
-}
-
-/** Shorten a transaction hash for display; the full value stays in `title`. */
-function shortHash(hash: string): string {
-  return hash.length <= 16 ? hash : `${hash.slice(0, 10)}…${hash.slice(-6)}`;
 }
 
 const body: React.CSSProperties = {
@@ -474,11 +518,6 @@ const summaryValue: React.CSSProperties = {
   textAlign: 'right',
 };
 
-const monoValue: React.CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-  fontWeight: 600,
-};
-
 const fieldLabel: React.CSSProperties = {
   display: 'block',
   margin: '16px 0 6px',
@@ -497,13 +536,6 @@ const amountInput: React.CSSProperties = {
   fontSize: '14px',
   color: tokens.ink,
   fontVariantNumeric: 'tabular-nums',
-};
-
-const hashLine: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: '12.5px',
-  color: tokens.muted,
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
 };
 
 const actions: React.CSSProperties = {

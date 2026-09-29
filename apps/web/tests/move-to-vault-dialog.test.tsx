@@ -331,3 +331,65 @@ describe('MoveToVaultDialog', () => {
     expect(hoisted.writeContract).not.toHaveBeenCalled();
   });
 });
+
+describe('MoveToVaultDialog transaction feedback', () => {
+  it('shows an in-flight status while the wallet signs', () => {
+    hoisted.write.isPending = true;
+    renderDialog();
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(/waiting for your wallet to sign the transfer/i);
+    expect(within(status).getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('shows a confirming status once the transfer is submitted', () => {
+    hoisted.write.data = TX;
+    hoisted.receipt.isLoading = true;
+    renderDialog();
+
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent(/confirming the transfer on ethereum/i);
+    expect(within(status).getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('links the confirmed transfer to its explorer and copies the full values', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    renderDialog();
+
+    const done = screen.getByTestId('move-to-vault-complete');
+    const link = within(done).getByRole('link', {
+      name: /transaction hash on the block explorer/i,
+    });
+    expect(link).toHaveAttribute('href', `https://etherscan.io/tx/${TX}`);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+    // The full hash and vault address stay recoverable and copyable.
+    expect(within(done).getByTitle(TX)).toBeInTheDocument();
+    fireEvent.click(
+      within(done).getByRole('button', { name: /copy transaction hash/i }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(TX));
+
+    fireEvent.click(
+      within(done).getByRole('button', { name: /copy vault address/i }),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(SAFE));
+  });
+
+  it('points the confirmed transfer link at the holding chain explorer', () => {
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    renderDialog({ target: { ...TARGET, chainId: 8453, chainName: 'Base' } });
+
+    expect(
+      screen.getByRole('link', { name: /transaction hash on the block explorer/i }),
+    ).toHaveAttribute('href', `https://basescan.org/tx/${TX}`);
+  });
+});
