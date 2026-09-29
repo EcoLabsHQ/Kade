@@ -31,9 +31,8 @@ export default async function AccountPage() {
       safeDeployed={shellSafe.deployed}
       safeStatus={shellSafe.status}
       explorerUrl={shellSafe.explorerUrl}
-      showReviewBar={reviewBar.show}
-      reviewReference={reviewBar.reference}
-        isReviewer={reviewBar.isReviewer}
+      reviewBar={reviewBar}
+      isReviewer={reviewBar.isReviewer}
     >
       <ContentContainer>
         <h1

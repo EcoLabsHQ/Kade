@@ -9,6 +9,7 @@ import { NavItem } from './NavItem';
 import { NetworkChip } from './NetworkChip';
 import { SafeAddressCard } from './SafeAddressCard';
 import { SidebarFooter } from './SidebarFooter';
+import type { ShellReviewState } from './ReviewStatusChip';
 import type { NavGroupConfig } from './nav';
 import {
   PreRegistrationStepper,
@@ -29,6 +30,8 @@ export interface SidebarProps {
   readonly email: string | null;
   /** Whether the user has a reviewers row, so the Admin switch links to /admin. */
   readonly isReviewer?: boolean;
+  /** The review state shared with the top banner; drives the footer notice. */
+  readonly review?: ShellReviewState | null;
 }
 
 /**
@@ -45,6 +48,7 @@ export function Sidebar({
   explorerUrl = null,
   email,
   isReviewer = false,
+  review = null,
 }: SidebarProps) {
   const pathname = usePathname();
 
@@ -115,6 +119,7 @@ export function Sidebar({
           isReviewer={isReviewer}
           adminActive={pathname.startsWith('/admin')}
           email={email}
+          review={review}
         />
       </aside>
     </>

@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { PreApprovedBanner } from './PreApprovedBanner';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
+import type { ShellReviewState } from './ReviewStatusChip';
 import { readChainEnv } from '@/lib/env';
 import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
@@ -19,9 +20,19 @@ export interface AppShellProps {
   /** When present, the sidebar shows the pre-registration stepper instead of nav. */
   readonly stepper?: readonly StepperItem[];
   /**
+   * The resident's review state, resolved once by the page from
+   * `@/lib/review/review-bar`. The top banner and the sidebar notice both read
+   * this one value, so they cannot disagree. Supplying it takes precedence over
+   * the individual props below.
+   */
+  readonly reviewBar?: ShellReviewState | null;
+  /**
    * Whether to show the pre-approved banner. Resolved by the page from the
    * application's review state (`@/lib/review/review-bar`); the shell never
    * shows it unconditionally.
+   *
+   * Kept for callers that predate `reviewBar`; ignored when `reviewBar` is
+   * supplied.
    */
   readonly showReviewBar?: boolean;
   /** The resident's own application reference for the banner, or null. */
@@ -57,10 +68,19 @@ export function AppShell({
   network = activeSettlementChainLabel(),
   nav = RESIDENT_NAV,
   stepper,
+  reviewBar = null,
   showReviewBar = false,
   reviewReference = null,
   isReviewer = false,
 }: AppShellProps) {
+  // One resolved review value for the whole shell. The banner and the sidebar
+  // notice are two renderings of this single object, never two computations.
+  const review: ShellReviewState = reviewBar ?? {
+    show: showReviewBar,
+    reference: reviewReference,
+    reviewed: false,
+  };
+
   return (
     <div
       className="kade-shell"
@@ -79,6 +99,7 @@ export function AppShell({
         explorerUrl={explorerUrl}
         email={email}
         isReviewer={isReviewer}
+        review={review}
       />
       <main
         style={{
@@ -88,7 +109,7 @@ export function AppShell({
           flexDirection: 'column',
         }}
       >
-        {showReviewBar ? <PreApprovedBanner reference={reviewReference} /> : null}
+        {review.show ? <PreApprovedBanner reference={review.reference} /> : null}
         {children}
       </main>
     </div>

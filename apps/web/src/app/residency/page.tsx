@@ -62,8 +62,7 @@ export default async function ResidencyPage() {
         safeStatus={shellSafe.status}
         explorerUrl={shellSafe.explorerUrl}
         network={network}
-        showReviewBar={reviewBar.show}
-        reviewReference={reviewBar.reference}
+        reviewBar={reviewBar}
         isReviewer={reviewBar.isReviewer}
       >
         <ContentContainer footer={<SiteFooter />}>

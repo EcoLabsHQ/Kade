@@ -15,6 +15,13 @@ export interface ReviewBarState {
   readonly show: boolean;
   /** The resident's own application reference, or null. */
   readonly reference: string | null;
+  /**
+   * True when the application exists and its intake review has cleared
+   * (status 'approved'). The sidebar notice's cleared variant reads this, from
+   * the same row that derives `show`, so the banner and the notice cannot
+   * disagree. A `blocked` application is not cleared: it stays in review.
+   */
+  readonly reviewed: boolean;
   /** Whether the user has a reviewers row, so the shell can offer /admin. */
   readonly isReviewer: boolean;
 }
@@ -41,6 +48,7 @@ export async function loadReviewBar(profileId: string): Promise<ReviewBarState> 
     return {
       show: row !== null && row.status !== 'approved',
       reference: row?.ref ?? null,
+      reviewed: row !== null && row.status === 'approved',
       isReviewer: reviewer.error === null && reviewer.data !== null,
     };
   } catch (cause) {
@@ -48,6 +56,6 @@ export async function loadReviewBar(profileId: string): Promise<ReviewBarState> 
       '[kade] Could not read the review-bar state:',
       cause instanceof Error ? cause.message : cause,
     );
-    return { show: false, reference: null, isReviewer: false };
+    return { show: false, reference: null, reviewed: false, isReviewer: false };
   }
 }
