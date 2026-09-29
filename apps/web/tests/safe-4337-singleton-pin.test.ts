@@ -25,7 +25,12 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  * module seam. They pin the two fixed inputs, the consistency between the
  * constructor's module address and the initializer's fallback handler, and that
  * the pack returned really is the one assembled through the public constructor.
- * The end-to-end address equality is proven separately against real RPCs.
+ *
+ * This suite is **mock-verified only**: it does not prove, against real chains,
+ * that the predicted address is equal across chains. That end-to-end equality is
+ * a separate opt-in, network-dependent proof committed at
+ * `tests/proofs/safe-address-chain-parity.proof.ts`; run it with
+ * `scripts/safe-chain-parity/run.sh`. `./scripts/verify.sh` does not run it.
  */
 
 const hoisted = vi.hoisted(() => ({
