@@ -304,12 +304,13 @@ describe('HoldingsScreen', () => {
         'Read from Ethereum, Base, Arbitrum, Optimism and Celo',
       ),
     ).toBeInTheDocument();
-    // The two chains we read are real: Ethereum $3,280, Base unread.
+    // The chains we read are real cards, labelled with the registry's real
+    // names: Arbitrum One is read now, so its card is one of them.
     expect(screen.getAllByText('Ethereum').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
-    // The three we do not read render the reference's cards, but with no
-    // fabricated figure: a chain this app does not read has no balance to show.
-    expect(screen.getByText('Arbitrum')).toBeInTheDocument();
+    expect(screen.getAllByText('Arbitrum One').length).toBeGreaterThan(0);
+    // Only the chains we genuinely do not read keep the reference's cards, and
+    // only as an explicit `—`: no fabricated figure for an unread chain.
     expect(screen.getByText('Optimism')).toBeInTheDocument();
     expect(screen.getByText('Celo')).toBeInTheDocument();
     expect(screen.queryByText('$25,540')).toBeNull();

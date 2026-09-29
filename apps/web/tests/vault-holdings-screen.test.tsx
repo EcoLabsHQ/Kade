@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { HoldingsScreen } from '@/components/holdings/HoldingsScreen';
 import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
@@ -133,9 +133,14 @@ describe('HoldingsScreen qualified vaults', () => {
     );
 
     // A Base position is labelled Base; the Arbitrum failure is labelled
-    // Arbitrum One with its specific reason, not a zero.
+    // Arbitrum One with its specific reason, not a zero. The label is asserted
+    // inside the qualified-vaults card, since "Balances by chain" also lists
+    // Arbitrum One now that it is a chain the app reads.
     expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
-    expect(screen.getByText('Arbitrum One')).toBeInTheDocument();
+    const qualified = screen.getByText(
+      `Qualified vaults · Safe ${shortAddress(SAFE_ADDRESS)}`,
+    ).parentElement!.parentElement!;
+    expect(within(qualified).getByText('Arbitrum One')).toBeInTheDocument();
     expect(screen.getByText('2500.000000 USDC')).toBeInTheDocument();
     expect(
       screen.getByText(

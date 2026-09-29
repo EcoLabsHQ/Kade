@@ -6,7 +6,11 @@ import { Chip } from '@/components/ui/Chip';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { tokens } from '@/components/ui/tokens';
 import { chainColor } from '@/lib/wealth/chain-colors';
-import { USDC_DECIMALS, usdcAddressForChain } from '@/lib/wealth/evm';
+import {
+  EVM_READ_CHAINS,
+  USDC_DECIMALS,
+  usdcAddressForChain,
+} from '@/lib/wealth/evm';
 import { shortAddress, usd } from '@/lib/wealth/format';
 import type {
   HoldingWallet,
@@ -51,8 +55,11 @@ import { provenanceLabel } from './provenance';
  * its **true** reason. "Fund from bank" and "Convert to USDT+" stay disabled
  * with their real reason, and the unverified per-row state stays visible.
  *
- * "Balances by chain" renders only the chains we actually read (Ethereum and
- * Base); the reference's Arbitrum/Optimism/Celo cards are not invented. Reflect/
+ * "Balances by chain" renders the chains we actually read
+ * (`EVM_READ_CHAINS` — Ethereum, Base and Arbitrum One) with their real
+ * figures, plus only the reference's genuinely unread cards (Optimism, Celo)
+ * as `—`; no chain is claimed unread when it is read, and no unread card is
+ * invented with a figure. Reflect/
  * USDT+ does not exist, so its card is rendered with the reference's own figures
  * (the owner's declared exception) and a small demo chip; none of its figures
  * flow into the total, the qualified figure or any other real number.
@@ -120,18 +127,25 @@ export interface MoveToVaultTarget {
 }
 
 /**
- * The chains this app actually reads for EVM balances. The reference lists five;
- * Week 2 covers Ethereum and Base only (week-2 §4.3), so the section renders
- * only those two and says so.
+ * The chains this app actually reads for EVM balances.
+ *
+ * This is deliberately the **same single source of truth** the balance read
+ * uses (`EVM_READ_CHAINS`), not a hardcoded copy: a chain added to or removed
+ * from the read set must change the per-chain card, the label and the total
+ * together, or the parts stop adding up to the whole they are shown as. The
+ * reference lists five chains; this section renders the ones the app reads plus
+ * the genuinely unread cards below.
  */
-const READ_CHAINS = [
-  { chainId: 1, name: 'Ethereum', symbol: 'ETH' },
-  { chainId: 8453, name: 'Base', symbol: 'ETH' },
-] as const;
+const READ_CHAINS = EVM_READ_CHAINS;
 
 /** Chain id → display name for the chains we read, for a stored-but-unread row. */
 const CHAIN_NAMES = new Map<number, string>(
   READ_CHAINS.map((chain) => [chain.chainId, chain.name]),
+);
+
+/** True for a chain id this app actually reads balances on. */
+const READ_CHAIN_IDS = new Set<number>(
+  READ_CHAINS.map((chain) => chain.chainId),
 );
 
 /**
@@ -181,16 +195,36 @@ const CHAIN_AVAILABLE = 'Vault available';
 const CHAIN_READONLY = 'Read-only';
 
 /**
- * The three chain cards the reference shows that this app does not read. Their
- * cards keep the reference's presentation, but the value is an explicit `—`:
- * this app has no balance for a chain it does not read, so no figure is shown.
- * Nothing here feeds the aggregate or any real total.
+ * The chain cards the reference shows, paired with the helper line each uses.
+ *
+ * This is the reference's full five-chain row. The extra cards below are
+ * **derived** from it by removing every chain id the app reads
+ * (`READ_CHAIN_IDS`), so a chain that becomes read — as Arbitrum One did — drops
+ * its "unread" card automatically instead of leaving one that claims a chain is
+ * unread when it is read. The genuinely unread cards keep the reference's
+ * presentation, but the value is an explicit `—`: this app has no balance for a
+ * chain it does not read, so no figure is shown. Nothing here feeds the
+ * aggregate or any real total.
  */
-const REFERENCE_EXTRA_CHAINS = [
-  { chainId: 42161, name: 'Arbitrum', usd: null, sub: CHAIN_AVAILABLE },
-  { chainId: 10, name: 'Optimism', usd: null, sub: CHAIN_READONLY },
-  { chainId: 42220, name: 'Celo', usd: null, sub: CHAIN_READONLY },
+const REFERENCE_CHAINS = [
+  { chainId: 1, name: 'Ethereum', sub: CHAIN_AVAILABLE },
+  { chainId: 8453, name: 'Base', sub: CHAIN_AVAILABLE },
+  // The frozen registry names chain 42161 "Arbitrum One"; it is now read, so the
+  // filter below removes this card.
+  { chainId: 42161, name: 'Arbitrum One', sub: CHAIN_AVAILABLE },
+  { chainId: 10, name: 'Optimism', sub: CHAIN_READONLY },
+  { chainId: 42220, name: 'Celo', sub: CHAIN_READONLY },
 ] as const;
+
+/**
+ * The reference's chain cards this app does **not** read, re-derived from the
+ * read set rather than hardcoded: reference chains minus `READ_CHAIN_IDS`. The
+ * value is always `null` — an unread chain has no balance to show, so its card
+ * renders `—` and never a fabricated figure.
+ */
+const REFERENCE_EXTRA_CHAINS = REFERENCE_CHAINS.filter(
+  (chain) => !READ_CHAIN_IDS.has(chain.chainId),
+).map((chain) => ({ ...chain, usd: null as number | null }));
 
 /** The reference's qualified-vaults section note (verbatim). */
 const QUALIFIED_NOTE = 'Ethereum · Base · Arbitrum · KadeLock · locked to Nov 2031';
