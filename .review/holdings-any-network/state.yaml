@@ -1,0 +1,21 @@
+iteration: holdings-any-network
+profile: NORMAL
+known_good: 28541bbf09628a902bdbf5ab16d38dbcec2bef97
+candidate: f0eb3c8a821708bfb8e72c8831baa26e9e3c83ed
+mode: discovery
+reviewed_scopes:
+  wallet_networks: complete
+  move_to_vault: complete
+  native_transfer_builder: complete
+  fee_flow_blast_radius: complete
+  contract_v1_10: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+notes:
+  - "Wrong-chain safety is enforced twice: an awaited switch before the send, plus viem's assertCurrentChain through wagmi's assertChainId. A failed switch or a stale chain sends nothing."
+  - "The fee flows stay Sepolia-gated and Sepolia stays first in WALLET_NETWORKS, so the blast radius of adding networks is bounded."
+  - "WARN F1 (documentation only): contract v1.10 says the wallet's network list is 'the same set' as the read chains; it is a superset because Sepolia is included for the fee. To correct when the contract is next touched."
