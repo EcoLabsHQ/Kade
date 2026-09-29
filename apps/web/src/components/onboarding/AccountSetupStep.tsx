@@ -127,7 +127,11 @@ export function AccountSetupStep({
         '@/app/onboarding/account-actions'
       );
       const outcome = await deriveAndRecordAccount();
-      if (outcome.status === 'recorded' || outcome.status === 'already-recorded') {
+      if (
+        outcome.status === 'recorded' ||
+        outcome.status === 'refreshed' ||
+        outcome.status === 'already-recorded'
+      ) {
         setAccount({
           state: 'ready',
           value: outcome.safeAddress ?? '',

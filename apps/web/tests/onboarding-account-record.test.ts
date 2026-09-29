@@ -15,8 +15,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *      server-side by the function, so the client never sends it);
  *   3. a write failure is surfaced honestly (`failed` + `console.warn`), not
  *      reported as a success;
- *   4. a resident who already has a row is `already-recorded` and the engine is
- *      not invoked again.
+ *   4. an existing row is re-derived and, when it still matches, is
+ *      `already-recorded` with no second write (idempotent);
+ *   5. an existing row that no longer matches the derivation is refreshed as a
+ *      **new** row (`refreshed`), never updated in place.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -190,7 +192,7 @@ describe('deriveAndRecordAccount record path', () => {
     );
   });
 
-  it('returns already-recorded and does not write again when a row exists', async () => {
+  it('re-derives and does not write when the existing row still matches', async () => {
     const fake = makeClient({
       existing: {
         data: { safe_address: SAFE, status: 'predicted' },
@@ -206,7 +208,68 @@ describe('deriveAndRecordAccount record path', () => {
       safeAddress: SAFE,
       deployed: false,
     });
+    // Idempotent: the row matches the fresh derivation, so nothing is written.
     expect(fake.rpc).toHaveLength(0);
-    expect(hoisted.deriveAccountFromPasskey).not.toHaveBeenCalled();
+    expect(fake.inserts).toBe(0);
+    expect(hoisted.deriveAccountFromPasskey).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes a stale row as a new row and reports the previous address', async () => {
+    const STALE = '0x2222222222222222222222222222222222222222';
+    const fake = makeClient({
+      existing: {
+        data: { safe_address: STALE, status: 'predicted' },
+        error: null,
+      },
+    });
+    hoisted.createSupabaseServerClient.mockResolvedValue(fake.client);
+
+    const outcome = await deriveAndRecordAccount();
+
+    // The new address is written; the old row is never updated in place.
+    expect(outcome).toEqual({
+      status: 'refreshed',
+      safeAddress: SAFE,
+      deployed: false,
+      previousAddress: STALE,
+    });
+    expect(fake.rpc).toEqual([
+      {
+        fn: 'record_safe_sdk_address',
+        args: {
+          p_safe_address: SAFE,
+          p_deployment_chain_id: SEPOLIA,
+          p_status: 'predicted',
+        },
+      },
+    ]);
+    expect(fake.inserts).toBe(0);
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Safe address changed'),
+      { from: STALE, to: SAFE },
+    );
+  });
+
+  it('keeps an existing row when the re-derivation fails', async () => {
+    const fake = makeClient({
+      existing: {
+        data: { safe_address: SAFE, status: 'predicted' },
+        error: null,
+      },
+    });
+    hoisted.createSupabaseServerClient.mockResolvedValue(fake.client);
+    hoisted.deriveAccountFromPasskey.mockRejectedValue(
+      new Error('SEPOLIA_RPC_URL is not set, so the bundler cannot be reached.'),
+    );
+
+    const outcome = await deriveAndRecordAccount();
+
+    // An RPC outage must not take a recorded account away.
+    expect(outcome).toEqual({
+      status: 'already-recorded',
+      safeAddress: SAFE,
+      deployed: false,
+    });
+    expect(fake.rpc).toHaveLength(0);
   });
 });
