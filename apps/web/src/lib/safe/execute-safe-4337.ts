@@ -77,13 +77,34 @@ export function pimlicoUrl(config: PimlicoConfig): string {
 /**
  * The bundler's user-operation receipt.
  *
+ * `getUserOperationReceipt` is a straight passthrough of the standard
+ * `eth_getUserOperationReceipt` response — `@safe-global/relay-kit` performs no
+ * normalisation — so the payload carries **two** independent status signals:
+ *
+ *   - `success` — the ERC-4337 user-operation outcome: did the operation's call
+ *     succeed? This is authoritative when present.
+ *   - `receipt.status` — the raw JSON-RPC *transaction* status, `'0x1'` for a
+ *     mined success and `'0x0'` for a mined revert. It is never the string
+ *     `'success'` in a real payload.
+ *
  * `getUserOperationReceipt` returns `null` until the bundler has indexed the
  * mined operation, so a `null` read means "not mined yet" — it is **not** a
- * revert. Only a non-null receipt whose `status` is not `success` is a revert.
+ * revert. A non-null receipt is decided by `classifyReceipt`.
  */
 export interface UserOperationReceipt {
+  /**
+   * The user-operation-level outcome (ERC-4337). Authoritative when present: it
+   * distinguishes a genuine call revert (the call reverted, gas was paid) from a
+   * mined success.
+   */
+  readonly success?: boolean;
   readonly receipt?: {
-    readonly status?: string;
+    /**
+     * The raw transaction status. Real providers send the hex string `'0x1'`
+     * or `'0x0'`; a boolean or the words `'success'`/`'reverted'` are tolerated
+     * so a future normalising provider keeps working.
+     */
+    readonly status?: string | number | boolean;
     readonly transactionHash?: Hex;
   };
 }
@@ -450,6 +471,34 @@ async function waitForUserOperationReceipt(
 }
 
 /**
+ * Decide a non-null user-operation receipt's outcome.
+ *
+ * The user-operation-level `success` boolean is authoritative when present: it
+ * is what distinguishes a genuine call revert (the call reverted, gas was paid)
+ * from a mined success. When it is absent, fall back to the transaction status
+ * and accept every real encoding: `'0x1'` / `1` / `true` / `'success'` are
+ * success, `'0x0'` / `0` / `false` / `'reverted'` are a revert.
+ *
+ * An unrecognised or missing status is never success — a non-null receipt we
+ * cannot classify is reported as a revert (fail-closed). This is distinct from
+ * the `null` "not mined yet" case, which the caller handles before reaching
+ * here and never turns into a revert.
+ *
+ * Regression: the engine previously compared `receipt.status` against the
+ * literal `'success'`, a value the provider never produces, so `'0x1'` was
+ * always read as a revert and every successful deposit was misreported.
+ */
+function classifyReceipt(receipt: UserOperationReceipt): 'success' | 'revert' {
+  if (typeof receipt.success === 'boolean') {
+    return receipt.success ? 'success' : 'revert';
+  }
+  const status = receipt.receipt?.status;
+  const isSuccess =
+    status === '0x1' || status === 1 || status === true || status === 'success';
+  return isSuccess ? 'success' : 'revert';
+}
+
+/**
  * Phase 2 — attach the client's passkey assertion to the retained operation and
  * submit it.
  *
@@ -575,7 +624,7 @@ export async function submitResidentSafeOperation(
         userOperationHash,
       };
     }
-    if (receipt.receipt?.status !== 'success') {
+    if (classifyReceipt(receipt) === 'revert') {
       return {
         status: 'failed',
         sent: true,
