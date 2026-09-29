@@ -197,27 +197,6 @@ export default async function OverviewPage() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {/*
-              The Residency step (D16) is reachable from the shell here. The nav
-              entry is owned by the integration front; this link does not edit
-              `nav.ts` (see docs/planning/week-2-todo-05-residency.md).
-            */}
-            <Link
-              href="/residency"
-              style={{
-                border: 0,
-                borderRadius: '999px',
-                background: tokens.action,
-                padding: '11px 18px',
-                fontSize: '13.5px',
-                fontWeight: 600,
-                color: '#fff',
-                textDecoration: 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Start Residency
-            </Link>
             <Link
               href="/onboarding"
               style={{
