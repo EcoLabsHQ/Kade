@@ -1,5 +1,17 @@
-import { createPublicClient, erc20Abi, formatUnits, http, type Address } from 'viem';
-import { mainnet } from 'viem/chains';
+import {
+  CHAIN_IDS,
+  chainByChainId,
+  rpcEnvVarForChain,
+} from '@kade/shared';
+import {
+  createPublicClient,
+  erc20Abi,
+  formatUnits,
+  http,
+  type Address,
+  type Chain,
+} from 'viem';
+import { arbitrum, base, mainnet, sepolia } from 'viem/chains';
 import { USDC_DECIMALS } from './morpho-deposit';
 
 /**
@@ -42,7 +54,7 @@ export interface SafeUsdcBalanceInput {
 
 /**
  * The read seam. Injected so the gate is unit-testable with no network; defaults
- * to the real Ethereum RPC read.
+ * to the real deposit-chain RPC read.
  */
 export type SafeUsdcBalanceReader = (
   input: SafeUsdcBalanceInput,
@@ -79,30 +91,75 @@ function reasonOf(cause: unknown): string {
 }
 
 /**
- * Read the Safe's USDC balance from the Ethereum RPC.
+ * The viem chain definition for the four chains this gate can read, so the
+ * client is created for the deposit chain rather than for a hard-coded one.
+ * The endpoint itself comes from the chain's own RPC variable, never from the
+ * chain definition's public default.
+ */
+const VIEM_CHAIN_BY_ID: Readonly<Record<number, Chain>> = {
+  [CHAIN_IDS.ethereum]: mainnet,
+  [CHAIN_IDS.base]: base,
+  [CHAIN_IDS.arbitrum]: arbitrum,
+  [CHAIN_IDS.sepolia]: sepolia,
+};
+
+/**
+ * The human name of the deposit chain, from the frozen chain registry. Falls
+ * back to `chain <id>` for a chain the registry does not list, so a message
+ * still names where the funds must be rather than guessing a name.
+ */
+function chainNameOf(chainId: number): string {
+  return chainByChainId(chainId)?.name ?? `chain ${chainId}`;
+}
+
+/**
+ * Read the Safe's USDC balance from the **deposit chain's** RPC.
  *
- * Uses the same reserved `ETHEREUM_RPC_URL` the mainnet rail already requires
- * (`isMainnetRailConfigured`) and the same `balanceOf` pattern the vault
- * position read uses. The vault is mainnet-frozen (week-2 §2.2/§6.3), so the
- * mainnet chain definition is the correct one; no chain-specific value is
- * guessed. A missing endpoint or a failed call is a `failed` read, never a
- * fabricated zero.
+ * The endpoint is resolved from the chain the deposit executes on
+ * (`rpcEnvVarForChain`), so a Base deposit reads Base and an Arbitrum deposit
+ * reads Arbitrum. It never falls back to another chain's endpoint: a chain with
+ * no supported RPC variable, or one whose variable is unset, is a `failed`
+ * read, never a fabricated zero and never a mainnet read.
+ *
+ * The client is built for the chain's viem definition and the same `balanceOf`
+ * pattern the vault position read uses; the endpoint always comes from the
+ * chain's own variable, never from the chain definition's public default.
  */
 export async function readSafeUsdcBalanceFromRpc(
   input: SafeUsdcBalanceInput,
 ): Promise<SafeUsdcBalanceRead> {
-  const rpcUrl = process.env.ETHEREUM_RPC_URL?.trim();
+  const variable = rpcEnvVarForChain(input.chainId);
+  if (!variable) {
+    return {
+      status: 'failed',
+      reason:
+        `chain ${input.chainId} has no RPC variable, so the USDC balance ` +
+        'cannot be read',
+    };
+  }
+
+  const rpcUrl = process.env[variable]?.trim();
   if (!rpcUrl) {
     return {
       status: 'failed',
       reason:
-        'the Ethereum RPC endpoint (ETHEREUM_RPC_URL) is not set, so the ' +
-        'balance cannot be read',
+        `the ${chainNameOf(input.chainId)} RPC endpoint (${variable}) is not ` +
+        'set, so the balance cannot be read',
+    };
+  }
+
+  const chain = VIEM_CHAIN_BY_ID[input.chainId];
+  if (!chain) {
+    return {
+      status: 'failed',
+      reason:
+        `chain ${input.chainId} is not a supported deposit chain, so the ` +
+        'USDC balance cannot be read',
     };
   }
 
   try {
-    const client = createPublicClient({ chain: mainnet, transport: http(rpcUrl) });
+    const client = createPublicClient({ chain, transport: http(rpcUrl) });
     const balance = await client.readContract({
       address: input.usdc,
       abi: erc20Abi,
@@ -136,9 +193,16 @@ export async function checkSafeDepositFunding(
   input: SafeDepositFundingInput,
   reader: SafeUsdcBalanceReader = readSafeUsdcBalanceFromRpc,
 ): Promise<SafeDepositFunding> {
+  // The deposit chain's name is derived from its id, not trusted from the
+  // caller: a message (and a read) must name where the funds actually must be,
+  // so a caller that mislabels the chain cannot make the refusal lie. The
+  // caller's name is the fallback only for a chain the registry does not list.
+  const chainName = chainByChainId(input.chainId)?.name ?? input.chainName;
+  const readInput: SafeDepositFundingInput = { ...input, chainName };
+
   let read: SafeUsdcBalanceRead;
   try {
-    read = await reader(input);
+    read = await reader(readInput);
   } catch (cause) {
     read = { status: 'failed', reason: reasonOf(cause) };
   }
@@ -148,7 +212,7 @@ export async function checkSafeDepositFunding(
       ok: false,
       gate: 'safe-balance-unreadable',
       reason:
-        `The Safe's USDC balance on ${input.chainName} could not be read, so ` +
+        `The Safe's USDC balance on ${chainName} could not be read, so ` +
         `the deposit was not built: ${read.reason}.`,
     };
   }
@@ -161,7 +225,7 @@ export async function checkSafeDepositFunding(
       ok: false,
       gate: 'safe-insufficient-usdc',
       reason:
-        `The Safe holds ${held} USDC on ${input.chainName}, but this deposit ` +
+        `The Safe holds ${held} USDC on ${chainName}, but this deposit ` +
         `needs ${needed} USDC. Move at least ${shortfall} USDC into the Safe ` +
         'before allocating.',
     };

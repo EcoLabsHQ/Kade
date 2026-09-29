@@ -6,7 +6,12 @@ import {
   WrongDepositChainError,
   type MorphoVaultDepositPlan,
 } from './morpho-deposit';
-import { readMorphoVaultConfig, type MorphoEnv } from './morpho-config';
+import {
+  readMorphoVaultConfig,
+  readMorphoVaultConfigForChain,
+  type MorphoEnv,
+  type MorphoVaultConfig,
+} from './morpho-config';
 
 /**
  * The config-gated MetaMorpho vault deposit build path (Week 2, D18 / EXE-014).
@@ -33,11 +38,16 @@ import { readMorphoVaultConfig, type MorphoEnv } from './morpho-config';
  * available once the resident holds a credential, and this module no longer
  * takes one.
  *
- * Two project dependencies remain unsupplied (contract §5 and the freeze
- * checklist), so the build is still gated and honest:
+ * The vault rail is now **per chain** (T23): an explicit `chainId` resolves
+ * that chain's pinned MetaMorpho vault (`@kade/shared`,
+ * `METAMORPHO_VAULT_DEPLOYMENTS`) and a chain with no pinned vault is gated
+ * `vault-not-configured` — it never borrows another chain's vault. Omitting the
+ * chain keeps the legacy Ethereum-mainnet env rail the frozen Invest action
+ * still calls; migrating that action to name its chain is a later task.
  *
- *   1. the MetaMorpho vault address — no `KADE_MORPHO_VAULT_ADDRESS` value;
- *   2. Ethereum mainnet — no RPC rail configured.
+ * The RPC rail gate (`mainnetConfigured`) remains caller-supplied and scoped to
+ * the legacy mainnet rail; the per-chain screen that supplies a per-chain rail
+ * flag is a later task (T23 dependency). Nothing here signs or sends.
  */
 
 /** Why the deposit cannot be built. */
@@ -75,7 +85,10 @@ export type MorphoVaultDepositResult =
  */
 export interface MorphoVaultExecutionDependencies {
   readonly env?: MorphoEnv;
-  /** Whether the mainnet rail (RPC) is configured. Defaults to `false`. */
+  /**
+   * Whether the legacy Ethereum-mainnet rail (RPC) is configured. Supplied by
+   * the caller; defaults to `false`. A per-chain rail flag is a later task.
+   */
   readonly mainnetConfigured?: boolean;
 }
 
@@ -87,6 +100,39 @@ export interface MorphoVaultDepositRequest {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Resolve the vault rail the request is for.
+ *
+ * An **explicit** `chainId` resolves that chain's pinned vault
+ * (`readMorphoVaultConfigForChain`) and never borrows another chain's. Omitting
+ * it keeps the legacy Ethereum-mainnet env rail the frozen Invest action uses;
+ * migrating that action to name its chain is a later task (T23 dependency).
+ */
+function resolveVaultConfig(
+  chainId: number | undefined,
+  env: MorphoEnv,
+): MorphoVaultConfig | null {
+  if (chainId === undefined) {
+    return readMorphoVaultConfig(env);
+  }
+  return readMorphoVaultConfigForChain(chainId, env);
+}
+
+/** The refusal message when a chain has no vault, specific to the chain. */
+function missingVaultReason(chainId: number | undefined): string {
+  if (chainId === undefined) {
+    return (
+      'No MetaMorpho vault is configured. Set the KADE_MORPHO_VAULT_ADDRESS ' +
+      'and KADE_MORPHO_USDC_ADDRESS variables to the approved Ethereum-mainnet ' +
+      'vault before a deposit can be built.'
+    );
+  }
+  return (
+    `No MetaMorpho vault is configured for chain ${chainId}. Nothing was ` +
+    'built, and no other chain\u2019s vault is substituted.'
+  );
 }
 
 /**
@@ -107,15 +153,12 @@ export async function prepareMorphoVaultDeposit(
   deps: MorphoVaultExecutionDependencies = {},
 ): Promise<MorphoVaultDepositResult> {
   const env = deps.env ?? process.env;
-  const config = readMorphoVaultConfig(env);
+  const config = resolveVaultConfig(request.chainId, env);
   if (!config) {
     return {
       status: 'gated',
       gate: 'vault-not-configured',
-      reason:
-        'No MetaMorpho vault is configured. Set the KADE_MORPHO_VAULT_ADDRESS ' +
-        'and KADE_MORPHO_USDC_ADDRESS variables to the approved Ethereum-mainnet ' +
-        'vault before a deposit can be built.',
+      reason: missingVaultReason(request.chainId),
       gated: true,
     };
   }

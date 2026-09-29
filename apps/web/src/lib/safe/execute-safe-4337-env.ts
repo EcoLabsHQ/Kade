@@ -1,5 +1,6 @@
 import {
   CHAIN_IDS,
+  rpcEnvVarForChain,
   SAFE_4337_MODULE,
   SAFE_DEPLOYMENTS,
   SAFE_PASSKEY_MODULE,
@@ -317,10 +318,11 @@ function sponsorshipPolicyOption(chainId: number): { sponsorshipPolicyId?: strin
 /**
  * The RPC endpoint for the chain the Safe runs on.
  *
- * The vault rail is Ethereum **mainnet** (contract §2.2/§6.3), while the rest
- * of the tooling may stay on Sepolia, so both chains resolve to their own
- * variable. Any other chain, or a supported chain whose variable is missing,
- * refuses rather than reaching for the wrong endpoint.
+ * The vault rail now covers Ethereum **mainnet**, **Base** and **Arbitrum One**
+ * (the per-chain MetaMorpho rail), while the rest of the tooling may stay on
+ * Sepolia, so each chain resolves to its own variable. Any other chain, or a
+ * supported chain whose variable is missing, refuses rather than reaching for
+ * the wrong endpoint.
  */
 function rpcUrlFor(chainId: number): string {
   const variable = rpcVariableFor(chainId);
@@ -333,18 +335,16 @@ function rpcUrlFor(chainId: number): string {
 
 /** The env variable that holds the RPC for a supported chain, or a refusal. */
 function rpcVariableFor(chainId: number): string {
-  switch (chainId) {
-    case CHAIN_IDS.sepolia:
-      return 'SEPOLIA_RPC_URL';
-    case CHAIN_IDS.ethereum:
-      return 'ETHEREUM_RPC_URL';
-    default:
-      throw new Error(
-        `The resident-Safe path supports Sepolia (${CHAIN_IDS.sepolia}) and ` +
-          `Ethereum mainnet (${CHAIN_IDS.ethereum}); chain ${chainId} has no ` +
-          'RPC variable.',
-      );
+  const variable = rpcEnvVarForChain(chainId);
+  if (!variable) {
+    throw new Error(
+      `The resident-Safe path supports Sepolia (${CHAIN_IDS.sepolia}), ` +
+        `Ethereum mainnet (${CHAIN_IDS.ethereum}), Base (${CHAIN_IDS.base}) and ` +
+        `Arbitrum One (${CHAIN_IDS.arbitrum}); chain ${chainId} has no RPC ` +
+        'variable.',
+    );
   }
+  return variable;
 }
 
 /**
