@@ -1,0 +1,28 @@
+- id: W1
+  severity: WARN
+  scope: preflight_gate
+  title: "Share pre-flight cannot see vault liquidity (maxWithdraw)"
+  evidence: "apps/web/src/lib/invest/safe-vault-shares.ts:120-150; apps/web/src/lib/invest/morpho-execution.ts:349-370"
+  failure_mode: "A fully-utilised MetaMorpho vault passes the share gate, is built, and reverts in simulation with the SDK reason instead of a named liquidity shortfall. Fail-closed; no funds move."
+  status: open
+- id: W2
+  severity: WARN
+  scope: withdraw_path
+  title: "Malformed un-allocate amount is classified under the vault-not-configured gate"
+  evidence: "apps/web/src/lib/invest/morpho-execution.ts:338-344"
+  failure_mode: "A consumer switching on gate reads a configuration error for a bad amount. The rendered reason is correct."
+  status: open
+- id: W3
+  severity: WARN
+  scope: ui_components
+  title: "Deposit-worded refusals appear in the un-allocate flow"
+  evidence: "apps/web/src/app/invest/actions.ts:147,154-156,164-166"
+  failure_mode: "Un-allocating with no passkey or recorded Safe is refused with allocate-worded copy."
+  status: open
+- id: W4
+  severity: WARN
+  scope: safe_reuse
+  title: "Share position is not re-read at submit; the race fails closed"
+  evidence: "apps/web/src/lib/invest/morpho-execution.ts:353-362; apps/web/src/app/invest/actions.ts:612-645"
+  failure_mode: "A position change between build and submit reverts with the engine stage instead of a named shortfall. Fail-closed."
+  status: open

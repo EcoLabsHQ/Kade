@@ -1,0 +1,46 @@
+iteration: iteration-vault-withdraw
+profile: NORMAL
+known_good: 26f0a4e2ce122aeaee5eb939719fd473f79178a6
+candidate: d77a51e4183a9d031b2d3e44951e5f22e534460f
+mode: discovery
+reviewed_scopes:
+  withdraw_path: complete
+  preflight_gate: complete
+  ui_components: complete
+  safe_reuse: complete
+active_findings: [W1, W2, W3, W4]
+resolved_findings: []
+next_finding_id: W5
+recheck_attempts:
+  W1: 0
+  W2: 0
+  W3: 0
+  W4: 0
+review_complete: true
+verdict: review_passed
+session_history:
+  discovery_1:
+    candidate: d77a51e4183a9d031b2d3e44951e5f22e534460f
+    verdict: review_passed
+    blocking: []
+    warnings: [W1, W2, W3, W4]
+    notes: >
+      One commit reviewed. The ERC-4626 rounding guarantee was proved: the gate
+      passes iff floor(S_h * T / S) >= A_requested, which is exactly equivalent
+      to S_h >= previewWithdraw(A), including with OZ virtual shares, so a
+      passing partial withdrawal cannot revert for share insufficiency. A failed
+      read is refused, never assumed zero or sufficient. The withdraw path
+      genuinely reuses the deposit engine (buffered verification gas before the
+      paymaster signs, retained-hash integrity gate, fail-closed empty-signature
+      check, receipt classification) and does not touch the 600,000 gas floor.
+      No existing test was weakened; the five new test files are additive.
+promotion_status: >
+  PROMOTED on this candidate: REVIEW PASSED (no blocking findings) and
+  VERIFICATION PASSED.
+carried_warnings:
+  W1: "The share pre-flight cannot see vault liquidity (maxWithdraw); an illiquid vault passes the gate and reverts in simulation with the SDK reason rather than a named liquidity shortfall. Fail-closed, no funds move."
+  W2: "A malformed un-allocate amount is classified under the vault-not-configured gate. The rendered reason is correct; only the machine-readable gate label misleads."
+  W3: "Deposit/allocate-worded refusals are user-visible in the un-allocate flow (wrong-direction copy on three paths)."
+  W4: "The share position is read at build only; a change before submit fails closed and mirrors the deposit funding gate."
+verify_status: "./scripts/verify.sh -> VERIFICATION PASSED on d77a51e4183a9d031b2d3e44951e5f22e534460f with a clean tree"
+human_gate: none
