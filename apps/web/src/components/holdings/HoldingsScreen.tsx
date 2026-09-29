@@ -631,7 +631,15 @@ export function HoldingsScreen({
   onMoveToVault,
   vaultHoldings = [],
 }: HoldingsScreenProps) {
-  const { total, walletCount, wallets, unverifiedCount } = aggregate;
+  const { total, walletCount, valuedCount, wallets, unverifiedCount } = aggregate;
+
+  // When every verified wallet's read failed, the total is unknown, not zero:
+  // rendering `$0` would be a fabricated figure. `valuedCount` is exactly how
+  // many verified wallets a readable value came from, so `walletCount > 0`
+  // with no valued wallet is the honest "unread" state — the same `—` the
+  // onboarding Step 3 total renders when its sources are unread. A resident
+  // with no verified wallets still shows the real empty sum.
+  const totalIsUnknown = walletCount > 0 && valuedCount === 0;
 
   const chains = chainTotals(wallets);
   const rows = linkedRows(aggregate);
@@ -658,7 +666,7 @@ export function HoldingsScreen({
       <div className="kade-grid-4" style={{ gap: '14px', marginBottom: '16px' }}>
         <SummaryCard
           label="Total holdings"
-          value={usd(total)}
+          value={totalIsUnknown ? '—' : usd(total)}
           sub="vault + linked wallets"
         />
         <SummaryCard
@@ -669,7 +677,7 @@ export function HoldingsScreen({
         />
         <SummaryCard
           label="Not qualified"
-          value={usd(total)}
+          value={totalIsUnknown ? '—' : usd(total)}
           sub="proof of wealth · not counted"
         />
         <SummaryCard

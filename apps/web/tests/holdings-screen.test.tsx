@@ -125,6 +125,40 @@ function aggregateWithUnverified(): HoldingsAggregate {
   });
 }
 
+/** The rendered value of the summary card with `label`, e.g. "Total holdings". */
+function cardValue(label: string): string {
+  const labelNode = screen.getByText(label);
+  return labelNode.parentElement?.children[1]?.textContent ?? '';
+}
+
+/** A resident whose every verified wallet's read failed entirely. */
+function aggregateAllUnread(): HoldingsAggregate {
+  return aggregate({
+    total: 0,
+    walletCount: 2,
+    valuedCount: 0,
+    unvaluedCount: 2,
+    wallets: [
+      {
+        address: ADDRESS,
+        verifiedAt: '2026-09-22T10:00:00.000Z',
+        chainIds: [1],
+        chains: [],
+        usd: null,
+        readError: 'The explorer returned HTTP 503.',
+      },
+      {
+        address: ADDRESS_2,
+        verifiedAt: '2026-09-22T11:00:00.000Z',
+        chainIds: [1, 8453],
+        chains: [],
+        usd: null,
+        readError: 'The explorer returned HTTP 503.',
+      },
+    ],
+  });
+}
+
 /** A resident whose only linked wallets are unverified: no verified rows at all. */
 function aggregateOnlyUnverified(): HoldingsAggregate {
   return aggregate({
@@ -209,6 +243,25 @@ describe('HoldingsScreen', () => {
       screen.getByText('The explorer returned HTTP 503.'),
     ).toBeInTheDocument();
     expect(screen.queryByText('$0')).toBeNull();
+  });
+
+  it('renders the total as — when every verified wallet is unread, never $0', () => {
+    render(<HoldingsScreen aggregate={aggregateAllUnread()} />);
+
+    // Both cards that read the aggregate show the honest unknown, not a figure
+    // the read never produced.
+    expect(cardValue('Total holdings')).toBe('—');
+    expect(cardValue('Not qualified')).toBe('—');
+    expect(screen.queryByText('$0')).toBeNull();
+  });
+
+  it('renders the real total when at least one verified wallet is readable', () => {
+    render(<HoldingsScreen aggregate={aggregate()} />);
+
+    // One readable wallet ($3,280) and one unread: the readable figure stands,
+    // and the unread wallet does not blank the total to a dash.
+    expect(cardValue('Total holdings')).toBe('$3,280');
+    expect(cardValue('Not qualified')).toBe('$3,280');
   });
 
   it('shows a failed USDC sub-read as a — row with its specific reason, never a zero', () => {
