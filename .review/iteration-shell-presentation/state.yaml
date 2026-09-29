@@ -1,0 +1,30 @@
+iteration: iteration-shell-presentation
+profile: QUICKFIX
+known_good: 2f08a41703a9335538da2546ffe874bf9262d8db
+candidate: 8a974d91909a3d52b85946f1717d4911a6aa5a9d
+mode: targeted
+reviewed_scopes:
+  quickfix: complete
+active_findings: [F1, F2]
+resolved_findings: []
+next_finding_id: F3
+recheck_attempts: {F1: 0, F2: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  targeted_1:
+    candidate: 8a974d91909a3d52b85946f1717d4911a6aa5a9d
+    verdict: review_passed
+    blocking: []
+    warnings: [F1, F2]
+    notes: >
+      Three bounded corrections. It verified that removing the dashboard link
+      does not orphan /residency (the nav owns it), that removing gas-warning
+      copy did not remove the native send it warned about, and that sign-out is
+      still the same POST route behind an accessible menu. It confirmed no
+      sidebar chip was removed, because none exists in this checkout.
+carried_warnings:
+  F1: "The account menu declares role=menu without arrow-key navigation; Tab reaches every item, so it is a pattern nit rather than a barrier."
+  F2: "Admin and Account settings are reachable both from the footer switch/gear and from the new menu. Duplication only; gating unchanged."
+verify_status: "./scripts/verify.sh -> VERIFICATION PASSED on 8a974d91909a3d52b85946f1717d4911a6aa5a9d with a clean tree"
+human_gate: none

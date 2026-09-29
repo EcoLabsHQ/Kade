@@ -1,0 +1,14 @@
+- id: F1
+  severity: WARN
+  scope: quickfix
+  title: "Account menu declares an ARIA menu without arrow-key navigation"
+  evidence: "apps/web/src/components/shell/UserMenu.tsx:107-151"
+  failure_mode: "Arrow keys do nothing inside role=menu; items remain reachable by Tab."
+  status: open
+- id: F2
+  severity: WARN
+  scope: quickfix
+  title: "Admin/Account settings duplicated between footer switch and user menu"
+  evidence: "apps/web/src/components/shell/SidebarFooter.tsx:50-85; apps/web/src/components/shell/UserMenu.tsx:127-144"
+  failure_mode: "Same destinations offered twice in one footer."
+  status: open
