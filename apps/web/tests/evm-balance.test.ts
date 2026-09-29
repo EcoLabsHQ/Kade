@@ -136,16 +136,33 @@ describe('formatUnits / formatNative', () => {
   });
 });
 
+/** Circle's canonical, native Arbitrum One USDC (verified on-chain). */
+const ARBITRUM_USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+/** The bridged USDC.e, which is deliberately never read. */
+const ARBITRUM_BRIDGED_USDC_E = '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8';
+
 describe('EVM_READ_CHAINS', () => {
-  it('targets the Ethereum and Base mainnets, symbol ETH, with a USDC contract', () => {
-    expect(EVM_READ_CHAINS.map((chain) => chain.chainId)).toEqual([1, 8453]);
+  it('targets Ethereum, Base and Arbitrum One mainnets, symbol ETH, with a USDC contract', () => {
+    expect(EVM_READ_CHAINS.map((chain) => chain.chainId)).toEqual([
+      1, 8453, 42161,
+    ]);
     expect(EVM_READ_CHAINS.map((chain) => chain.name)).toEqual([
       'Ethereum',
       'Base',
+      'Arbitrum One',
     ]);
     expect(EVM_READ_CHAINS.every((chain) => chain.symbol === 'ETH')).toBe(true);
     expect(EVM_READ_CHAINS.every((chain) => /^0x[0-9a-fA-F]{40}$/.test(chain.usdcAddress))).toBe(
       true,
+    );
+  });
+
+  it('reads Arbitrum One from Circle-native USDC, never the bridged USDC.e', () => {
+    const arbitrum = EVM_READ_CHAINS.find((chain) => chain.chainId === 42161)!;
+    expect(arbitrum.name).toBe('Arbitrum One');
+    expect(arbitrum.usdcAddress).toBe(ARBITRUM_USDC);
+    expect(arbitrum.usdcAddress.toLowerCase()).not.toBe(
+      ARBITRUM_BRIDGED_USDC_E.toLowerCase(),
     );
   });
 });

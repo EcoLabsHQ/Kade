@@ -29,12 +29,12 @@ export type { EvmReadFailure, EvmReadFailureReason } from './types';
  *   - `GET /api?module=account&action=tokenbalance&contractaddress={usdc}
  *          &address={address}&tag=latest` returns the USDC balance.
  *
- * ETH is the native coin of every chain this app reads (Ethereum, Base, and
- * Arbitrum when it is added), so the ETH/USD price is read **once** from one
- * deliberately chosen provider (`/api/v2/stats` → `coin_price`) and applied to
- * every chain's native amount. A missing price never fails a balance read: the
- * real amount is shown and the USD value is left `null`, exactly as the Bitcoin
- * read does. USDC is never priced — it stays 1:1 with USD.
+ * ETH is the native coin of every chain this app reads (Ethereum, Base and
+ * Arbitrum One), so the ETH/USD price is read **once** from one deliberately
+ * chosen provider (`/api/v2/stats` → `coin_price`) and applied to every chain's
+ * native amount. A missing price never fails a balance read: the real amount is
+ * shown and the USD value is left `null`, exactly as the Bitcoin read does.
+ * USDC is never priced — it stays 1:1 with USD.
  *
  * The RPC endpoints come from the shared per-chain variable
  * (`rpcEnvVarForChain`). The chain list and `fetchImpl` are injectable, so tests
@@ -107,6 +107,12 @@ function mainnetUsdc(chainId: number): string {
  * figure. This is a read-only call that moves nothing, and the chain list is
  * plain data, so it can be extended without touching the read logic. The USDC
  * addresses are not restated here: they come from `@kade/shared`.
+ *
+ * The order matches the Holdings copy ("Ethereum, Base and Arbitrum One"). Each
+ * chain's own RPC (from `rpcEnvVarForChain`) is the primary read; the Blockscout
+ * `baseUrl` is only the fallback for when that RPC cannot answer, and
+ * `arbitrum.blockscout.com` was confirmed to serve both the `v2` summary and the
+ * Etherscan-compatible module endpoints before being wired here.
  */
 export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
   {
@@ -122,6 +128,13 @@ export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
     symbol: 'ETH',
     baseUrl: 'https://base.blockscout.com',
     usdcAddress: mainnetUsdc(8453),
+  },
+  {
+    chainId: 42161,
+    name: 'Arbitrum One',
+    symbol: 'ETH',
+    baseUrl: 'https://arbitrum.blockscout.com',
+    usdcAddress: mainnetUsdc(42161),
   },
 ];
 

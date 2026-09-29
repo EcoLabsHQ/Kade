@@ -169,6 +169,19 @@ beforeEach(() => {
       usdc: null,
       usd: 1500,
     }),
+    // One read per configured chain: a third chain means a third row, not a
+    // dropped chain. A zero balance still counts as a chain the address is read
+    // on, so its row is written and it contributes nothing to the total.
+    okChain({
+      chainId: 42161,
+      name: 'Arbitrum One',
+      symbol: 'ETH',
+      nativeSymbol: 'ETH',
+      nativeAmount: '0.000000000000000000',
+      nativeUsd: 0,
+      usdc: null,
+      usd: 0,
+    }),
   ]);
 });
 

@@ -74,7 +74,7 @@ export interface EvmTokenBalance {
 /** The native coin and USDC balances of one address on one chain. */
 export interface EvmChainBalance {
   readonly chainId: number;
-  readonly name: string; // 'Ethereum' | 'Base'
+  readonly name: string; // 'Ethereum' | 'Base' | 'Arbitrum One'
   readonly nativeSymbol: string; // 'ETH'
   readonly nativeAmount: string; // formatted native amount, 18 decimals, e.g. '0.512300'
   readonly nativeUsd: number | null;

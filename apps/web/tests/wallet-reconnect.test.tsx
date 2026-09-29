@@ -68,6 +68,11 @@ vi.mock('@reown/appkit/networks', () => ({
     caipNetworkId: 'eip155:8453',
     chainNamespace: 'eip155',
   },
+  arbitrum: {
+    id: 42161,
+    caipNetworkId: 'eip155:42161',
+    chainNamespace: 'eip155',
+  },
 }));
 
 vi.mock('wagmi', () => ({

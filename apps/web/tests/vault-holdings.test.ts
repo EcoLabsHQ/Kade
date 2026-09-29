@@ -167,8 +167,8 @@ describe('loadVaultHoldings', () => {
       amount: '8453.000000 USDC',
     });
 
-    // Arbitrum One is not in `EVM_READ_CHAINS`, so its name comes from the
-    // shared registry and the position is not mislabelled `Chain 42161`.
+    // Arbitrum One is not in this test's injected `CHAINS`, so its name comes
+    // from the shared registry and the position is not mislabelled `Chain 42161`.
     const arbitrum = morpho.find((row) => row.chainId === 42161)!;
     expect(arbitrum).toMatchObject({
       chainName: 'Arbitrum One',

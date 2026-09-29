@@ -1,5 +1,5 @@
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi';
-import { base, mainnet, sepolia } from '@reown/appkit/networks';
+import { arbitrum, base, mainnet, sepolia } from '@reown/appkit/networks';
 import type { AppKitNetwork } from '@reown/appkit/networks';
 
 /**
@@ -22,16 +22,18 @@ import type { AppKitNetwork } from '@reown/appkit/networks';
  * explicitly, so **Sepolia stays first**: it is the default the wallet connects
  * on, and the fee/service-fee controls are unchanged.
  *
- * Holdings reads balances on Ethereum mainnet and Base (`EVM_READ_CHAINS` in
- * `@/lib/wealth/evm`) and moves each holding on the chain it was read from. A
- * chain the app reads but the wallet cannot reach would make a displayed
- * holding unmovable, so **the two lists are kept aligned**: every chain added
- * to the balance reads must be added here in the same change, and vice versa.
+ * Holdings reads balances on Ethereum mainnet, Base and Arbitrum One
+ * (`EVM_READ_CHAINS` in `@/lib/wealth/evm`) and moves each holding on the chain
+ * it was read from. A chain the app reads but the wallet cannot reach would make
+ * a displayed holding unmovable, so **the two lists are kept aligned**: every
+ * chain added to the balance reads must be added here in the same change, and
+ * vice versa.
  */
 export const WALLET_NETWORKS: [AppKitNetwork, ...AppKitNetwork[]] = [
   sepolia,
   mainnet,
   base,
+  arbitrum,
 ];
 
 /** The project id, or null when the environment has not configured one. */

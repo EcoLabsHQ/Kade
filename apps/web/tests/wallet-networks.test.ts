@@ -18,6 +18,7 @@ import { WALLET_NETWORKS } from '@/lib/wallet/appkit';
 import { EVM_READ_CHAINS } from '@/lib/wealth/evm';
 
 const SEPOLIA_ID = 11155111;
+const ARBITRUM_ID = 42161;
 
 describe('WALLET_NETWORKS', () => {
   it('keeps Sepolia first, the chain the fee controls use', () => {
@@ -29,11 +30,14 @@ describe('WALLET_NETWORKS', () => {
     for (const chain of EVM_READ_CHAINS) {
       expect(walletIds.has(chain.chainId)).toBe(true);
     }
+    // The invariant is a subset, not equality: the wallet may reach more.
+    expect(EVM_READ_CHAINS.length).toBeGreaterThan(0);
   });
 
-  it('includes Ethereum mainnet and Base explicitly', () => {
+  it('includes Ethereum mainnet, Base and Arbitrum One explicitly', () => {
     const ids = WALLET_NETWORKS.map((network) => Number(network.id));
     expect(ids).toContain(1);
     expect(ids).toContain(8453);
+    expect(ids).toContain(ARBITRUM_ID);
   });
 });
