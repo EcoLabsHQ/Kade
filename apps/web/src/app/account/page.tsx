@@ -4,6 +4,7 @@ import { ContentContainer } from '@/components/shell/ContentContainer';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { PasskeyEnrolmentPanel } from '@/components/passkey/PasskeyEnrolmentPanel';
+import { SafeOverviewCard } from './SafeOverviewCard';
 import { providerLabel } from '@/lib/auth/provider-label';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 import { loadReviewBar } from '@/lib/review/review-bar';
@@ -58,6 +59,15 @@ export default async function AccountPage() {
           Kade. It cannot move funds. The passkey is a second authority that
           exists only to authorise Safe transactions.
         </p>
+
+        <div style={{ maxWidth: '960px', marginBottom: '16px' }}>
+          <SafeOverviewCard
+            address={shellSafe.address}
+            deployed={shellSafe.deployed}
+            status={shellSafe.status}
+            explorerUrl={shellSafe.explorerUrl}
+          />
+        </div>
 
         <div
           className="kade-grid-2"
