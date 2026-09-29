@@ -11,7 +11,12 @@ import {
   type DerivedAccount,
 } from '@/lib/safe/derive-account';
 import { prepareMorphoVaultDeposit } from '@/lib/invest/morpho-execution';
-import { isMainnetRailConfigured, morphoChainId } from '@/lib/invest/morpho-config';
+import {
+  isMainnetRailConfigured,
+  morphoChainId,
+  morphoChainName,
+} from '@/lib/invest/morpho-config';
+import { checkSafeDepositFunding } from '@/lib/invest/safe-usdc-balance';
 import {
   buildResidentSafeBatchFromEnv,
   submitResidentSafeOperationFromEnv,
@@ -292,6 +297,27 @@ export async function beginDeposit(input: {
   );
   if (!safe.ok) {
     return { status: 'gated', gate: safe.gate, reason: safe.reason };
+  }
+
+  // The Safe must actually hold the USDC the deposit will pull: a MetaMorpho
+  // deposit takes exactly `amountUnits` from the Safe, so a Safe that holds less
+  // can never execute. The Safe is counterfactual until its first operation, so
+  // this is an ERC-20 `balanceOf` on the verified recorded address (which works
+  // without the Safe being deployed), not a deployment check. It runs before any
+  // user operation is built, so an underfunded deposit is refused with the one
+  // fact that matters — the shortfall and the chain — instead of an opaque
+  // bundler simulation revert. The USDC is the token the plan already targets.
+  // This is additional to the `safe-not-verified` gate above, never a
+  // replacement for it, and a failed read refuses rather than passing.
+  const funding = await checkSafeDepositFunding({
+    safeAddress: context.safeAddress,
+    usdc: plan.usdc,
+    chainId: plan.chainId,
+    chainName: morphoChainName(),
+    amountUnits: plan.amountUnits,
+  });
+  if (!funding.ok) {
+    return { status: 'gated', gate: funding.gate, reason: funding.reason };
   }
 
   const built = await buildResidentSafeBatchFromEnv({

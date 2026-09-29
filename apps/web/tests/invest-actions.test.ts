@@ -24,6 +24,7 @@ const hoisted = vi.hoisted(() => ({
   loadShellSafe: vi.fn(),
   deriveAccountFromPasskey: vi.fn(),
   prepareMorphoVaultDeposit: vi.fn(),
+  checkSafeDepositFunding: vi.fn(),
   buildResidentSafeBatchFromEnv: vi.fn(),
   submitResidentSafeOperationFromEnv: vi.fn(),
 }));
@@ -48,6 +49,9 @@ vi.mock('@/lib/safe/derive-account', () => ({
 }));
 vi.mock('@/lib/invest/morpho-execution', () => ({
   prepareMorphoVaultDeposit: hoisted.prepareMorphoVaultDeposit,
+}));
+vi.mock('@/lib/invest/safe-usdc-balance', () => ({
+  checkSafeDepositFunding: hoisted.checkSafeDepositFunding,
 }));
 vi.mock('@/lib/safe/execute-safe-4337-env', () => ({
   buildResidentSafeBatchFromEnv: hoisted.buildResidentSafeBatchFromEnv,
@@ -78,6 +82,7 @@ const CALLS = [
 const PLAN = {
   chainId: 1,
   vault: VAULT,
+  usdc: USDC,
   safeAddress: SAFE,
   amountUsdc: '25000',
   amountUnits: 25_000_000_000n,
@@ -125,6 +130,10 @@ function seedHappyPath(): void {
     status: 'ready-to-execute',
     plan: PLAN,
     gated: true,
+  });
+  hoisted.checkSafeDepositFunding.mockResolvedValue({
+    ok: true,
+    balance: 25_000_000_000n,
   });
   hoisted.buildResidentSafeBatchFromEnv.mockResolvedValue({
     status: 'built',
@@ -235,6 +244,83 @@ describe('beginDeposit', () => {
       expect(result.reason).toMatch(/not the Safe recorded/i);
     }
     expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+    // The funding check is additional to the existing fail-closed gate and
+    // never replaces it: a Safe that is not the recorded one is refused before
+    // any balance is read.
+    expect(hoisted.checkSafeDepositFunding).not.toHaveBeenCalled();
+  });
+
+  it('refuses an under-funded Safe before building the user operation', async () => {
+    // The deposit batches `approve` + `deposit` for 1 USDC against a Safe that
+    // holds nothing. The operation could never succeed, so it must never be
+    // built: the funding check refuses first and the build seam is not reached.
+    hoisted.prepareMorphoVaultDeposit.mockResolvedValue({
+      status: 'ready-to-execute',
+      plan: { ...PLAN, amountUsdc: '1', amountUnits: 1_000_000n },
+      gated: true,
+    });
+    hoisted.checkSafeDepositFunding.mockResolvedValue({
+      ok: false,
+      gate: 'safe-insufficient-usdc',
+      reason:
+        'The Safe holds 0 USDC on Ethereum, but this deposit needs 1 USDC. ' +
+        'Move at least 1 USDC into the Safe before allocating.',
+    });
+
+    const result = await beginDeposit({ ...BEGIN_INPUT, amountUsdc: '1' });
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('safe-insufficient-usdc');
+      expect(result.reason).toMatch(/holds 0 USDC on Ethereum/);
+      expect(result.reason).toMatch(/needs 1 USDC/);
+    }
+    // The whole point: nothing was built, so nothing could reach the bundler.
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+    // The check reads the Safe and the USDC the plan already targets, on the
+    // plan's chain, for the plan's amount.
+    expect(hoisted.checkSafeDepositFunding).toHaveBeenCalledWith({
+      safeAddress: SAFE,
+      usdc: USDC,
+      chainId: 1,
+      chainName: 'Ethereum',
+      amountUnits: 1_000_000n,
+    });
+  });
+
+  it('refuses with the real reason when the Safe balance cannot be read', async () => {
+    // A read failure is not a pass and is not a zero: it must refuse, and the
+    // reason must carry the real read failure rather than a fabricated figure.
+    hoisted.checkSafeDepositFunding.mockResolvedValue({
+      ok: false,
+      gate: 'safe-balance-unreadable',
+      reason:
+        "The Safe's USDC balance on Ethereum could not be read, so the deposit " +
+        'was not built: the balance read failed: RPC timed out.',
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('safe-balance-unreadable');
+      expect(result.reason).toMatch(/could not be read/);
+      expect(result.reason).toMatch(/RPC timed out/);
+    }
+    expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('proceeds to build only after the Safe is confirmed to hold enough', async () => {
+    hoisted.checkSafeDepositFunding.mockResolvedValue({
+      ok: true,
+      balance: 25_000_000_000n,
+    });
+
+    const result = await beginDeposit(BEGIN_INPUT);
+
+    expect(result.status).toBe('ready');
+    expect(hoisted.checkSafeDepositFunding).toHaveBeenCalledTimes(1);
+    expect(hoisted.buildResidentSafeBatchFromEnv).toHaveBeenCalledTimes(1);
   });
 
   it('refuses honestly when the deposit-chain Safe cannot be resolved', async () => {

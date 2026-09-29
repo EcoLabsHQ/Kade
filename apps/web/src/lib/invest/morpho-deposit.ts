@@ -110,6 +110,11 @@ export interface MorphoVaultDepositPlan {
   readonly chainId: number;
   /** The MetaMorpho vault the shares come from. */
   readonly vault: Address;
+  /**
+   * The vault's underlying USDC — the token approved and pulled. Carried so the
+   * funding check reads the same token the calls target, never a second copy.
+   */
+  readonly usdc: Address;
   readonly safeAddress: Address;
   /** Whole USDC as supplied, normalised by `parseUnits`/`formatUnits`. */
   readonly amountUsdc: string;
@@ -184,6 +189,7 @@ export function buildMorphoVaultDepositCall(
   return {
     chainId: config.chainId,
     vault: config.vault,
+    usdc: config.usdc,
     safeAddress,
     amountUsdc: input.amountUsdc.trim(),
     amountUnits,
