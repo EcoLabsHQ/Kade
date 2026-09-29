@@ -92,9 +92,13 @@ describe('Sidebar vertical layout', () => {
       false,
     );
 
-    // The card still precedes the footer's content.
+    // The card still precedes the footer's content (the user menu button,
+    // which now owns sign-out).
     expect(
-      precedes(cardWrapper, screen.getByRole('button', { name: 'Sign out' })),
+      precedes(
+        cardWrapper,
+        screen.getByRole('button', { name: 'resident@example.com' }),
+      ),
     ).toBe(true);
     cleanup();
   });

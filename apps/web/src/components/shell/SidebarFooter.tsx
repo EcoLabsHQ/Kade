@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
+import { UserMenu } from './UserMenu';
 
 export interface SidebarFooterProps {
   readonly email: string | null;
@@ -14,7 +14,7 @@ export interface SidebarFooterProps {
   readonly adminActive?: boolean;
 }
 
-/** Sidebar footer: signed-in identity, sign-out, and the Kade attribution. */
+/** Sidebar footer: the signed-in identity and its menu, and the Kade attribution. */
 export function SidebarFooter({
   email,
   isReviewer = false,
@@ -84,42 +84,7 @@ export function SidebarFooter({
           </span>
         )}
       </div>
-      {email ? (
-        <div
-          style={{
-            fontSize: '11px',
-            color: tokens.muted,
-            padding: '0 6px 10px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          title={email}
-        >
-          {email}
-        </div>
-      ) : null}
-      <Card padding='4px' radius={12}>
-        <form action='/auth/signout' method='post' style={{ margin: 0 }}>
-          <button
-            type='submit'
-            style={{
-              width: '100%',
-              padding: '8px 6px',
-              border: 0,
-              borderRadius: '9px',
-              background: 'transparent',
-              fontFamily: 'inherit',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              color: tokens.chipFg,
-              cursor: 'pointer',
-            }}
-          >
-            Sign out
-          </button>
-        </form>
-      </Card>
+      <UserMenu email={email} isReviewer={isReviewer} />
       <div
         style={{
           fontSize: '11px',
