@@ -13,7 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const hoisted = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
-  readEvmBalances: vi.fn(),
+  readEvmChainBalances: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -21,7 +21,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 vi.mock('@/lib/wealth/evm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/wealth/evm')>();
-  return { ...actual, readEvmBalances: hoisted.readEvmBalances };
+  return { ...actual, readEvmChainBalances: hoisted.readEvmChainBalances };
 });
 
 import { loadVerifiedHoldings } from '@/app/holdings/data';
@@ -66,7 +66,7 @@ function createFakeClient(rows: readonly Row[], listError = false) {
 }
 
 function chain(usd: number) {
-  return {
+  const balance = {
     chainId: 1,
     name: 'Ethereum',
     nativeSymbol: 'ETH',
@@ -75,11 +75,22 @@ function chain(usd: number) {
     usdc: null,
     usd,
   };
+  return {
+    chain: {
+      chainId: 1,
+      name: 'Ethereum',
+      symbol: 'ETH',
+      baseUrl: 'https://test.invalid',
+      usdcAddress: '0x0000000000000000000000000000000000000000',
+    },
+    ok: true as const,
+    balance,
+  };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  hoisted.readEvmBalances.mockResolvedValue([chain(2500)]);
+  hoisted.readEvmChainBalances.mockResolvedValue([chain(2500)]);
 });
 
 describe('loadVerifiedHoldings', () => {
@@ -132,8 +143,8 @@ describe('loadVerifiedHoldings', () => {
     expect(aggregate.unverifiedCount).toBe(1);
     expect(aggregate.unverifiedWallets[0]!.address).toBe(PASTED);
     expect(aggregate.unverifiedWallets[0]!.provider).toBe(PASTED_PROVIDER);
-    expect(hoisted.readEvmBalances).toHaveBeenCalledWith(PASTED);
-    expect(hoisted.readEvmBalances).not.toHaveBeenCalledWith(BITCOIN);
+    expect(hoisted.readEvmChainBalances).toHaveBeenCalledWith(PASTED);
+    expect(hoisted.readEvmChainBalances).not.toHaveBeenCalledWith(BITCOIN);
   });
 
   it('shows a connected row unverified and excludes it from the total', async () => {
@@ -154,7 +165,7 @@ describe('loadVerifiedHoldings', () => {
       },
     ]);
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
-    hoisted.readEvmBalances.mockImplementation(async (address: string) => [
+    hoisted.readEvmChainBalances.mockImplementation(async (address: string) => [
       chain(address === VERIFIED ? 2500 : 1250),
     ]);
 
@@ -187,6 +198,50 @@ describe('loadVerifiedHoldings', () => {
     expect(aggregate.valuedCount).toBe(1);
   });
 
+  it('carries a specific per-chain reason into the wallet aggregate', async () => {
+    const { client } = createFakeClient([
+      {
+        id: 1,
+        address: VERIFIED,
+        chain: 1,
+        provider: 'siwe',
+        verified_at: '2026-09-22T10:00:00.000Z',
+      },
+    ]);
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      chain(2500),
+      {
+        chain: {
+          chainId: 8453,
+          name: 'Base',
+          symbol: 'ETH',
+          baseUrl: 'https://base.invalid',
+          usdcAddress: '0x0000000000000000000000000000000000000000',
+        },
+        ok: false,
+        failure: {
+          chainId: 8453,
+          chainName: 'Base',
+          reason: 'rejected',
+          message: 'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).',
+        },
+      },
+    ]);
+
+    const aggregate = await loadVerifiedHoldings('user-1');
+
+    // Ethereum is counted; Base is unread with a specific reason and no zero.
+    expect(aggregate.total).toBe(2500);
+    expect(aggregate.wallets[0]!.failures).toEqual([
+      expect.objectContaining({
+        chainId: 8453,
+        reason: 'rejected',
+      }),
+    ]);
+    expect(aggregate.wallets[0]!.failures?.[0]?.message).toMatch(/rate limit/i);
+  });
+
   it('returns an empty aggregate with no verified rows and no reads', async () => {
     const { client } = createFakeClient([]);
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
@@ -195,7 +250,7 @@ describe('loadVerifiedHoldings', () => {
 
     expect(aggregate.walletCount).toBe(0);
     expect(aggregate.total).toBe(0);
-    expect(hoisted.readEvmBalances).not.toHaveBeenCalled();
+    expect(hoisted.readEvmChainBalances).not.toHaveBeenCalled();
   });
 
   it('throws rather than showing a partial total when the read fails', async () => {

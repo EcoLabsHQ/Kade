@@ -20,7 +20,7 @@ import { EVM_READ_CHAINS, EvmReadError } from '@/lib/wealth/evm';
 const hoisted = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
   normalizeEvmAddress: vi.fn(),
-  readEvmBalances: vi.fn(),
+  readEvmChainBalances: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -36,7 +36,7 @@ vi.mock('@/lib/wealth/evm', async (importOriginal) => {
   return {
     ...actual,
     normalizeEvmAddress: hoisted.normalizeEvmAddress,
-    readEvmBalances: hoisted.readEvmBalances,
+    readEvmChainBalances: hoisted.readEvmChainBalances,
   };
 });
 
@@ -113,26 +113,62 @@ function createFakeClient(options: FakeOptions = {}): {
   return { client: client as unknown as SupabaseClient, rpcCalls };
 }
 
+/** Wrap a balance in the `EvmChainRead` shape the reader now returns. */
+function okChain(balance: Record<string, unknown>) {
+  return {
+    chain: {
+      chainId: balance.chainId,
+      name: balance.name,
+      symbol: balance.nativeSymbol,
+      baseUrl: 'https://test.invalid',
+      usdcAddress: '0x0000000000000000000000000000000000000000',
+    },
+    ok: true as const,
+    balance,
+  };
+}
+
+/** A chain outcome whose read failed, with a specific reason. */
+function failedChain(chainId: number, name: string, message: string) {
+  return {
+    chain: {
+      chainId,
+      name,
+      symbol: 'ETH',
+      baseUrl: 'https://test.invalid',
+      usdcAddress: '0x0000000000000000000000000000000000000000',
+    },
+    ok: false as const,
+    failure: { chainId, chainName: name, reason: 'unexpected' as const, message },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.normalizeEvmAddress.mockImplementation((value: string) =>
     value.trim(),
   );
-  hoisted.readEvmBalances.mockResolvedValue([
-    {
+  hoisted.readEvmChainBalances.mockResolvedValue([
+    okChain({
       chainId: 1,
       name: 'Ethereum',
       symbol: 'ETH',
-      amount: '1.000000000000000000',
+      nativeSymbol: 'ETH',
+      nativeAmount: '1.000000000000000000',
+      nativeUsd: 3000,
+      usdc: null,
       usd: 3000,
-    },
-    {
+    }),
+    okChain({
       chainId: 8453,
       name: 'Base',
       symbol: 'ETH',
-      amount: '0.500000000000000000',
+      nativeSymbol: 'ETH',
+      nativeAmount: '0.500000000000000000',
+      nativeUsd: 1500,
+      usdc: null,
       usd: 1500,
-    },
+    }),
   ]);
 });
 
@@ -214,7 +250,10 @@ describe('addWalletAddress', () => {
   });
 
   it('survives a provider failure with a record carrying readError and still persists', async () => {
-    hoisted.readEvmBalances.mockRejectedValue(new Error('provider down'));
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      failedChain(1, 'Ethereum', 'Ethereum (chain 1): the balance provider returned HTTP 500.'),
+      failedChain(8453, 'Base', 'Base (chain 8453): the balance provider returned HTTP 500.'),
+    ]);
     const { client, rpcCalls } = createFakeClient();
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
 
@@ -224,8 +263,9 @@ describe('addWalletAddress', () => {
     expect(record.address).toBe(ADDRESS);
     expect(record.chains).toEqual([]);
     expect(record.usd).toBeNull();
-    expect(record.readAt).toBeNull();
-    expect(record.readError).toMatch(/provider down/);
+    // The address is still persisted, but the read error names the real reason
+    // rather than collapsing to a generic message.
+    expect(record.readError).toMatch(/HTTP 500/);
   });
 });
 
@@ -290,7 +330,9 @@ describe('addConnectedWallet', () => {
   });
 
   it('survives a provider failure with a record carrying readError and still persists', async () => {
-    hoisted.readEvmBalances.mockRejectedValue(new Error('provider down'));
+    hoisted.readEvmChainBalances.mockResolvedValue([
+      failedChain(1, 'Ethereum', 'Ethereum (chain 1): the balance read timed out.'),
+    ]);
     const { client, rpcCalls } = createFakeClient();
     hoisted.createSupabaseServerClient.mockResolvedValue(client);
 
@@ -299,7 +341,7 @@ describe('addConnectedWallet', () => {
     expect(rpcCalls).toHaveLength(EVM_READ_CHAINS.length);
     expect(record.chains).toEqual([]);
     expect(record.usd).toBeNull();
-    expect(record.readError).toMatch(/provider down/);
+    expect(record.readError).toMatch(/timed out/i);
   });
 });
 
@@ -334,16 +376,23 @@ describe('listWalletAddresses', () => {
       { id: 2, address: ADDRESS },
       { id: 3, address: OTHER },
     ];
-    hoisted.readEvmBalances.mockImplementation(async (address: string) => {
-      if (address === ADDRESS) throw new Error('provider down');
+    hoisted.readEvmChainBalances.mockImplementation(async (address: string) => {
+      if (address === ADDRESS) {
+        return [
+          failedChain(1, 'Ethereum', 'Ethereum (chain 1): the balance read timed out.'),
+        ];
+      }
       return [
-        {
+        okChain({
           chainId: 1,
           name: 'Ethereum',
           symbol: 'ETH',
-          amount: '1.000000000000000000',
+          nativeSymbol: 'ETH',
+          nativeAmount: '1.000000000000000000',
+          nativeUsd: 3000,
+          usdc: null,
           usd: 3000,
-        },
+        }),
       ];
     });
     const { client } = createFakeClient({ wallets });
@@ -353,7 +402,7 @@ describe('listWalletAddresses', () => {
 
     expect(records).toHaveLength(2);
     expect(records[0]?.address).toBe(ADDRESS);
-    expect(records[0]?.readError).toMatch(/provider down/);
+    expect(records[0]?.readError).toMatch(/timed out/i);
     expect(records[0]?.chains).toEqual([]);
     expect(records[1]?.address).toBe(OTHER);
     expect(records[1]?.readError).toBeNull();

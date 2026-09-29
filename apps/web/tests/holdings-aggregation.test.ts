@@ -290,6 +290,34 @@ describe('aggregateHoldings — total and per-wallet breakdown', () => {
     expect(aggregate.wallets[0]!.readError).toMatch(/HTTP 503/);
   });
 
+  it('carries the specific per-chain failure reasons through the aggregate', async () => {
+    const readBalances = vi.fn(async () => ({
+      chains: chains(2500, 1),
+      usd: 2500,
+      failures: [
+        {
+          chainId: 8453,
+          chainName: 'Base',
+          reason: 'unexpected' as const,
+          message: 'Base (chain 8453): the balance provider returned HTTP 500.',
+        },
+      ],
+    }));
+
+    const aggregate = await aggregateHoldings({
+      wallets: selectVerifiedWallets([verifiedRow()]),
+      readBalances,
+    });
+
+    // The readable Ethereum figure is counted; the unread Base chain keeps its
+    // real reason and contributes no zero.
+    expect(aggregate.total).toBe(2500);
+    expect(aggregate.wallets[0]!.failures).toEqual([
+      expect.objectContaining({ chainId: 8453, reason: 'unexpected' }),
+    ]);
+    expect(aggregate.wallets[0]!.failures?.[0]?.message).toMatch(/HTTP 500/);
+  });
+
   it('treats a null USD figure as unvalued and adds nothing to the total', async () => {
     const readBalances = vi.fn(async () => ({
       chains: chains(null),
