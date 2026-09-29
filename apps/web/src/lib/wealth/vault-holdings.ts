@@ -1,9 +1,10 @@
-import { createPublicClient, http, type Address } from 'viem';
-import { mainnet } from 'viem/chains';
+import { CHAIN_IDS, MORPHO_VAULT_CHAIN_IDS, chainByChainId, rpcEnvVarForChain } from '@kade/shared';
+import { createPublicClient, http, type Address, type Chain } from 'viem';
+import { arbitrum, base, mainnet } from 'viem/chains';
 import { METAMORPHO_VAULT_ABI } from '@/lib/invest/morpho-abi';
 import {
-  isMainnetRailConfigured,
-  readMorphoVaultConfig,
+  isMorphoRailConfiguredForChain,
+  readMorphoVaultConfigForChain,
   type MorphoVaultConfig,
 } from '@/lib/invest/morpho-config';
 import {
@@ -25,9 +26,11 @@ import type { EvmChainBalance } from './types';
  *   1. the Safe's native coin and USDC on every chain the app already reads,
  *      through the same `readEvmBalances` reader Holdings uses for linked
  *      wallets (here pointed at the Safe, not a wallet); and
- *   2. the Safe's MetaMorpho position on the rail's chain: its vault-share
- *      `balanceOf`, converted with the vault's own `convertToAssets` to the
- *      underlying USDC, so the row is a real amount rather than a share count.
+ *   2. the Safe's MetaMorpho position on **each configured rail** (Ethereum
+ *      mainnet, Base, Arbitrum One): its vault-share `balanceOf`, converted with
+ *      the vault's own `convertToAssets` to the underlying USDC, so the row is a
+ *      real amount rather than a share count. Each row carries its own chain, so
+ *      a Base position is never implied to sit on Ethereum.
  *
  * Honesty rules (the same ones the rest of Holdings follows):
  *
@@ -36,10 +39,10 @@ import type { EvmChainBalance } from './types';
  *     dropped;
  *   - a genuine zero (the read succeeded and the Safe holds nothing) produces no
  *     row, so the screen keeps its existing empty state;
- *   - the Morpho row is attempted only when the rail is configured; if the rail
- *     is absent, no row is invented and no address is guessed.
+ *   - a Morpho row is attempted only for a rail that is configured; if no rail
+ *     is configured, no row is invented and no address is guessed.
  *
- * Every read is injected (`readBalances`, `readMorpho`, `morphoConfig`), so the
+ * Every read is injected (`readBalances`, `readMorpho`, `morphoConfigs`), so the
  * module is pure and directly testable with no network, exactly like
  * `@/lib/wealth/holdings`.
  */
@@ -103,10 +106,12 @@ export interface VaultHoldingsOptions {
   /** Defaults to the MetaMorpho RPC read. */
   readonly readMorpho?: (input: MorphoPositionInput) => Promise<MorphoPositionRead>;
   /**
-   * The resolved rail config. `undefined` resolves it from the environment
-   * (only when the rail is configured); `null` omits the Morpho row entirely.
+   * The resolved rails to read, one per configured chain. `undefined` resolves
+   * the app's configured rails (each chain in `MORPHO_VAULT_CHAIN_IDS` whose
+   * vault **and** RPC are present); `null` or an empty array omits the Morpho
+   * rows entirely.
    */
-  readonly morphoConfig?: MorphoVaultConfig | null;
+  readonly morphoConfigs?: readonly MorphoVaultConfig[] | null;
 }
 
 /** Ether is the one native name the reference uses; symbols pass through. */
@@ -114,6 +119,18 @@ const NATIVE_NAMES: Readonly<Record<string, string>> = { ETH: 'Ether' };
 
 /** The vault's instrument label, from the ERC-4626 surface. */
 const MORPHO_INSTRUMENT = 'MetaMorpho USDC vault';
+
+/**
+ * The viem chain definition for each vault chain, so a Base position is read
+ * through Base's definition and an Arbitrum position through Arbitrum's. The
+ * endpoint is the chain's own RPC variable, never the definition's public
+ * default.
+ */
+const VIEM_CHAIN_BY_ID: Readonly<Record<number, Chain>> = {
+  [CHAIN_IDS.ethereum]: mainnet,
+  [CHAIN_IDS.base]: base,
+  [CHAIN_IDS.arbitrum]: arbitrum,
+};
 
 /** A readable message from an unknown thrown value. */
 function reasonOf(cause: unknown): string {
@@ -125,9 +142,31 @@ function isPositive(amount: string): boolean {
   return Number(amount) > 0;
 }
 
-/** The display name for a chain id, from the read list; never fabricated. */
+/** The display name for a chain id: the read list, then the shared registry. */
 function chainNameOf(chains: readonly VaultReadChain[], chainId: number): string {
-  return chains.find((chain) => chain.chainId === chainId)?.name ?? `Chain ${chainId}`;
+  return (
+    chains.find((chain) => chain.chainId === chainId)?.name ??
+    chainByChainId(chainId)?.name ??
+    `Chain ${chainId}`
+  );
+}
+
+/**
+ * The rails the app may read a position from, one per configured chain.
+ *
+ * A chain is included only when its vault **and** its own RPC variable are both
+ * present (`isMorphoRailConfiguredForChain`), so a chain the app cannot reach is
+ * omitted rather than borrowing another chain's endpoint. When a rail is
+ * supplied explicitly the caller owns this choice.
+ */
+function configuredMorphoConfigs(): readonly MorphoVaultConfig[] {
+  const configs: MorphoVaultConfig[] = [];
+  for (const chainId of MORPHO_VAULT_CHAIN_IDS) {
+    if (!isMorphoRailConfiguredForChain(chainId)) continue;
+    const config = readMorphoVaultConfigForChain(chainId);
+    if (config) configs.push(config);
+  }
+  return configs;
 }
 
 /**
@@ -140,20 +179,41 @@ function chainNameOf(chains: readonly VaultReadChain[], chainId: number): string
 async function readMorphoPositionFromRpc(
   input: MorphoPositionInput,
 ): Promise<MorphoPositionRead> {
-  const rpcUrl = process.env.ETHEREUM_RPC_URL?.trim();
+  const { chainId } = input.config;
+  const chainName = chainByChainId(chainId)?.name ?? `chain ${chainId}`;
+  const variable = rpcEnvVarForChain(chainId);
+  if (!variable) {
+    return {
+      status: 'failed',
+      reason:
+        `chain ${chainId} has no RPC variable, so the vault position could not ` +
+        'be read.',
+    };
+  }
+  const rpcUrl = process.env[variable]?.trim();
   if (!rpcUrl) {
     return {
       status: 'failed',
       reason:
-        'The Ethereum RPC endpoint is not configured, so the vault position ' +
+        `The ${chainName} RPC endpoint is not configured (${variable}), so the ` +
+        'vault position could not be read.',
+    };
+  }
+
+  const chain = VIEM_CHAIN_BY_ID[chainId];
+  if (!chain) {
+    return {
+      status: 'failed',
+      reason:
+        `chain ${chainId} is not a supported vault chain, so the vault position ` +
         'could not be read.',
     };
   }
 
   try {
-    // The rail is mainnet-frozen (`morpho-config`), so the mainnet chain
-    // definition is the correct one; no chain-specific value is guessed.
-    const client = createPublicClient({ chain: mainnet, transport: http(rpcUrl) });
+    // The client is built for the rail's own chain and its own endpoint; no
+    // chain-specific value is guessed and another chain's RPC is never used.
+    const client = createPublicClient({ chain, transport: http(rpcUrl) });
     const shares = await client.readContract({
       address: input.config.vault as Address,
       abi: METAMORPHO_VAULT_ABI,
@@ -194,13 +254,12 @@ export async function loadVaultHoldings(
   const readBalances =
     options.readBalances ?? ((value: string) => readEvmBalances(value));
   const readMorpho = options.readMorpho ?? readMorphoPositionFromRpc;
-  // Omitted unless the rail is actually configured; nothing is guessed.
-  const morphoConfig =
-    options.morphoConfig !== undefined
-      ? options.morphoConfig
-      : isMainnetRailConfigured()
-        ? readMorphoVaultConfig()
-        : null;
+  // One rail per configured chain, in registry order; omitted unless actually
+  // configured (vault and RPC both present). Nothing is guessed.
+  const morphoConfigs =
+    options.morphoConfigs !== undefined
+      ? options.morphoConfigs
+      : configuredMorphoConfigs();
 
   const rows: VaultHoldingRow[] = [];
 
@@ -279,7 +338,7 @@ export async function loadVaultHoldings(
     }
   }
 
-  if (morphoConfig) {
+  for (const morphoConfig of morphoConfigs ?? []) {
     let position: MorphoPositionRead;
     try {
       position = await readMorpho({ safeAddress: address, config: morphoConfig });
@@ -290,12 +349,14 @@ export async function loadVaultHoldings(
       };
     }
 
+    const morphoChainName = chainNameOf(chains, morphoConfig.chainId);
+
     if (position.status === 'failed') {
       rows.push({
         key: `${address}:${morphoConfig.chainId}:morpho`,
         kind: 'morpho',
         chainId: morphoConfig.chainId,
-        chainName: chainNameOf(chains, morphoConfig.chainId),
+        chainName: morphoChainName,
         symbol: 'MM',
         name: MORPHO_INSTRUMENT,
         amount: '—',
@@ -308,7 +369,7 @@ export async function loadVaultHoldings(
         key: `${address}:${morphoConfig.chainId}:morpho`,
         kind: 'morpho',
         chainId: morphoConfig.chainId,
-        chainName: chainNameOf(chains, morphoConfig.chainId),
+        chainName: morphoChainName,
         symbol: 'MM',
         name: MORPHO_INSTRUMENT,
         // The vault's own share→underlying conversion: the amount is USDC.

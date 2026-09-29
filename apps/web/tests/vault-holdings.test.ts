@@ -34,6 +34,19 @@ const MORPHO: MorphoVaultConfig = {
   chainId: 1,
 };
 
+/** A second and third rail, on Base and Arbitrum One. */
+const BASE_MORPHO: MorphoVaultConfig = {
+  vault: '0x3333333333333333333333333333333333333333',
+  usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  chainId: 8453,
+};
+
+const ARBITRUM_MORPHO: MorphoVaultConfig = {
+  vault: '0x4444444444444444444444444444444444444444',
+  usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  chainId: 42161,
+};
+
 function chainBalance(
   overrides: Partial<EvmChainBalance> & { chainId: number; name: string },
 ): EvmChainBalance {
@@ -74,7 +87,7 @@ describe('loadVaultHoldings', () => {
   it('reads the Safe’s balances and Morpho position into chain + instrument + amount rows', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: MORPHO,
+      morphoConfigs: [MORPHO],
       readBalances: async () => fundedSafe(),
       readMorpho: async () => ({
         status: 'read',
@@ -128,10 +141,107 @@ describe('loadVaultHoldings', () => {
     });
   });
 
+  it('reads a MetaMorpho position on each configured chain, labelled with its real chain', async () => {
+    const rows = await loadVaultHoldings(SAFE, {
+      chains: CHAINS,
+      morphoConfigs: [MORPHO, BASE_MORPHO, ARBITRUM_MORPHO],
+      // The chain balances read succeeded and are empty; only the vault
+      // positions are non-zero.
+      readBalances: async () => [],
+      readMorpho: async ({ config }) => ({
+        status: 'read',
+        shares: 1_000_000n,
+        // A deliberately chain-specific figure, so a mis-wired read is visible.
+        assetsUsdc: BigInt(config.chainId) * 1_000_000n,
+      }),
+    });
+
+    const morpho = rows.filter((row) => row.kind === 'morpho');
+    expect(morpho.map((row) => row.chainId).sort((a, b) => a - b)).toEqual([
+      1, 8453, 42161,
+    ]);
+
+    const base = morpho.find((row) => row.chainId === 8453)!;
+    expect(base).toMatchObject({
+      chainName: 'Base',
+      amount: '8453.000000 USDC',
+    });
+
+    // Arbitrum One is not in `EVM_READ_CHAINS`, so its name comes from the
+    // shared registry and the position is not mislabelled `Chain 42161`.
+    const arbitrum = morpho.find((row) => row.chainId === 42161)!;
+    expect(arbitrum).toMatchObject({
+      chainName: 'Arbitrum One',
+      amount: '42161.000000 USDC',
+    });
+  });
+
+  it('shows a non-Ethereum Morpho read failure with its reason and never a 0', async () => {
+    const rows = await loadVaultHoldings(SAFE, {
+      chains: CHAINS,
+      morphoConfigs: [MORPHO, BASE_MORPHO],
+      readBalances: async () => [],
+      readMorpho: async ({ config }) =>
+        config.chainId === 8453
+          ? {
+              status: 'failed',
+              reason:
+                'The vault position could not be read: execution reverted.',
+            }
+          : { status: 'read', shares: 0n, assetsUsdc: 0n },
+    });
+
+    const morpho = rows.filter((row) => row.kind === 'morpho');
+    expect(morpho).toHaveLength(1);
+    expect(morpho[0]).toMatchObject({
+      chainId: 8453,
+      chainName: 'Base',
+      amount: '—',
+      readError: expect.stringContaining('execution reverted'),
+    });
+    expect(morpho[0]!.amount).not.toBe('0');
+    // A genuine Ethereum zero produced no row, so no `0` was fabricated either.
+    expect(rows.some((row) => row.kind === 'morpho' && row.chainId === 1)).toBe(
+      false,
+    );
+  });
+
+  it('reads a non-Ethereum position through that chain’s own RPC variable', async () => {
+    const previous = {
+      ethereum: process.env.ETHEREUM_RPC_URL,
+      base: process.env.BASE_RPC_URL,
+    };
+    process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+    delete process.env.BASE_RPC_URL;
+    try {
+      // No `readMorpho` injected: the real seam runs. With only Ethereum's
+      // endpoint set, a Base position must refuse and must not borrow
+      // Ethereum's endpoint.
+      const rows = await loadVaultHoldings(SAFE, {
+        chains: CHAINS,
+        morphoConfigs: [BASE_MORPHO],
+        readBalances: async () => [],
+      });
+
+      const morpho = rows.filter((row) => row.kind === 'morpho');
+      expect(morpho).toHaveLength(1);
+      expect(morpho[0]!.readError).toMatch(/BASE_RPC_URL/);
+      expect(morpho[0]!.readError).not.toMatch(/ETHEREUM_RPC_URL/);
+      expect(morpho[0]!.chainName).toBe('Base');
+    } finally {
+      const restore = (key: string, value: string | undefined) => {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      };
+      restore('ETHEREUM_RPC_URL', previous.ethereum);
+      restore('BASE_RPC_URL', previous.base);
+    }
+  });
+
   it('returns no rows when the read succeeds and the Safe holds nothing', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: MORPHO,
+      morphoConfigs: [MORPHO],
       readBalances: async () => [
         chainBalance({ chainId: 1, name: 'Ethereum' }),
         chainBalance({ chainId: 8453, name: 'Base' }),
@@ -146,7 +256,7 @@ describe('loadVaultHoldings', () => {
   it('shows a real reason for a chain the read did not produce, and never a 0', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: null,
+      morphoConfigs: null,
       // The provider produced nothing at all.
       readBalances: async () => [],
     });
@@ -164,7 +274,7 @@ describe('loadVaultHoldings', () => {
   it('carries the thrown reason of a failed balance read', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: null,
+      morphoConfigs: null,
       readBalances: async () => {
         throw new Error('The explorer returned HTTP 503.');
       },
@@ -178,7 +288,7 @@ describe('loadVaultHoldings', () => {
   it('surfaces a failed USDC sub-read as an unread row, not a silent gap', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: null,
+      morphoConfigs: null,
       readBalances: async () => [
         // The native read worked (zero) but the USDC read failed.
         chainBalance({ chainId: 1, name: 'Ethereum', usdc: null }),
@@ -201,7 +311,7 @@ describe('loadVaultHoldings', () => {
       'Base (chain 8453): the balance provider is rate limiting this read (HTTP 429).';
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: null,
+      morphoConfigs: null,
       readBalances: async () => [
         chainBalance({ chainId: 1, name: 'Ethereum', usdc: null }),
         chainBalance({
@@ -233,7 +343,7 @@ describe('loadVaultHoldings', () => {
   it('shows a failed Morpho read with its reason and no amount', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: MORPHO,
+      morphoConfigs: [MORPHO],
       readBalances: async () => [
         chainBalance({ chainId: 1, name: 'Ethereum' }),
         chainBalance({ chainId: 8453, name: 'Base' }),
@@ -256,7 +366,7 @@ describe('loadVaultHoldings', () => {
   it('omits the Morpho row entirely when the rail is not configured', async () => {
     const rows = await loadVaultHoldings(SAFE, {
       chains: CHAINS,
-      morphoConfig: null,
+      morphoConfigs: null,
       readBalances: async () => [
         chainBalance({ chainId: 1, name: 'Ethereum' }),
         chainBalance({ chainId: 8453, name: 'Base' }),
@@ -272,7 +382,7 @@ describe('loadVaultHoldings', () => {
   it('reads nothing for a missing Safe address', async () => {
     const rows = await loadVaultHoldings(null, {
       chains: CHAINS,
-      morphoConfig: MORPHO,
+      morphoConfigs: [MORPHO],
       readBalances: async () => {
         throw new Error('must not be called without a Safe address');
       },
@@ -292,7 +402,7 @@ describe('loadVaultHoldings', () => {
       // refuse before any network call rather than fabricate a position.
       const rows = await loadVaultHoldings(SAFE, {
         chains: CHAINS,
-        morphoConfig: MORPHO,
+        morphoConfigs: [MORPHO],
         readBalances: async () => [
           chainBalance({ chainId: 1, name: 'Ethereum' }),
           chainBalance({ chainId: 8453, name: 'Base' }),

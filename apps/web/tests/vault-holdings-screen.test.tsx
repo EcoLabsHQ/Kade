@@ -98,6 +98,53 @@ describe('HoldingsScreen qualified vaults', () => {
     expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
   });
 
+  it('renders a non-Ethereum vault position with its real chain and shows a failed read’s reason, never a 0', () => {
+    const rows: readonly VaultHoldingRow[] = [
+      {
+        key: 'safe:8453:morpho',
+        kind: 'morpho',
+        chainId: 8453,
+        chainName: 'Base',
+        symbol: 'MM',
+        name: 'MetaMorpho USDC vault',
+        amount: '2500.000000 USDC',
+        usd: 2500,
+        readError: null,
+      },
+      {
+        key: 'safe:42161:morpho',
+        kind: 'morpho',
+        chainId: 42161,
+        chainName: 'Arbitrum One',
+        symbol: 'MM',
+        name: 'MetaMorpho USDC vault',
+        amount: '—',
+        usd: null,
+        readError: 'The vault position could not be read: execution reverted.',
+      },
+    ];
+
+    render(
+      <HoldingsScreen
+        aggregate={EMPTY_AGGREGATE}
+        safeAddress={SAFE_ADDRESS}
+        vaultHoldings={rows}
+      />,
+    );
+
+    // A Base position is labelled Base; the Arbitrum failure is labelled
+    // Arbitrum One with its specific reason, not a zero.
+    expect(screen.getAllByText('Base').length).toBeGreaterThan(0);
+    expect(screen.getByText('Arbitrum One')).toBeInTheDocument();
+    expect(screen.getByText('2500.000000 USDC')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The vault position could not be read: execution reverted.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('0')).toBeNull();
+  });
+
   it('keeps the truthful empty state when the Safe holds nothing', () => {
     render(
       <HoldingsScreen

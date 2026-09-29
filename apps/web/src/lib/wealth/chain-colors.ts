@@ -8,6 +8,8 @@ export const CHAIN_COLORS: Record<string, string> = {
   Ethereum: '#627EEA',
   Base: '#0052FF',
   Arbitrum: '#2D374B',
+  // The frozen registry names chain 42161 "Arbitrum One"; keep its swatch.
+  'Arbitrum One': '#2D374B',
   Optimism: '#FF0420',
   Celo: '#FCFF52',
 };
