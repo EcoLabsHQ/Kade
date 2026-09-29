@@ -166,6 +166,48 @@ export const SAFE_PASSKEY_MODULE: PasskeyModuleDeployment = {
 };
 
 /**
+ * The Safe 4337 module stack the resident-Safe path pins.
+ *
+ * `@safe-global/relay-kit` resolves these from
+ * `@safe-global/safe-modules-deployments` using the **bundler's** chain id.
+ * They are the same address on every supported chain, but relay-kit resolves
+ * them per chain, so pinning them removes a chain-dependent input from the
+ * predicted Safe's initializer. Pinning is also what lets the create-Safe path
+ * keep the module address the constructor is assembled with identical to the
+ * `fallbackHandler` the predicted initializer was built with — they must agree
+ * or the enabled module and fallback handler will not match the deployed Safe.
+ *
+ * `entryPoint` is v0.7: `safeModulesVersion` 0.3.0 requires
+ * `entryPointToSafeModules(entryPoint) >= 0.3.0`, and v0.7 is the only such
+ * entry point relay-kit supports.
+ */
+export interface Safe4337Deployment {
+  readonly safeModulesVersion: '0.3.0';
+  readonly safe4337Module: Sourced<`0x${string}`>;
+  readonly safeModuleSetup: Sourced<`0x${string}`>;
+  readonly entryPoint: Sourced<`0x${string}`>;
+}
+
+export const SAFE_4337_MODULE: Safe4337Deployment = {
+  safeModulesVersion: '0.3.0',
+  safe4337Module: sourced(
+    '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
+    'external',
+    'safe-modules-deployments getSafe4337ModuleDeployment v0.3.0, networkAddresses for 1 and 11155111',
+  ),
+  safeModuleSetup: sourced(
+    '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47',
+    'external',
+    'safe-modules-deployments getSafeModuleSetupDeployment v0.3.0, networkAddresses for 1 and 11155111',
+  ),
+  entryPoint: sourced(
+    '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
+    'external',
+    'ERC-4337 EntryPoint v0.7; the entry point relay-kit selects for safeModulesVersion >= 0.3.0',
+  ),
+};
+
+/**
  * `SafeProxy` creation code **as built by this repository**.
  *
  * This is *not* the code the deployed factory uses, and must not be used to
