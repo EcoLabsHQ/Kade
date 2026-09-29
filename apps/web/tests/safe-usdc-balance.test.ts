@@ -168,3 +168,107 @@ describe('readSafeUsdcBalanceFromRpc', () => {
     }
   });
 });
+
+/**
+ * The gate reads the Safe's USDC on the **deposit chain** (T23).
+ *
+ * A Base deposit must read Base's USDC through `BASE_RPC_URL`; it must never
+ * quietly read Ethereum mainnet's endpoint, and the refusal messages must name
+ * the deposit chain. The read seam is mocked where a call would be needed, and
+ * the endpoint is captured through a stubbed `fetch`, so nothing touches the
+ * network.
+ */
+describe('readSafeUsdcBalanceFromRpc reads the deposit chain', () => {
+  const ORIGINAL = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL };
+    vi.unstubAllGlobals();
+  });
+
+  it('does not fall back to the mainnet RPC when the deposit chain has none', async () => {
+    delete process.env.BASE_RPC_URL;
+    process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+
+    const result = await readSafeUsdcBalanceFromRpc({
+      safeAddress: SAFE,
+      usdc: USDC,
+      chainId: 8453,
+    });
+
+    // It looked up Base's own variable and refused; mainnet's endpoint is
+    // present but is never substituted, so no wrong-chain read can happen.
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.reason).toMatch(/BASE_RPC_URL/);
+      expect(result.reason).not.toMatch(/ETHEREUM_RPC_URL/);
+      expect(result.reason).toMatch(/Base/);
+    }
+  });
+
+  it('does not fall back to the mainnet RPC when the deposit chain variable is blank', async () => {
+    process.env.BASE_RPC_URL = '   ';
+    process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+
+    const result = await readSafeUsdcBalanceFromRpc({
+      safeAddress: SAFE,
+      usdc: USDC,
+      chainId: 8453,
+    });
+
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.reason).toMatch(/BASE_RPC_URL/);
+      expect(result.reason).not.toMatch(/ETHEREUM_RPC_URL/);
+    }
+  });
+
+  it('refuses a chain with no RPC variable', async () => {
+    const result = await readSafeUsdcBalanceFromRpc({
+      safeAddress: SAFE,
+      usdc: USDC,
+      chainId: 999999,
+    });
+
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.reason).toMatch(/999999/);
+      expect(result.reason).toMatch(/no RPC variable/);
+    }
+  });
+});
+
+describe('checkSafeDepositFunding names the deposit chain', () => {
+  it('derives the name from the chain id, ignoring a mislabelled caller', async () => {
+    const reader = vi.fn(
+      async (): Promise<SafeUsdcBalanceRead> => ({ status: 'read', balance: 0n }),
+    );
+
+    const result = await checkSafeDepositFunding(
+      {
+        safeAddress: SAFE,
+        usdc: USDC,
+        chainId: 42161,
+        // A caller may mislabel the chain; the refusal must still name where
+        // the funds actually need to be.
+        chainName: 'Ethereum',
+        amountUnits: 1_000_000n,
+      },
+      reader,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.gate).toBe('safe-insufficient-usdc');
+      expect(result.reason).toMatch(/on Arbitrum One/);
+    }
+    // The read is handed the corrected, deposit-chain name and the chain id.
+    expect(reader).toHaveBeenCalledWith({
+      safeAddress: SAFE,
+      usdc: USDC,
+      chainId: 42161,
+      chainName: 'Arbitrum One',
+      amountUnits: 1_000_000n,
+    });
+  });
+});

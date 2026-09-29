@@ -8,10 +8,11 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  * paymaster options.
  *
  * The SDK is mocked at the module seam, so no bundler and no network are
- * touched. The assertions are about the two defects this task fixes: mainnet
- * must resolve its own RPC variable (and an unsupported chain must refuse), and
- * the configured Pimlico sponsorship policy must actually be forwarded to the
- * SDK rather than silently dropped.
+ * touched. The assertions cover the per-chain RPC resolution the multichain
+ * vault rail needs — Ethereum mainnet, Base and Arbitrum One each resolve their
+ * own variable, Sepolia is unchanged, and an unsupported chain refuses — plus
+ * that the configured Pimlico sponsorship policy is forwarded to the SDK rather
+ * than silently dropped.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -70,7 +71,12 @@ function seedFor(input: {
   };
 }
 
-const RPC_KEYS = ['SEPOLIA_RPC_URL', 'ETHEREUM_RPC_URL'] as const;
+const RPC_KEYS = [
+  'SEPOLIA_RPC_URL',
+  'ETHEREUM_RPC_URL',
+  'BASE_RPC_URL',
+  'ARBITRUM_RPC_URL',
+] as const;
 const PIMLICO_KEYS = ['PIMLICO_API_KEY', 'PIMLICO_POLICY_ID'] as const;
 
 const ORIGINAL_ENV = { ...process.env };
@@ -125,11 +131,31 @@ describe('initSafe4337Pack RPC resolution', () => {
     expect(lastInitInput().provider).toBe('https://sepolia.example');
   });
 
+  it('resolves Base to BASE_RPC_URL (the per-chain vault rail)', async () => {
+    process.env.BASE_RPC_URL = 'https://base.example';
+
+    await init(CHAIN_IDS.base);
+
+    expect(lastInitInput().provider).toBe('https://base.example');
+  });
+
+  it('resolves Arbitrum One to ARBITRUM_RPC_URL (the per-chain vault rail)', async () => {
+    process.env.ARBITRUM_RPC_URL = 'https://arbitrum.example';
+
+    await init(CHAIN_IDS.arbitrum);
+
+    expect(lastInitInput().provider).toBe('https://arbitrum.example');
+  });
+
   it('refuses an unsupported chain and names the chain', async () => {
     process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
 
-    await expect(init(CHAIN_IDS.base)).rejects.toThrow(String(CHAIN_IDS.base));
-    await expect(init(CHAIN_IDS.base)).rejects.toThrow(/no RPC variable/);
+    // Base Sepolia is deliberately still unsupported (Arbitrum/Base mainnet
+    // were added to the vault rail, but the deferred testnets were not).
+    await expect(init(CHAIN_IDS.baseSepolia)).rejects.toThrow(
+      String(CHAIN_IDS.baseSepolia),
+    );
+    await expect(init(CHAIN_IDS.baseSepolia)).rejects.toThrow(/no RPC variable/);
     expect(hoisted.init).not.toHaveBeenCalled();
   });
 
