@@ -12,6 +12,8 @@
 
 export * from './provenance.js';
 export * from './chains.js';
+export * from './rpc.js';
+export * from './morpho-vaults.js';
 export * from './config.js';
 export * from './fees.js';
 export * from './eas.js';
