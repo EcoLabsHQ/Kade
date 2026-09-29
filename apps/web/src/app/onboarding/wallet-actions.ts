@@ -5,7 +5,8 @@ import {
   EVM_READ_CHAINS,
   EvmReadError,
   normalizeEvmAddress,
-  readEvmBalances,
+  readEvmChainBalances,
+  type EvmReadFailure,
 } from '@/lib/wealth/evm';
 import {
   BITCOIN_CHAIN_ID,
@@ -58,6 +59,41 @@ function totalUsd(chains: readonly EvmChainBalance[]): number | null {
 }
 
 /**
+ * Read one address's chains, keeping only the successful balances and naming
+ * every unread chain with its specific reason.
+ */
+async function readChains(
+  address: string,
+): Promise<{
+  readonly chains: readonly EvmChainBalance[];
+  readonly failures: readonly EvmReadFailure[];
+}> {
+  const reads = await readEvmChainBalances(address);
+  const chains: EvmChainBalance[] = [];
+  const failures: EvmReadFailure[] = [];
+  for (const read of reads) {
+    if (read.ok && read.balance) {
+      chains.push(read.balance);
+    } else if (read.failure) {
+      failures.push(read.failure);
+    }
+  }
+  return { chains, failures };
+}
+
+/**
+ * The `readError` for a record: the specific reasons, joined.
+ *
+ * A whole-read failure (an unreadable address) still falls back to a plain
+ * message; a per-chain failure names the chain and its reason. A failed read is
+ * never rendered as a zero.
+ */
+function describeFailures(failures: readonly EvmReadFailure[]): string | null {
+  if (failures.length === 0) return null;
+  return failures.map((failure) => failure.message).join(' ');
+}
+
+/**
  * Read the resident's stored EVM rows, oldest first. `chain <> 0` excludes the
  * Bitcoin sentinel and leaves both EVM encodings, one row per chain read.
  */
@@ -89,13 +125,13 @@ async function loadStoredAddresses(
  */
 async function readAddressRecord(address: string): Promise<EvmAddressRecord> {
   try {
-    const chains = await readEvmBalances(address);
+    const { chains, failures } = await readChains(address);
     return {
       address,
       chains,
       usd: totalUsd(chains),
       readAt: new Date().toISOString(),
-      readError: null,
+      readError: describeFailures(failures),
     };
   } catch (cause) {
     console.warn('[kade] Could not read the EVM balances:', cause);
@@ -160,7 +196,9 @@ async function saveEvmAddress(
   let chains: readonly EvmChainBalance[] = [];
   let readError: string | null = null;
   try {
-    chains = await readEvmBalances(normalized);
+    const read = await readChains(normalized);
+    chains = read.chains;
+    readError = describeFailures(read.failures);
   } catch (cause) {
     console.warn('[kade] Could not read the EVM balances:', cause);
     readError =

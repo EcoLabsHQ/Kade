@@ -1,12 +1,19 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { readEvmBalances } from '@/lib/wealth/evm';
+import {
+  readEvmChainBalances,
+  type EvmReadFailure,
+} from '@/lib/wealth/evm';
 import {
   aggregateHoldings,
   classifyWalletRows,
   type HoldingsAggregate,
   type WalletLinkRow,
 } from '@/lib/wealth/holdings';
-import { CONNECTED_WALLET_PROVIDER, EVM_PROVIDER } from '@/lib/wealth/types';
+import {
+  CONNECTED_WALLET_PROVIDER,
+  EVM_PROVIDER,
+  type EvmChainBalance,
+} from '@/lib/wealth/types';
 
 /**
  * The Holdings data path, server-side only.
@@ -45,13 +52,29 @@ export function toWalletLinkRows(rows: readonly WalletRow[]): WalletLinkRow[] {
 
 /** Read and total one verified address's EVM balances via the shared provider. */
 async function readVerifiedBalances(address: string) {
-  const chains = await readEvmBalances(address);
+  const reads = await readEvmChainBalances(address);
+
+  const chains: EvmChainBalance[] = [];
+  const failures: EvmReadFailure[] = [];
+  for (const read of reads) {
+    if (read.ok && read.balance) {
+      chains.push(read.balance);
+    } else if (read.failure) {
+      failures.push(read.failure);
+    }
+  }
+
   const values = chains
     .map((chain) => chain.usd)
     .filter((value): value is number => value !== null);
+
+  // Never fabricate a zero for a chain that failed: the readable figures are
+  // summed, and every unread chain keeps its specific reason so the screen can
+  // show it instead of a dead end.
   return {
     chains,
     usd: values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0),
+    failures,
   };
 }
 

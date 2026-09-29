@@ -351,17 +351,25 @@ function assetRows(
   }
 
   // A stored chain with no readable balance is shown as an explicit `—` row,
-  // never hidden and never turned into a zero.
+  // never hidden and never turned into a zero. The provenance line carries the
+  // specific reason when the read reported one, so the resident sees *why* the
+  // chain is unread rather than a generic dead end.
   const readable = new Set(wallet.chains.map((chain) => chain.chainId));
+  const failureByChain = new Map(
+    (wallet.failures ?? []).map((failure) => [failure.chainId, failure]),
+  );
   for (const chainId of wallet.chainIds) {
     if (readable.has(chainId)) continue;
     const name = CHAIN_NAMES.get(chainId) ?? `Chain ${chainId}`;
+    const failure = failureByChain.get(chainId);
     rows.push({
       key: `${wallet.address}:${chainId}:unread`,
       symbol: '—',
       circleColor: tokens.locked,
       name,
-      provenance: `${provenance} · balance could not be read`,
+      provenance: failure
+        ? `${provenance} · ${failure.message}`
+        : `${provenance} · balance could not be read`,
       chain: name,
       chainColor: chainColor(name),
       amount: '—',

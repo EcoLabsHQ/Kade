@@ -42,6 +42,7 @@ import {
   EVM_PROVIDER,
   type EvmChainBalance,
 } from './types';
+import type { EvmReadFailure } from './evm';
 
 /**
  * One `public.wallets` row as read from Supabase, camel-cased by the caller.
@@ -264,6 +265,14 @@ export function classifyWalletRows(
 export interface VerifiedWalletBalances {
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
+  /**
+   * Chains whose balance could not be read, each with a specific reason.
+   *
+   * Optional so a reader that only reports successful reads remains valid; when
+   * present, the reasons are carried through to the UI instead of being
+   * flattened into a generic `readError`.
+   */
+  readonly failures?: readonly EvmReadFailure[];
 }
 
 /** Read the balances of one verified address. Injected so tests stay offline. */
@@ -276,12 +285,16 @@ interface WalletBalanceRead {
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
   readonly readError: string | null;
+  readonly failures: readonly EvmReadFailure[];
 }
 
 /**
  * Read one wallet's balances, turning a provider failure into a `readError`
  * rather than an exception or a fabricated zero. Shared by both classes, so an
  * unverified wallet's failed read is reported exactly as a verified one's.
+ *
+ * Per-chain failures are kept on `failures`, so the screen can name the chain
+ * and the specific reason a balance is missing.
  */
 async function readWalletBalances(
   address: string,
@@ -293,6 +306,7 @@ async function readWalletBalances(
       chains: read.chains,
       usd: read.usd !== null && Number.isFinite(read.usd) ? read.usd : null,
       readError: null,
+      failures: read.failures ?? [],
     };
   } catch (cause) {
     console.warn('[kade] Could not read wallet balances:', cause);
@@ -303,6 +317,7 @@ async function readWalletBalances(
         cause instanceof Error
           ? cause.message
           : 'The balances could not be read.',
+      failures: [],
     };
   }
 }
@@ -316,6 +331,12 @@ export interface HoldingWallet {
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
   readonly readError: string | null;
+  /**
+   * Chains whose balance could not be read, each with its specific reason.
+   * Optional so existing fixtures remain valid; when present the screen shows
+   * the real reason rather than a generic "could not be read".
+   */
+  readonly failures?: readonly EvmReadFailure[];
 }
 
 /**
@@ -333,6 +354,8 @@ export interface UnverifiedHoldingWallet {
   readonly chains: readonly EvmChainBalance[];
   readonly usd: number | null;
   readonly readError: string | null;
+  /** Per-chain unread reasons, as on `HoldingWallet`. */
+  readonly failures?: readonly EvmReadFailure[];
 }
 
 /** The Holdings screen's data: a total plus the per-wallet breakdown. */
@@ -401,6 +424,7 @@ export async function aggregateHoldings(input: {
       chains: read.chains,
       usd: read.usd,
       readError: read.readError,
+      failures: read.failures,
     });
   }
 
@@ -417,6 +441,7 @@ export async function aggregateHoldings(input: {
       chains: read.chains,
       usd: read.usd,
       readError: read.readError,
+      failures: read.failures,
     });
   }
 
