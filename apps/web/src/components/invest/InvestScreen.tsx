@@ -17,11 +17,14 @@ import {
   type InvestVaultSummary,
 } from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
+import { summarizeInvestPosition } from '@/lib/invest/invest-position';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import {
   addressExplorerUrl,
   transactionExplorerUrl,
 } from '@/lib/wealth/explorer';
+import { usd } from '@/lib/wealth/format';
+import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
 /**
  * The Invest screen (D18 / EXE-014).
@@ -50,6 +53,15 @@ import {
  * before signing, that un-allocating lowers the qualified tier (the total the
  * app describes as the resident's tier across all three chains). "All" is the
  * default and redeems the whole share balance, so no dust is left behind.
+ *
+ * The resident's **real position** comes from one read the route performs with
+ * `loadVaultHoldings` — the same on-chain reader Holdings uses — and is passed
+ * in as `holdings`. The screen reduces it once (see `summarizeInvestPosition`)
+ * and derives everything from it: the two stat cards, each row's state (the
+ * real held amount, or `Allocate` when it holds nothing) and the allocate
+ * preview. No figure is hardcoded and no failed read becomes a `$0`; a failure
+ * keeps its specific reason. Both directions stay reachable on every row, and
+ * the state line and the two pills stack so nothing clips in the fixed column.
  */
 
 export interface InvestScreenProps {
@@ -76,6 +88,17 @@ export interface InvestScreenProps {
    * deployment state.
    */
   readonly safeAddress: string | null;
+  /**
+   * The Safe's on-chain qualified holdings, read **once** by the route through
+   * {@link loadVaultHoldings} and used here as the single source of truth for
+   * the two stat cards, each row's state (empty vs the real held amount) and
+   * the allocate preview. It is the same reader the Holdings screen uses, so
+   * there is no second position read and nothing is stored.
+   *
+   * The rows carry their own failures: an unread chain stays visible with its
+   * reason and never becomes a zero.
+   */
+  readonly holdings: readonly VaultHoldingRow[];
 }
 
 interface Instrument {
@@ -191,7 +214,16 @@ function describeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
+export function InvestScreen({
+  vaults,
+  safeAddress,
+  holdings,
+}: InvestScreenProps) {
+  // The one position read, reduced for the whole screen: the stat cards, each
+  // row's state and the allocate preview all come from these same rows, so the
+  // screen cannot show two different versions of the resident's position.
+  const position = summarizeInvestPosition({ holdings, safeAddress, vaults });
+
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [direction, setDirection] = useState<Direction>('allocate');
   const [amount, setAmount] = useState('25000');
@@ -408,6 +440,54 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
   // chain, followed by the one instrument that has no execution path.
   const instruments = [...morphoInstruments(vaults), USDY_INSTRUMENT];
 
+  // The allocate preview's "Vault USDC after": the deposit draws from the row's
+  // own chain, so the figure is that chain's free USDC less the amount. When
+  // the chain's read failed or the amount exceeds it, the preview says so
+  // (unknown / not enough) rather than showing an invented balance.
+  const selectedChainFree =
+    selected?.chainId != null
+      ? (position.freeByChain.get(selected.chainId) ?? null)
+      : null;
+  const amountNumber = amountValid ? Number(amount.trim()) : null;
+  const vaultAfter = ((): {
+    readonly value: string;
+    readonly title: string | undefined;
+    readonly muted: boolean;
+  } => {
+    if (!selectedChainFree) {
+      return {
+        value: '—',
+        title: 'This vault rail is not configured, so its USDC cannot be previewed.',
+        muted: true,
+      };
+    }
+    if (selectedChainFree.status === 'unknown') {
+      return { value: '—', title: selectedChainFree.reason, muted: true };
+    }
+    if (amountNumber === null) {
+      return {
+        value: '—',
+        title: 'Enter a positive USDC amount to preview the vault USDC after.',
+        muted: true,
+      };
+    }
+    if (amountNumber > selectedChainFree.usd) {
+      return {
+        value: '—',
+        title:
+          `The Safe holds ${usd(selectedChainFree.usd)} free USDC on ` +
+          `${selected?.chain ?? 'this chain'}, less than the ` +
+          `${usd(amountNumber)} to allocate.`,
+        muted: true,
+      };
+    }
+    return {
+      value: usd(selectedChainFree.usd - amountNumber),
+      title: undefined,
+      muted: false,
+    };
+  })();
+
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
       <div style={{ marginBottom: '24px' }}>
@@ -470,7 +550,15 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
               <span />
             </div>
 
-            {instruments.map((instrument) => (
+            {instruments.map((instrument) => {
+              // The real state of the resident's position on this row's chain,
+              // from the one position read. `null` for the unwired instrument,
+              // which has no chain to be read on.
+              const chainPosition =
+                instrument.chainId !== null
+                  ? (position.byChain.get(instrument.chainId) ?? null)
+                  : null;
+              return (
               <div
                 key={instrument.key}
                 style={{
@@ -527,64 +615,128 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                   />
                   Yes
                 </span>
+                {/*
+                  The row's state and both directions *stack vertically* inside
+                  the fixed 210px action column. Side by side, a held amount and
+                  the two pills cannot fit, and the label clipped; stacked, the
+                  held amount has its own full-width line and the two pills wrap
+                  to a second. Both directions stay reachable in every state and
+                  no line can be clipped.
+                */}
                 <div
                   style={{
                     display: 'flex',
-                    gap: '6px',
-                    justifyContent: 'flex-end',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    gap: '7px',
+                    minWidth: 0,
                   }}
                 >
-                  <button
-                    type='button'
-                    aria-label={`Allocate into ${instrument.name}`}
-                    onClick={() => openInstrument(instrument, 'allocate')}
-                    disabled={!instrument.wired}
-                    title={
-                      instrument.wired
-                        ? undefined
-                        : 'Only the MetaMorpho vaults are wired in this iteration.'
-                    }
+                  {chainPosition?.status === 'held' ? (
+                    <span
+                      data-testid={`invest-held-${instrument.chainId}`}
+                      title={`The Safe holds ${usd(chainPosition.usd)} in this vault.`}
+                      style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        padding: '3px 10px',
+                        borderRadius: '999px',
+                        background: tokens.chipBg,
+                        color: tokens.ink,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {usd(chainPosition.usd)} held
+                    </span>
+                  ) : chainPosition?.status === 'unknown' ? (
+                    // The read failed: the row shows that the state is unknown
+                    // (with the real reason on hover), never a fabricated $0.
+                    <span
+                      data-testid={`invest-position-unknown-${instrument.chainId}`}
+                      title={chainPosition.reason}
+                      style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        padding: '3px 10px',
+                        borderRadius: '999px',
+                        background: '#FEF3F2',
+                        color: tokens.danger,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Position unread
+                    </span>
+                  ) : null}
+                  <div
                     style={{
-                      height: '32px',
-                      border: 0,
-                      borderRadius: '999px',
-                      background: instrument.wired ? tokens.ink : tokens.chipBg,
-                      color: instrument.wired ? '#fff' : tokens.locked,
-                      fontFamily: 'inherit',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      gap: '6px',
+                      justifyContent: 'flex-end',
+                      flexWrap: 'wrap',
                     }}
                   >
-                    Allocate
-                  </button>
-                  <button
-                    type='button'
-                    aria-label={`Un-allocate from ${instrument.name}`}
-                    onClick={() => openInstrument(instrument, 'unallocate')}
-                    disabled={!instrument.wired}
-                    title={
-                      instrument.wired
-                        ? 'Redeem USDC from this chain’s MetaMorpho vault'
-                        : 'Only the MetaMorpho vaults are wired in this iteration.'
-                    }
-                    style={{
-                      height: '32px',
-                      border: `1px solid ${tokens.border}`,
-                      borderRadius: '999px',
-                      background: '#fff',
-                      color: instrument.wired ? tokens.chipFg : tokens.locked,
-                      fontFamily: 'inherit',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: instrument.wired ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    Un-allocate
-                  </button>
+                    <button
+                      type='button'
+                      aria-label={`Allocate into ${instrument.name}`}
+                      onClick={() => openInstrument(instrument, 'allocate')}
+                      disabled={!instrument.wired}
+                      title={
+                        instrument.wired
+                          ? undefined
+                          : 'Only the MetaMorpho vaults are wired in this iteration.'
+                      }
+                      style={{
+                        height: '32px',
+                        padding: '0 14px',
+                        border: 0,
+                        borderRadius: '999px',
+                        background: instrument.wired ? tokens.ink : tokens.chipBg,
+                        color: instrument.wired ? '#fff' : tokens.locked,
+                        fontFamily: 'inherit',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      Allocate
+                    </button>
+                    <button
+                      type='button'
+                      aria-label={`Un-allocate from ${instrument.name}`}
+                      onClick={() => openInstrument(instrument, 'unallocate')}
+                      disabled={!instrument.wired}
+                      title={
+                        instrument.wired
+                          ? 'Redeem USDC from this chain’s MetaMorpho vault'
+                          : 'Only the MetaMorpho vaults are wired in this iteration.'
+                      }
+                      style={{
+                        height: '32px',
+                        padding: '0 14px',
+                        border: `1px solid ${tokens.border}`,
+                        borderRadius: '999px',
+                        background: '#fff',
+                        color: instrument.wired ? tokens.chipFg : tokens.locked,
+                        fontFamily: 'inherit',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        cursor: instrument.wired ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      Un-allocate
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -610,13 +762,40 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
       >
         <Stat
           label='Vault USDC available'
-          value='$0'
-          note='Allocating does not change your qualifying balance.'
+          testId='invest-stat-vault-usdc'
+          value={
+            position.freeUsdc.status === 'known'
+              ? usd(position.freeUsdc.usd)
+              : '—'
+          }
+          mutedValue={position.freeUsdc.status === 'unknown'}
+          note={
+            position.freeUsdc.status === 'known'
+              ? 'Allocating does not change your qualifying balance.'
+              : position.freeUsdc.reason
+          }
         />
+        {/*
+          The figure is the Safe's **current** on-chain position, not a
+          per-session count (nothing persists a session figure), so the label
+          says what the number actually is rather than "this session".
+        */}
         <Stat
-          label='Allocated this session'
-          value='$0'
-          note='0 instruments · shown in Holdings'
+          label='Currently allocated'
+          testId='invest-stat-allocated'
+          value={
+            position.allocated.status === 'known'
+              ? usd(position.allocated.usd)
+              : '—'
+          }
+          mutedValue={position.allocated.status === 'unknown'}
+          note={
+            position.allocated.status === 'known'
+              ? `${position.heldCount} instrument${
+                  position.heldCount === 1 ? '' : 's'
+                } · shown in Holdings`
+              : position.allocated.reason
+          }
         />
       </div>
 
@@ -625,8 +804,12 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
         onClose={closeModal}
         title={
           selected
-            ? direction === 'unallocate'
-              ? `Un-allocate from ${selected.name}`
+            ? selected.wired
+              ? // The reference's eyebrow is the dialog's top line, with the
+                // instrument named just below it in the body.
+                direction === 'unallocate'
+                ? 'UN-ALLOCATE'
+                : 'NEW ALLOCATION'
               : selected.name
             : 'Allocate'
         }
@@ -640,34 +823,63 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
               padding: '0 24px 24px',
             }}
           >
-            <div style={{ fontSize: '12.5px', color: tokens.muted }}>
-              {selected.venue} · {selected.chain} · {selected.type} ·{' '}
-              {selected.terms} · min {selected.minimum}
+            {/*
+              For a wired instrument the dialog's top line is the reference's
+              eyebrow (`NEW ALLOCATION` / `UN-ALLOCATE`), so the instrument is
+              named here. An unwired instrument has no eyebrow and keeps its
+              name as the title, so it is not repeated.
+            */}
+            {selected.wired ? (
+              <div
+                style={{
+                  fontSize: '16px',
+                  fontWeight: 700,
+                  color: tokens.ink,
+                  lineHeight: 1.25,
+                }}
+              >
+                {selected.name}
+              </div>
+            ) : null}
+            <div
+              style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '3px' }}
+            >
+              {selected.venue} · {selected.type} · {selected.terms}
             </div>
 
             {selected.wired ? (
               <>
-                <div style={{ marginTop: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>
-                    {direction === 'unallocate' ? 'Redemption chain' : 'Deposit chain'}
-                  </div>
-                  <div
+                {/*
+                  The reference's "Settles on <chain>" chip. The chain is the
+                  row's own chain — never a selector — so it cannot disagree
+                  with the deposit the server builds.
+                */}
+                <div
+                  style={{
+                    marginTop: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    border: `1px solid ${tokens.border}`,
+                    borderRadius: '12px',
+                    padding: '6px 10px',
+                  }}
+                >
+                  <span
                     style={{
-                      marginTop: '6px',
-                      fontSize: '12.5px',
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      letterSpacing: '.06em',
+                      textTransform: 'uppercase',
                       color: tokens.muted,
                     }}
                   >
-                    {direction === 'unallocate'
-                      ? 'This investment redeems from '
-                      : 'This investment deposits on '}
-                    <strong style={{ color: tokens.chipFg }}>
-                      {selected.chain}
-                    </strong>
-                    {selectedRail ? ` · chain ${selectedRail.chainId}` : ''}. The
-                    chain is set by the investment you chose, not selected at
-                    signing time.
-                  </div>
+                    Settles on
+                  </span>
+                  <ChainChip
+                    name={selected.chain}
+                    color={selected.chainColor}
+                  />
                 </div>
 
                 <label
@@ -764,6 +976,48 @@ export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
                     />
                     Un-allocate everything on {selected.chain} (redeem all shares)
                   </label>
+                ) : null}
+
+                {/*
+                  The reference's allocate summary box. Every figure is derived
+                  from real data or is explicitly unknown — never invented:
+                  Minimum is the instrument's own minimum; Estimated income is
+                  "not quoted" because no live yield source is connected; Vault
+                  USDC after is the row chain's free USDC less the amount (or an
+                  explained unknown); Qualifying balance is unchanged by design,
+                  because allocations stay locked and keep counting.
+                */}
+                {direction === 'allocate' ? (
+                  <div
+                    data-testid='invest-allocate-summary'
+                    style={{
+                      marginTop: '14px',
+                      border: `1px solid ${tokens.border}`,
+                      borderRadius: '12px',
+                      padding: '2px 14px',
+                      background: '#fff',
+                    }}
+                  >
+                    <Row label='Minimum' value={selected.minimum} first />
+                    <Row
+                      label='Estimated income'
+                      value='Not quoted'
+                      title='No live yield source is connected for this vault, so no income can be estimated.'
+                      valueColor={tokens.muted}
+                    />
+                    <Row
+                      label='Vault USDC after'
+                      value={vaultAfter.value}
+                      title={vaultAfter.title}
+                      valueColor={vaultAfter.muted ? tokens.muted : undefined}
+                    />
+                    <Row
+                      label='Qualifying balance'
+                      value='unchanged'
+                      title='Allocations stay locked and keep counting toward your permit, so this figure does not change.'
+                      valueColor={tokens.success}
+                    />
+                  </div>
                 ) : null}
 
                 <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
@@ -1011,10 +1265,16 @@ function Stat({
   label,
   value,
   note,
+  testId,
+  mutedValue,
 }: {
   label: string;
   value: string;
   note: string;
+  /** Identifies the figure in tests; the label stays presentational. */
+  testId?: string;
+  /** True when the figure is `—` because the read failed, not a real number. */
+  mutedValue?: boolean;
 }) {
   return (
     <Card padding='22px 24px'>
@@ -1030,11 +1290,13 @@ function Stat({
         {label}
       </div>
       <div
+        data-testid={testId}
         style={{
           fontSize: '26px',
           fontWeight: 700,
           marginTop: '8px',
           fontVariantNumeric: 'tabular-nums',
+          color: mutedValue ? tokens.muted : undefined,
         }}
       >
         {value}
@@ -1052,10 +1314,19 @@ function Row({
   label,
   value,
   mono,
+  first,
+  title,
+  valueColor,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  /** Omits the top divider, for the first row inside a bordered box. */
+  first?: boolean;
+  /** The specific reason a figure is unknown, shown on hover. */
+  title?: string;
+  /** Colours the value, e.g. to mark it unknown or to accent it. */
+  valueColor?: string;
 }) {
   return (
     <div
@@ -1064,14 +1335,16 @@ function Row({
         justifyContent: 'space-between',
         gap: '12px',
         padding: '7px 0',
-        borderTop: `1px solid ${tokens.border}`,
+        borderTop: first ? undefined : `1px solid ${tokens.border}`,
       }}
     >
       <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>
       <span
+        title={title}
         style={{
           fontWeight: 600,
           minWidth: 0,
+          color: valueColor,
           fontFamily: mono
             ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
             : undefined,

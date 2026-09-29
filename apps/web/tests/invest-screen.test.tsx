@@ -133,6 +133,7 @@ function renderScreen(overrides: {
     <InvestScreen
       vaults={overrides.vaults ?? CONFIGURED_VAULTS}
       safeAddress={overrides.safeAddress === undefined ? SAFE : overrides.safeAddress}
+      holdings={[]}
     />,
   );
 }
@@ -227,7 +228,10 @@ describe('InvestScreen reference layout', () => {
   it('renders the two baseline stat cards', () => {
     renderScreen();
     expect(screen.getByText('Vault USDC available')).toBeInTheDocument();
-    expect(screen.getByText('Allocated this session')).toBeInTheDocument();
+    // The figure is the Safe's current on-chain position, not a per-session
+    // count (nothing persists a session figure), so the label was renamed from
+    // the reference's "Allocated this session" to say what the number is.
+    expect(screen.getByText('Currently allocated')).toBeInTheDocument();
   });
 });
 

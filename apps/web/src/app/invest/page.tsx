@@ -6,6 +6,7 @@ import { InvestScreen } from '@/components/invest/InvestScreen';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadReviewBar } from '@/lib/review/review-bar';
+import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import {
   isMorphoRailConfiguredForChain,
   morphoChainName,
@@ -49,7 +50,16 @@ export default async function InvestPage() {
       usdc: config?.usdc ?? null,
     };
   });
-  const reviewBar = await loadReviewBar(session.userId);
+  // The Safe's position is read **once** here, through the same on-chain reader
+  // the Holdings screen uses, and handed to the screen as the single source of
+  // truth for the stats, each row's state and the allocate preview. Nothing
+  // persists a vault position, so the chain is the only truthful source; a
+  // failed read travels as rows carrying their own reasons rather than as a
+  // fabricated zero.
+  const [vaultHoldings, reviewBar] = await Promise.all([
+    loadVaultHoldings(shellSafe.address),
+    loadReviewBar(session.userId),
+  ]);
 
   return (
     <AppShell
@@ -63,7 +73,11 @@ export default async function InvestPage() {
         isReviewer={reviewBar.isReviewer}
     >
       <ContentContainer>
-        <InvestScreen vaults={vaults} safeAddress={shellSafe.address} />
+        <InvestScreen
+          vaults={vaults}
+          safeAddress={shellSafe.address}
+          holdings={vaultHoldings}
+        />
       </ContentContainer>
     </AppShell>
   );

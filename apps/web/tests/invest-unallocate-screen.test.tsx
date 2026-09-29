@@ -112,7 +112,7 @@ afterEach(() => {
 
 describe('InvestScreen un-allocate availability', () => {
   it('offers both directions on each wired rail, and neither on the unwired instrument', () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     expect(
       screen.getByRole('button', { name: /allocate into morpho usdc vault · ethereum/i }),
     ).toBeEnabled();
@@ -133,6 +133,7 @@ describe('InvestScreen un-allocate availability', () => {
       <InvestScreen
         vaults={RAILS.map((rail) => ({ ...rail, configured: false }))}
         safeAddress={SAFE}
+        holdings={[]}
       />,
     );
     expect(screen.queryByText(MORPHO_ETHEREUM)).toBeNull();
@@ -147,7 +148,7 @@ describe('InvestScreen un-allocate availability', () => {
 
 describe('InvestScreen un-allocate flow', () => {
   it('defaults to the whole position and states the tier warning before signing', () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     const dialog = openUnallocate(MORPHO_ETHEREUM);
 
     // The warning is present before the confirm button is ever pressed.
@@ -166,7 +167,7 @@ describe('InvestScreen un-allocate flow', () => {
   });
 
   it('runs beginWithdraw → passkey → completeWithdraw for "all"', async () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     const dialog = openUnallocate(MORPHO_ETHEREUM);
 
     await clickUnallocate(dialog);
@@ -196,7 +197,7 @@ describe('InvestScreen un-allocate flow', () => {
   });
 
   it('sends a stated amount when "all" is unset', async () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     const dialog = openUnallocate(MORPHO_ETHEREUM);
 
     fireEvent.click(
@@ -225,7 +226,7 @@ describe('InvestScreen un-allocate flow', () => {
         'un-allocate needs 10 USDC. The Safe does not hold enough shares to ' +
         'cover it — short by 10 USDC.',
     });
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     const dialog = openUnallocate(MORPHO_ETHEREUM);
 
     await clickUnallocate(dialog);
@@ -245,7 +246,7 @@ describe('InvestScreen un-allocate flow', () => {
       stage: 'sign',
       reason: 'The passkey attached no signature to the operation.',
     });
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} />);
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
     const dialog = openUnallocate(MORPHO_ETHEREUM);
 
     await clickUnallocate(dialog);
