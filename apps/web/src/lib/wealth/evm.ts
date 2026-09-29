@@ -1,7 +1,7 @@
 import { chainByChainId } from '@kade/shared';
 import { getAddress } from 'viem';
 import { readEvmExplorerApiBase } from '@/lib/env';
-import type { EvmChainBalance } from './types';
+import type { EvmChainBalance, EvmTokenBalance } from './types';
 
 /**
  * Read-only balances (native coin and USDC) for a pasted EVM address.
@@ -19,6 +19,14 @@ import type { EvmChainBalance } from './types';
  *
  * There is no API key, so the read works against the public instances. The chain
  * list and `fetchImpl` are injectable, so tests never touch the network.
+ *
+ * The public instances are rate-limited and genuinely flaky, so a read that
+ * fails once is not treated as a final answer: a transient status (429, 408 or
+ * 5xx) or a thrown transport error is retried with bounded backoff before being
+ * given up on, within a per-chain time budget. A final failure is reported with
+ * a specific reason, so a resident sees *why* a balance could not be read
+ * instead of a generic dead end — and a failed read is never turned into a
+ * fabricated zero.
  */
 
 /** Raised for an invalid address, a non-2xx provider response or a bad body. */
@@ -27,6 +35,35 @@ export class EvmReadError extends Error {
     super(message, options);
     this.name = 'EvmReadError';
   }
+}
+
+/**
+ * Why a chain's balance could not be read, as a stable machine-readable code.
+ *
+ * `no-endpoint` never reaches the network: the chain has no RPC/explorer base.
+ * The other three are produced from the provider's response or the transport.
+ */
+export type EvmReadFailureReason =
+  | 'no-endpoint'
+  | 'rejected'
+  | 'timeout'
+  | 'unexpected';
+
+/** A final, explained failure to read one chain's balance. */
+export interface EvmReadFailure {
+  readonly chainId: number;
+  readonly chainName: string;
+  readonly reason: EvmReadFailureReason;
+  /** Human-readable, specific and safe to show to the resident. */
+  readonly message: string;
+}
+
+/** One chain's read outcome: either the balance or an explained failure. */
+export interface EvmChainRead {
+  readonly chain: EvmReadChain;
+  readonly ok: boolean;
+  readonly balance?: EvmChainBalance;
+  readonly failure?: EvmReadFailure;
 }
 
 /** One chain the balance read targets. Data, so the list can be extended. */
@@ -86,6 +123,223 @@ export const EVM_READ_CHAINS: readonly EvmReadChain[] = [
  */
 export function usdcAddressForChain(chainId: number): string | null {
   return EVM_READ_CHAINS.find((chain) => chain.chainId === chainId)?.usdcAddress ?? null;
+}
+
+/**
+ * Retry policy for a single provider request.
+ *
+ * Bounded and small: two retries (three attempts total) with 200 ms then 400 ms
+ * of backoff. The public Blockscout instances are rate-limited and flaky, so a
+ * single 5xx is not a final answer; but a resident is waiting on the screen, so
+ * the read gives up quickly rather than retrying for many seconds.
+ */
+export const EVM_READ_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 200;
+/**
+ * Hard per-attempt ceiling. A hung provider must not hang the server render:
+ * the response is abandoned after this and classified as a timeout, which is
+ * also the most common real failure for a flaky endpoint.
+ *
+ * [arbitrary] 8 s is long enough for a slow public instance and short enough
+ * that two chains with retries stay inside a render budget.
+ */
+export const EVM_READ_TIMEOUT_MS = 8_000;
+
+/** Await `ms` without depending on a specific timer implementation. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** HTTP statuses that are worth retrying: rate limit, timeout and 5xx. */
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+/** True when a thrown error is an AbortError, i.e. the request timed out. */
+function isAbortError(cause: unknown): boolean {
+  if (typeof DOMException !== 'undefined' && cause instanceof DOMException) {
+    return cause.name === 'AbortError';
+  }
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    (cause as { name?: unknown }).name === 'AbortError'
+  );
+}
+
+/** A `fetch` rejection whose message identifies a timeout. */
+function isTimeoutError(cause: unknown): boolean {
+  if (isAbortError(cause)) return true;
+  const message = cause instanceof Error ? cause.message : '';
+  return /timed?\s*out|timeout/i.test(message);
+}
+
+/** Map a final HTTP status to a reason and a specific, safe message. */
+function failureForStatus(
+  chain: EvmReadChain,
+  status: number,
+): EvmReadFailure {
+  const what = `${chain.name} (chain ${chain.chainId})`;
+  if (status === 401 || status === 403) {
+    return {
+      chainId: chain.chainId,
+      chainName: chain.name,
+      reason: 'rejected',
+      message: `${what}: the balance provider rejected the request (HTTP ${status}). It requires an API key or the endpoint refused access.`,
+    };
+  }
+  if (status === 429) {
+    return {
+      chainId: chain.chainId,
+      chainName: chain.name,
+      reason: 'rejected',
+      message: `${what}: the balance provider is rate limiting this read (HTTP 429). Wait a moment and try again.`,
+    };
+  }
+  return {
+    chainId: chain.chainId,
+    chainName: chain.name,
+    reason: 'unexpected',
+    message: `${what}: the balance provider returned HTTP ${status}.`,
+  };
+}
+
+/**
+ * Classify a thrown request error into a specific failure.
+ *
+ * A timeout is named as such; everything else is an unexpected transport error.
+ */
+function failureForThrow(chain: EvmReadChain, cause: unknown): EvmReadFailure {
+  const what = `${chain.name} (chain ${chain.chainId})`;
+  if (isTimeoutError(cause)) return failureForTimeout(chain);
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return {
+    chainId: chain.chainId,
+    chainName: chain.name,
+    reason: 'unexpected',
+    message: `${what}: the balance read failed unexpectedly (${detail}).`,
+  };
+}
+
+/** A malformed body or a missing balance, classified as an unexpected read. */
+function failureForBody(
+  chain: EvmReadChain,
+  detail: string,
+): EvmReadFailure {
+  return {
+    chainId: chain.chainId,
+    chainName: chain.name,
+    reason: 'unexpected',
+    message: `${chain.name} (chain ${chain.chainId}): the balance provider returned an unusable response — ${detail}.`,
+  };
+}
+
+/** A chain with no configured endpoint never reaches the network. */
+function failureForNoEndpoint(chain: EvmReadChain): EvmReadFailure {
+  return {
+    chainId: chain.chainId,
+    chainName: chain.name,
+    reason: 'no-endpoint',
+    message: `${chain.name} (chain ${chain.chainId}): no balance endpoint is configured, so its balance cannot be read.`,
+  };
+}
+
+/** The outcome of one provider request: a response, or a classified failure. */
+type FetchOutcome =
+  | { readonly response: Response }
+  | { readonly failure: EvmReadFailure };
+
+/**
+ * The timeout reason.
+ *
+ * Used both when the provider signals a timeout and when a hung request is
+ * abandoned at the per-attempt budget.
+ */
+function failureForTimeout(chain: EvmReadChain): EvmReadFailure {
+  return {
+    chainId: chain.chainId,
+    chainName: chain.name,
+    reason: 'timeout',
+    message: `${chain.name} (chain ${chain.chainId}): the balance provider did not respond in time. The endpoint may be overloaded.`,
+  };
+}
+
+/** Halt the retry loop early when the per-chain time budget is exhausted. */
+function didChainBudgetRunOut(startedAt: number): boolean {
+  return Date.now() - startedAt >= EVM_READ_TIMEOUT_MS;
+}
+
+/**
+ * Perform one provider request with bounded retry.
+ *
+ * A transient status (408/429/5xx) or a thrown transport error is retried up to
+ * `EVM_READ_ATTEMPTS` times with linear backoff. A non-transient status (e.g.
+ * 404) is returned immediately so the caller can classify it without delay. A
+ * request that does not settle within `EVM_READ_TIMEOUT_MS` is abandoned and
+ * classified as a timeout rather than hanging the render; when the budget is
+ * spent, the chain gives up without further attempts.
+ *
+ * The timeout is enforced by racing the fetch promise, so `fetchImpl` is always
+ * called with the URL alone (the same signature the rest of the code and the
+ * tests already use).
+ */
+async function fetchWithRetry(
+  url: string,
+  chain: EvmReadChain,
+  fetchImpl: typeof fetch,
+): Promise<FetchOutcome> {
+  let lastFailure: EvmReadFailure | null = null;
+  const chainStartedAt = Date.now();
+
+  for (let attempt = 1; attempt <= EVM_READ_ATTEMPTS; attempt += 1) {
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    let response: Response;
+    try {
+      response = await Promise.race([
+        Promise.resolve(fetchImpl(url)),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            reject(new Error(`request timed out after ${EVM_READ_TIMEOUT_MS} ms`));
+          }, EVM_READ_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (cause) {
+      lastFailure = timedOut
+        ? failureForTimeout(chain)
+        : failureForThrow(chain, cause);
+      if (attempt < EVM_READ_ATTEMPTS && !didChainBudgetRunOut(chainStartedAt)) {
+        await sleep(RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
+      return { failure: lastFailure };
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+
+    if (response.ok) {
+      return { response };
+    }
+
+    if (isTransientStatus(response.status)) {
+      lastFailure = failureForStatus(chain, response.status);
+      if (attempt < EVM_READ_ATTEMPTS && !didChainBudgetRunOut(chainStartedAt)) {
+        await sleep(RETRY_BASE_DELAY_MS * attempt);
+        continue;
+      }
+      return { failure: lastFailure };
+    }
+
+    // A non-transient status will not change on retry: classify it now.
+    return { failure: failureForStatus(chain, response.status) };
+  }
+
+  // Unreachable: the loop always returns on its final attempt.
+  return { failure: lastFailure ?? failureForThrow(chain, undefined) };
 }
 
 /** `0x` followed by exactly 40 hex digits, the EVM address shape. */
@@ -158,78 +412,137 @@ function resolveChains(
 }
 
 /**
- * Read the USDC balance for the chain's known contract, or null when the read
- * fails. A missing token balance is not fabricated as zero.
+ * Read the USDC balance for the chain's known contract.
+ *
+ * Returns the balance, or null when the read fails — but the failure is
+ * **classified**, so the caller can name it rather than silently reporting a
+ * missing token. A missing token balance is never fabricated as zero.
  */
 async function readUsdcBalance(
   chain: EvmReadChain,
   address: string,
   fetchImpl: typeof fetch,
-): Promise<{ readonly symbol: string; readonly amount: string; readonly usd: number } | null> {
+): Promise<
+  | { readonly ok: true; readonly token: EvmTokenBalance }
+  | { readonly ok: false; readonly failure: EvmReadFailure }
+> {
   const base = chain.baseUrl.replace(/\/+$/, '');
+  const url =
+    `${base}/api?module=account&action=tokenbalance` +
+    `&contractaddress=${chain.usdcAddress}&address=${address}&tag=latest`;
+
+  const outcome = await fetchWithRetry(url, chain, fetchImpl);
+  if ('failure' in outcome) return { ok: false, failure: outcome.failure };
+
+  let body: { result?: unknown } | null;
   try {
-    const url =
-      `${base}/api?module=account&action=tokenbalance` +
-      `&contractaddress=${chain.usdcAddress}&address=${address}&tag=latest`;
-    const response = await fetchImpl(url);
-    if (!response.ok) return null;
-
-    const body = (await response.json()) as { result?: unknown } | null;
-    const raw = body?.result;
-    if (typeof raw !== 'string' && typeof raw !== 'number') return null;
-
-    const amount = formatUnits(BigInt(raw), USDC_DECIMALS);
-    // USDC is a dollar: its USD value is its amount. The contract is not the
-    // price source, but the peg is what the product relies on and the DOCX
-    // treats USDC as 1:1 with USD.
-    return { symbol: 'USDC', amount, usd: Number(amount) };
-  } catch {
-    return null;
+    body = (await outcome.response.json()) as { result?: unknown } | null;
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, failure: failureForBody(chain, detail) };
   }
+
+  const raw = body?.result;
+  if (typeof raw !== 'string' && typeof raw !== 'number') {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'no token balance was present'),
+    };
+  }
+
+  let amount: string;
+  try {
+    amount = formatUnits(BigInt(raw), USDC_DECIMALS);
+  } catch {
+    return {
+      ok: false,
+      failure: failureForBody(chain, 'the token balance was not a number'),
+    };
+  }
+
+  // USDC is a dollar: its USD value is its amount. The contract is not the
+  // price source, but the peg is what the product relies on and the DOCX
+  // treats USDC as 1:1 with USD.
+  return {
+    ok: true,
+    token: { symbol: 'USDC', amount, usd: Number(amount) },
+  };
 }
 
 /**
- * Read one chain, or null when the native read fails.
+ * Read one chain's native coin and USDC balances, with bounded retry.
  *
- * A chain failure (non-2xx, malformed JSON, a missing or unparseable balance) is
- * **skipped** rather than fabricated as a zero balance: the caller sees the
- * chain missing from the result and can say so honestly. A failed USDC read
- * keeps the chain and reports `usdc: null`.
+ * A chain with no configured endpoint, a provider rejection, a timeout or any
+ * other unexpected read failure is reported as a specific `EvmReadFailure`
+ * rather than a silently skipped chain: the caller can then keep the chain
+ * visible with a real, explained reason instead of a dead end. Nothing is
+ * fabricated as a zero balance.
+ *
+ * A failed USDC read keeps the chain's native balance and records the failure
+ * separately, so the token amount stays unread rather than becoming zero.
  */
 async function readChainBalance(
   chain: EvmReadChain,
   address: string,
   fetchImpl: typeof fetch,
-): Promise<EvmChainBalance | null> {
-  const base = chain.baseUrl.replace(/\/+$/, '');
-  try {
-    const response = await fetchImpl(`${base}/api/v2/addresses/${address}`);
-    if (!response.ok) return null;
+): Promise<EvmChainRead> {
+  if (!chain.baseUrl) {
+    return { chain, ok: false, failure: failureForNoEndpoint(chain) };
+  }
 
-    const body = (await response.json()) as {
+  const base = chain.baseUrl.replace(/\/+$/, '');
+  const outcome = await fetchWithRetry(
+    `${base}/api/v2/addresses/${address}`,
+    chain,
+    fetchImpl,
+  );
+  if ('failure' in outcome) return { chain, ok: false, failure: outcome.failure };
+
+  let body: { coin_balance?: unknown; exchange_rate?: unknown } | null;
+  try {
+    body = (await outcome.response.json()) as {
       coin_balance?: unknown;
       exchange_rate?: unknown;
     } | null;
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return { chain, ok: false, failure: failureForBody(chain, detail) };
+  }
 
-    const raw = body?.coin_balance;
-    if (typeof raw !== 'string' && typeof raw !== 'number') return null;
-
-    let wei: bigint;
-    try {
-      wei = BigInt(raw);
-    } catch {
-      return null;
-    }
-
-    const nativeAmount = formatNative(wei);
-    const nativeUsd = toUsd(nativeAmount, body?.exchange_rate);
-    const usdc = await readUsdcBalance(chain, address, fetchImpl);
-
-    const parts = [nativeUsd, usdc?.usd].filter(
-      (value): value is number => value !== null && value !== undefined,
-    );
-
+  const raw = body?.coin_balance;
+  if (typeof raw !== 'string' && typeof raw !== 'number') {
     return {
+      chain,
+      ok: false,
+      failure: failureForBody(chain, 'no native balance was present'),
+    };
+  }
+
+  let wei: bigint;
+  try {
+    wei = BigInt(raw);
+  } catch {
+    return {
+      chain,
+      ok: false,
+      failure: failureForBody(chain, 'the native balance was not a number'),
+    };
+  }
+
+  const nativeAmount = formatNative(wei);
+  const nativeUsd = toUsd(nativeAmount, body?.exchange_rate);
+
+  const usdcRead = await readUsdcBalance(chain, address, fetchImpl);
+  const usdc = usdcRead.ok ? usdcRead.token : null;
+
+  const parts = [nativeUsd, usdc?.usd].filter(
+    (value): value is number => value !== null && value !== undefined,
+  );
+
+  return {
+    chain,
+    ok: true,
+    balance: {
       chainId: chain.chainId,
       name: chain.name,
       nativeSymbol: chain.symbol,
@@ -237,30 +550,50 @@ async function readChainBalance(
       nativeUsd,
       usdc,
       usd: parts.length === 0 ? null : parts.reduce((sum, value) => sum + value, 0),
-    };
-  } catch {
-    return null;
-  }
+    },
+  };
 }
 
 /**
  * Read the native-coin and USDC balances of `address` on each target chain.
  *
  * @throws {EvmReadError} when the address is invalid, before any fetch. A
- * per-chain provider failure does not throw: that chain is skipped.
+ * per-chain provider failure does not throw: that chain is returned as a
+ * specific `EvmReadFailure`, so the caller can keep it visible with a real
+ * reason instead of dropping it and leaving the resident without an
+ * explanation.
  */
 export async function readEvmBalances(
   address: string,
   options: EvmReadOptions = {},
 ): Promise<EvmChainBalance[]> {
+  const chains = await readEvmChainBalances(address, options);
+  return chains
+    .filter((read) => read.ok && read.balance !== undefined)
+    .map((read) => read.balance as EvmChainBalance);
+}
+
+/**
+ * Read every target chain and return each outcome, including the explained
+ * failures.
+ *
+ * This is the variant the screens use when they need to say **why** a chain's
+ * balance is missing. `readEvmBalances` is the compatibility wrapper that keeps
+ * its original shape (reads only), so existing callers are unaffected.
+ *
+ * @throws {EvmReadError} when the address is invalid, before any fetch.
+ */
+export async function readEvmChainBalances(
+  address: string,
+  options: EvmReadOptions = {},
+): Promise<EvmChainRead[]> {
   const normalized = normalizeEvmAddress(address);
   const fetchImpl = options.fetchImpl ?? fetch;
   const chains = resolveChains(options.chains);
 
-  const balances: EvmChainBalance[] = [];
+  const results: EvmChainRead[] = [];
   for (const chain of chains) {
-    const balance = await readChainBalance(chain, normalized, fetchImpl);
-    if (balance !== null) balances.push(balance);
+    results.push(await readChainBalance(chain, normalized, fetchImpl));
   }
-  return balances;
+  return results;
 }
