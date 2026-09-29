@@ -410,17 +410,27 @@ describe('InvestScreen transaction modal', () => {
 
     // The full vault address is recoverable and copyable, not just truncated.
     expect(within(finish).getByTitle(VAULT)).toBeInTheDocument();
-    fireEvent.click(
-      within(finish).getByRole('button', {
-        name: /copy MetaMorpho vault address/i,
-      }),
-    );
+    const vaultCopy = within(finish).getByRole('button', {
+      name: /copy MetaMorpho vault address/i,
+    });
+    // The copy control is icon-only: it carries no visible text.
+    expect(vaultCopy.textContent).toBe('');
+    fireEvent.click(vaultCopy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(VAULT));
+    // The copied state is announced by the accessible name, not colour alone.
+    expect(
+      within(finish).getByRole('button', {
+        name: 'Copied MetaMorpho vault address',
+      }),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(finish).getByRole('button', { name: /copy transaction hash/i }),
     );
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH));
+    expect(
+      within(finish).getByRole('button', { name: 'Copied transaction hash' }),
+    ).toBeInTheDocument();
   });
 
   it('points the deposit link at the chain the vault is on', async () => {

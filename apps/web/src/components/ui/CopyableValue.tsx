@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { CheckGlyph } from '@/components/icons/CheckGlyph';
+import { CopyGlyph } from '@/components/icons/CopyGlyph';
+import { ExternalLinkGlyph } from '@/components/icons/ExternalLinkGlyph';
 import { shortAddress } from '@/lib/wealth/format';
 import { tokens } from './tokens';
 
@@ -13,8 +16,11 @@ import { tokens } from './tokens';
  * value is in the `title`, the copy button writes the full value to the
  * clipboard, and an optional explorer link opens the value on its own chain.
  *
- * Accessibility: the copy affordance is a real `<button>` (keyboard-reachable,
- * not a clickable `<div>`) and it acknowledges the copy. The explorer link is a
+ * Accessibility: both affordances are icon-only, so they carry no visible text
+ * (the owner asked for icons rather than labels). The copy affordance is a real
+ * `<button>` (keyboard-reachable, not a clickable `<div>`) and it acknowledges
+ * the copy by swapping the copy glyph for a confirmation tick and renaming its
+ * accessible label to "Copied …" — never by colour alone. The explorer link is a
  * real `<a>` opening in a new tab with `rel="noopener noreferrer"`.
  */
 export interface CopyableValueProps {
@@ -53,11 +59,12 @@ export function CopyableValue({
       </code>
       <button
         type="button"
-        aria-label={`Copy ${label}`}
+        aria-label={copied ? `Copied ${label}` : `Copy ${label}`}
+        title={copied ? `Copied ${label}` : `Copy ${label}`}
         onClick={() => void copy()}
         style={copyButton}
       >
-        {copied ? 'Copied' : 'Copy'}
+        {copied ? <CheckGlyph /> : <CopyGlyph />}
       </button>
       {explorerUrl ? (
         <a
@@ -65,9 +72,10 @@ export function CopyableValue({
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`View ${label} on the block explorer`}
+          title={`View ${label} on the block explorer`}
           style={link}
         >
-          Explorer ↗
+          <ExternalLinkGlyph />
         </a>
       ) : null}
     </span>
@@ -92,23 +100,23 @@ const code: CSSProperties = {
 };
 
 const copyButton: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   border: `1px solid ${tokens.border}`,
   borderRadius: '999px',
   background: '#fff',
   color: tokens.brandPrimary,
-  fontFamily: 'inherit',
-  fontSize: '12px',
-  fontWeight: 600,
-  padding: '4px 10px',
+  lineHeight: 0,
+  padding: '4px 7px',
   cursor: 'pointer',
-  whiteSpace: 'nowrap',
 };
 
 const link: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   color: tokens.brandPrimary,
-  fontFamily: 'inherit',
-  fontSize: '12px',
-  fontWeight: 600,
+  lineHeight: 0,
   textDecoration: 'none',
-  whiteSpace: 'nowrap',
 };

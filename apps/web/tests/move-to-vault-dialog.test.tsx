@@ -372,15 +372,25 @@ describe('MoveToVaultDialog transaction feedback', () => {
 
     // The full hash and vault address stay recoverable and copyable.
     expect(within(done).getByTitle(TX)).toBeInTheDocument();
-    fireEvent.click(
-      within(done).getByRole('button', { name: /copy transaction hash/i }),
-    );
+    const hashCopy = within(done).getByRole('button', {
+      name: /copy transaction hash/i,
+    });
+    // The copy control is icon-only: it carries no visible text.
+    expect(hashCopy.textContent).toBe('');
+    fireEvent.click(hashCopy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(TX));
+    // The copied state is announced by the accessible name, not colour alone.
+    expect(
+      within(done).getByRole('button', { name: 'Copied transaction hash' }),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(done).getByRole('button', { name: /copy vault address/i }),
     );
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(SAFE));
+    expect(
+      within(done).getByRole('button', { name: 'Copied vault address' }),
+    ).toBeInTheDocument();
   });
 
   it('points the confirmed transfer link at the holding chain explorer', () => {
