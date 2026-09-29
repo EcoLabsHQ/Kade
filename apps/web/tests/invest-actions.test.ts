@@ -152,6 +152,7 @@ function seedHappyPath(): void {
 const BEGIN_INPUT = {
   safeAddress: SAFE,
   amountUsdc: '25000',
+  chainId: 1,
 } as const;
 
 beforeEach(() => {
@@ -168,6 +169,7 @@ describe('beginDeposit', () => {
       token: TOKEN,
       hash: SAFE_OP_HASH,
       credentialId: SIGNER.rawId,
+      chainId: 1,
     });
 
     // The signer is built from the stored credential, with no `getFn`: the
@@ -338,31 +340,45 @@ describe('beginDeposit', () => {
     expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
   });
 
-  it('resolves the mainnet gate from the environment, not the caller', async () => {
+  it('resolves the per-chain rail gate from the environment, not the caller', async () => {
     const previous = {
       rpc: process.env.ETHEREUM_RPC_URL,
+      baseRpc: process.env.BASE_RPC_URL,
       vault: process.env.KADE_MORPHO_VAULT_ADDRESS,
       usdc: process.env.KADE_MORPHO_USDC_ADDRESS,
     };
     try {
-      // The rail is judged on its own two pieces — a complete vault
-      // configuration and the reserved mainnet RPC — so both are set here and
-      // only the RPC is varied. The value is never taken from the caller.
+      // The rail is judged on the named chain's own RPC variable. For Ethereum
+      // that is `ETHEREUM_RPC_URL`; the value is never taken from the caller.
       process.env.KADE_MORPHO_VAULT_ADDRESS = VAULT;
       process.env.KADE_MORPHO_USDC_ADDRESS = USDC;
 
       delete process.env.ETHEREUM_RPC_URL;
       await beginDeposit(BEGIN_INPUT);
       expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
-        { safeAddress: SAFE, amountUsdc: '25000' },
-        { mainnetConfigured: false },
+        { safeAddress: SAFE, amountUsdc: '25000', chainId: 1 },
+        { railConfigured: false },
       );
 
       process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
       await beginDeposit(BEGIN_INPUT);
       expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
-        { safeAddress: SAFE, amountUsdc: '25000' },
-        { mainnetConfigured: true },
+        { safeAddress: SAFE, amountUsdc: '25000', chainId: 1 },
+        { railConfigured: true },
+      );
+
+      // A Base deposit is judged on Base's own variable, never Ethereum's.
+      delete process.env.BASE_RPC_URL;
+      await beginDeposit({ ...BEGIN_INPUT, chainId: 8453 });
+      expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
+        { safeAddress: SAFE, amountUsdc: '25000', chainId: 8453 },
+        { railConfigured: false },
+      );
+      process.env.BASE_RPC_URL = 'https://base.example';
+      await beginDeposit({ ...BEGIN_INPUT, chainId: 8453 });
+      expect(hoisted.prepareMorphoVaultDeposit).toHaveBeenLastCalledWith(
+        { safeAddress: SAFE, amountUsdc: '25000', chainId: 8453 },
+        { railConfigured: true },
       );
     } finally {
       const restore = (key: string, value: string | undefined) => {
@@ -370,6 +386,7 @@ describe('beginDeposit', () => {
         else process.env[key] = value;
       };
       restore('ETHEREUM_RPC_URL', previous.rpc);
+      restore('BASE_RPC_URL', previous.baseRpc);
       restore('KADE_MORPHO_VAULT_ADDRESS', previous.vault);
       restore('KADE_MORPHO_USDC_ADDRESS', previous.usdc);
     }
@@ -422,11 +439,11 @@ describe('beginDeposit', () => {
     expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
   });
 
-  it('passes the vault/mainnet gates through without building', async () => {
+  it('passes the vault/rail gates through without building', async () => {
     hoisted.prepareMorphoVaultDeposit.mockResolvedValue({
       status: 'gated',
-      gate: 'mainnet-not-configured',
-      reason: 'The Ethereum-mainnet rail is not configured (no RPC/payer).',
+      gate: 'rail-not-configured',
+      reason: 'The Ethereum rail is not configured (no RPC/payer).',
       gated: true,
     });
 
@@ -434,8 +451,8 @@ describe('beginDeposit', () => {
 
     expect(result).toEqual({
       status: 'gated',
-      gate: 'mainnet-not-configured',
-      reason: 'The Ethereum-mainnet rail is not configured (no RPC/payer).',
+      gate: 'rail-not-configured',
+      reason: 'The Ethereum rail is not configured (no RPC/payer).',
     });
     expect(hoisted.buildResidentSafeBatchFromEnv).not.toHaveBeenCalled();
   });
@@ -460,7 +477,7 @@ describe('beginDeposit', () => {
 
 describe('completeDeposit', () => {
   it('submits the retained operation and reports a confirmed send', async () => {
-    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result).toEqual({
       status: 'sent',
@@ -485,7 +502,7 @@ describe('completeDeposit', () => {
       chainId: 1,
     });
 
-    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result).toMatchObject({ status: 'failed', sent: false, stage: 'resolve' });
     expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
@@ -499,7 +516,7 @@ describe('completeDeposit', () => {
       reason: 'The passkey attached no signature to the operation.',
     });
 
-    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result).toEqual({
       status: 'failed',
@@ -512,7 +529,7 @@ describe('completeDeposit', () => {
   it('refuses before the engine when there is no stored passkey', async () => {
     hoisted.loadPasskeyCredential.mockResolvedValue(null);
 
-    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result).toEqual({
       status: 'failed',
@@ -526,9 +543,26 @@ describe('completeDeposit', () => {
   it('refuses before the engine when there is no session', async () => {
     hoisted.getSessionUser.mockResolvedValue(null);
 
-    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION });
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result).toMatchObject({ status: 'failed', sent: false, stage: 'resolve' });
     expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+  });
+
+  it('refuses a chain with no pinned vault rather than defaulting a network', async () => {
+    // Base Sepolia is deferred: it has no MetaMorpho rail, so a submit naming it
+    // is refused with the chain in the reason and never reaches the engine.
+    const result = await completeDeposit({
+      token: TOKEN,
+      assertion: ASSERTION,
+      chainId: 84532,
+    });
+
+    expect(result).toMatchObject({ status: 'failed', sent: false, stage: 'resolve' });
+    if (result.status === 'failed') {
+      expect(result.reason).toContain('84532');
+    }
+    expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
+    expect(hoisted.deriveAccountFromPasskey).not.toHaveBeenCalled();
   });
 });

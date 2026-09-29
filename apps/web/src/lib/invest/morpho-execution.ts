@@ -7,6 +7,7 @@ import {
   type MorphoVaultDepositPlan,
 } from './morpho-deposit';
 import {
+  morphoChainName,
   readMorphoVaultConfig,
   readMorphoVaultConfigForChain,
   type MorphoEnv,
@@ -38,20 +39,21 @@ import {
  * available once the resident holds a credential, and this module no longer
  * takes one.
  *
- * The vault rail is now **per chain** (T23): an explicit `chainId` resolves
+ * The vault rail is **per chain** (T23): an explicit `chainId` resolves
  * that chain's pinned MetaMorpho vault (`@kade/shared`,
  * `METAMORPHO_VAULT_DEPLOYMENTS`) and a chain with no pinned vault is gated
  * `vault-not-configured` — it never borrows another chain's vault. Omitting the
- * chain keeps the legacy Ethereum-mainnet env rail the frozen Invest action
- * still calls; migrating that action to name its chain is a later task.
+ * chain keeps the legacy Ethereum-mainnet env rail for the pre-multichain
+ * callers and tests; the Invest action now always names its chain.
  *
- * The RPC rail gate (`mainnetConfigured`) remains caller-supplied and scoped to
- * the legacy mainnet rail; the per-chain screen that supplies a per-chain rail
- * flag is a later task (T23 dependency). Nothing here signs or sends.
+ * The RPC rail gate (`railConfigured`) is caller-supplied and per chain: the
+ * Invest action supplies `isMorphoRailConfiguredForChain(chainId)`, so a Base
+ * deposit is judged on Base's own endpoint and a chain whose rail is missing is
+ * refused without reaching another chain's RPC. Nothing here signs or sends.
  */
 
 /** Why the deposit cannot be built. */
-export type VaultDepositGate = 'vault-not-configured' | 'mainnet-not-configured';
+export type VaultDepositGate = 'vault-not-configured' | 'rail-not-configured';
 
 /**
  * The outcome of asking to build a deposit.
@@ -86,10 +88,12 @@ export type MorphoVaultDepositResult =
 export interface MorphoVaultExecutionDependencies {
   readonly env?: MorphoEnv;
   /**
-   * Whether the legacy Ethereum-mainnet rail (RPC) is configured. Supplied by
-   * the caller; defaults to `false`. A per-chain rail flag is a later task.
+   * Whether the named chain's rail (RPC/payer) is configured. Supplied by the
+   * caller; defaults to `false` so a missing flag refuses rather than assuming
+   * a rail. The Invest action supplies the per-chain
+   * `isMorphoRailConfiguredForChain(chainId)`.
    */
-  readonly mainnetConfigured?: boolean;
+  readonly railConfigured?: boolean;
 }
 
 export interface MorphoVaultDepositRequest {
@@ -135,6 +139,21 @@ function missingVaultReason(chainId: number | undefined): string {
   );
 }
 
+/** The refusal message when a chain's RPC/payer rail is absent. */
+function missingRailReason(chainId: number | undefined): string {
+  if (chainId === undefined) {
+    return (
+      'The Ethereum-mainnet rail is not configured (no RPC/payer). The ' +
+      'deposit cannot be submitted until mainnet funding is supplied.'
+    );
+  }
+  return (
+    `The ${morphoChainName(chainId)} rail is not configured (no RPC/payer). ` +
+    'The deposit cannot be submitted on that chain until its funding is ' +
+    'supplied.'
+  );
+}
+
 /**
  * Build, and only build, a MetaMorpho USDC deposit.
  *
@@ -142,7 +161,8 @@ function missingVaultReason(chainId: number | undefined): string {
  *
  *   1. Resolve the vault config. Absent → `vault-not-configured`; nothing is
  *      built against a fabricated address.
- *   2. Check the mainnet rail. Absent → `mainnet-not-configured`.
+ *   2. Check the named chain's rail. Absent → `rail-not-configured`, and the
+ *      reason names the chain.
  *   3. Build the plan. A malformed amount, a wrong chain or a bad Safe address is
  *      a refusal, not a sent transaction.
  *
@@ -163,13 +183,11 @@ export async function prepareMorphoVaultDeposit(
     };
   }
 
-  if (!deps.mainnetConfigured) {
+  if (!deps.railConfigured) {
     return {
       status: 'gated',
-      gate: 'mainnet-not-configured',
-      reason:
-        'The Ethereum-mainnet rail is not configured (no RPC/payer). The ' +
-        'deposit cannot be submitted until mainnet funding is supplied.',
+      gate: 'rail-not-configured',
+      reason: missingRailReason(request.chainId),
       gated: true,
     };
   }

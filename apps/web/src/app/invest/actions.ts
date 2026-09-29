@@ -12,8 +12,8 @@ import {
 } from '@/lib/safe/derive-account';
 import { prepareMorphoVaultDeposit } from '@/lib/invest/morpho-execution';
 import {
-  isMainnetRailConfigured,
-  morphoChainId,
+  isMorphoRailConfiguredForChain,
+  isMorphoVaultConfiguredForChain,
   morphoChainName,
 } from '@/lib/invest/morpho-config';
 import { checkSafeDepositFunding } from '@/lib/invest/safe-usdc-balance';
@@ -36,21 +36,32 @@ import type {
  * one server call. The flow is therefore split:
  *
  *   1. `beginDeposit` — server, no signing. Resolves the resident, their stored
- *      credential and their recorded Safe, builds the Morpho calls, and retains
- *      the Safe operation server-side. Returns only `{ token, hash,
- *      credentialId }`, where `hash` is the SafeOp EIP-712 hash the passkey must
- *      sign.
+ *      credential and their recorded Safe, builds the Morpho calls for the
+ *      **named chain**, and retains the Safe operation server-side. Returns only
+ *      `{ token, hash, credentialId, chainId }`, where `hash` is the SafeOp
+ *      EIP-712 hash the passkey must sign.
  *   2. `completeDeposit` — server, after the browser signs. Takes only
- *      `{ token, assertion }`, resolves the same signer and Safe, and submits
- *      the retained operation. Nothing here is trusted from the client except
- *      the three raw WebAuthn assertion pieces.
+ *      `{ token, assertion, chainId }`, resolves the same signer and Safe, and
+ *      submits the retained operation on the named chain. Nothing here is
+ *      trusted from the client except the three raw WebAuthn assertion pieces
+ *      and the (validated) chain selector; the operation's calls and target stay
+ *      server-held.
+ *
+ * The chain is always **explicit**: `beginDeposit` resolves the named chain's
+ * vault and RPC, and a chain with no rail is refused rather than defaulted.
  *
  * The signer is built server-side from the **stored credential** — never named
  * by the caller — and without a `getFn`: the browser supplies the assertion,
  * which is the entire point of the split.
  */
 
-/** A serialisable summary of the resolved vault, for the page to render. */
+/**
+ * One chain's serialisable MetaMorpho rail summary, for the page to render.
+ *
+ * The Invest screen receives one of these per chain and lets the resident pick
+ * exactly one; `configured` marks a rail whose vault **and** RPC are both
+ * present (a server-resolved UI hint, never a security gate).
+ */
 export interface InvestVaultSummary {
   readonly configured: boolean;
   readonly chainId: number;
@@ -79,6 +90,13 @@ export type BuildDepositResult =
        * the browser can select it in `allowCredentials`. Not a secret.
        */
       readonly credentialId: string;
+      /**
+       * The chain the retained operation was built for, resolved server-side
+       * from the named rail. The screen carries this value into the submit call
+       * so the signed operation is submitted on the chain it was built for; the
+       * submit phase validates it against the pinned registry.
+       */
+      readonly chainId: number;
     };
 
 /**
@@ -176,12 +194,13 @@ async function resolveDepositContext(): Promise<DepositContext> {
  * The Safe's state on the **deposit chain**, verified against the record.
  *
  * The recorded Safe is Sepolia-scoped (`deployment_chain_id = 11155111`), but
- * the deposit executes on Ethereum mainnet. Safe's contracts live at the same
- * addresses on every chain and the address was derived from the passkey, so the
- * same address is expected on mainnet — counterfactual there until its first
- * user operation deploys it. This re-derives the account on the deposit chain
- * rather than assuming the record's deployment state, because initialising a
- * pack for an address with no code on that chain makes the SDK read
+ * the deposit executes on the resident's selected rail chain (Ethereum mainnet,
+ * Base or Arbitrum One). Safe's contracts live at the same addresses on every
+ * chain and the address was derived from the passkey, so the same address is
+ * expected there — counterfactual until its first user operation deploys it.
+ * This re-derives the account on the deposit chain rather than assuming the
+ * record's deployment state, because initialising a pack for an address with no
+ * code on that chain makes the SDK read
  * `getModules()`/`getFallbackHandler()` from nothing and fail.
  *
  * It is deliberately fail-closed: the derived address must equal the address
@@ -245,14 +264,20 @@ async function resolveDepositSafe(
  * Phase 1 — build the deposit and return the hash the passkey must sign.
  *
  * This **signs nothing**: it builds the plan and the user operation, retains the
- * operation server-side and returns `{ token, hash, credentialId }`. Gate state
- * is resolved here, server-side, from the environment and the resident's own
- * state; no gate flag is taken from the caller, so a client cannot turn a gate
- * off.
+ * operation server-side and returns `{ token, hash, credentialId, chainId }`.
+ * Gate state is resolved here, server-side, from the environment and the
+ * resident's own state; no gate flag is taken from the caller, so a client
+ * cannot turn a gate off.
+ *
+ * The chain is **explicit**: the caller names the rail (the screen's selected
+ * chain) and the server resolves *that* chain's vault and its own RPC. A chain
+ * with no pinned vault or no configured rail is refused with a reason naming it,
+ * and no other chain's vault is ever substituted.
  */
 export async function beginDeposit(input: {
   readonly safeAddress: string;
   readonly amountUsdc: string;
+  readonly chainId: number;
 }): Promise<BuildDepositResult> {
   const context = await resolveDepositContext();
   if (!context.ok) {
@@ -273,12 +298,17 @@ export async function beginDeposit(input: {
   }
 
   // Gate state is resolved here, server-side. `prepareMorphoVaultDeposit`
-  // resolves the vault configuration from the environment; the mainnet rail is
-  // judged on that configuration plus the reserved `ETHEREUM_RPC_URL`. No gate
-  // flag is taken from the caller, so a client cannot turn a gate off.
+  // resolves the named chain's vault configuration from the registry (and, for
+  // Ethereum, the env override) and the rail is judged on that chain's own RPC
+  // variable. No gate flag is taken from the caller, so a client cannot turn a
+  // gate off, and a chain with no rail is refused rather than borrowing one.
   const result = await prepareMorphoVaultDeposit(
-    { safeAddress: context.safeAddress, amountUsdc: input.amountUsdc },
-    { mainnetConfigured: isMainnetRailConfigured() },
+    {
+      safeAddress: context.safeAddress,
+      amountUsdc: input.amountUsdc,
+      chainId: input.chainId,
+    },
+    { railConfigured: isMorphoRailConfiguredForChain(input.chainId) },
   );
 
   if (result.status === 'gated') {
@@ -287,7 +317,7 @@ export async function beginDeposit(input: {
 
   const plan = result.plan;
 
-  // The deposit executes on the plan's chain (Ethereum mainnet). The Safe's
+  // The deposit executes on the plan's chain (the named rail). The Safe's
   // state *there* is read and verified, not assumed from the Sepolia-scoped
   // record; the plan's calls already target the verified address.
   const safe = await resolveDepositSafe(
@@ -313,7 +343,7 @@ export async function beginDeposit(input: {
     safeAddress: context.safeAddress,
     usdc: plan.usdc,
     chainId: plan.chainId,
-    chainName: morphoChainName(),
+    chainName: morphoChainName(plan.chainId),
     amountUnits: plan.amountUnits,
   });
   if (!funding.ok) {
@@ -336,6 +366,9 @@ export async function beginDeposit(input: {
       token: built.token,
       hash: built.hash,
       credentialId: context.credentialId,
+      // The chain the operation was actually built for, from the resolved plan
+      // — not a value the client supplied.
+      chainId: plan.chainId,
     };
   }
 
@@ -362,22 +395,43 @@ export async function beginDeposit(input: {
 /**
  * Phase 2 — attach the browser's assertion to the retained operation and submit.
  *
- * The client supplies only `{ token, assertion }`. The signer and the Safe are
- * resolved server-side, exactly as in `beginDeposit`, so the operation is always
- * submitted from the resident's own Safe. The outcome is returned verbatim: a
+ * The client supplies only `{ token, assertion, chainId }`. The signer and the
+ * Safe are resolved server-side, exactly as in `beginDeposit`, so the operation
+ * is always submitted from the resident's own Safe. The chain is the one
+ * `beginDeposit` returned for the built operation, and it is validated here
+ * against the vault registry: a chain with no pinned vault is refused rather
+ * than submitted on a default network. The outcome is returned verbatim: a
  * `sent` result appears only for a confirmed receipt, and every refusal names
  * its stage.
+ *
+ * The chain is not a secret and choosing it can only pick which rail the
+ * retained operation is sent to; it cannot change the operation's calls or
+ * target, which stay server-held and are hash-checked before signing.
  */
 export async function completeDeposit(input: {
   readonly token: string;
   readonly assertion: SafeAssertionParts;
+  readonly chainId: number;
 }): Promise<CompleteDepositResult> {
   const context = await resolveDepositContext();
   if (!context.ok) {
     return { status: 'failed', sent: false, stage: 'resolve', reason: context.reason };
   }
 
-  const chainId = morphoChainId();
+  // The chain must be one with a pinned vault. A deferred or unknown chain is
+  // refused loudly rather than falling back to a default that could submit on
+  // the wrong network.
+  if (!isMorphoVaultConfiguredForChain(input.chainId)) {
+    return {
+      status: 'failed',
+      sent: false,
+      stage: 'resolve',
+      reason:
+        `No MetaMorpho vault is configured for chain ${input.chainId}, so ` +
+        'nothing was submitted.',
+    };
+  }
+  const chainId = input.chainId;
 
   // Re-resolve the deposit-chain Safe exactly as the build phase did, so the
   // submit pack is initialised for the right branch (existing vs predicted) and

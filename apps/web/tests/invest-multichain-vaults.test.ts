@@ -122,7 +122,7 @@ describe('an unconfigured chain fails closed', () => {
   it('refuses to build and names the chain, substituting no other vault', async () => {
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '10', chainId: UNKNOWN },
-      { env: {}, mainnetConfigured: true },
+      { env: {}, railConfigured: true },
     );
 
     expect(result.status).toBe('gated');
@@ -137,7 +137,7 @@ describe('an unconfigured chain fails closed', () => {
   it('refuses a deferred chain (Base Sepolia) the same way', async () => {
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '10', chainId: CHAIN_IDS.baseSepolia },
-      { env: {}, mainnetConfigured: true },
+      { env: {}, railConfigured: true },
     );
 
     expect(result.status).toBe('gated');
@@ -149,10 +149,40 @@ describe('an unconfigured chain fails closed', () => {
 });
 
 describe('explicit chain selection', () => {
+  it('builds each of the three chains from its own vault and USDC', async () => {
+    for (const chainId of CHAINS) {
+      const result = await prepareMorphoVaultDeposit(
+        { safeAddress: SAFE, amountUsdc: '10', chainId },
+        { env: {}, railConfigured: true },
+      );
+
+      expect(result.status, `chain ${chainId}`).toBe('ready-to-execute');
+      if (result.status === 'ready-to-execute') {
+        expect(result.plan.chainId).toBe(chainId);
+        expect(result.plan.vault).toBe(EXPECTED[chainId].vault);
+        expect(result.plan.usdc).toBe(EXPECTED[chainId].usdc);
+      }
+    }
+  });
+
+  it('refuses a chain whose rail is missing, naming that chain', async () => {
+    const result = await prepareMorphoVaultDeposit(
+      { safeAddress: SAFE, amountUsdc: '10', chainId: CHAIN_IDS.arbitrum },
+      { env: {}, railConfigured: false },
+    );
+
+    expect(result.status).toBe('gated');
+    if (result.status === 'gated') {
+      expect(result.gate).toBe('rail-not-configured');
+      expect(result.reason).toMatch(/Arbitrum One/);
+      expect(result.plan).toBeUndefined();
+    }
+  });
+
   it('builds the named chain’s rail, not Ethereum’s', async () => {
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '10', chainId: CHAIN_IDS.base },
-      { env: {}, mainnetConfigured: true },
+      { env: {}, railConfigured: true },
     );
 
     expect(result.status).toBe('ready-to-execute');

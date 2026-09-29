@@ -29,7 +29,7 @@ describe('prepareMorphoVaultDeposit', () => {
   it('is gated on the vault when no KADE_MORPHO_* configuration exists', async () => {
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: {},
-      mainnetConfigured: true,
+      railConfigured: true,
     });
     expect(result.status).toBe('gated');
     expect(result.gated).toBe(true);
@@ -39,13 +39,13 @@ describe('prepareMorphoVaultDeposit', () => {
     }
   });
 
-  it('is gated on mainnet even when the vault is configured', async () => {
+  it('is gated on the rail even when the vault is configured', async () => {
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
-      mainnetConfigured: false,
+      railConfigured: false,
     });
     expect(result.status).toBe('gated');
-    if (result.status === 'gated') expect(result.gate).toBe('mainnet-not-configured');
+    if (result.status === 'gated') expect(result.gate).toBe('rail-not-configured');
   });
 
   it('builds the plan as ready-to-execute once the vault and rail are set, with no signer', async () => {
@@ -53,7 +53,7 @@ describe('prepareMorphoVaultDeposit', () => {
     // and needs no deployment. Building is a pure server-side step.
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
-      mainnetConfigured: true,
+      railConfigured: true,
     });
     expect(result.status).toBe('ready-to-execute');
     expect(result.gated).toBe(true);
@@ -67,7 +67,7 @@ describe('prepareMorphoVaultDeposit', () => {
   it('never reports a sent transaction', async () => {
     const result = await prepareMorphoVaultDeposit(REQUEST, {
       env: COMPLETE_ENV,
-      mainnetConfigured: true,
+      railConfigured: true,
     });
     expect(['gated', 'ready-to-execute']).toContain(result.status);
     expect(result).not.toHaveProperty('transactionHash');
@@ -76,7 +76,7 @@ describe('prepareMorphoVaultDeposit', () => {
   it('treats a malformed amount as a gate refusal, not a sent transaction', async () => {
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '0' },
-      { env: COMPLETE_ENV, mainnetConfigured: true },
+      { env: COMPLETE_ENV, railConfigured: true },
     );
     expect(result.status).toBe('gated');
     expect(result.gated).toBe(true);
@@ -85,7 +85,7 @@ describe('prepareMorphoVaultDeposit', () => {
   it('refuses a wrong chain when the caller names one', async () => {
     const result = await prepareMorphoVaultDeposit(
       { safeAddress: SAFE, amountUsdc: '25000', chainId: 11155111 },
-      { env: COMPLETE_ENV, mainnetConfigured: true },
+      { env: COMPLETE_ENV, railConfigured: true },
     );
     expect(result.status).toBe('gated');
     expect(result.gated).toBe(true);

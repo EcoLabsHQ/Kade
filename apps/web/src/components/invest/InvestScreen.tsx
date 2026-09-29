@@ -11,6 +11,7 @@ import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
 import { beginDeposit, completeDeposit, type InvestVaultSummary } from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
+import { chainColor } from '@/lib/wealth/chain-colors';
 import {
   addressExplorerUrl,
   transactionExplorerUrl,
@@ -30,18 +31,24 @@ import {
  * retained operation and confirms the receipt (`completeDeposit`). Success is
  * reported only for a confirmed receipt; a gated build, a dismissed prompt and a
  * failed submission each report their own honest state.
+ *
+ * The deposit's chain is always explicit: the modal lists the MetaMorpho rails
+ * (Ethereum, Base, Arbitrum One) and the resident picks one, which is shown
+ * before signing and carried through `beginDeposit` / `completeDeposit`.
  */
 
 export interface InvestScreenProps {
   /**
-   * The resolved vault, so the screen can name the configured instrument.
+   * The MetaMorpho rails, one summary per chain (Ethereum, Base, Arbitrum One).
    *
-   * `configured` is a server-resolved **UI hint** only, to keep the control
-   * disabled until an instrument that can be built is present. It is not a
-   * security gate: `beginDeposit` re-reads the vault configuration and the
-   * mainnet rail itself and refuses honestly with a reason.
+   * Every rail is rendered so the resident can see which chains have a
+   * configured vault and choose exactly one. `configured` is a server-resolved
+   * **UI hint** only, to keep the control disabled until a rail that can be
+   * built is selected. It is not a security gate: `beginDeposit` re-reads the
+   * named chain's vault configuration and its own rail and refuses honestly
+   * with a reason.
    */
-  readonly vault: InvestVaultSummary;
+  readonly vaults: readonly InvestVaultSummary[];
   /**
    * The resident Safe that would own the position, or null when none is yet
    * recorded.
@@ -71,7 +78,9 @@ interface Instrument {
  * The reference's instrument list. The Morpho row's label and venue now name
  * the instrument accurately — a **MetaMorpho vault**, not a Morpho Blue market.
  * `wired` marks the one instrument this iteration has a call path for; the rest
- * render as the baseline does.
+ * render as the baseline does. The Morpho row's chain cell is derived at render
+ * from the configured rails, so it names the chains that can actually take the
+ * deposit rather than a hard-coded one.
  *
  * The vault's row carries no yield figure: this build has no source for the
  * vault's current APY, so it is presented as unavailable rather than quoting the
@@ -81,7 +90,7 @@ const INSTRUMENTS: readonly Instrument[] = [
   {
     key: 'morpho',
     name: 'Morpho USDC vault',
-    venue: 'MetaMorpho · Ethereum vault',
+    venue: 'MetaMorpho · multichain vault',
     type: 'Lending vault',
     terms: 'Variable APY · not quoted',
     minimum: '$100',
@@ -148,12 +157,19 @@ type AllocateState =
       readonly reason: string;
       /** Whether the operation reached the bundler before the refusal. */
       readonly sent: boolean;
+      /** The chain the failed deposit was for, so the copy names it. */
+      readonly chainName: string;
     }
   | {
       readonly kind: 'sent';
       readonly transactionHash: string | null;
       readonly userOperationHash: string;
       readonly amountUsdc: string;
+      /** The chain the confirmed deposit landed on. */
+      readonly chainId: number;
+      readonly chainName: string;
+      /** The MetaMorpho vault the confirmed deposit targeted, for the link. */
+      readonly vault: string | null;
     };
 
 const AMOUNT_PATTERN = /^\d+(\.\d{1,6})?$/;
@@ -166,22 +182,36 @@ function describeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
+export function InvestScreen({ vaults, safeAddress }: InvestScreenProps) {
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [amount, setAmount] = useState('25000');
   const [state, setState] = useState<AllocateState>({ kind: 'idle' });
+  // The resident's chosen rail, or null to fall back to the first configured
+  // one. The chain is never implicit on the wire: the resolved rail's chainId is
+  // always sent to the server.
+  const [railChoice, setRailChoice] = useState<number | null>(null);
+
+  const configuredRails = vaults.filter((rail) => rail.configured);
+  // The resident's choice when it is still configured, otherwise the first
+  // configured rail (registry order: Ethereum, Base, Arbitrum). Null only when
+  // no chain has a usable rail.
+  const selectedRail =
+    vaults.find((rail) => rail.chainId === railChoice && rail.configured) ??
+    configuredRails[0] ??
+    null;
 
   const amountValid = AMOUNT_PATTERN.test(amount.trim()) && Number(amount) > 0;
   // The client precondition is deliberately shallow and is not a security gate:
-  // `beginDeposit` resolves every gate server-side (the vault configuration,
-  // the mainnet rail and the Safe's state on the deposit chain) and refuses
-  // honestly with a reason. In particular there is no deployment requirement:
-  // a recorded Safe that is not yet deployed on the deposit chain can still
-  // start a deposit, because its first sponsored user operation deploys it.
+  // `beginDeposit` resolves every gate server-side (the named chain's vault, its
+  // own rail and the Safe's state on that chain) and refuses honestly with a
+  // reason. In particular there is no deployment requirement: a recorded Safe
+  // that is not yet deployed on the deposit chain can still start a deposit,
+  // because its first sponsored user operation deploys it.
   const canAllocate =
     selected !== null &&
     selected.wired &&
-    vault.configured &&
+    selectedRail !== null &&
+    selectedRail.configured &&
     safeAddress !== null &&
     amountValid;
   const busy =
@@ -192,6 +222,9 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
   function openInstrument(instrument: Instrument) {
     setSelected(instrument);
     setState({ kind: 'idle' });
+    // Reset to the first configured rail so each deposit starts from a visible,
+    // deterministic chain rather than a stale choice.
+    setRailChoice(null);
     const min = Number(instrument.minimum.replace(/[^0-9]/g, ''));
     setAmount(String(Math.max(10000, Number.isFinite(min) ? min : 10000)));
   }
@@ -207,23 +240,31 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
       setState({ kind: 'not-wired' });
       return;
     }
-    if (!canAllocate || safeAddress === null) return;
+    if (!canAllocate || safeAddress === null || selectedRail === null) return;
 
     const amountUsdc = amount.trim();
+    const chainName = selectedRail.chainName;
 
-    // Phase 1: the server builds the operation (signs nothing) and returns the
-    // SafeOp hash the passkey must sign.
+    // Phase 1: the server builds the operation (signs nothing) for the named
+    // chain and returns the SafeOp hash the passkey must sign.
     setState({ kind: 'building' });
     let begin;
     try {
-      // Gate state is not sent: `beginDeposit` resolves the vault and the
-      // mainnet rail itself, so the caller cannot turn a gate off.
+      // Gate state is not sent: `beginDeposit` resolves the named chain's vault
+      // and rail itself, so the caller cannot turn a gate off.
       begin = await beginDeposit({
         safeAddress,
         amountUsdc,
+        chainId: selectedRail.chainId,
       });
     } catch (cause) {
-      setState({ kind: 'failed', stage: 'build', reason: describeError(cause), sent: false });
+      setState({
+        kind: 'failed',
+        stage: 'build',
+        reason: describeError(cause),
+        sent: false,
+        chainName,
+      });
       return;
     }
 
@@ -246,17 +287,37 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
     } catch (cause) {
       // A dismissed or failed prompt must say so rather than fall silently back
       // to the form.
-      setState({ kind: 'failed', stage: 'passkey', reason: describeError(cause), sent: false });
+      setState({
+        kind: 'failed',
+        stage: 'passkey',
+        reason: describeError(cause),
+        sent: false,
+        chainName,
+      });
       return;
     }
 
-    // Phase 2: the server attaches the assertion and submits the retained op.
+    // Phase 2: the server attaches the assertion and submits the retained op on
+    // the chain the server built it for (from the build response, not the UI).
+    const builtChainId = begin.chainId;
+    const builtChainName =
+      vaults.find((rail) => rail.chainId === builtChainId)?.chainName ?? chainName;
     setState({ kind: 'submitting' });
     let result;
     try {
-      result = await completeDeposit({ token: begin.token, assertion });
+      result = await completeDeposit({
+        token: begin.token,
+        assertion,
+        chainId: builtChainId,
+      });
     } catch (cause) {
-      setState({ kind: 'failed', stage: 'submit', reason: describeError(cause), sent: false });
+      setState({
+        kind: 'failed',
+        stage: 'submit',
+        reason: describeError(cause),
+        sent: false,
+        chainName: builtChainName,
+      });
       return;
     }
 
@@ -266,6 +327,12 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
         transactionHash: result.transactionHash,
         userOperationHash: result.userOperationHash,
         amountUsdc,
+        chainId: builtChainId,
+        chainName: builtChainName,
+        // The vault the built operation targeted, from the same rail the server
+        // built for — not a re-selected UI value.
+        vault:
+          vaults.find((rail) => rail.chainId === builtChainId)?.vault ?? null,
       });
       return;
     }
@@ -275,8 +342,31 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
       return;
     }
 
-    setState({ kind: 'failed', stage: result.stage, reason: result.reason, sent: result.sent });
+    setState({
+      kind: 'failed',
+      stage: result.stage,
+      reason: result.reason,
+      sent: result.sent,
+      chainName: builtChainName,
+    });
   }
+
+  // The Morpho row's chain cell names the rails that can take the deposit, so
+  // the table does not falsely imply the vault is Ethereum-only. The swatch
+  // takes the first configured rail's colour.
+  const morphoChainLabel =
+    configuredRails.length > 0
+      ? configuredRails.map((rail) => rail.chainName).join(' · ')
+      : 'Not configured';
+  const instruments = INSTRUMENTS.map((instrument) =>
+    instrument.key === 'morpho'
+      ? {
+          ...instrument,
+          chain: morphoChainLabel,
+          chainColor: chainColor(configuredRails[0]?.chainName ?? 'Ethereum'),
+        }
+      : instrument,
+  );
 
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
@@ -340,7 +430,7 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
               <span />
             </div>
 
-            {INSTRUMENTS.map((instrument) => (
+            {instruments.map((instrument) => (
               <div
                 key={instrument.key}
                 style={{
@@ -473,6 +563,55 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
 
             {selected.wired ? (
               <>
+                <div style={{ marginTop: '14px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>Chain</div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      marginTop: '8px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    {vaults.map((rail) => {
+                      const isSelected = selectedRail?.chainId === rail.chainId;
+                      return (
+                        <button
+                          key={rail.chainId}
+                          type="button"
+                          onClick={() => setRailChoice(rail.chainId)}
+                          disabled={!rail.configured || busy}
+                          aria-pressed={isSelected}
+                          title={
+                            rail.configured
+                              ? `${rail.chainName} · chain ${rail.chainId}`
+                              : `No MetaMorpho vault rail is configured on ${rail.chainName}`
+                          }
+                          style={{
+                            height: '34px',
+                            border: `1px solid ${isSelected ? tokens.ink : tokens.border}`,
+                            borderRadius: '999px',
+                            padding: '0 14px',
+                            fontFamily: 'inherit',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            cursor:
+                              rail.configured && !busy ? 'pointer' : 'not-allowed',
+                            background: isSelected ? tokens.ink : '#fff',
+                            color: isSelected
+                              ? '#fff'
+                              : rail.configured
+                                ? tokens.chipFg
+                                : tokens.locked,
+                          }}
+                        >
+                          {rail.chainName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <label
                   htmlFor="invest-amount"
                   style={{
@@ -540,16 +679,23 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
                 </div>
 
                 <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
-                  <Row label="Vault chain" value={`Ethereum · ${vault.chainId}`} />
+                  <Row
+                    label="Vault chain"
+                    value={
+                      selectedRail
+                        ? `${selectedRail.chainName} · ${selectedRail.chainId}`
+                        : 'Not configured'
+                    }
+                  />
                   <Row
                     label="MetaMorpho vault"
-                    value={vault.vault ?? 'Not configured'}
-                    mono={vault.vault !== null}
+                    value={selectedRail?.vault ?? 'Not configured'}
+                    mono={selectedRail?.vault != null}
                   />
                   <Row
                     label="Underlying USDC"
-                    value={vault.usdc ?? 'Not configured'}
-                    mono={vault.usdc !== null}
+                    value={selectedRail?.usdc ?? 'Not configured'}
+                    mono={selectedRail?.usdc != null}
                   />
                 </dl>
 
@@ -560,13 +706,15 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
                     onClick={allocate}
                     ariaLabel="Build the deposit"
                     title={
-                      !vault.configured
-                        ? 'Configure the MetaMorpho vault first'
-                        : safeAddress === null
-                          ? 'No Safe is recorded for this account yet'
-                          : !amountValid
-                            ? 'Enter a positive USDC amount'
-                            : 'Build, sign and submit the deposit'
+                      selectedRail === null
+                        ? 'No MetaMorpho vault rail is configured on any chain'
+                        : !selectedRail.configured
+                          ? `The ${selectedRail.chainName} vault rail is not configured`
+                          : safeAddress === null
+                            ? 'No Safe is recorded for this account yet'
+                            : !amountValid
+                              ? 'Enter a positive USDC amount'
+                              : 'Build, sign and submit the deposit'
                     }
                   >
                     {state.kind === 'building'
@@ -610,15 +758,15 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
 
             {state.kind === 'submitting' ? (
               <TransactionProgress
-                label={`Submitting and confirming the deposit on ${vault.chainName}…`}
+                label={`Submitting and confirming the deposit on ${selectedRail?.chainName ?? ''}…`}
                 progressLabel="Confirming the deposit"
               />
             ) : null}
 
             {state.kind === 'failed' ? (
               <Notice tone="error" title="Deposit failed">
-                The deposit stopped at the <strong>{state.stage}</strong> step:{' '}
-                {state.reason}
+                The deposit on {state.chainName} stopped at the{' '}
+                <strong>{state.stage}</strong> step: {state.reason}
                 <div style={{ marginTop: '6px' }}>
                   {state.sent
                     ? 'The operation reached the bundler but was not confirmed.'
@@ -634,7 +782,7 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
               >
                 <Notice tone="success" title="Deposit submitted">
                   The deposit of {state.amountUsdc} USDC was submitted and its
-                  receipt confirmed on {vault.chainName}.
+                  receipt confirmed on {state.chainName}.
                 </Notice>
                 <dl style={{ margin: '12px 0 0', fontSize: '13px' }}>
                   <Detail label="Transaction">
@@ -643,7 +791,7 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
                         value={state.transactionHash}
                         label="transaction hash"
                         explorerUrl={transactionExplorerUrl(
-                          vault.chainId,
+                          state.chainId,
                           state.transactionHash,
                         )}
                       />
@@ -657,12 +805,12 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
                       label="user operation hash"
                     />
                   </Detail>
-                  {vault.vault ? (
+                  {state.vault ? (
                     <Detail label="MetaMorpho vault">
                       <CopyableValue
-                        value={vault.vault}
+                        value={state.vault}
                         label="MetaMorpho vault address"
-                        explorerUrl={addressExplorerUrl(vault.chainId, vault.vault)}
+                        explorerUrl={addressExplorerUrl(state.chainId, state.vault)}
                       />
                     </Detail>
                   ) : null}
@@ -671,7 +819,7 @@ export function InvestScreen({ vault, safeAddress }: InvestScreenProps) {
                       <CopyableValue
                         value={safeAddress}
                         label="Safe address"
-                        explorerUrl={addressExplorerUrl(vault.chainId, safeAddress)}
+                        explorerUrl={addressExplorerUrl(state.chainId, safeAddress)}
                       />
                     </Detail>
                   ) : null}
