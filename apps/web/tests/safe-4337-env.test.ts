@@ -14,10 +14,27 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  * SDK rather than silently dropped.
  */
 
-const hoisted = vi.hoisted(() => ({ init: vi.fn() }));
+const hoisted = vi.hoisted(() => ({
+  init: vi.fn(),
+  createBundlerClient: vi.fn(() => ({})),
+  safeInit: vi.fn(),
+  constructed: [] as unknown[],
+  instance: null as unknown,
+}));
 
-vi.mock('@safe-global/relay-kit', () => ({
-  Safe4337Pack: { init: hoisted.init },
+vi.mock('@safe-global/relay-kit', () => {
+  class Safe4337Pack {
+    static init = hoisted.init;
+    constructor(options: unknown) {
+      hoisted.constructed.push(options);
+      hoisted.instance = this;
+    }
+  }
+  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient };
+});
+
+vi.mock('@safe-global/protocol-kit', () => ({
+  default: { init: hoisted.safeInit },
 }));
 
 import { initSafe4337Pack } from '@/lib/safe/execute-safe-4337-env';
@@ -30,6 +47,29 @@ const SIGNER: PasskeySigner = {
   verifierAddress: '0x4444444444444444444444444444444444444444' as Address,
 };
 
+/**
+ * A minimal relay-kit seed: the create path reads the predicted config relay-kit
+ * composed, so the mock must expose it. The fallback handler is taken from the
+ * `customContracts` the seed was given, exactly as relay-kit does.
+ */
+function seedFor(input: {
+  readonly options: { readonly saltNonce?: string };
+  readonly customContracts?: { readonly safe4337ModuleAddress: string };
+}): unknown {
+  return {
+    protocolKit: {
+      getPredictedSafe: () => ({
+        safeAccountConfig: {
+          owners: [],
+          threshold: 1,
+          fallbackHandler: input.customContracts?.safe4337ModuleAddress,
+        },
+        safeDeploymentConfig: { safeVersion: '1.4.1', saltNonce: input.options.saltNonce },
+      }),
+    },
+  };
+}
+
 const RPC_KEYS = ['SEPOLIA_RPC_URL', 'ETHEREUM_RPC_URL'] as const;
 const PIMLICO_KEYS = ['PIMLICO_API_KEY', 'PIMLICO_POLICY_ID'] as const;
 
@@ -38,6 +78,7 @@ const ORIGINAL_ENV = { ...process.env };
 interface InitInput {
   readonly provider: string;
   readonly paymasterOptions: Record<string, unknown>;
+  readonly options: { readonly saltNonce?: string };
 }
 
 function lastInitInput(): InitInput {
@@ -56,7 +97,10 @@ function init(chainId: number): Promise<unknown> {
 
 beforeEach(() => {
   hoisted.init.mockReset();
-  hoisted.init.mockResolvedValue({});
+  hoisted.init.mockImplementation(async (input: unknown) => seedFor(input as never));
+  hoisted.safeInit.mockReset();
+  hoisted.safeInit.mockResolvedValue({});
+  hoisted.constructed.length = 0;
   for (const key of [...RPC_KEYS, ...PIMLICO_KEYS]) delete process.env[key];
 });
 

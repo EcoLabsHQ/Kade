@@ -12,10 +12,27 @@ import type { PasskeySigner } from '@/lib/safe/passkey-signer';
  * either would move the address recorded for existing residents.
  */
 
-const hoisted = vi.hoisted(() => ({ init: vi.fn() }));
+const hoisted = vi.hoisted(() => ({
+  init: vi.fn(),
+  createBundlerClient: vi.fn(() => ({})),
+  safeInit: vi.fn(),
+  constructed: [] as unknown[],
+  packMethods: {} as Record<string, unknown>,
+}));
 
-vi.mock('@safe-global/relay-kit', () => ({
-  Safe4337Pack: { init: hoisted.init },
+vi.mock('@safe-global/relay-kit', () => {
+  class Safe4337Pack {
+    static init = hoisted.init;
+    constructor(options: unknown) {
+      hoisted.constructed.push(options);
+      Object.assign(this, hoisted.packMethods);
+    }
+  }
+  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient };
+});
+
+vi.mock('@safe-global/protocol-kit', () => ({
+  default: { init: hoisted.safeInit },
 }));
 
 import {
@@ -57,8 +74,26 @@ const ENV_KEYS = [
 const ORIGINAL_ENV = { ...process.env };
 
 interface InitInput {
-  readonly options: { readonly owners: readonly string[]; readonly threshold: number };
+  readonly options: {
+    readonly owners: readonly string[];
+    readonly threshold: number;
+    readonly saltNonce?: string;
+  };
 }
+
+/** A relay-kit seed exposing the predicted config the create path pins. */
+const SEED = {
+  protocolKit: {
+    getPredictedSafe: () => ({
+      safeAccountConfig: {
+        owners: [SIGNER.verifierAddress, '0x94a4F6affBd8975951142c3999aEAB7ecee555c2'],
+        threshold: 1,
+        fallbackHandler: '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
+      },
+      safeDeploymentConfig: { safeVersion: '1.4.1', saltNonce: '0' },
+    }),
+  },
+};
 
 function fakePack(): {
   createTransaction: Mock;
@@ -79,6 +114,10 @@ function fakePack(): {
 
 beforeEach(() => {
   hoisted.init.mockReset();
+  hoisted.init.mockResolvedValue(SEED);
+  hoisted.safeInit.mockReset();
+  hoisted.safeInit.mockResolvedValue({});
+  hoisted.constructed.length = 0;
   for (const key of ENV_KEYS) delete process.env[key];
   process.env.SEPOLIA_RPC_URL = 'https://sepolia.example';
   process.env.PIMLICO_API_KEY = 'pim_test';
@@ -92,7 +131,9 @@ afterEach(() => {
 describe('the environment-wired split', () => {
   it('builds and submits through initSafe4337Pack, keeping the Safe inputs fixed', async () => {
     const pack = fakePack();
-    hoisted.init.mockResolvedValue(pack);
+    // The create path returns the pack assembled by the public constructor, so
+    // the fake methods are what the constructor's instance carries.
+    hoisted.packMethods = pack;
 
     const built = await buildResidentSafeBatchFromEnv({
       signer: SIGNER,
