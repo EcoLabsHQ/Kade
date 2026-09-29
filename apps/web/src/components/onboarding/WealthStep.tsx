@@ -686,7 +686,14 @@ export function WealthStep({
                     {chain.name} · {chain.nativeAmount} {chain.nativeSymbol}
                     {chain.usdc
                       ? ` · ${chain.usdc.amount} ${chain.usdc.symbol}`
-                      : ''}
+                      : chain.tokenFailure
+                        ? // The native read succeeded but the USDC sub-read did
+                          // not: say so explicitly with `—` rather than silently
+                          // omitting the token. The specific reason is carried on
+                          // `record.readError` and named below, exactly as a
+                          // whole-chain read failure is.
+                          ' · USDC —'
+                        : ''}
                   </span>
                   <span
                     style={{

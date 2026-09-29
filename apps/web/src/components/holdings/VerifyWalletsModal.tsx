@@ -6,6 +6,7 @@ import { useConnections, useSignMessage } from 'wagmi';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { UnverifiedHoldingWallet } from '@/lib/wealth/holdings';
+import type { EvmReadFailure } from '@/lib/wealth/types';
 import { shortAddress } from '@/lib/wealth/format';
 import { type WalletConnection } from './connected-addresses';
 import type { OwnershipCallbacks } from '@/lib/wallet/ownership-callbacks';
@@ -159,6 +160,20 @@ function LockedBody() {
   );
 }
 
+/**
+ * The specific reasons this wallet's USDC sub-read failed, one per chain, so the
+ * row can name *why* the token amount is unread instead of leaving the
+ * native-only total as if nothing were missing. A successful read, and a chain
+ * that was never read for USDC, contribute nothing; no zero is fabricated.
+ */
+function tokenFailuresOf(
+  wallet: UnverifiedHoldingWallet,
+): readonly EvmReadFailure[] {
+  return wallet.chains.flatMap((chain) =>
+    chain.tokenFailure ? [chain.tokenFailure] : [],
+  );
+}
+
 function ConfiguredBody({
   wallets,
   onAddConnectedWallet,
@@ -235,33 +250,43 @@ function ConfiguredBody({
     <div>
       {remaining.length > 0 ? (
         <ul style={list}>
-          {remaining.map((wallet) => (
-            <li key={wallet.address} style={row}>
-              <div style={{ minWidth: 0 }}>
-                <div title={wallet.address} style={rowAddress}>
-                  {shortAddress(wallet.address)}
+          {remaining.map((wallet) => {
+            const tokenFailures = tokenFailuresOf(wallet);
+            return (
+              <li key={wallet.address} style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div title={wallet.address} style={rowAddress}>
+                    {shortAddress(wallet.address)}
+                  </div>
+                  <div style={rowMeta}>
+                    <Chip tone="warning" dot>
+                      Unverified
+                    </Chip>
+                    <span style={rowProvenance}>
+                      {provenanceLabel(wallet.provider)} · chains{' '}
+                      {wallet.chainIds.join(', ')}
+                    </span>
+                  </div>
+                  {tokenFailures.length > 0 ? (
+                    <div style={rowTokenNote}>
+                      {tokenFailures
+                        .map((failure) => `USDC — ${failure.message}`)
+                        .join(' ')}
+                    </div>
+                  ) : null}
                 </div>
-                <div style={rowMeta}>
-                  <Chip tone="warning" dot>
-                    Unverified
-                  </Chip>
-                  <span style={rowProvenance}>
-                    {provenanceLabel(wallet.provider)} · chains{' '}
-                    {wallet.chainIds.join(', ')}
-                  </span>
-                </div>
-              </div>
-              <span style={rowValue}>
-                {wallet.readError || wallet.usd === null
-                  ? '—'
-                  : new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: 'USD',
-                      maximumFractionDigits: 0,
-                    }).format(wallet.usd)}
-              </span>
-            </li>
-          ))}
+                <span style={rowValue}>
+                  {wallet.readError || wallet.usd === null
+                    ? '—'
+                    : new Intl.NumberFormat('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        maximumFractionDigits: 0,
+                      }).format(wallet.usd)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p style={emptyNote}>
@@ -396,6 +421,14 @@ const rowMeta: React.CSSProperties = {
 const rowProvenance: React.CSSProperties = {
   fontSize: '11.5px',
   color: tokens.muted,
+};
+
+/** The specific reason a row's USDC sub-read is unread, never a silent gap. */
+const rowTokenNote: React.CSSProperties = {
+  marginTop: '4px',
+  fontSize: '11.5px',
+  color: tokens.danger,
+  lineHeight: 1.5,
 };
 
 const rowValue: React.CSSProperties = {

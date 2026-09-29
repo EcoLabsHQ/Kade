@@ -60,7 +60,14 @@ function totalUsd(chains: readonly EvmChainBalance[]): number | null {
 
 /**
  * Read one address's chains, keeping only the successful balances and naming
- * every unread chain with its specific reason.
+ * every unread chain — and every unread USDC sub-read — with its specific
+ * reason.
+ *
+ * A chain whose native read succeeded but whose USDC sub-read failed is still a
+ * successful chain (it is kept on `chains`, with its `tokenFailure`), and its
+ * token failure is added to `failures` so the record's `readError` names the
+ * specific reason rather than silently leaving the token unmentioned. A
+ * successful token read carries no `tokenFailure`.
  */
 async function readChains(
   address: string,
@@ -74,6 +81,9 @@ async function readChains(
   for (const read of reads) {
     if (read.ok && read.balance) {
       chains.push(read.balance);
+      if (read.balance.tokenFailure) {
+        failures.push(read.balance.tokenFailure);
+      }
     } else if (read.failure) {
       failures.push(read.failure);
     }
