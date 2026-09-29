@@ -1,7 +1,7 @@
 iteration: iteration-cross-chain-safe
 profile: NORMAL
 known_good: 8dcb1fc84204f42825e9e80ab6e80175be30cff8
-candidate: e08ba6abb4280246d985ca8339b4fbfd69d2c23e
+candidate: e7a7f1565b6c532d9c9e6928bc85f73af23c5ef9
 mode: recheck
 reviewed_scopes:
   safe_derivation: complete
@@ -10,8 +10,8 @@ reviewed_scopes:
   wealth_reads: complete
   ui_components: complete
   contracts: not_applicable
-active_findings: [F2, F6]
-resolved_findings: [F1, F3, F4, F5]
+active_findings: [F2]
+resolved_findings: [F1, F3, F4, F5, F6]
 next_finding_id: F7
 recheck_attempts:
   F1: 0
@@ -19,7 +19,7 @@ recheck_attempts:
   F3: 0
   F4: 1
   F5: 1
-  F6: 0
+  F6: 1
 review_complete: true
 verdict: review_passed
 session_history:
@@ -44,34 +44,32 @@ session_history:
     verdict: review_passed
     resolved: [F4, F5]
     warnings: [F2, F6]
-promotion_status: |
-  NOT PROMOTED, and deliberately so.
-
-  REVIEW PASSED on c142ffa25acc1c3ee18d1f89086374e9e5df00a8 and VERIFICATION
-  PASSED on e08ba6adff1b1f0e2e5cc56bf3ba9f2e1a4a4f0e (the candidate this record
-  accompanies). But the vault deposit still fails in live use, so moving
-  `known-good` would claim a working deposit path that is not working. The
-  owner asked for the work to be pushed and left as it stands.
-
-open_live_defect: |
-  AA24 signature error on a Base deposit. The gas layer is fixed (AA26 gone,
-  the buffered 250000 is on the wire). What is proven: the app's getHash() IS
-  the EntryPoint's digest, every hashed field survives to the wire byte for
-  byte, the SDK does not re-sponsor at send, and the signature names the
-  correct owner. What is NOT proven: a hashed field appears to change after the
-  app serialises, which is not observable from the repository. Bounded
-  instrumentation landed in this candidate; one live attempt's diagnostic line
-  settles which branch holds. Until then the cause is unclaimed, on purpose.
-
+  recheck_2:
+    candidate: e7a7f1565b6c532d9c9e6928bc85f73af23c5ef9
+    verdict: review_passed
+    resolved: [F6]
+    warnings: [F2]
+    notes: >
+      safe_derivation rechecked after T36 (observational submit instrumentation)
+      and T38 (the floor moved from 250000 to the measured accepted 600000). F6
+      closed: the floor is now grounded in a live accepted measurement, and the
+      floor-only raise is monotone and identical to the old rule for every
+      estimate at or above 400000, so the deploy path is untouched. The
+      instrumentation is failure-path only, secret-free, and does not alter the
+      fail-closed outcome.
+promotion_status: >
+  PROMOTED. REVIEW PASSED and VERIFICATION PASSED on
+  e7a7f1565b6c532d9c9e6928bc85f73af23c5ef9, and the previously blocking
+  condition — a deposit path that did not actually work — is resolved by live
+  observation on this candidate: the resident's Base MetaVault position went
+  from 0.8983470010394154 to 1.3474821968572209 shares (1.0 to 1.5 USDC) and the
+  finish state reported transaction 0x61c1a634d164a420957c39a30bc22450cc1034553658a737f50a1593c7c87e18
+  with user operation 0xd3d8bd3c80682a28e1f71badb720ffe57a1455d53541cf9af44be1317e5385f4.
+  F2 is the only open finding and it is a non-blocking reachability WARN.
 carried_warnings:
   F2: >
     The recorded-Safe refresh is reachable only from the onboarding step; the
     deposit gate re-derives and compares but never refreshes. Fail-closed, no
-    funds orphaned, accepted as a reachability limitation.
-  F6: >
-    The 250000 verification-gas floor and 1.5x multiplier are deliberate
-    calibration from the two observed AA26 rejections at 51698, not from a
-    live success at the buffered value. No evidence to raise or lower it.
-
-verify_status: "./scripts/verify.sh -> VERIFICATION PASSED on e08ba6abb4280246d985ca8339b4fbfd69d2c23e with a clean tree"
+    funds orphaned. Still accurate on this candidate.
+verify_status: "./scripts/verify.sh -> VERIFICATION PASSED on e7a7f1565b6c532d9c9e6928bc85f73af23c5ef9 with a clean tree"
 human_gate: none

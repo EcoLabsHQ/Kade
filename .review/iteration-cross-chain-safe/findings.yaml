@@ -4,7 +4,7 @@
   title: "A failed USDC sub-read is dropped; the chain reports ok and the reason is lost"
   evidence: "apps/web/src/lib/wealth/evm.ts:919-940; apps/web/src/components/holdings/HoldingsScreen.tsx:396-417; apps/web/src/lib/wealth/vault-holdings.ts:308-325; apps/web/src/components/onboarding/WealthStep.tsx:563,743; apps/web/src/app/onboarding/wallet-actions.ts:84-88; apps/web/src/components/holdings/VerifyWalletsModal.tsx:207-216; apps/web/src/components/wallet/ConnectedWalletPanel.tsx:694-699"
   failure_mode: "Closed: a chain that reads natively but fails its USDC sub-read now carries tokenFailure, and every consumer names the specific reason on an explicit — row instead of omitting it."
-  materiality: "Requirement 4 satisfied (a failed read is reported with a specific reason); the class is closed on every consumer."
+  materiality: "Requirement satisfied: a failed read is reported with a specific reason. Class closed on every consumer."
   status: resolved
   introduced_by: 827e86f
   resolved_by: 80ce2e4
@@ -15,7 +15,7 @@
   title: "Recorded-Safe refresh only runs from the onboarding step; the deposit gate never refreshes"
   evidence: "apps/web/src/app/onboarding/account-actions.ts:93-162; apps/web/src/app/invest/actions.ts:222-261; apps/web/src/lib/safe/shell.ts:29-38"
   failure_mode: "A resident with a pre-fix row who never revisits /onboarding keeps a stale address; the deposit gate keeps refusing safe-not-verified. Fail-closed; no funds orphaned."
-  materiality: "Requirement 2 is delivered only for residents who re-enter onboarding. A reachability limitation, not a defect."
+  materiality: "A reachability limitation, not a defect. Accepted as a WARN. Putting a silent overwrite inside the gate would defeat its fail-closed intent."
   status: open
   introduced_by: 827e86f
   resolved_by: null
@@ -25,7 +25,7 @@
   scope: safe_derivation
   title: "Test comment claims a real-RPC end-to-end proof that is not in the repository"
   evidence: "apps/web/tests/safe-4337-singleton-pin.test.ts:29-33; apps/web/tests/proofs/safe-address-chain-parity.proof.ts; scripts/safe-chain-parity/run.sh"
-  failure_mode: "Closed: the comment now states mock-verified only and points at a committed, runnable, opt-in real-RPC proof."
+  failure_mode: "Closed: the comment states mock-verified only and points at a committed, runnable, opt-in real-RPC proof."
   materiality: "The misleading evidence claim about the iteration's critical requirement is corrected and backed by an executable proof."
   status: resolved
   introduced_by: 827e86f
@@ -34,11 +34,33 @@
 - id: F4
   severity: WARN
   scope: safe_derivation
-  title: "Two fixtures still encode an assumed provider/SDK shape rather than the real one"
-  evidence: "apps/web/tests/safe-4337-singleton-pin.test.ts:103-128; apps/web/tests/safe-4337-split.test.ts:100; apps/web/tests/safe-4337-split-env.test.ts:110"
-  failure_mode: "The singleton-pin seed mock is documented as faithful but uses relay-kit's single-call to/data instead of the passkey MultiSend batch, and the split tests' receipt fixtures omit the success boolean the provider always returns."
-  materiality: "Evidence fidelity. The assertions remain valid and the authoritative path is covered by safe-4337-receipt.test.ts."
-  status: open
+  title: "Two fixtures encode an assumed provider/SDK shape rather than the real one"
+  evidence: "apps/web/tests/safe-4337-split.test.ts:133-139; apps/web/tests/safe-4337-split-env.test.ts:128-132; apps/web/tests/safe-4337-singleton-pin.test.ts:109-159"
+  failure_mode: "Closed: the split receipts carry the provider's real shape (success: true plus a hex receipt status) and the singleton-pin seed reproduces relay-kit's passkey MultiSend flow."
+  materiality: "Evidence fidelity. The lesson it records matters more than the finding: a fixture built from the code's assumption proves nothing, which is how both the receipt defect and the paymaster-signature defect survived review."
+  status: resolved
   introduced_by: 08b24da
-  resolved_by: null
-  recheck_attempts: 0
+  resolved_by: c142ffa
+  recheck_attempts: 1
+- id: F5
+  severity: FAIL
+  scope: safe_derivation
+  title: "The verification-gas buffer ran after the paymaster signed, so every sponsored operation reverted AA34"
+  evidence: "apps/web/src/lib/safe/execute-safe-4337.ts:523-567,682-733; apps/web/src/lib/safe/execute-safe-4337-env.ts:9,368; node_modules/@safe-global/relay-kit/dist/esm/src/index.mjs:1236-1247,884-908,551-571,1417-1430; apps/web/tests/safe-4337-verification-gas.test.ts:118-137,243-268,390-410"
+  failure_mode: "Closed: the buffer is applied in the estimator's post-estimate hook, so the paymaster signs the buffered operation; addEstimations writes the same value back, and the build phase refuses if the value is missing or not written back."
+  materiality: "The fix replaced one rejected live deposit with another and would have broken every sponsored operation. The test that catches it is the one that models the paymaster's commitment over the account gas limits."
+  status: resolved
+  introduced_by: e151baf
+  resolved_by: c142ffa
+  recheck_attempts: 1
+- id: F6
+  severity: WARN
+  scope: safe_derivation
+  title: "The 250,000 verification-gas floor was calibration, not a measured sufficient value"
+  evidence: "apps/web/src/lib/safe/execute-safe-4337.ts:420-503; the reproduction table recorded in the source and in apps/web/tests/safe-4337-verification-gas.test.ts"
+  failure_mode: "CLOSED BY MEASUREMENT, and this warning was load-bearing. A sponsored reproduction on Sepolia with a throwaway passkey Safe changed only verificationGasLimit: 250000 -> AA24, 300000/400000 -> rejected, 450000 -> accepted, 600000 -> accepted with receipt success. When validation runs out of gas the Safe's checkNSignatures treats the failed inner call as an invalid signature, so the EntryPoint reports AA24 — a signature error for a gas shortfall. The floor is now 600000, a measured accepted value."
+  materiality: "This is the defect that cost the iteration its final hours and it was predicted here as a WARN. Raised floors are monotone and identical to the old rule for every estimate at or above 400000, so the deploy path is untouched."
+  status: resolved
+  introduced_by: e151baf
+  resolved_by: e7a7f15
+  recheck_attempts: 1
