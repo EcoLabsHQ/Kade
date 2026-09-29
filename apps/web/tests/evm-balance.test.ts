@@ -76,6 +76,11 @@ function tokenBalance(raw: string): unknown {
   return { status: '1', message: 'OK', result: raw };
 }
 
+/** Blockscout v2 stats body: the one ETH/USD price applied to every chain. */
+function stats(coinPrice: unknown): unknown {
+  return { coin_price: coinPrice };
+}
+
 /** Route a fake fetch by matching the URL, so call order does not matter. */
 function routedFetch(
   routes: readonly (readonly [string, unknown | (() => Response)])[],
@@ -147,8 +152,12 @@ describe('EVM_READ_CHAINS', () => {
 
 describe('readEvmBalances', () => {
   it('reads the native coin and USDC, and sums them into usd', async () => {
+    // The price comes from the one stats read, not the summary's
+    // `exchange_rate`: the summary carries a deliberately wrong rate to prove
+    // which source is actually used for the USD figure.
     const fetchImpl = routedFetch([
-      ['/api/v2/addresses/', summary('512300000000000000', '2764.7')],
+      ['/api/v2/stats', stats('2764.7')],
+      ['/api/v2/addresses/', summary('512300000000000000', '1')],
       ['action=tokenbalance', tokenBalance('183500000')],
     ]);
 
@@ -178,6 +187,7 @@ describe('readEvmBalances', () => {
 
   it('uses each chain baseUrl and its own USDC contract', async () => {
     const fetchImpl = routedFetch([
+      ['/api/v2/stats', stats('1')],
       [`${CHAIN_ONE.baseUrl}/api/v2`, summary('1000000000000000000', '1')],
       [`${CHAIN_ONE.baseUrl}/api?`, tokenBalance('5000000')],
       [`${CHAIN_TWO.baseUrl}/api/v2`, summary('2000000000000000000', '1')],
@@ -197,9 +207,12 @@ describe('readEvmBalances', () => {
     );
   });
 
-  it('leaves nativeUsd null on a null rate but still values the USDC', async () => {
+  it('leaves nativeUsd null when the price is unavailable but still values the USDC', async () => {
+    // A missing price must never fail the balance read: the native amount is
+    // still returned and only the USD figure is left blank.
     const fetchImpl = routedFetch([
-      ['/api/v2/addresses/', summary('1000000000000000000', null)],
+      ['/api/v2/stats', stats(null)],
+      ['/api/v2/addresses/', summary('1000000000000000000', '9999')],
       ['action=tokenbalance', tokenBalance('2500000')],
     ]);
 
@@ -219,6 +232,7 @@ describe('readEvmBalances', () => {
 
   it('keeps the chain and reports usdc null when the USDC read fails', async () => {
     const fetchImpl = routedFetch([
+      ['/api/v2/stats', stats('2')],
       ['/api/v2/addresses/', summary('1000000000000000000', '2')],
       [
         'action=tokenbalance',
