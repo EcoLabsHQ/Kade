@@ -50,11 +50,21 @@ function readString(env: MorphoEnv, key: string): string | null {
 
 /**
  * Resolve the vault configuration, or `null` when the environment does not
- * supply a complete, well-formed one.
+ * supply one that viem will accept.
  *
- * Returning `null` (rather than a placeholder) is deliberate: it is what lets
- * the Invest screen say "not configured" instead of building an `approve` and a
- * `deposit` against an address nobody controls.
+ * `checksumAddress` normalises every value to EIP-55, so a 20-byte address with
+ * a wrong or missing checksum — for example a mixed-case value whose case does
+ * not match `getAddress` — is handed out in the canonical form viem's ABI
+ * encoder accepts. The vault is therefore safe to put straight into a
+ * `readContract`/`encodeFunctionData` call; no `.env` edit is required, and the
+ * next value cannot reintroduce the defect.
+ *
+ * A missing key is *not* a misconfiguration, so it quietly resolves to `null`
+ * and the Invest screen says "not configured" instead of building an `approve`
+ * and a `deposit` against an address nobody controls. A **present but
+ * malformed** value (not 20 bytes) is a misconfiguration: it fails loudly with
+ * a message naming the offending environment variable, then fails closed to
+ * `null` so a typo surfaces without taking the route down (review finding F1).
  */
 export function readMorphoVaultConfig(
   env: MorphoEnv = process.env,
@@ -66,15 +76,16 @@ export function readMorphoVaultConfig(
   }
 
   try {
-    // Every address is parsed inside the guard: a malformed value anywhere —
-    // including the vault contract itself — must fail closed to `null`, never
-    // throw out of the reader and take the route down.
     return {
       vault: checksumAddress(vaultRaw, MORPHO_VAULT_ENV_KEYS.vault),
       usdc: checksumAddress(usdcRaw, MORPHO_VAULT_ENV_KEYS.usdc),
       chainId: CHAIN_IDS.ethereum,
     };
-  } catch {
+  } catch (cause) {
+    // `checksumAddress` names the offending variable in its message. Surface
+    // that loudly rather than swallowing it, then fail closed so the reader
+    // never throws out and takes the route down (F1, commit 956c62d).
+    console.warn(`[kade] ${cause instanceof Error ? cause.message : String(cause)}`);
     return null;
   }
 }
