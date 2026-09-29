@@ -1,0 +1,77 @@
+iteration: iteration-cross-chain-safe
+profile: NORMAL
+known_good: 8dcb1fc84204f42825e9e80ab6e80175be30cff8
+candidate: e08ba6abb4280246d985ca8339b4fbfd69d2c23e
+mode: recheck
+reviewed_scopes:
+  safe_derivation: complete
+  fund_routing: complete
+  database_state: complete
+  wealth_reads: complete
+  ui_components: complete
+  contracts: not_applicable
+active_findings: [F2, F6]
+resolved_findings: [F1, F3, F4, F5]
+next_finding_id: F7
+recheck_attempts:
+  F1: 0
+  F2: 0
+  F3: 0
+  F4: 1
+  F5: 1
+  F6: 0
+review_complete: true
+verdict: review_passed
+session_history:
+  discovery_1:
+    candidate: 827e86fca86752e0bb37a32fd2dc5f59d0cdcd5a
+    verdict: review_failed
+    blocking: [F1]
+    warnings: [F2, F3]
+  discovery_2:
+    candidate: 08b24dab0535ebf9bed9fd93dfabf61648e2c990
+    kind: DISCOVERY RESTART
+    verdict: review_passed
+    resolved: [F1, F3]
+    warnings: [F2, F4]
+  resume_1:
+    candidate: e151baf051fabde5e6092957ae6f4471eefaec41
+    verdict: review_failed
+    blocking: [F5]
+    warnings: [F2, F4, F6]
+  recheck_1:
+    candidate: c142ffa25acc1c3ee18d1f89086374e9e5df00a8
+    verdict: review_passed
+    resolved: [F4, F5]
+    warnings: [F2, F6]
+promotion_status: |
+  NOT PROMOTED, and deliberately so.
+
+  REVIEW PASSED on c142ffa25acc1c3ee18d1f89086374e9e5df00a8 and VERIFICATION
+  PASSED on e08ba6adff1b1f0e2e5cc56bf3ba9f2e1a4a4f0e (the candidate this record
+  accompanies). But the vault deposit still fails in live use, so moving
+  `known-good` would claim a working deposit path that is not working. The
+  owner asked for the work to be pushed and left as it stands.
+
+open_live_defect: |
+  AA24 signature error on a Base deposit. The gas layer is fixed (AA26 gone,
+  the buffered 250000 is on the wire). What is proven: the app's getHash() IS
+  the EntryPoint's digest, every hashed field survives to the wire byte for
+  byte, the SDK does not re-sponsor at send, and the signature names the
+  correct owner. What is NOT proven: a hashed field appears to change after the
+  app serialises, which is not observable from the repository. Bounded
+  instrumentation landed in this candidate; one live attempt's diagnostic line
+  settles which branch holds. Until then the cause is unclaimed, on purpose.
+
+carried_warnings:
+  F2: >
+    The recorded-Safe refresh is reachable only from the onboarding step; the
+    deposit gate re-derives and compares but never refreshes. Fail-closed, no
+    funds orphaned, accepted as a reachability limitation.
+  F6: >
+    The 250000 verification-gas floor and 1.5x multiplier are deliberate
+    calibration from the two observed AA26 rejections at 51698, not from a
+    live success at the buffered value. No evidence to raise or lower it.
+
+verify_status: "./scripts/verify.sh -> VERIFICATION PASSED on e08ba6abb4280246d985ca8339b4fbfd69d2c23e with a clean tree"
+human_gate: none

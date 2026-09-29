@@ -1,0 +1,44 @@
+- id: F1
+  severity: FAIL
+  scope: wealth_reads
+  title: "A failed USDC sub-read is dropped; the chain reports ok and the reason is lost"
+  evidence: "apps/web/src/lib/wealth/evm.ts:919-940; apps/web/src/components/holdings/HoldingsScreen.tsx:396-417; apps/web/src/lib/wealth/vault-holdings.ts:308-325; apps/web/src/components/onboarding/WealthStep.tsx:563,743; apps/web/src/app/onboarding/wallet-actions.ts:84-88; apps/web/src/components/holdings/VerifyWalletsModal.tsx:207-216; apps/web/src/components/wallet/ConnectedWalletPanel.tsx:694-699"
+  failure_mode: "Closed: a chain that reads natively but fails its USDC sub-read now carries tokenFailure, and every consumer names the specific reason on an explicit — row instead of omitting it."
+  materiality: "Requirement 4 satisfied (a failed read is reported with a specific reason); the class is closed on every consumer."
+  status: resolved
+  introduced_by: 827e86f
+  resolved_by: 80ce2e4
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: fund_routing
+  title: "Recorded-Safe refresh only runs from the onboarding step; the deposit gate never refreshes"
+  evidence: "apps/web/src/app/onboarding/account-actions.ts:93-162; apps/web/src/app/invest/actions.ts:222-261; apps/web/src/lib/safe/shell.ts:29-38"
+  failure_mode: "A resident with a pre-fix row who never revisits /onboarding keeps a stale address; the deposit gate keeps refusing safe-not-verified. Fail-closed; no funds orphaned."
+  materiality: "Requirement 2 is delivered only for residents who re-enter onboarding. A reachability limitation, not a defect."
+  status: open
+  introduced_by: 827e86f
+  resolved_by: null
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: safe_derivation
+  title: "Test comment claims a real-RPC end-to-end proof that is not in the repository"
+  evidence: "apps/web/tests/safe-4337-singleton-pin.test.ts:29-33; apps/web/tests/proofs/safe-address-chain-parity.proof.ts; scripts/safe-chain-parity/run.sh"
+  failure_mode: "Closed: the comment now states mock-verified only and points at a committed, runnable, opt-in real-RPC proof."
+  materiality: "The misleading evidence claim about the iteration's critical requirement is corrected and backed by an executable proof."
+  status: resolved
+  introduced_by: 827e86f
+  resolved_by: c2e017b
+  recheck_attempts: 0
+- id: F4
+  severity: WARN
+  scope: safe_derivation
+  title: "Two fixtures still encode an assumed provider/SDK shape rather than the real one"
+  evidence: "apps/web/tests/safe-4337-singleton-pin.test.ts:103-128; apps/web/tests/safe-4337-split.test.ts:100; apps/web/tests/safe-4337-split-env.test.ts:110"
+  failure_mode: "The singleton-pin seed mock is documented as faithful but uses relay-kit's single-call to/data instead of the passkey MultiSend batch, and the split tests' receipt fixtures omit the success boolean the provider always returns."
+  materiality: "Evidence fidelity. The assertions remain valid and the authoritative path is covered by safe-4337-receipt.test.ts."
+  status: open
+  introduced_by: 08b24da
+  resolved_by: null
+  recheck_attempts: 0
