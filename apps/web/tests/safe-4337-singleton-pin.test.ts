@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Address, Hex } from 'viem';
+import { encodeFunctionData, encodePacked, parseAbi, type Address, type Hex } from 'viem';
 import {
   SAFE_4337_MODULE,
   SAFE_DEPLOYMENTS,
@@ -49,7 +49,8 @@ vi.mock('@safe-global/relay-kit', () => {
       hoisted.instance = this;
     }
   }
-  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient };
+  class PimlicoFeeEstimator {}
+  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient, PimlicoFeeEstimator };
 });
 
 vi.mock('@safe-global/protocol-kit', () => ({
@@ -101,22 +102,73 @@ interface SafeInitInput {
 }
 
 /**
- * A relay-kit seed faithful to the SDK: it appends the shared signer to the
- * owners and uses the module address it was given as the fallback handler.
+ * The canonical Safe v1.4.1 `MultiSend` deployment, as relay-kit resolves it.
+ * The predicted Safe's initializer `to` is this contract for a passkey, because
+ * enabling the 4337 module and configuring the shared signer are two calls.
+ */
+const MULTI_SEND_ADDRESS = '0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526';
+const MULTI_SEND_ABI = parseAbi(['function multiSend(bytes transactions)']);
+
+/** Encode one user's multiSend sub-transaction, protocol-kit's packed layout. */
+function encodeMetaTransaction(tx: {
+  readonly operation: number;
+  readonly to: string;
+  readonly value: bigint;
+  readonly data: Hex;
+}): string {
+  return encodePacked(
+    ['uint8', 'address', 'uint256', 'uint256', 'bytes'],
+    [tx.operation, tx.to as Address, tx.value, BigInt((tx.data.length - 2) / 2), tx.data],
+  ).slice(2);
+}
+
+/**
+ * A relay-kit seed faithful to the SDK for a passkey signer.
+ *
+ * For a passkey, relay-kit always sets up **two** calls — `enableModules` on the
+ * module setup address and the shared signer's `configure` — so `isBatch` is
+ * true and the predicted Safe's initializer is a `multiSend(bytes)` call to the
+ * MultiSend contract, not a single `to`/`data` pair. It also appends the shared
+ * signer to the owners and uses the module address it was given as the fallback
+ * handler. This seed reproduces that shape.
  */
 function relayKitSeed(input: SeedInput): unknown {
   const owners = [...input.options.owners];
   const shared = input.customContracts.safeWebAuthnSharedSignerAddress;
   if (!owners.includes(shared)) owners.push(shared);
+  const setupTransactions = [
+    {
+      operation: 1, // DelegateCall: enable the 4337 module.
+      to: SAFE_4337_MODULE.safeModuleSetup.value,
+      value: 0n,
+      data: '0x1234' as Hex,
+    },
+    {
+      operation: 1, // DelegateCall: configure the shared WebAuthn signer.
+      to: shared,
+      value: 0n,
+      data: '0x5678' as Hex,
+    },
+  ];
+  const batchData = encodeFunctionData({
+    abi: MULTI_SEND_ABI,
+    functionName: 'multiSend',
+    args: [
+      `0x${setupTransactions.map(encodeMetaTransaction).join('')}` as Hex,
+    ],
+  });
   return {
     protocolKit: {
       getPredictedSafe: () => ({
         safeAccountConfig: {
           owners,
           threshold: input.options.threshold,
-          to: SAFE_4337_MODULE.safeModuleSetup.value,
-          data: '0x1234' as Hex,
+          to: MULTI_SEND_ADDRESS,
+          data: batchData,
           fallbackHandler: input.customContracts.safe4337ModuleAddress,
+          paymentToken: '0x0000000000000000000000000000000000000000',
+          payment: 0,
+          paymentReceiver: '0x0000000000000000000000000000000000000000',
         },
         safeDeploymentConfig: {
           safeVersion: '1.4.1',

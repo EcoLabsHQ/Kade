@@ -109,6 +109,42 @@ export interface UserOperationReceipt {
   };
 }
 
+/**
+ * The props relay-kit passes to an estimator's estimating hooks.
+ *
+ * Only `userOperation` is read here; the rest are forwarded verbatim to the
+ * wrapped estimator, so this stays a faithful passthrough rather than a
+ * reimplementation of relay-kit's contract.
+ */
+export interface FeeEstimationProps {
+  readonly userOperation: Record<string, unknown>;
+  readonly [key: string]: unknown;
+}
+
+/** The estimation data an estimator returns; relay-kit applies it verbatim. */
+export type FeeEstimationData = Record<string, unknown>;
+
+/**
+ * The slice of relay-kit's `IFeeEstimator` this module composes with.
+ *
+ * relay-kit's `getEstimateFee` (v6.1.1) calls `preEstimateUserOperationGas`
+ * before `eth_estimateUserOperationGas`, then `postEstimateUserOperationGas`
+ * **after** the gas fields are populated and **before** they are hashed. The post
+ * hook is where the default `PimlicoFeeEstimator` calls
+ * `pm_sponsorUserOperation`, so it is the last point at which the account's
+ * `verificationGasLimit` can be raised while still being both the value the
+ * paymaster signs and the value the passkey hashes. The pre hook supplies gas
+ * prices and the paymaster stub data and must be forwarded unchanged.
+ */
+export interface FeeEstimatorLike {
+  preEstimateUserOperationGas?(
+    props: FeeEstimationProps,
+  ): Promise<FeeEstimationData | undefined>;
+  postEstimateUserOperationGas?(
+    props: FeeEstimationProps,
+  ): Promise<FeeEstimationData | undefined>;
+}
+
 /** The SDK surface this module uses, declared so it is stubable in tests. */
 export interface Safe4337PackLike {
   createTransaction(input: {
@@ -117,6 +153,12 @@ export interface Safe4337PackLike {
       readonly value: string;
       readonly data: Hex;
     }[];
+    /**
+     * relay-kit's `createTransaction` accepts a `feeEstimator` here and routes
+     * it through `getEstimateFee`. Passing one is how this module inserts the
+     * buffering step before the paymaster signs.
+     */
+    readonly options?: { readonly feeEstimator?: FeeEstimatorLike };
   }): Promise<unknown>;
   signSafeOperation(safeOperation: unknown): Promise<unknown>;
   executeTransaction(input: { readonly executable: unknown }): Promise<Hex>;
@@ -135,6 +177,13 @@ export interface SafeExecutionDependencies {
   }) => Promise<Safe4337PackLike>;
   /** The passkey signer Safe uses as the owner. */
   readonly signer: PasskeySigner;
+  /**
+   * The SDK's own fee estimator (production: `new PimlicoFeeEstimator()`), which
+   * this module wraps so the account's verification gas is buffered **before**
+   * the paymaster signs. Omitting it still buffers and still refuses on a bad
+   * estimate, but attaches no paymaster data, so production must supply it.
+   */
+  readonly feeEstimator?: FeeEstimatorLike;
   /** The Safe to execute from, or `null` to deploy a fresh one on first use. */
   readonly safeAddress: Address | null;
   readonly chainId?: number;
@@ -330,8 +379,7 @@ function operationHash(operation: unknown): Hex | null {
 }
 
 /**
- * The bounded safety buffer applied to the account's estimated verification gas
- * **before** the operation is hashed and signed.
+ * The bounded safety buffer applied to the account's estimated verification gas.
  *
  * ## Why a buffer is needed
  *
@@ -347,7 +395,27 @@ function operationHash(operation: unknown): Hex | null {
  * The one operation that succeeded included the Safe deployment, so its headroom
  * says nothing about the validation-only cost. The gas fields are part of the
  * SafeOp hash the passkey signs, so the allowance cannot be corrected at submit
- * time — it is raised here, after the SDK estimate and before `getHash()`.
+ * time.
+ *
+ * ## Where the buffer sits, and why it must sit there
+ *
+ * The allowance must also be final **before the paymaster signs**. Pimlico's
+ * paymaster commits to the account gas limits: `pm_sponsorUserOperation` is
+ * called with the operation's `verificationGasLimit` and returns
+ * `paymasterData` signed over it, so a value raised afterwards makes the
+ * paymaster recover a different signer and the EntryPoint reverts `AA34`.
+ * relay-kit calls the account's own `addEstimations` after the sponsorship
+ * signature, so buffering there is too late.
+ *
+ * The one hook that runs on the right side of that boundary is the fee
+ * estimator's `postEstimateUserOperationGas` (relay-kit v6.1.1
+ * `Safe4337Pack.getEstimateFee`): it receives the operation **after**
+ * `eth_estimateUserOperationGas` and is where the default `PimlicoFeeEstimator`
+ * calls `pm_sponsorUserOperation`. {@link createVerificationGasBufferingEstimator}
+ * wraps that estimator, hands the paymaster the buffered operation, and returns
+ * the buffered value so relay-kit writes the same value back through
+ * `addEstimations`. The paymaster and the passkey therefore commit to the same
+ * allowance.
  *
  * ## Calibration
  *
@@ -375,8 +443,7 @@ function operationHash(operation: unknown): Hex | null {
  * inflating a ~1M deployment estimate past what was already sponsored.
  *
  * `preVerificationGas`, `callGasLimit` and the paymaster's own
- * `paymasterVerificationGasLimit` are deliberately **not** touched — see the
- * build phase's comment.
+ * `paymasterVerificationGasLimit` are deliberately **not** touched.
  */
 export const VERIFICATION_GAS_BUFFER_NUMERATOR = 3n;
 export const VERIFICATION_GAS_BUFFER_DENOMINATOR = 2n;
@@ -401,13 +468,113 @@ export function bufferVerificationGas(estimated: bigint): bigint {
 }
 
 /**
- * Read the operation's estimated verification-gas allowance, or `null` when the
- * built operation does not expose one.
+ * What the buffering estimator did on its one post-estimate hook.
  *
- * relay-kit assigns the bundler's `eth_estimateUserOperationGas` result onto the
- * operation, so `getUserOperation().verificationGasLimit` is the real estimate —
- * never a default. A missing or unreadable value is `null`, which the build
- * phase treats as a failed estimate rather than a zero to be padded.
+ * `applied` carries the raw estimate and the buffered value it replaced;
+ * `refused` carries the reason the estimate was unusable. `null` (not a
+ * variant — the field is nullable) means relay-kit never reached the hook.
+ */
+export type VerificationGasBufferOutcome =
+  | { readonly status: 'applied'; readonly raw: bigint; readonly buffered: bigint }
+  | { readonly status: 'refused'; readonly reason: string };
+
+/**
+ * A buffering estimator plus the outcome of its post-estimate hook.
+ *
+ * The outcome is captured here rather than re-derived from the built operation
+ * so the build phase can tell "the estimate was missing" (refused) from "the
+ * hook never ran" (`null`) from "relay-kit did not write the value back".
+ */
+export interface VerificationGasBufferingEstimator {
+  /** The estimator to hand to relay-kit's `createTransaction`. */
+  readonly feeEstimator: FeeEstimatorLike;
+  /** The hook's outcome, or `null` if it was never called. */
+  outcome(): VerificationGasBufferOutcome | null;
+}
+
+/** Read a `verificationGasLimit` from a user operation, or `null`. */
+function readVerificationGas(userOperation: unknown): bigint | null {
+  if (typeof userOperation !== 'object' || userOperation === null) return null;
+  const value = (userOperation as { verificationGasLimit?: unknown }).verificationGasLimit;
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
+  if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|\d+)$/.test(value)) return BigInt(value);
+  return null;
+}
+
+/**
+ * Wrap the SDK's fee estimator so the account's verification gas is buffered
+ * **before the paymaster signs**.
+ *
+ * In relay-kit, `postEstimateUserOperationGas` is called with the operation the
+ * bundler just estimated and is where the default `PimlicoFeeEstimator` calls
+ * `pm_sponsorUserOperation`. This wrapper raises `verificationGasLimit` on the
+ * operation it passes down, so the paymaster signs the buffered value, and
+ * returns the same buffered value so `safeOperation.addEstimations` writes it
+ * back. The signed allowance and the submitted allowance are therefore equal by
+ * construction, not by coincidence.
+ *
+ * A missing or non-positive estimate is *refused* rather than buffered from
+ * nothing: the hook returns no estimation and records a refusal, and the build
+ * phase refuses before anything is signed or retained. Omitting `base` still
+ * buffers (and still refuses), but attaches no paymaster data; production
+ * supplies the real estimator.
+ */
+export function createVerificationGasBufferingEstimator(
+  base?: FeeEstimatorLike,
+): VerificationGasBufferingEstimator {
+  let outcome: VerificationGasBufferOutcome | null = null;
+
+  const feeEstimator: FeeEstimatorLike = {
+    // Forward the pre hook unchanged (bound to `base`, whose private gas-price
+    // helper it calls), so the paymaster stub data and gas prices are still
+    // established before the estimate.
+    ...(base?.preEstimateUserOperationGas
+      ? {
+          preEstimateUserOperationGas: (props: FeeEstimationProps) =>
+            base.preEstimateUserOperationGas!(props),
+        }
+      : {}),
+    async postEstimateUserOperationGas(props) {
+      const estimated = readVerificationGas(props.userOperation);
+      if (estimated === null || estimated <= 0n) {
+        outcome = {
+          status: 'refused',
+          reason:
+            'The built Safe operation reported no verification gas estimate, so its ' +
+            'validation allowance could not be safely buffered and nothing was signed.',
+        };
+        return {};
+      }
+
+      const buffered = bufferVerificationGas(estimated);
+      // Hand the *buffered* operation to the SDK's estimator: this is the exact
+      // operation the paymaster signs over.
+      const estimation = base?.postEstimateUserOperationGas
+        ? await base.postEstimateUserOperationGas({
+            ...props,
+            userOperation: { ...props.userOperation, verificationGasLimit: buffered },
+          })
+        : undefined;
+
+      outcome = { status: 'applied', raw: estimated, buffered };
+      // Carry the buffered value back so `addEstimations` writes the same value
+      // the paymaster just committed to.
+      return { ...estimation, verificationGasLimit: buffered };
+    },
+  };
+
+  return { feeEstimator, outcome: () => outcome };
+}
+
+/**
+ * Read the built operation's live verification-gas allowance, or `null` when it
+ * does not expose one.
+ *
+ * Used as a defence-in-depth check after `createTransaction`: the build phase
+ * asserts the operation really carries the buffered value it handed the
+ * estimator, so a relay-kit that failed to write the returned estimation back
+ * cannot be signed.
  */
 function estimatedVerificationGas(operation: unknown): bigint | null {
   if (typeof operation !== 'object' || operation === null) return null;
@@ -419,38 +586,7 @@ function estimatedVerificationGas(operation: unknown): bigint | null {
   } catch {
     return null;
   }
-  if (typeof userOperation !== 'object' || userOperation === null) return null;
-  const value = (userOperation as { verificationGasLimit?: unknown }).verificationGasLimit;
-  if (typeof value === 'bigint') return value;
-  if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
-  if (typeof value === 'string' && /^(0x[0-9a-fA-F]+|\d+)$/.test(value)) return BigInt(value);
-  return null;
-}
-
-/**
- * Assign the buffered allowance back onto the operation through the SDK's own
- * `addEstimations`.
- *
- * relay-kit's v0.7 `SafeOperation.addEstimations` **assigns**
- * `verificationGasLimit` (it computes
- * `estimations.verificationGasLimit || this.userOperation.verificationGasLimit`),
- * so passing the buffered value sets it rather than adding to the estimate. The
- * method must be present and must not throw; otherwise this returns `false` and
- * the build phase fails closed instead of signing an operation whose allowance
- * was never buffered.
- */
-function applyVerificationGasBuffer(operation: unknown, buffered: bigint): boolean {
-  if (typeof operation !== 'object' || operation === null) return false;
-  const addEstimations = (operation as { addEstimations?: unknown }).addEstimations;
-  if (typeof addEstimations !== 'function') return false;
-  try {
-    (addEstimations as (estimations: { verificationGasLimit: bigint }) => void).call(operation, {
-      verificationGasLimit: buffered,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return readVerificationGas(userOperation);
 }
 
 /**
@@ -502,10 +638,12 @@ function base64urlToBytes(value: string): Uint8Array {
  * hash }` is returned, so the calls, nonce, gas and target never round-trip
  * through the client.
  *
- * Before the hash is read, the account's estimated `verificationGasLimit` is
- * raised by the documented {@link bufferVerificationGas} rule. This is the only
- * point at which it can be done: the allowance is part of the hash the passkey
- * signs, so it must be final before `getHash()`.
+ * The account's `verificationGasLimit` is raised, by the documented
+ * {@link bufferVerificationGas} rule, through a wrapped fee estimator **before
+ * the paymaster signs** ({@link createVerificationGasBufferingEstimator}). The
+ * value the paymaster commits to and the value the passkey hashes are therefore
+ * the same; raising it after `createTransaction` returned — the previous
+ * approach — made them differ and broke every sponsored operation with `AA34`.
  */
 export async function buildResidentSafeBatch(
   calls: readonly SafeCall[],
@@ -544,6 +682,8 @@ export async function buildResidentSafeBatch(
     };
   }
 
+  const buffering = createVerificationGasBufferingEstimator(deps.feeEstimator);
+
   let operation: unknown;
   try {
     operation = await pack.createTransaction({
@@ -552,6 +692,7 @@ export async function buildResidentSafeBatch(
         value: call.value.toString(),
         data: call.data,
       })),
+      options: { feeEstimator: buffering.feeEstimator },
     });
   } catch (cause) {
     return {
@@ -562,31 +703,25 @@ export async function buildResidentSafeBatch(
     };
   }
 
-  // Buffer the account's verification allowance **here**, after the SDK's
-  // estimate and before `operationHash` — the buffered value becomes part of
-  // the SafeOp hash the passkey signs. Applying it at submit time would change
-  // the hash and invalidate the signature, which is precisely the failure this
-  // avoids.
-  //
-  // Only the account's own `verificationGasLimit` is touched. `preVerificationGas`
-  // is already estimated against a padded dummy `clientDataJSON` (relay-kit's
-  // `getDummySignature` comment), `callGasLimit` pays for the batch calls and is
-  // unaffected by which signature validated, and `paymasterVerificationGasLimit`
-  // is the paymaster's own allowance, set by `pm_sponsorUserOperation` — it is
-  // not the client's to choose.
-  const estimated = estimatedVerificationGas(operation);
-  if (estimated === null || estimated <= 0n) {
+  // The buffer runs inside `createTransaction`, in the fee estimator's
+  // post-estimate hook, so it is already part of the operation the paymaster
+  // signed. These checks only confirm it happened and that relay-kit wrote the
+  // buffered value back; they never move the allowance.
+  const application = buffering.outcome();
+  if (application === null) {
     return {
       status: 'failed',
       sent: false,
       stage: 'estimate',
       reason:
-        'The built Safe operation reported no verification gas estimate, so its ' +
-        'validation allowance could not be safely buffered and nothing was signed.',
+        'The verification gas estimator never ran, so the account allowance ' +
+        'could not be buffered before signing and nothing was signed.',
     };
   }
-  const buffered = bufferVerificationGas(estimated);
-  if (!applyVerificationGasBuffer(operation, buffered)) {
+  if (application.status === 'refused') {
+    return { status: 'failed', sent: false, stage: 'estimate', reason: application.reason };
+  }
+  if (estimatedVerificationGas(operation) !== application.buffered) {
     return {
       status: 'failed',
       sent: false,

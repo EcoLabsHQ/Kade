@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Address, Hex } from 'viem';
+import type { FeeEstimatorLike } from '@/lib/safe/execute-safe-4337';
 import type { PasskeySigner } from '@/lib/safe/passkey-signer';
 
 /**
@@ -28,7 +29,8 @@ vi.mock('@safe-global/relay-kit', () => {
       Object.assign(this, hoisted.packMethods);
     }
   }
-  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient };
+  class PimlicoFeeEstimator {}
+  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient, PimlicoFeeEstimator };
 });
 
 vi.mock('@safe-global/protocol-kit', () => ({
@@ -110,11 +112,22 @@ function fakePack(): {
     getHash: () => SAFE_OP_HASH,
   };
   return {
-    createTransaction: vi.fn(async () => retained),
+    createTransaction: vi.fn(
+      async (input: { options?: { feeEstimator?: FeeEstimatorLike } }) => {
+        // relay-kit's `getEstimateFee`: run the injected post-estimate hook and
+        // write its return value back, exactly as the SDK does.
+        const data = await input.options?.feeEstimator?.postEstimateUserOperationGas?.({
+          userOperation: { ...retained.getUserOperation(), signature: '0xdummy' },
+        });
+        if (data) retained.addEstimations(data);
+        return retained;
+      },
+    ),
     signSafeOperation: vi.fn(async () => ({ encodedSignatures: () => SIGNATURE })),
     executeTransaction: vi.fn(async () => USER_OP_HASH),
     getUserOperationReceipt: vi.fn(async () => ({
-      receipt: { status: 'success', transactionHash: '0xfeed' as Hex },
+      success: true,
+      receipt: { status: '0x1', transactionHash: '0xfeed' as Hex },
     })),
   };
 }

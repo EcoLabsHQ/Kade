@@ -4,6 +4,7 @@ import {
   buildResidentSafeBatch,
   RETAINED_OPERATION_TTL_MS,
   submitResidentSafeOperation,
+  type FeeEstimatorLike,
   type Safe4337PackLike,
   type SafeAssertionParts,
   type SafeExecutionDependencies,
@@ -107,10 +108,20 @@ function fakePack(options: { hashOf?: () => Hex; signResult?: () => unknown } = 
     getHash: options.hashOf ?? (() => SAFE_OP_HASH),
   };
 
-  const createTransaction = vi.fn(async () => {
-    order.push('create');
-    return retained;
-  });
+  const createTransaction = vi.fn(
+    async (input: { options?: { feeEstimator?: FeeEstimatorLike } }) => {
+      order.push('create');
+      // relay-kit's `getEstimateFee`: the account's post-estimate hook runs on
+      // the estimated operation and its return value is written back through
+      // `addEstimations`. The build phase supplies the hook, which raises the
+      // verification gas before anything is hashed.
+      const data = await input.options?.feeEstimator?.postEstimateUserOperationGas?.({
+        userOperation: { ...retained.getUserOperation(), signature: '0xdummy' as Hex },
+      });
+      if (data) retained.addEstimations(data);
+      return retained;
+    },
+  );
   const signSafeOperation = vi.fn(async () => {
     order.push('sign');
     return options.signResult ? options.signResult() : { encodedSignatures: () => SIGNATURE };
@@ -121,7 +132,10 @@ function fakePack(options: { hashOf?: () => Hex; signResult?: () => unknown } = 
   });
   const getUserOperationReceipt = vi.fn(async () => {
     order.push('receipt');
-    return { receipt: { status: 'success', transactionHash: '0xfeed' as Hex } };
+    return {
+      success: true,
+      receipt: { status: '0x1', transactionHash: '0xfeed' as Hex },
+    };
   });
 
   const pack = {
@@ -204,15 +218,28 @@ describe('buildResidentSafeBatch', () => {
     const order: string[] = [];
     // The estimate is present and buffered, but the operation exposes no
     // signable hash, so it is refused after buffering and before retention.
+    const state = { verificationGasLimit: RAW_VERIFICATION_GAS };
     const noHashOperation = {
-      getUserOperation: () => ({ verificationGasLimit: RAW_VERIFICATION_GAS }),
-      addEstimations: () => {},
+      getUserOperation: () => ({ verificationGasLimit: state.verificationGasLimit }),
+      addEstimations: (estimations: { verificationGasLimit?: bigint }) => {
+        if (estimations.verificationGasLimit) {
+          state.verificationGasLimit = estimations.verificationGasLimit;
+        }
+      },
     };
     const noHashPack = {
-      createTransaction: vi.fn(async () => {
-        order.push('create');
-        return noHashOperation;
-      }),
+      createTransaction: vi.fn(
+        async (input: { options?: { feeEstimator?: FeeEstimatorLike } }) => {
+          order.push('create');
+          // The estimator runs and the buffer is applied, so the failure that
+          // follows is the missing hash, not a missing estimate.
+          const data = await input.options?.feeEstimator?.postEstimateUserOperationGas?.({
+            userOperation: noHashOperation.getUserOperation(),
+          });
+          if (data) noHashOperation.addEstimations(data);
+          return noHashOperation;
+        },
+      ),
       signSafeOperation: vi.fn(async () => ({})),
       executeTransaction: vi.fn(async () => USER_OP_HASH),
       getUserOperationReceipt: vi.fn(async () => null),

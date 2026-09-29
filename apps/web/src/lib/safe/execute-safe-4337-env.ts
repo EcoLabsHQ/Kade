@@ -6,6 +6,7 @@ import {
   SAFE_PASSKEY_MODULE,
   type SafeVersion,
 } from '@kade/shared';
+import { PimlicoFeeEstimator } from '@safe-global/relay-kit';
 import type { Address } from 'viem';
 import {
   buildResidentSafeBatch,
@@ -362,6 +363,9 @@ export async function buildResidentSafeBatchFromEnv(input: {
     signer: input.signer,
     safeAddress: input.safeAddress,
     chainId: input.chainId ?? CHAIN_IDS.sepolia,
+    // The SDK's own estimator is wrapped by the build phase, which raises the
+    // account's verification gas before Pimlico signs over it.
+    feeEstimator: new PimlicoFeeEstimator(),
   };
   return buildResidentSafeBatch(input.calls, deps);
 }

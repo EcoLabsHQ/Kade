@@ -31,7 +31,8 @@ vi.mock('@safe-global/relay-kit', () => {
       hoisted.instance = this;
     }
   }
-  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient };
+  class PimlicoFeeEstimator {}
+  return { Safe4337Pack, createBundlerClient: hoisted.createBundlerClient, PimlicoFeeEstimator };
 });
 
 vi.mock('@safe-global/protocol-kit', () => ({

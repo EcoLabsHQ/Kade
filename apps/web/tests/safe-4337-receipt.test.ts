@@ -4,6 +4,7 @@ import {
   buildResidentSafeBatch,
   RECEIPT_POLL_DELAYS_MS,
   submitResidentSafeOperation,
+  type FeeEstimatorLike,
   type Safe4337PackLike,
   type SafeAssertionParts,
   type SafeExecutionDependencies,
@@ -94,7 +95,17 @@ function fakePack(receipts: readonly (UserOperationReceipt | null)[]): FakePack 
     getHash: () => SAFE_OP_HASH,
   };
 
-  const createTransaction = vi.fn(async () => retained);
+  const createTransaction = vi.fn(
+    async (input: { options?: { feeEstimator?: FeeEstimatorLike } }) => {
+      // relay-kit's `getEstimateFee`: the post-estimate hook runs on the
+      // estimated operation and its return value is written back.
+      const data = await input.options?.feeEstimator?.postEstimateUserOperationGas?.({
+        userOperation: { ...retained.getUserOperation(), signature: '0xdummy' as Hex },
+      });
+      if (data) retained.addEstimations(data);
+      return retained;
+    },
+  );
   const signSafeOperation = vi.fn(async () => ({ encodedSignatures: () => SIGNATURE }));
   const executeTransaction = vi.fn(async () => USER_OP_HASH);
   const getUserOperationReceipt = vi.fn(async () => {
