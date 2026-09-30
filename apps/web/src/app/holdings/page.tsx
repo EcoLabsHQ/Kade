@@ -9,6 +9,7 @@ import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
+import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
 import { loadVerifiedHoldings } from './data';
 import { beginWalletLink, completeWalletLink } from './link-actions';
 
@@ -51,6 +52,14 @@ export default async function HoldingsPage() {
   // truthful source; a failed read stays visible rather than becoming a zero.
   const vaultHoldings = await loadVaultHoldings(shellSafe.address);
 
+  // The one qualified total, reduced once from the rows above. The residency
+  // tier check reduces the same Safe's rows with the same function, so the
+  // `QUALIFIED` card and the tier check cannot disagree.
+  const qualified = summarizeQualifiedPosition({
+    safeAddress: shellSafe.address,
+    rows: vaultHoldings,
+  });
+
   const walletConfigured = readWalletConnectProjectId() !== null;
   const reviewBar = await loadReviewBar(session.userId);
 
@@ -71,6 +80,7 @@ export default async function HoldingsPage() {
             aggregate={aggregate}
             safeAddress={shellSafe.address}
             vaultHoldings={vaultHoldings}
+            qualified={qualified}
             configured={walletConfigured}
             onBegin={beginWalletLink}
             onComplete={completeWalletLink}

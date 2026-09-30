@@ -193,9 +193,16 @@ describe('HoldingsScreen', () => {
   });
 
   it('shows the signed total and the per-holding rows', () => {
-    render(<HoldingsScreen aggregate={aggregate()} />);
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        vaultHoldings={[]}
+      />,
+    );
 
-    // The total and the "Not qualified" card both read the real aggregate.
+    // The total, with a genuinely empty vault, is the linked aggregate; the
+    // "Not qualified" card reads the same real aggregate.
     expect(screen.getAllByText('$3,280').length).toBeGreaterThanOrEqual(2);
     // The one readable holding is a row; both stored-but-unread chains get a
     // row rather than disappearing.
@@ -256,10 +263,17 @@ describe('HoldingsScreen', () => {
   });
 
   it('renders the real total when at least one verified wallet is readable', () => {
-    render(<HoldingsScreen aggregate={aggregate()} />);
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        vaultHoldings={[]}
+      />,
+    );
 
     // One readable wallet ($3,280) and one unread: the readable figure stands,
-    // and the unread wallet does not blank the total to a dash.
+    // and the unread wallet does not blank the total to a dash. With a known
+    // empty vault the total is the linked aggregate.
     expect(cardValue('Total holdings')).toBe('$3,280');
     expect(cardValue('Not qualified')).toBe('$3,280');
   });
@@ -324,7 +338,13 @@ describe('HoldingsScreen', () => {
   });
 
   it('uses the reference card labels and the reference vault figures', () => {
-    render(<HoldingsScreen aggregate={aggregate()} />);
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        vaultHoldings={[]}
+      />,
+    );
 
     expect(screen.getByText('Total holdings')).toBeInTheDocument();
     expect(screen.getByText('vault + linked wallets')).toBeInTheDocument();

@@ -19,6 +19,10 @@ import type {
 } from '@/lib/wealth/holdings';
 import type { EvmChainBalance } from '@/lib/wealth/types';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
+import {
+  summarizeQualifiedPosition,
+  type QualifiedPosition,
+} from '@/lib/wealth/qualified-position';
 import { provenanceLabel } from './provenance';
 
 /**
@@ -44,9 +48,12 @@ import { provenanceLabel } from './provenance';
  * Copy policy (owner override, this iteration): every visible string is taken
  * **verbatim from the reference**, even where it describes an intended state the
  * code cannot yet produce ("KadeLock", a lock date, a 2-of-2 threshold, a yield,
- * the multi-chain vault, the cure period). The **arithmetic is unchanged**: the
- * total / not-qualified figures still come from the real aggregate, an unverified
- * wallet is still excluded from the total, and a chain whose read failed still
+ * the multi-chain vault, the cure period). The **arithmetic is real**: the
+ * `QUALIFIED` card reads the one on-chain qualified total the server computed
+ * with `summarizeQualifiedPosition` (an unread read keeps its reason, never a
+ * fabricated `$0`), `Not qualified` is the verified linked-wallet aggregate, and
+ * `Total holdings` is their sum so the two partition the total. An unverified
+ * wallet is still excluded from both, and a chain whose read failed still
  * shows `—`. The per-row "Move to vault" on a verified row is now a real
  * control for a **movable** holding: both a USDC token and the chain's native
  * coin open the injected dialog so the resident's own wallet can sign the move.
@@ -94,6 +101,14 @@ export interface HoldingsScreenProps {
    * amount. Empty/absent keeps the truthful empty state.
    */
   readonly vaultHoldings?: readonly VaultHoldingRow[];
+  /**
+   * The Safe's qualified total, produced **once** by the server with
+   * `summarizeQualifiedPosition` from the same rows. The `QUALIFIED` card reads
+   * this value, so the card and the residency tier check share one computation
+   * rather than diverging. When omitted the screen reduces `vaultHoldings` with
+   * the same function, so a bare render stays consistent.
+   */
+  readonly qualified?: QualifiedPosition;
 }
 
 /**
@@ -228,6 +243,13 @@ const REFERENCE_EXTRA_CHAINS = REFERENCE_CHAINS.filter(
 
 /** The reference's qualified-vaults section note (verbatim). */
 const QUALIFIED_NOTE = 'Ethereum · Base · Arbitrum · KadeLock · locked to Nov 2031';
+
+/**
+ * The reference's tier line under the `QUALIFIED` card. Kept verbatim for a
+ * known qualified figure; when the position is unknown the card shows the real
+ * reason instead, so it is never a mute `—`.
+ */
+const QUALIFIED_TIER_SUB = 'Below 3-year tier — $280,000 to go';
 
 /** The reference's "In linked wallets" section note (verbatim). */
 const LINKED_NOTE = 'Proof of wealth · not counted until moved';
@@ -630,16 +652,36 @@ export function HoldingsScreen({
   renderVerifyWallets,
   onMoveToVault,
   vaultHoldings = [],
+  qualified,
 }: HoldingsScreenProps) {
   const { total, walletCount, valuedCount, wallets, unverifiedCount } = aggregate;
 
-  // When every verified wallet's read failed, the total is unknown, not zero:
-  // rendering `$0` would be a fabricated figure. `valuedCount` is exactly how
-  // many verified wallets a readable value came from, so `walletCount > 0`
+  // When every verified wallet's read failed, the linked total is unknown, not
+  // zero: rendering `$0` would be a fabricated figure. `valuedCount` is exactly
+  // how many verified wallets a readable value came from, so `walletCount > 0`
   // with no valued wallet is the honest "unread" state — the same `—` the
   // onboarding Step 3 total renders when its sources are unread. A resident
   // with no verified wallets still shows the real empty sum.
-  const totalIsUnknown = walletCount > 0 && valuedCount === 0;
+  const linkedIsUnknown = walletCount > 0 && valuedCount === 0;
+
+  // The one qualified total: the server computes it from the same on-chain rows
+  // with `summarizeQualifiedPosition` and passes it in, so the card reads that
+  // single value rather than reducing the rows a second time. A bare render
+  // (no prop) still uses the same function, so the two can never disagree.
+  const qualifiedPosition =
+    qualified ??
+    summarizeQualifiedPosition({
+      safeAddress: safeAddress ?? null,
+      rows: vaultHoldings,
+    });
+  const qualifiedKnown = qualifiedPosition.status === 'known';
+
+  // The summary cards partition the resident's truth: Qualified is what is in
+  // the vault, Not qualified is what is still in the linked wallets, and Total
+  // is their sum. The total is unknown when either part is unknown, so a read
+  // that failed never turns into a fabricated figure.
+  const totalIsUnknown = linkedIsUnknown || !qualifiedKnown;
+  const totalUsd = qualifiedKnown ? qualifiedPosition.usd + total : total;
 
   const chains = chainTotals(wallets);
   const rows = linkedRows(aggregate);
@@ -666,18 +708,18 @@ export function HoldingsScreen({
       <div className="kade-grid-4" style={{ gap: '14px', marginBottom: '16px' }}>
         <SummaryCard
           label="Total holdings"
-          value={totalIsUnknown ? '—' : usd(total)}
+          value={totalIsUnknown ? '—' : usd(totalUsd)}
           sub="vault + linked wallets"
         />
         <SummaryCard
           label="Qualified"
-          value="—"
-          sub="Below 3-year tier — $280,000 to go"
+          value={qualifiedKnown ? usd(qualifiedPosition.usd) : '—'}
+          sub={qualifiedKnown ? QUALIFIED_TIER_SUB : qualifiedPosition.reason}
           valueColor={tokens.brandPrimary}
         />
         <SummaryCard
           label="Not qualified"
-          value={totalIsUnknown ? '—' : usd(total)}
+          value={linkedIsUnknown ? '—' : usd(total)}
           sub="proof of wealth · not counted"
         />
         <SummaryCard

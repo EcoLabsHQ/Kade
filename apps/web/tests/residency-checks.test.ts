@@ -4,7 +4,6 @@ import {
   deriveResidencyView,
   deriveTracker,
   serviceFeeUnlocked,
-  sumQualifiedUsd,
   tierMinimumUsdc,
   type ResidencyFacts,
 } from '@/lib/residency/checks';
@@ -13,6 +12,11 @@ import {
  * The residency checks and tracker are derived from records, never fixtures.
  * These tests drive the derivation directly with fact objects, so a state the
  * records cannot support is impossible to render.
+ *
+ * The qualified position is a `QualifiedPosition` (known figure or unknown with
+ * a reason) produced by the same `summarizeQualifiedPosition` the Holdings card
+ * uses; `residency-checks` therefore consumes the one value rather than a second
+ * computation.
  */
 
 function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
@@ -24,7 +28,7 @@ function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
       verifiedAt: '2026-09-20T00:00:00Z',
       selfNullifier: 'nullifier-1',
     },
-    qualifiedUsd: 300_000,
+    qualified: { status: 'known', usd: 300_000 },
     review: 'cleared',
     serviceFee: { recorded: true, verified: true, amountUsdc: 10 },
     permit: { issued: false, uid: null },
@@ -49,19 +53,6 @@ describe('tierMinimumUsdc', () => {
   it('returns null for no tier or an unknown tier', () => {
     expect(tierMinimumUsdc(null)).toBeNull();
     expect(tierMinimumUsdc('platinum')).toBeNull();
-  });
-});
-
-describe('sumQualifiedUsd', () => {
-  it('sums positive numeric and string balances and ignores null/garbage', () => {
-    expect(
-      sumQualifiedUsd([
-        { usd_value: 100 },
-        { usd_value: '250.5' },
-        { usd_value: null },
-        { usd_value: -10 },
-      ]),
-    ).toBe(350.5);
   });
 });
 
@@ -98,16 +89,37 @@ describe('deriveChecks — identity', () => {
 
 describe('deriveChecks — funds', () => {
   it('is pending below the tier minimum', () => {
-    expect(check(facts({ qualifiedUsd: 100 }), 'funds').state).toBe('pending');
+    expect(
+      check(facts({ qualified: { status: 'known', usd: 100 } }), 'funds').state,
+    ).toBe('pending');
   });
 
   it('is met at or above the tier minimum', () => {
-    expect(check(facts({ qualifiedUsd: 280000 }), 'funds').state).toBe('met');
-    expect(check(facts({ qualifiedUsd: 280001 }), 'funds').state).toBe('met');
+    expect(
+      check(facts({ qualified: { status: 'known', usd: 280000 } }), 'funds')
+        .state,
+    ).toBe('met');
+    expect(
+      check(facts({ qualified: { status: 'known', usd: 280001 } }), 'funds')
+        .state,
+    ).toBe('met');
   });
 
-  it('is pending when nothing is recorded', () => {
-    expect(check(facts({ qualifiedUsd: null }), 'funds').state).toBe('pending');
+  it('is a real $0 when the vault read succeeded and holds nothing', () => {
+    const result = check(facts({ qualified: { status: 'known', usd: 0 } }), 'funds');
+    expect(result.state).toBe('pending');
+    expect(result.detail).toBe('$0 of $280,000.');
+  });
+
+  it('keeps the specific reason and stays pending when the vault read failed — never a fabricated $0', () => {
+    const reason = 'The vault balance on Ethereum could not be read.';
+    const result = check(
+      facts({ qualified: { status: 'unknown', reason } }),
+      'funds',
+    );
+    expect(result.state).toBe('pending');
+    expect(result.detail).toContain(reason);
+    expect(result.detail).not.toContain('$0');
   });
 });
 
@@ -153,7 +165,9 @@ describe('serviceFeeUnlocked', () => {
   });
 
   it('stays locked while a prerequisite is pending or blocked', () => {
-    expect(serviceFeeUnlocked(deriveChecks(facts({ qualifiedUsd: 0 })))).toBe(false);
+    expect(
+      serviceFeeUnlocked(deriveChecks(facts({ qualified: { status: 'known', usd: 0 } }))),
+    ).toBe(false);
     expect(serviceFeeUnlocked(deriveChecks(facts({ identity: null })))).toBe(false);
     expect(
       serviceFeeUnlocked(deriveChecks(facts({ review: 'blocked' }))),

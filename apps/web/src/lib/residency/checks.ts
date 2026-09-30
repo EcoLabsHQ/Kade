@@ -17,6 +17,7 @@
  */
 
 import { TIERS } from '@kade/shared';
+import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 
 /* -------------------------------------------------------------------------- */
 /* Facts                                                                      */
@@ -56,8 +57,13 @@ export interface ResidencyFacts {
   /** `applications.tier`: '3-year' | '5-year' | 'indefinite', or null. */
   readonly tier: string | null;
   readonly identity: IdentityFact | null;
-  /** Qualified balance in whole USDC, or null when nothing is recorded. */
-  readonly qualifiedUsd: number | null;
+  /**
+   * The Safe's qualified position, read from the chain and reduced by the same
+   * function the Holdings `QUALIFIED` card uses (`summarizeQualifiedPosition`),
+   * so the card and this check can never disagree. Not a persisted balance:
+   * `container_balances` has no writer, so the chain is the only truthful source.
+   */
+  readonly qualified: QualifiedPosition;
   readonly review: ReviewFactState;
   readonly serviceFee: ServiceFeeFact;
   readonly permit: PermitFact;
@@ -92,18 +98,6 @@ export function tierMinimumUsdc(tier: string | null): number | null {
     (candidate) => candidate.name.toLowerCase() === tier.trim().toLowerCase(),
   );
   return match ? match.minUsdc : null;
-}
-
-/** Sum qualified balances from the resident's `container_balances` rows. */
-export function sumQualifiedUsd(
-  rows: readonly { readonly usd_value: number | string | null }[],
-): number {
-  let total = 0;
-  for (const row of rows) {
-    const value = Number(row.usd_value);
-    if (Number.isFinite(value) && value > 0) total += value;
-  }
-  return total;
 }
 
 export function deriveChecks(facts: ResidencyFacts): readonly ResidencyCheck[] {
@@ -165,7 +159,19 @@ function deriveFundsCheck(facts: ResidencyFacts): ResidencyCheck {
       detail: 'No qualifying tier is set.',
     };
   }
-  const balance = facts.qualifiedUsd ?? 0;
+  // An unread vault is not a zero: a failed position read keeps its specific
+  // reason and stays pending (fail closed), rather than fabricating `$0` of the
+  // tier. A successful read that found nothing is a real `$0` and says so.
+  if (facts.qualified.status === 'unknown') {
+    return {
+      id,
+      label,
+      blocksServiceFee,
+      state: 'pending',
+      detail: `Qualified holdings could not be read: ${facts.qualified.reason}`,
+    };
+  }
+  const balance = facts.qualified.usd;
   if (balance >= minimum) {
     return {
       id,

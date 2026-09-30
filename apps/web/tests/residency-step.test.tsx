@@ -44,7 +44,7 @@ function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
       verifiedAt: '2026-09-20T00:00:00Z',
       selfNullifier: 'n',
     },
-    qualifiedUsd: 300_000,
+    qualified: { status: 'known', usd: 300_000 },
     review: 'cleared',
     serviceFee: { recorded: true, verified: true, amountUsdc: 10 },
     permit: { issued: false, uid: null },
@@ -56,7 +56,7 @@ function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
 function pendingFacts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
   return facts({
     identity: null,
-    qualifiedUsd: 0,
+    qualified: { status: 'known', usd: 0 },
     review: 'pending',
     serviceFee: { recorded: false, verified: false, amountUsdc: 10 },
     ...overrides,
@@ -165,6 +165,23 @@ describe('ResidencyStep — reference layout', () => {
     expect(
       screen.getByText(/\$0 of \$280,000 · \$280,000 to go/),
     ).toBeInTheDocument();
+  });
+
+  it('shows the vault read failure reason and never a fabricated $0', () => {
+    renderStep(
+      facts({
+        qualified: {
+          status: 'unknown',
+          reason: 'The vault balance on Ethereum could not be read.',
+        },
+      }),
+    );
+    expect(
+      screen.getByText(
+        /Qualified holdings could not be read: The vault balance on Ethereum could not be read\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\$0 of/)).toBeNull();
   });
 
   it('shows the fee amount and the pre-approval paid line', () => {

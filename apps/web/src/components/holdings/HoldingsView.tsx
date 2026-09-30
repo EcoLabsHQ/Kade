@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
+import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 import { HoldingsScreen, type MoveToVaultTarget } from './HoldingsScreen';
 import { MoveToVaultDialog } from './MoveToVaultDialog';
 import { VerifyWalletsModal } from './VerifyWalletsModal';
@@ -41,6 +42,8 @@ export interface HoldingsViewProps {
   readonly onAddConnectedWallet: (address: string) => Promise<unknown>;
   /** The Safe's on-chain holdings, read by the server page. */
   readonly vaultHoldings?: readonly VaultHoldingRow[];
+  /** The one qualified total, reduced by the server page from `vaultHoldings`. */
+  readonly qualified?: QualifiedPosition;
 }
 
 export function HoldingsView({
@@ -51,6 +54,7 @@ export function HoldingsView({
   onComplete,
   onAddConnectedWallet,
   vaultHoldings = [],
+  qualified,
 }: HoldingsViewProps) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -63,6 +67,7 @@ export function HoldingsView({
       aggregate={aggregate}
       safeAddress={safeAddress}
       vaultHoldings={vaultHoldings}
+      qualified={qualified}
       onMoveToVault={onMoveToVault}
       renderVerifyWallets={() => (
         <VerifyWalletsModal

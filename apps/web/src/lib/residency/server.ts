@@ -1,9 +1,14 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { readFeeMode } from '@/lib/env';
 import { loadFeePayment } from '@/lib/payments/server';
+import { loadShellSafe } from '@/lib/safe/shell';
+import {
+  summarizeQualifiedPosition,
+  type QualifiedPosition,
+} from '@/lib/wealth/qualified-position';
+import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import {
   deriveResidencyView,
-  sumQualifiedUsd,
   type IdentityFact,
   type PermitFact,
   type ResidencyFacts,
@@ -133,22 +138,37 @@ async function loadIdentityFact(profileId: string): Promise<IdentityFact | null>
   }
 }
 
-async function loadQualifiedUsd(applicationId: string): Promise<number | null> {
+/**
+ * The Safe's qualified position, read **from the chain** and reduced to the one
+ * total.
+ *
+ * `container_balances` has no writer, so a read of it always returned nothing
+ * while the Safe visibly held assets. The Safe's real on-chain position is the
+ * same read the Holdings `QUALIFIED` card uses (`loadVaultHoldings`), reduced by
+ * the same function (`summarizeQualifiedPosition`), so the card and the tier
+ * check cannot disagree. Nothing is persisted and no refresh step is involved:
+ * the moment an asset is in the vault it counts.
+ */
+async function loadQualifiedPosition(
+  profileId: string,
+): Promise<QualifiedPosition> {
   try {
-    const client = await createSupabaseServerClient();
-    const { data, error } = await client
-      .from('container_balances')
-      .select('usd_value')
-      .eq('application_id', applicationId);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as readonly { usd_value: number | string | null }[];
-    return rows.length === 0 ? null : sumQualifiedUsd(rows);
+    const safe = await loadShellSafe(profileId);
+    const rows = await loadVaultHoldings(safe.address);
+    return summarizeQualifiedPosition({ safeAddress: safe.address, rows });
   } catch (cause) {
+    // A throw is still an unknown position with its reason, never a `$0`.
     console.warn(
-      '[kade] Could not read qualified balances for residency:',
+      '[kade] Could not read the qualified position for residency:',
       cause instanceof Error ? cause.message : cause,
     );
-    return null;
+    return {
+      status: 'unknown',
+      reason:
+        cause instanceof Error
+          ? `The qualified position could not be read: ${cause.message}`
+          : 'The qualified position could not be read.',
+    };
   }
 }
 
@@ -163,9 +183,9 @@ export async function loadResidencyFacts(
   row: ApplicationResidencyRow,
   serviceFeeAmountUsdc: number | null,
 ): Promise<ResidencyFacts> {
-  const [identity, qualifiedUsd, servicePayment] = await Promise.all([
+  const [identity, qualified, servicePayment] = await Promise.all([
     loadIdentityFact(profileId),
-    loadQualifiedUsd(row.id),
+    loadQualifiedPosition(profileId),
     loadResidencyServiceFeePayment(profileId),
   ]);
 
@@ -184,7 +204,7 @@ export async function loadResidencyFacts(
   return {
     tier: row.tier,
     identity,
-    qualifiedUsd,
+    qualified,
     review: reviewFromStatus(row.status),
     serviceFee,
     permit,
