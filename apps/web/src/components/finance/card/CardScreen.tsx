@@ -112,14 +112,52 @@ const SPEND_SPLIT = [
 
 const TX_COLUMNS = '.6fr 1.6fr 1fr 1fr';
 
+/** The amber demo disclosure, the first element of the screen. */
+const demoNotice = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '8px',
+  background: '#FDF6E7',
+  border: '1px solid #F2E3C0',
+  borderRadius: '12px',
+  padding: '12px 14px',
+  fontSize: '12.5px',
+  color: '#8A5A12',
+  marginBottom: '20px',
+} as const;
+
+const demoNoticeDot = {
+  width: '7px',
+  height: '7px',
+  borderRadius: '50%',
+  background: '#B7791F',
+  flex: '0 0 auto',
+  marginTop: '5px',
+} as const;
+
 export function CardScreen() {
-  // Mock-only state. `ordered` drives the pre-order → active transition.
-  const [ordered, setOrdered] = useState(false);
+  // Mock-only state. `activePreview` switches the pre-order layout to the
+  // active layout for exploration; it is not a real card order.
+  const [activePreview, setActivePreview] = useState(false);
   const [slashApplied, setSlashApplied] = useState(false);
   const [topupOpen, setTopupOpen] = useState(false);
 
   return (
     <div style={{ maxWidth: '1160px', width: '100%', margin: '0 auto' }}>
+      {/*
+        The disclosure is the first thing on the screen so a resident cannot
+        mistake the mock for their own records before scrolling.
+      */}
+      <div role="note" style={demoNotice}>
+        <span style={demoNoticeDot} />
+        <span>
+          <strong>Preview · demo data.</strong> This screen is a visual mock.
+          The balances, transactions, card and addresses shown are illustrative
+          examples, not real records — no funds move, and none of the addresses
+          should be used.
+        </span>
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -158,10 +196,10 @@ export function CardScreen() {
         </Chip>
       </div>
 
-      {ordered ? (
+      {activePreview ? (
         <ActiveLayout onTopUp={() => setTopupOpen(true)} />
       ) : (
-        <PreOrderLayout onOrder={() => setOrdered(true)} />
+        <PreOrderLayout onPreview={() => setActivePreview(true)} />
       )}
 
       <AltitudeBanner
@@ -178,7 +216,7 @@ export function CardScreen() {
 }
 
 /** The reference's pre-order / in-review layout (kade-mvp.dc.html 615–633). */
-function PreOrderLayout({ onOrder }: { readonly onOrder: () => void }) {
+function PreOrderLayout({ onPreview }: { readonly onPreview: () => void }) {
   return (
     <div
       style={{
@@ -192,18 +230,26 @@ function PreOrderLayout({ onOrder }: { readonly onOrder: () => void }) {
       <Card radius={14}>
         <CardVisual number="•••• •••• •••• ••••" expiry="VISA" opacity={0.9} />
         {/*
-          The reference's button is the locked grey (cursor: not-allowed) because
-          the live prototype gates ordering on review. This mock keeps the look
-          but wires the click to the active state on purpose.
+          The reference's gated button is genuinely disabled: ordering is gated
+          on intake review, so it must not be interactive. The active layout is
+          reachable through the separately labelled demo-preview control below,
+          which never claims a real order.
         */}
         <Button
           variant="locked"
           fullWidth
-          onClick={onOrder}
-          title="Mock: shows the active card state"
+          disabled
           style={{ marginTop: '16px', height: '44px', fontSize: '14px' }}
         >
           Order card · after intake review
+        </Button>
+        <Button
+          variant="secondary"
+          fullWidth
+          onClick={onPreview}
+          style={{ marginTop: '8px', height: '36px', fontSize: '12.5px' }}
+        >
+          Preview active card (demo)
         </Button>
       </Card>
 
