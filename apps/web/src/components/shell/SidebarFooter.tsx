@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
-import { ReviewStatusChip, type ShellReviewState } from './ReviewStatusChip';
 import { UserMenu } from './UserMenu';
 
 export interface SidebarFooterProps {
@@ -13,20 +12,23 @@ export interface SidebarFooterProps {
    * on a client-side navigation.
    */
   readonly adminActive?: boolean;
-  /** The review state shared with the top banner; drives the notice above. */
-  readonly review?: ShellReviewState | null;
 }
 
-/** Sidebar footer: the signed-in identity and its menu, and the Kade attribution. */
+/**
+ * Sidebar footer: the Resident/Admin switch, the signed-in identity and its
+ * menu, and the Kade attribution.
+ *
+ * The review-state notice is **not** rendered here: the MVP reference puts it
+ * above the Safe card, so `Sidebar` renders it there from the one review value
+ * it already shares with the top banner.
+ */
 export function SidebarFooter({
   email,
   isReviewer = false,
   adminActive = false,
-  review = null,
 }: SidebarFooterProps) {
   return (
     <>
-      <ReviewStatusChip review={review} />
       <div
         style={{
           background: tokens.surface,

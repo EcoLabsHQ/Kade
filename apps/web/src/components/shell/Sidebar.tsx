@@ -9,7 +9,7 @@ import { NavItem } from './NavItem';
 import { NetworkChip } from './NetworkChip';
 import { SafeAddressCard } from './SafeAddressCard';
 import { SidebarFooter } from './SidebarFooter';
-import type { ShellReviewState } from './ReviewStatusChip';
+import { ReviewStatusChip, type ShellReviewState } from './ReviewStatusChip';
 import type { NavGroupConfig } from './nav';
 import {
   PreRegistrationStepper,
@@ -105,6 +105,14 @@ export function Sidebar({
         */}
         <div style={{ flex: 1 }} />
 
+        {/*
+          The review notice sits directly above the Safe card, matching the MVP
+          reference (notice → card → Resident/Admin switch). It reads the one
+          `review` value the shell already shares with the top banner, so the two
+          remain renderings of a single state and cannot disagree.
+        */}
+        <ReviewStatusChip review={review} />
+
         <div style={{ marginTop: '18px' }}>
           <SafeAddressCard
             address={safeAddress}
@@ -119,7 +127,6 @@ export function Sidebar({
           isReviewer={isReviewer}
           adminActive={pathname.startsWith('/admin')}
           email={email}
-          review={review}
         />
       </aside>
     </>

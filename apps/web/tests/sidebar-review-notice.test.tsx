@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 
 /**
  * The sidebar's review-status notice, matching the MVP reference.
@@ -53,6 +53,13 @@ function renderShell(reviewBar: ShellReviewState) {
 
 const BANNER = /Use the platform now/;
 
+/** True when `a` comes before `b` in document order. */
+function precedes(a: Element, b: Element): boolean {
+  return Boolean(
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+}
+
 describe('sidebar review notice', () => {
   it('renders the notice in the sidebar when pre-approved and in review', () => {
     renderShell(IN_REVIEW);
@@ -82,6 +89,34 @@ describe('sidebar review notice', () => {
 
     expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
     expect(screen.queryByText(BANNER)).toBeNull();
+  });
+
+  it('orders the notice above the Safe card, which precedes the Resident/Admin switch', () => {
+    renderShell(IN_REVIEW);
+
+    const sidebar = screen.getByRole('complementary');
+    const notice = screen.getByTestId('sidebar-review-notice');
+    // The Safe card carries the account-settings gear; the wrapper `Sidebar`
+    // places in the column is the gear link's grandparent.
+    const cardWrapper = screen
+      .getByRole('link', { name: 'Account settings' })
+      .parentElement!.parentElement as HTMLElement;
+    const toggle = within(sidebar).getByText('Resident');
+    const userButton = screen.getByRole('button', {
+      name: 'resident@example.com',
+    });
+
+    // All three are direct children of the sidebar column, matching the
+    // reference order: notice → Safe card → Resident/Admin switch → user row.
+    expect(notice.parentElement).toBe(sidebar);
+    expect(cardWrapper.parentElement).toBe(sidebar);
+
+    expect(precedes(notice, cardWrapper)).toBe(true);
+    expect(precedes(cardWrapper, toggle)).toBe(true);
+    expect(precedes(toggle, userButton)).toBe(true);
+    // The notice sits immediately above the card: this pins the reorder, not
+    // merely that both are somewhere in the sidebar.
+    expect(cardWrapper.previousElementSibling).toBe(notice);
   });
 
   it('drives the sidebar notice and the banner from one value', () => {
