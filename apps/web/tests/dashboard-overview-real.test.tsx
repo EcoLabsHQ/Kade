@@ -7,8 +7,9 @@ import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
  * The Overview dashboard over the resident's **real** state (T43).
  *
  * The route reads the Safe through `loadVaultHoldings` and reduces the rows with
- * the app's existing `summarizeInvestPosition`; these tests inject the rows and
- * the other record reads offline, so they prove:
+ * the one `summarizeQualifiedPosition` reduction (the same one the Holdings card
+ * and the residency tier check call); these tests inject the rows and the other
+ * record reads offline, so they prove:
  *
  *   - the qualified figure is the real reduced value, never a source literal;
  *   - a failed read is `—` with its specific reason, never a fabricated `$0`;

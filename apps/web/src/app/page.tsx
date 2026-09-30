@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { MORPHO_VAULT_CHAIN_IDS } from '@kade/shared';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { Card } from '@/components/ui/Card';
@@ -23,7 +22,6 @@ import { residentGate, type ResidentGate } from '@/lib/review/gate';
 import { loadReviewBar } from '@/lib/review/review-bar';
 import {
   buildOverview,
-  combineAmountReads,
   demoBadgeLabel,
   type OverviewFee,
   type OverviewTone,
@@ -31,12 +29,7 @@ import {
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadFeePayment } from '@/lib/payments/server';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
-import { summarizeInvestPosition } from '@/lib/invest/invest-position';
-import {
-  isMorphoRailConfiguredForChain,
-  morphoChainName,
-  readMorphoVaultConfigForChain,
-} from '@/lib/invest/morpho-config';
+import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,11 +38,12 @@ export const dynamic = 'force-dynamic';
  *
  * Every value is the resident's real state: the review gate read from the
  * application row the reviewer's action flips, the recorded Safe, the qualified
- * position read from the chain through the same reader the Holdings and Invest
- * screens use (`loadVaultHoldings`, reduced once by `summarizeInvestPosition`),
- * and the recorded fee state. Nothing is a literal and no stage is a fixture: a
- * stage with no source on this screen says so rather than inventing a status,
- * and an unknown read is shown with its reason rather than a fabricated `$0`.
+ * position read from the chain through the same reader the Holdings screen uses
+ * (`loadVaultHoldings`), reduced once by the **same** `summarizeQualifiedPosition`
+ * the Holdings `QUALIFIED` card and the residency tier check call, and the
+ * recorded fee state. Nothing is a literal and no stage is a fixture: a stage
+ * with no source on this screen says so rather than inventing a status, and an
+ * unknown read is shown with its reason rather than a fabricated `$0`.
  *
  * The "Demo data" chip is rendered only while {@link demoBadgeLabel} finds a
  * block that is still demo data; with everything derived here there is none.
@@ -116,26 +110,16 @@ export default async function OverviewPage() {
     loadFeeOrUnread(session.userId),
   ]);
 
-  // The same reduction the Invest screen uses, with the same per-chain rail
-  // summaries the Invest route resolves. Only its two buckets are consumed here,
-  // so the dashboard reads no chains of its own and computes no total its own
-  // way.
-  const vaults = MORPHO_VAULT_CHAIN_IDS.map((chainId) => {
-    const config = readMorphoVaultConfigForChain(chainId);
-    return {
-      configured: isMorphoRailConfiguredForChain(chainId),
-      chainId,
-      chainName: morphoChainName(chainId),
-      vault: config?.vault ?? null,
-      usdc: config?.usdc ?? null,
-    };
-  });
-  const position = summarizeInvestPosition({
-    holdings: vaultHoldings,
+  // The **one** qualified figure: the same single reduction the Holdings
+  // `QUALIFIED` card and the residency tier check call, over the same rows. The
+  // dashboard reads no chains of its own and composes no total its own way, so
+  // the three surfaces cannot disagree — including when the Safe holds native
+  // coin, which this reduction counts and a USDC + MetaMorpho-only composition
+  // would not.
+  const qualified = summarizeQualifiedPosition({
     safeAddress: shellSafe.address,
-    vaults,
+    rows: vaultHoldings,
   });
-  const qualified = combineAmountReads([position.freeUsdc, position.allocated]);
 
   const overview = buildOverview({
     gate: reviewGate,

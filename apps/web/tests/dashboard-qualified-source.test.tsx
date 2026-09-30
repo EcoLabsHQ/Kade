@@ -4,14 +4,21 @@ import type { ReactNode } from 'react';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
 /**
- * The dashboard's qualified figure comes from the **same** reduction the rest of
- * the app uses, structurally (T43, acceptance criterion 2).
+ * The dashboard's qualified figure comes from the **one** reduction the rest of
+ * the app uses, structurally (QF8).
  *
- * `summarizeInvestPosition` is mocked here to return a sentinel that does not
- * match the injected rows. If the dashboard ever inlined its own sum over the
- * rows — the two-truths defect this repository has spent the week eliminating —
- * the sentinel would not be shown and this test would fail. It also pins that
- * the page reads the Safe once and hands those exact rows to the reduction.
+ * The dashboard used to reduce the Safe's rows a second way — through
+ * `summarizeInvestPosition`'s free-USDC + MetaMorpho buckets — which ignored the
+ * native coin and so disagreed with the Holdings `QUALIFIED` card and the
+ * residency tier check the moment the Safe held any. Both functions are mocked
+ * here:
+ *
+ *   - `summarizeQualifiedPosition` returns a sentinel that does not match the
+ *     injected rows, and we assert it is called exactly once with exactly those
+ *     rows; if the dashboard ever inlined its own sum, the sentinel would not be
+ *     shown and this test would fail;
+ *   - `summarizeInvestPosition` is a spy that must **never** be called, so a
+ *     later edit cannot quietly reintroduce the second reduction.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -23,6 +30,7 @@ const hoisted = vi.hoisted(() => ({
   loadResidentReviewState: vi.fn(),
   loadVaultHoldings: vi.fn(),
   loadFeePayment: vi.fn(),
+  summarizeQualifiedPosition: vi.fn(),
   summarizeInvestPosition: vi.fn(),
 }));
 
@@ -68,6 +76,9 @@ vi.mock('@/lib/wealth/vault-holdings', () => ({
 vi.mock('@/lib/payments/server', () => ({
   loadFeePayment: hoisted.loadFeePayment,
 }));
+vi.mock('@/lib/wealth/qualified-position', () => ({
+  summarizeQualifiedPosition: hoisted.summarizeQualifiedPosition,
+}));
 vi.mock('@/lib/invest/invest-position', () => ({
   summarizeInvestPosition: hoisted.summarizeInvestPosition,
 }));
@@ -76,7 +87,19 @@ import OverviewPage from '@/app/page';
 
 const SAFE = '0x5Af1000000000000000000000000000000000c09D';
 
+/** Native coin *and* USDC, so a native-ignoring reduction would sum 2,000. */
 const ROWS: readonly VaultHoldingRow[] = [
+  {
+    key: `${SAFE}:1:native`,
+    kind: 'native',
+    chainId: 1,
+    chainName: 'Ethereum',
+    symbol: 'ETH',
+    name: 'Ether',
+    amount: '2.000000 ETH',
+    usd: 7500,
+    readError: null,
+  },
   {
     key: `${SAFE}:1:usdc`,
     kind: 'usdc',
@@ -84,8 +107,8 @@ const ROWS: readonly VaultHoldingRow[] = [
     chainName: 'Ethereum',
     symbol: 'USDC',
     name: 'USDC',
-    amount: '999999.000000 USDC',
-    usd: 999999,
+    amount: '2000.000000 USDC',
+    usd: 2000,
     readError: null,
   },
 ];
@@ -122,27 +145,28 @@ beforeEach(() => {
   hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
 });
 
-describe('the dashboard consumes the app-wide position reduction', () => {
-  it('renders the reduction output and hands it the exact read rows', async () => {
-    hoisted.summarizeInvestPosition.mockReturnValue({
-      freeUsdc: { status: 'known', usd: 111111 },
-      allocated: { status: 'known', usd: 222222 },
-      byChain: new Map(),
-      freeByChain: new Map(),
-      heldCount: 1,
+describe('the dashboard consumes the one qualified reduction', () => {
+  it('renders the reduction output, hands it the exact read rows, and never runs the old one', async () => {
+    hoisted.summarizeQualifiedPosition.mockReturnValue({
+      status: 'known',
+      usd: 333333,
     });
 
     render(await OverviewPage());
 
-    // 111,111 + 222,222 — the sentinel from the shared reduction, not the
-    // injected rows' 999,999.
+    // The sentinel from the one reduction, not the injected rows' 9,500 — and
+    // certainly not the native-excluding 2,000 the old composition would give.
     expect(screen.getAllByText('$333,333').length).toBeGreaterThan(0);
-    expect(screen.queryByText('$999,999')).toBeNull();
+    expect(screen.queryByText('$9,500')).toBeNull();
+    expect(screen.queryByText('$2,000')).toBeNull();
 
-    expect(hoisted.summarizeInvestPosition).toHaveBeenCalledTimes(1);
-    const call = hoisted.summarizeInvestPosition.mock.calls[0]?.[0];
+    expect(hoisted.summarizeQualifiedPosition).toHaveBeenCalledTimes(1);
+    const call = hoisted.summarizeQualifiedPosition.mock.calls[0]?.[0];
     expect(call?.safeAddress).toBe(SAFE);
-    expect(call?.holdings).toEqual(ROWS);
+    expect(call?.rows).toEqual(ROWS);
+
+    // The second reduction has no place in the dashboard path.
+    expect(hoisted.summarizeInvestPosition).not.toHaveBeenCalled();
 
     cleanup();
   });

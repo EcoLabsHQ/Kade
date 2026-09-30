@@ -1,7 +1,7 @@
-import type { AmountRead } from '@/lib/invest/invest-position';
 import type { FeePaymentState } from '@/lib/payments/preapproval-fee';
 import { tierMinimumUsdc } from '@/lib/residency/checks';
 import { usd } from '@/lib/wealth/format';
+import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 import { residentGateLabel, type ResidentGate } from './gate';
 
 /**
@@ -13,8 +13,9 @@ import { residentGateLabel, type ResidentGate } from './gate';
  * the route can actually reach — the review gate, the recorded Safe, the
  * qualified position read from the chain, and the application row — into every
  * value the screen shows. Nothing here is a fixture and nothing is re-typed: the
- * money figure is the one {@link AmountRead} the route reduced with the app's
- * existing position reduction, and the tier minimums come from the shared
+ * money figure is the one {@link QualifiedPosition} the route reduced with
+ * `summarizeQualifiedPosition` — the same reduction the Holdings `QUALIFIED` card
+ * and the residency tier check call — and the tier minimums come from the shared
  * `TIERS` table through `tierMinimumUsdc`.
  *
  * Honesty rules carried through from the rest of the app:
@@ -75,8 +76,12 @@ export interface OverviewInput {
   readonly serviceUid: string | null;
   readonly safeAddress: string | null;
   readonly safeDeployed: boolean;
-  /** The Safe's qualified position, composed from the one position reduction. */
-  readonly qualified: AmountRead;
+  /**
+   * The Safe's qualified position, produced once by the route with
+   * `summarizeQualifiedPosition` — the one reduction the Holdings card and the
+   * residency tier check also call.
+   */
+  readonly qualified: QualifiedPosition;
 }
 
 export interface OverviewModel {
@@ -88,27 +93,8 @@ export interface OverviewModel {
   readonly steps: readonly OverviewStep[];
 }
 
-/**
- * Compose the one position reduction's two buckets (free USDC and the Morpho
- * allocation) into the single qualified figure. This is deliberately a
- * composition of `summarizeInvestPosition`'s own output, not a second reduction
- * over the chain rows: if either bucket is unknown, the whole figure is unknown
- * with that bucket's real reason, so a partial sum can never be shown as a
- * total.
- */
-export function combineAmountReads(parts: readonly AmountRead[]): AmountRead {
-  for (const part of parts) {
-    if (part.status === 'unknown') return part;
-  }
-  let total = 0;
-  for (const part of parts) {
-    total += part.status === 'known' ? part.usd : 0;
-  }
-  return { status: 'known', usd: total };
-}
-
 /** True only when the resident holds at least the tier minimum. */
-function meetsTier(qualified: AmountRead, tier: string | null): boolean {
+function meetsTier(qualified: QualifiedPosition, tier: string | null): boolean {
   const minimum = tierMinimumUsdc(tier);
   return (
     qualified.status === 'known' &&

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { AmountRead } from '@/lib/invest/invest-position';
 import {
   buildOverview,
-  combineAmountReads,
   demoBadgeLabel,
   type OverviewFee,
   type OverviewInput,
@@ -238,26 +236,5 @@ describe('the honesty chip', () => {
     expect(demoBadgeLabel(withDemo)).toBe(
       'Demo data · not this resident’s records',
     );
-  });
-});
-
-describe('combineAmountReads', () => {
-  it('sums the known buckets', () => {
-    const parts: AmountRead[] = [
-      { status: 'known', usd: 100 },
-      { status: 'known', usd: 250 },
-    ];
-    expect(combineAmountReads(parts)).toEqual({ status: 'known', usd: 350 });
-  });
-
-  it('propagates an unknown bucket with its own reason, never a partial sum', () => {
-    const parts: AmountRead[] = [
-      { status: 'known', usd: 100 },
-      { status: 'unknown', reason: 'Ethereum: the vault position could not be read.' },
-    ];
-    expect(combineAmountReads(parts)).toEqual({
-      status: 'unknown',
-      reason: 'Ethereum: the vault position could not be read.',
-    });
   });
 });
