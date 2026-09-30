@@ -1,0 +1,35 @@
+- id: W1
+  severity: WARN
+  scope: dashboard
+  title: "The dashboard reads the tier from a second applications query"
+  evidence: "apps/web/src/app/page.tsx:124-125; apps/web/src/lib/review/queue.ts:189-191; apps/web/src/lib/review/overview.ts:131-140 vs apps/web/src/app/holdings/page.tsx:52-63"
+  failure_mode: "A review_events read failure discards a successfully read tier and the dashboard states No qualifying tier is set, while the card and residency show the real tier."
+  status: open
+- id: W2
+  severity: WARN
+  scope: invest
+  title: "The Morpho estimate can describe a different vault than the rail deposits into"
+  evidence: "apps/web/src/lib/invest/morpho-yield.ts:140-154; apps/web/src/lib/invest/morpho-config.ts:144-155,170-179"
+  failure_mode: "With the env override set, the pinned vault APY is labelled as the deposit income while the deposit goes to the override vault."
+  status: open
+- id: W3
+  severity: WARN
+  scope: invest
+  title: "The cached-for-a-day justification is false on this force-dynamic route"
+  evidence: "apps/web/src/lib/invest/morpho-yield.ts:15-19,172-175; apps/web/src/app/invest/page.tsx:17"
+  failure_mode: "Every Invest render issues outbound Morpho POSTs; a slow Morpho stalls the page up to the 5s timeout."
+  status: open
+- id: W4
+  severity: WARN
+  scope: invest
+  title: "A real sub-dollar estimate renders as $0 / yr est."
+  evidence: "InvestScreen.tsx:586-590; apps/web/src/lib/wealth/format.ts:4-6"
+  failure_mode: "A $1 allocation at a real rate reads as zero income."
+  status: open
+- id: W5
+  severity: WARN
+  scope: tests
+  title: "Comment references a test file that does not exist"
+  evidence: "apps/web/src/lib/invest/morpho-yield.ts:29"
+  failure_mode: "Trivia; the coverage exists elsewhere."
+  status: open

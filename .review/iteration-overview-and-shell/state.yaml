@@ -1,0 +1,34 @@
+iteration: iteration-overview-and-shell
+profile: NORMAL
+known_good: 2edfa58
+candidate: c7c86c5
+mode: discovery
+reviewed_scopes: {shell: complete, invest: complete, holdings: complete, residency: complete, dashboard: complete, tests: complete}
+active_findings: [W1, W2, W3, W4, W5]
+resolved_findings: []
+next_finding_id: F6
+recheck_attempts: {W1: 0, W2: 0, W3: 0, W4: 0, W5: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  discovery_1:
+    candidate: c7c86c5
+    verdict: review_passed
+    blocking: []
+    warnings: [W1, W2, W3, W4, W5]
+    notes: >
+      Nine increments in one pass. The one-truth figure holds: the dashboard,
+      the Holdings card and the residency check call the same reduction, and the
+      old USDC+MetaMorpho composition is unreachable (sentinel plus spy). The
+      tier line derives from the resident real tier; the $1 minimum derives from
+      one constant; the disclosures reset per open and lose no value; the
+      account-menu move is a valid stretched trigger; un-allocate is reachable
+      from every position-bearing state. The flagged 11px overflow is judged not
+      a defect (left-aligned into the gap inside a min-width scroller).
+carried_warnings:
+  W1: "The dashboard still reads the tier through a second applications query whose failure renders as a positive claim of absence, so it can contradict the card and the residency check. The one-truth claim for the tier is enforced for the card but not the dashboard."
+  W2: "The Morpho estimate reads the pinned vault while the rail can deposit into the env-override vault, so under the override the rate describes a different instrument. Hidden by the default blank override."
+  W3: "The cached-for-a-day justification is false on a force-dynamic route: every Invest render issues 1-3 Morpho POSTs. Latency, not correctness."
+  W4: "A real sub-dollar estimate rounds to $0 / yr est. at the newly allowed $1 floor, indistinguishable from a genuine zero."
+  W5: "A comment references a test file that does not exist."
+human_gate: none
