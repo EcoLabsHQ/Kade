@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { tokens } from '@/components/ui/tokens';
 
@@ -11,6 +11,10 @@ import { tokens } from '@/components/ui/tokens';
  * Week 2 scope (week-2 contract §2.1). The amount, the deposit address and the
  * network rows are seed demo values, and the footer button only closes the
  * dialog — no server action runs and no USDC moves.
+ *
+ * The deposit address is deliberately an obviously non-real placeholder and is
+ * labelled "Demo address — do not send funds", so a resident cannot mistake it
+ * for a usable address and send real funds to it.
  *
  * The shared `Modal` is not used here because its single-line header cannot
  * carry the reference's eyebrow ("Top up card") above the title
@@ -26,8 +30,11 @@ const DEPOSIT_CHAINS = [
 
 type DepositChain = (typeof DEPOSIT_CHAINS)[number]['name'];
 
-/** Seed demo address, not a real card deposit address. */
-const DEPOSIT_ADDRESS = '0x5Af1c4E9a7B2dD0341fE88b6C0937aA5d2e1c09D';
+/**
+ * A deliberately non-real placeholder, never a usable address: the ellipsis and
+ * the `DEMO` suffix make it un-sendable, and the UI labels it as a demo.
+ */
+const DEMO_DEPOSIT_ADDRESS = '0x0000…DEMO';
 
 type Source = 'vault' | 'deposit';
 
@@ -38,9 +45,24 @@ export interface CardTopUpModalProps {
 
 export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const [amount, setAmount] = useState('2000');
   const [source, setSource] = useState<Source>('vault');
   const [chain, setChain] = useState<DepositChain>('Ethereum');
+
+  useEffect(() => {
+    if (!open) return;
+    // Remember the trigger, move focus into the dialog, and restore the trigger
+    // when the dialog closes. A browser focuses the clicked button, so the
+    // active element at open time is the control that opened the dialog.
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    dialogRef.current?.focus();
+    return () => returnFocusRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,9 +89,11 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
   return (
     <div onClick={onClose} style={backdrop}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
         style={card}
       >
@@ -91,6 +115,9 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
         </div>
 
         <div style={{ padding: '22px' }}>
+          <div style={demoLine}>
+            Demo data — illustrative only; no funds move.
+          </div>
           <label style={label} htmlFor="card-topup-amount">
             Amount (USDC)
           </label>
@@ -147,7 +174,10 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
               <div style={{ ...eyebrow, marginTop: '14px' }}>
                 Your card deposit address · {chain}
               </div>
-              <div style={address}>{DEPOSIT_ADDRESS}</div>
+              <div style={demoAddressLabel}>
+                Demo address — do not send funds
+              </div>
+              <div style={address}>{DEMO_DEPOSIT_ADDRESS}</div>
               <div style={note}>
                 USDC on {chain} · same address on all three networks · credited
                 after {confirmations}
@@ -160,9 +190,7 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
             <div style={vaultPanel}>
               <div style={panelRow}>
                 <span style={{ color: tokens.muted }}>From</span>
-                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  Safe 0x5Af1…c09D · vault USDC
-                </span>
+                <span>Demo Safe · vault USDC</span>
               </div>
               <div style={{ ...panelRow, alignItems: 'center' }}>
                 <span style={{ color: tokens.muted }}>Vault chain</span>
@@ -314,6 +342,7 @@ const card = {
   overflow: 'auto',
   boxShadow: '0 30px 80px -20px rgba(16,24,40,.45)',
   animation: 'fadeUp .16s ease-out',
+  outline: 'none',
 } as const;
 
 const header = {
@@ -358,6 +387,12 @@ const label = {
   fontWeight: 600,
   color: tokens.muted,
   marginBottom: '6px',
+} as const;
+
+const demoLine = {
+  fontSize: '12px',
+  color: tokens.muted,
+  marginBottom: '16px',
 } as const;
 
 const amountInput = {
@@ -409,6 +444,13 @@ const address = {
   marginTop: '8px',
   fontVariantNumeric: 'tabular-nums',
   wordBreak: 'break-all',
+} as const;
+
+const demoAddressLabel = {
+  fontSize: '12px',
+  fontWeight: 600,
+  color: tokens.warning,
+  marginTop: '8px',
 } as const;
 
 const note = {
