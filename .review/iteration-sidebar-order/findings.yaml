@@ -1,0 +1,7 @@
+- id: F1
+  severity: WARN
+  scope: quickfix
+  title: "Stale JSDoc says the review prop drives the footer notice"
+  evidence: "apps/web/src/components/shell/Sidebar.tsx:33"
+  failure_mode: "A reader looks for the notice in the footer and finds nothing there."
+  status: open

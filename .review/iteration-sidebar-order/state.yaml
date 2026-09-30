@@ -1,0 +1,27 @@
+iteration: iteration-sidebar-order
+profile: QUICKFIX
+known_good: 8ba67a7719b5395f03f0bee16ffac801aa098940
+candidate: e01377952d86bdfb698f03436e2ea6a653313962
+mode: targeted
+reviewed_scopes: {quickfix: complete}
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  targeted_1:
+    candidate: e01377952d86bdfb698f03436e2ea6a653313962
+    verdict: review_passed
+    blocking: []
+    warnings: [F1]
+    notes: >
+      Fixes the carried warning from iteration-sidebar-notice: the notice now
+      renders above the Safe card. The order assertion is genuinely order
+      sensitive (previousElementSibling plus precedes), not a presence check.
+      Banner and chip still read the single AppShell-resolved value, including
+      the legacy fallback, so they cannot diverge. Bounded QUICKFIX.
+carried_warnings:
+  F1: "Stale JSDoc on Sidebar review prop still says footer notice."
+human_gate: none
