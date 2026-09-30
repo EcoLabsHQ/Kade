@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The Bank ↔ Crypto screen — a declared presentational mock.
+ * The Bank ↔ Crypto screen — a disclosed presentational mock.
  *
  * These tests pin the reference layout and, above all, the mock's honesty: the
- * screen renders the demo transfer history and both dialogs open and close as
- * local UI state, while no action claims a real transfer succeeded.
+ * demo notice is visible on the screen and repeated in each dialog, the demo
+ * transfer history renders, the fabricated credit-target address is marked
+ * unusable, and both dialogs open and close as local UI state while no action
+ * claims a real transfer succeeded.
  *
  * `next/navigation` is mocked as `sidebar-layout.test.tsx` does, because the
  * resident shell imports it.
@@ -93,6 +95,20 @@ describe('BankScreen reference layout', () => {
   });
 });
 
+describe('BankScreen demo disclosure', () => {
+  it('shows the demo notice on the screen, before any figure', () => {
+    render(<BankScreen />);
+    const notice = screen.getByRole('note');
+    expect(notice).toBeVisible();
+    expect(notice).toHaveTextContent(
+      'Preview · demo data. This screen is a visual mock. The balances, accounts, addresses and transfers shown are illustrative examples, not real records — no funds move, and none of the addresses should be used.',
+    );
+    // The notice is the first thing in the screen content, above the header.
+    expect(notice.compareDocumentPosition(screen.getByRole('heading', { name: 'Bank ↔ Crypto' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    cleanup();
+  });
+});
+
 describe('BankScreen dialogs', () => {
   it('opens the Fund vault dialog and closes it again', () => {
     render(<BankScreen />);
@@ -102,9 +118,20 @@ describe('BankScreen dialogs', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(
+      within(dialog).getByText('Demo data — illustrative only; no funds move.'),
+    ).toBeInTheDocument();
+    expect(
       within(dialog).getByText('GOS Payments B.V. (for Marcus Feldt)'),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('OI-0409-MF')).toBeInTheDocument();
+
+    // The fabricated credit target is marked unusable, not presented as a real
+    // Safe the resident could send funds to.
+    expect(
+      within(dialog).getByText(/Demo — USDC in Safe 0xDemo…0000/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/do not send funds/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/0x5Af1…c09D/)).toBeNull();
 
     fireEvent.click(
       within(dialog).getByRole('button', { name: /copy details & close/i }),
@@ -120,6 +147,9 @@ describe('BankScreen dialogs', () => {
     );
 
     const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByText('Demo data — illustrative only; no funds move.'),
+    ).toBeInTheDocument();
     expect(
       within(dialog).getByText('Vault USDC → bank account'),
     ).toBeInTheDocument();
