@@ -14,9 +14,10 @@ export interface NavGroupConfig {
  * Resident navigation.
  *
  * Week 2 unlocks the Residency step, Holdings and Invest — they are in scope per
- * `docs/week-2-frozen-delivery-contract.md` (D16–D18). Vote and the Finance
- * rails stay locked: the Week 2 contract defers them to the end of the
- * programme (§2.1).
+ * `docs/week-2-frozen-delivery-contract.md` (D16–D18). The Finance rails
+ * (Bank ↔ Crypto and Card & Banking) are now a declared presentational mock:
+ * they render as mock screens, so their nav items are plain links. Vote stays
+ * locked — the Week 2 contract defers it to the end of the programme (§2.1).
  *
  * Residency setup (onboarding) and Account & passkey are deliberately **not**
  * nav items: the flow is reached from the Overview, and account settings from the
@@ -50,20 +51,8 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
   {
     label: 'Finance',
     items: [
-      {
-        href: '/bank',
-        label: 'Bank ↔ Crypto',
-        locked: true,
-        lockReason:
-          'Bank ↔ Crypto is deferred to the end of the programme (week-2 contract §2.1)',
-      },
-      {
-        href: '/card',
-        label: 'Card & Banking',
-        locked: true,
-        lockReason:
-          'Card & Banking is deferred to the end of the programme (week-2 contract §2.1)',
-      },
+      { href: '/bank', label: 'Bank ↔ Crypto' },
+      { href: '/card', label: 'Card & Banking' },
     ],
   },
 ];
