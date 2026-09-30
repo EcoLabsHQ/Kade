@@ -55,7 +55,7 @@ export function Sidebar({
   return (
     <>
       <NavDrawerControls />
-      <aside className="kade-sidebar">
+      <aside className='kade-sidebar'>
         <div style={{ padding: '0 6px 18px' }}>
           <Logo />
         </div>
@@ -113,7 +113,7 @@ export function Sidebar({
         */}
         <ReviewStatusChip review={review} />
 
-        <div style={{ marginTop: '18px' }}>
+        <div>
           <SafeAddressCard
             address={safeAddress}
             network={network}
