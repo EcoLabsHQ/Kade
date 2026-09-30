@@ -59,14 +59,16 @@ git-ignored; do not commit them.
 
 ## Project scope
 
-The product scope for the current iteration is frozen in:
+The product scope for the current increment is frozen in:
 
 ```text
-docs/week-2-frozen-delivery-contract.md
+docs/week-3-frozen-delivery-contract.md
 ```
 
-The Week 1 contract (`docs/week-1-frozen-delivery-contract.md`, Frozen v1.10)
-remains frozen and governs the scope it delivered.
+The Week 2 contract (`docs/week-2-frozen-delivery-contract.md`, Frozen v1.8 with
+amendments to v1.10) and the Week 1 contract
+(`docs/week-1-frozen-delivery-contract.md`, Frozen v1.10) remain frozen and
+govern the scope they delivered.
 
 Where product scope and the development contract disagree, the development
 contract governs how work is verified and promoted; the current week's contract
