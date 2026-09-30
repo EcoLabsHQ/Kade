@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { MORPHO_VAULT_CHAIN_IDS } from '@kade/shared';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { Card } from '@/components/ui/Card';
@@ -13,114 +14,70 @@ import {
   createSupabaseServerClient,
   getSessionUser,
 } from '@/lib/supabase/server';
-import { loadResidentReviewState } from '@/lib/review/queue';
+import {
+  loadResidentReviewState,
+  NO_RESIDENT_REVIEW_STATE,
+  type ResidentReviewState,
+} from '@/lib/review/queue';
 import { residentGate, type ResidentGate } from '@/lib/review/gate';
 import { loadReviewBar } from '@/lib/review/review-bar';
+import {
+  buildOverview,
+  combineAmountReads,
+  demoBadgeLabel,
+  type OverviewFee,
+  type OverviewTone,
+} from '@/lib/review/overview';
 import { loadShellSafe } from '@/lib/safe/shell';
+import { loadFeePayment } from '@/lib/payments/server';
+import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
+import { summarizeInvestPosition } from '@/lib/invest/invest-position';
+import {
+  isMorphoRailConfiguredForChain,
+  morphoChainName,
+  readMorphoVaultConfigForChain,
+} from '@/lib/invest/morpho-config';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Overview, in the pre-approved state.
  *
- * MOCKED. The reference shows this screen once the pre-approval fee is paid, and
- * the real state behind it — the fee receipt, the attestations, the intake
- * review, the qualified balance — does not exist yet: payments, attestations and
- * the indexer are all excluded from Week 1.
+ * Every value is the resident's real state: the review gate read from the
+ * application row the reviewer's action flips, the recorded Safe, the qualified
+ * position read from the chain through the same reader the Holdings and Invest
+ * screens use (`loadVaultHoldings`, reduced once by `summarizeInvestPosition`),
+ * and the recorded fee state. Nothing is a literal and no stage is a fixture: a
+ * stage with no source on this screen says so rather than inventing a status,
+ * and an unknown read is shown with its reason rather than a fabricated `$0`.
  *
- * So the values below are the reference's demo state, marked as demo rather than
- * presented as this resident's records. The screen is gated on the onboarding
- * steps, which are real.
+ * The "Demo data" chip is rendered only while {@link demoBadgeLabel} finds a
+ * block that is still demo data; with everything derived here there is none.
  */
 
-interface Stage {
-  readonly title: string;
-  readonly meta: string;
-  readonly status: string;
-  readonly state: 'done' | 'active' | 'queued';
-}
-
-const STAGES: readonly Stage[] = [
-  {
-    title: 'Profile, household & proof of wealth',
-    meta: '3 wallets · $403,216 · provenance clean',
-    status: 'Completed',
-    state: 'done',
-  },
-  {
-    title: 'Fee paid · account pre-approved',
-    meta: 'kade.fee.v1 · demo pricing',
-    status: 'Completed',
-    state: 'done',
-  },
-  {
-    title: 'Identity verified',
-    meta: 'Verify with Self · do this in Residency',
-    status: 'In progress',
-    state: 'active',
-  },
-  {
-    title: 'Qualified holdings funded',
-    meta: '$0 · $425,000 to 5-year tier',
-    status: 'In progress',
-    state: 'active',
-  },
-  {
-    title: 'Intake review',
-    meta: 'Admin review · account pre-approved meanwhile',
-    status: 'In progress',
-    state: 'active',
-  },
-  {
-    title: 'Start Residency · 2,000 USDC service fee',
-    meta: 'Unlocks when identity, containers, documents and review are ready',
-    status: 'Queued',
-    state: 'queued',
-  },
-];
+const TONE_COLOR: Readonly<Record<OverviewTone, string>> = {
+  ink: tokens.ink,
+  success: tokens.success,
+  warning: tokens.warning,
+  danger: tokens.danger,
+  muted: tokens.muted,
+};
 
 /**
- * The intake-review stage reflects the real application status, which the
- * reviewer's action flips through `review_events`. The other stages remain the
- * reference's demo state, still labelled as demo at the foot of the page.
+ * The recorded fee state, or an explicit unread state when the read throws.
+ * `loadFeePayment` re-derives "paid" from the Sepolia receipt, so a stored hash
+ * is never presented as paid.
  */
-function buildStages(gate: ResidentGate): readonly Stage[] {
-  return STAGES.map((stage) => {
-    if (stage.title !== 'Intake review') return stage;
-    switch (gate) {
-      case 'approved':
-        return {
-          ...stage,
-          meta: 'Admin review · approved',
-          status: 'Approved',
-          state: 'done',
-        };
-      case 'blocked':
-        return {
-          ...stage,
-          meta: 'Admin review · blocked, action needed',
-          status: 'Blocked',
-          state: 'active',
-        };
-      case 'pending':
-        return {
-          ...stage,
-          meta: 'Admin review · in progress',
-          status: 'In progress',
-          state: 'active',
-        };
-      case 'unknown':
-      default:
-        return stage;
-    }
-  });
+async function loadFeeOrUnread(userId: string): Promise<OverviewFee> {
+  try {
+    return await loadFeePayment(userId);
+  } catch (cause) {
+    const reason =
+      cause instanceof Error ? cause.message : 'the fee state could not be read.';
+    console.warn('[kade] Could not read the pre-approval fee state:', reason);
+    return { status: 'unread', reason: `The fee state could not be read: ${reason}` };
+  }
 }
-
-const NEXT_STEPS: readonly { label: string; note?: string }[] = [
-  { label: 'Move funds into the qualified vault' },
-  { label: 'Order Onchain Island Card', note: 'Unlocks after review' },
-  { label: 'Start Residency — 0 of 4 ready', note: 'Open' },
-];
 
 export default async function OverviewPage() {
   const session = await getSessionUser();
@@ -136,14 +93,13 @@ export default async function OverviewPage() {
     redirect('/onboarding');
   }
 
-  // The review gate, read from the application the reviewer's action flips. A
-  // failed read degrades to `unknown` rather than claiming a status.
-  let reviewGate: ResidentGate = 'unknown';
+  // The application row the reviewer's action flips. A failed read degrades to
+  // the all-unknown state rather than claiming a status or a figure.
+  let reviewState: ResidentReviewState = NO_RESIDENT_REVIEW_STATE;
   if (isAuthConfigured(readAuthEnv())) {
     try {
       const client = await createSupabaseServerClient();
-      const state = await loadResidentReviewState(client, session.userId);
-      reviewGate = residentGate(state.status);
+      reviewState = await loadResidentReviewState(client, session.userId);
     } catch (cause) {
       console.warn(
         '[kade] Could not read the resident review state:',
@@ -151,8 +107,48 @@ export default async function OverviewPage() {
       );
     }
   }
-  const stages = buildStages(reviewGate);
-  const reviewBar = await loadReviewBar(session.userId);
+  const reviewGate: ResidentGate = residentGate(reviewState.status);
+
+  const [reviewBar, vaultHoldings, fee] = await Promise.all([
+    loadReviewBar(session.userId),
+    // The Safe's qualified position: the one reader, pointed at the Safe.
+    loadVaultHoldings(shellSafe.address),
+    loadFeeOrUnread(session.userId),
+  ]);
+
+  // The same reduction the Invest screen uses, with the same per-chain rail
+  // summaries the Invest route resolves. Only its two buckets are consumed here,
+  // so the dashboard reads no chains of its own and computes no total its own
+  // way.
+  const vaults = MORPHO_VAULT_CHAIN_IDS.map((chainId) => {
+    const config = readMorphoVaultConfigForChain(chainId);
+    return {
+      configured: isMorphoRailConfiguredForChain(chainId),
+      chainId,
+      chainName: morphoChainName(chainId),
+      vault: config?.vault ?? null,
+      usdc: config?.usdc ?? null,
+    };
+  });
+  const position = summarizeInvestPosition({
+    holdings: vaultHoldings,
+    safeAddress: shellSafe.address,
+    vaults,
+  });
+  const qualified = combineAmountReads([position.freeUsdc, position.allocated]);
+
+  const overview = buildOverview({
+    gate: reviewGate,
+    tier: reviewState.tier,
+    preapprovalUsdc: reviewState.preapprovalUsdc,
+    fee,
+    reviewUid: reviewState.reviewUid,
+    serviceUid: reviewState.serviceUid,
+    safeAddress: shellSafe.address,
+    safeDeployed: shellSafe.deployed,
+    qualified,
+  });
+  const badge = demoBadgeLabel(overview);
 
   return (
     <AppShell
@@ -191,9 +187,7 @@ export default async function OverviewPage() {
                 textWrap: 'pretty',
               }}
             >
-              Your fee is paid and your account is pre-approved. Next: move funds
-              into a qualified vault so they count toward your permit. Card,
-              payouts and borrowing unlock once intake review completes.
+              {overview.summary}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -222,25 +216,16 @@ export default async function OverviewPage() {
             marginBottom: '16px',
           }}
         >
-          <StatCard
-            label="Qualifying balance"
-            value="$0"
-            sub="Below 3-year tier — $280,000 to go"
-            valueColor={tokens.ink}
-            highlight
-          />
-          <StatCard
-            label="Account status"
-            value="Pre-approved"
-            sub="Intake review in progress"
-            valueColor={tokens.warning}
-          />
-          <StatCard
-            label="Fees paid onchain"
-            value="1.75 USDC"
-            sub="1 receipt · pre-approval · demo"
-          />
-          <StatCard label="Attestations" value="3" sub="KYC · fee · application" />
+          {overview.stats.map((stat) => (
+            <StatCard
+              key={stat.label}
+              label={stat.label}
+              value={stat.value}
+              sub={stat.sub}
+              valueColor={TONE_COLOR[stat.tone]}
+              highlight={stat.highlight}
+            />
+          ))}
         </div>
 
         <div
@@ -265,7 +250,7 @@ export default async function OverviewPage() {
             </div>
 
             <div style={{ marginTop: '10px' }}>
-              {stages.map((stage, index) => (
+              {overview.stages.map((stage, index) => (
                 <div
                   key={stage.title}
                   style={{
@@ -358,12 +343,10 @@ export default async function OverviewPage() {
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                $0
+                {overview.holdings.value}
               </div>
               <div style={{ marginTop: '6px', fontSize: '12.5px', color: tokens.muted }}>
-                {shellSafe.deployed
-                  ? 'Safe deployed · no qualified holdings yet'
-                  : 'No Safe deployed yet · nothing is locked'}
+                {overview.holdings.sub}
               </div>
             </Card>
 
@@ -372,7 +355,7 @@ export default async function OverviewPage() {
                 Next steps
               </h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {NEXT_STEPS.map((step) => (
+                {overview.steps.map((step) => (
                   <div
                     key={step.label}
                     style={{
@@ -389,13 +372,9 @@ export default async function OverviewPage() {
                     }}
                   >
                     <span>{step.label}</span>
-                    {step.note ? (
-                      <span style={{ fontSize: '12px', color: tokens.muted }}>
-                        {step.note}
-                      </span>
-                    ) : (
-                      <span style={{ color: tokens.muted }}>→</span>
-                    )}
+                    <span style={{ fontSize: '12px', color: tokens.muted }}>
+                      {step.note}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -403,11 +382,13 @@ export default async function OverviewPage() {
           </div>
         </div>
 
-        <div style={{ marginTop: '16px' }}>
-          <Chip tone="neutral" dot>
-            Demo data · not this resident&rsquo;s records
-          </Chip>
-        </div>
+        {badge ? (
+          <div style={{ marginTop: '16px' }}>
+            <Chip tone="neutral" dot>
+              {badge}
+            </Chip>
+          </div>
+        ) : null}
       </ContentContainer>
     </AppShell>
   );

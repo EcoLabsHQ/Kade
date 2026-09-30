@@ -21,6 +21,8 @@ const hoisted = vi.hoisted(() => ({
   hasCompletedOnboarding: vi.fn(),
   loadShellSafe: vi.fn(),
   loadReviewBar: vi.fn(),
+  loadVaultHoldings: vi.fn(),
+  loadFeePayment: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
@@ -39,6 +41,20 @@ vi.mock('@/lib/review/review-bar', () => ({
 }));
 vi.mock('@/lib/review/queue', () => ({
   loadResidentReviewState: vi.fn(),
+  NO_RESIDENT_REVIEW_STATE: {
+    status: null,
+    tier: null,
+    preapprovalUsdc: null,
+    reviewUid: null,
+    serviceUid: null,
+    latestReview: null,
+  },
+}));
+vi.mock('@/lib/wealth/vault-holdings', () => ({
+  loadVaultHoldings: hoisted.loadVaultHoldings,
+}));
+vi.mock('@/lib/payments/server', () => ({
+  loadFeePayment: hoisted.loadFeePayment,
 }));
 vi.mock('@/lib/env', () => ({
   isAuthConfigured: () => false,
@@ -75,6 +91,8 @@ beforeEach(() => {
     reference: null,
     isReviewer: false,
   });
+  hoisted.loadVaultHoldings.mockResolvedValue([]);
+  hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
 });
 
 describe('Overview dashboard header actions', () => {

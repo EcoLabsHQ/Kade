@@ -136,11 +136,35 @@ function groupBy<T, K extends string>(
   return map;
 }
 
-/** The resident's own review state, for the live gate. RLS scopes the read. */
+/**
+ * The resident's own application state, for the live gate.
+ *
+ * RLS scopes the read to the resident's own row. Beyond the status the gate
+ * flips on, the row carries the fields the Overview needs to show the resident's
+ * real figures rather than demo ones: the chosen `tier` (whose minimum the
+ * qualified balance is measured against), the server-resolved `preapproval_usdc`
+ * amount, and the two attestation UIDs the programme writes
+ * (`kade.review.v1`, `kade.permit.v1`). Reading them from the same row is what
+ * lets the screen stop hard-coding them.
+ */
 export interface ResidentReviewState {
   readonly status: ApplicationStatus | null;
+  readonly tier: string | null;
+  readonly preapprovalUsdc: number | null;
+  readonly reviewUid: string | null;
+  readonly serviceUid: string | null;
   readonly latestReview: ReviewEvent | null;
 }
+
+/** The all-unknown state, so a failed or absent read is explicit. */
+export const NO_RESIDENT_REVIEW_STATE: ResidentReviewState = {
+  status: null,
+  tier: null,
+  preapprovalUsdc: null,
+  reviewUid: null,
+  serviceUid: null,
+  latestReview: null,
+};
 
 export async function loadResidentReviewState(
   client: SupabaseClient,
@@ -148,13 +172,13 @@ export async function loadResidentReviewState(
 ): Promise<ResidentReviewState> {
   const { data: application, error } = await client
     .from('applications')
-    .select('id, status')
+    .select('id, status, tier, preapproval_usdc, review_uid, service_uid')
     .eq('profile_id', profileId)
     .maybeSingle();
   if (error) {
     throw new Error(`Loading the application state failed: ${error.message}`);
   }
-  if (!application) return { status: null, latestReview: null };
+  if (!application) return NO_RESIDENT_REVIEW_STATE;
 
   const { data: events, error: eventsError } = await client
     .from('review_events')
@@ -167,8 +191,19 @@ export async function loadResidentReviewState(
   }
 
   const latest = (events as unknown as ReviewEventRow[] | null)?.[0] ?? null;
+  const row = application as {
+    status: ApplicationStatus;
+    tier: string | null;
+    preapproval_usdc: number | string | null;
+    review_uid: string | null;
+    service_uid: string | null;
+  };
   return {
-    status: (application as { status: ApplicationStatus }).status,
+    status: row.status,
+    tier: row.tier,
+    preapprovalUsdc: toNumber(row.preapproval_usdc),
+    reviewUid: row.review_uid,
+    serviceUid: row.service_uid,
     latestReview:
       latest && isReviewAction(latest.action)
         ? {
