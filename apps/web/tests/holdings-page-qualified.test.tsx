@@ -41,6 +41,12 @@ vi.mock('wagmi', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),
 }));
+// The page now also reads the resident's tier through the residency surface's
+// own read. That read is orthogonal to the qualified total this test pins, so
+// none recorded keeps the assertion focused (see `holdings-page-tier.test.tsx`).
+vi.mock('@/lib/residency/server', () => ({
+  loadApplicationResidencyRow: vi.fn(async () => null),
+}));
 vi.mock('@/lib/safe/shell', () => ({
   loadShellSafe: vi.fn(async () => ({
     address: SAFE,

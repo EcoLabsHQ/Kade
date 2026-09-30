@@ -26,6 +26,12 @@ vi.mock('wagmi', () => ({
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),
 }));
+// The page reads the resident's tier through the residency surface's own read;
+// none recorded keeps this test on the no-tier path (tier wiring is covered in
+// `holdings-page-tier.test.tsx`).
+vi.mock('@/lib/residency/server', () => ({
+  loadApplicationResidencyRow: vi.fn(async () => null),
+}));
 vi.mock('@/lib/safe/shell', () => ({
   loadShellSafe: vi.fn(async () => ({
     address: null,

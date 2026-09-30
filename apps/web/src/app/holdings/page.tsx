@@ -8,6 +8,7 @@ import { readWalletConnectProjectId } from '@/lib/env';
 import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
+import { loadApplicationResidencyRow } from '@/lib/residency/server';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
 import { loadVerifiedHoldings } from './data';
@@ -36,15 +37,41 @@ import { beginWalletLink, completeWalletLink } from './link-actions';
  */
 export const dynamic = 'force-dynamic';
 
+/**
+ * The resident's recorded qualifying tier, read from the **one** application row
+ * the Residency surface reads (`loadApplicationResidencyRow`), so the `QUALIFIED`
+ * card and the residency tier check cannot disagree about which tier the
+ * resident is on. This is the page's only tier read; the card derives its
+ * sub-line from this value and the same qualified position the residency check
+ * reduces.
+ *
+ * A failed read yields null — the same "no tier recorded" the card already
+ * renders — so the page still renders and never claims a tier it could not read.
+ * A tier is never inferred from the qualified total or re-derived anywhere.
+ */
+async function loadResidentTier(profileId: string): Promise<string | null> {
+  try {
+    const row = await loadApplicationResidencyRow(profileId);
+    return row?.tier ?? null;
+  } catch (cause) {
+    console.warn(
+      '[kade] Could not read the application tier for holdings:',
+      cause instanceof Error ? cause.message : cause,
+    );
+    return null;
+  }
+}
+
 export default async function HoldingsPage() {
   const session = await getSessionUser();
   if (!session) {
     redirect('/login');
   }
 
-  const [shellSafe, aggregate] = await Promise.all([
+  const [shellSafe, aggregate, tier] = await Promise.all([
     loadShellSafe(session.userId),
     loadVerifiedHoldings(session.userId),
+    loadResidentTier(session.userId),
   ]);
 
   // The Safe's qualified holdings are a fresh on-chain read pointed at the Safe
@@ -81,6 +108,7 @@ export default async function HoldingsPage() {
             safeAddress={shellSafe.address}
             vaultHoldings={vaultHoldings}
             qualified={qualified}
+            tier={tier}
             configured={walletConfigured}
             onBegin={beginWalletLink}
             onComplete={completeWalletLink}

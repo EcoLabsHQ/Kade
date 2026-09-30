@@ -44,6 +44,13 @@ export interface HoldingsViewProps {
   readonly vaultHoldings?: readonly VaultHoldingRow[];
   /** The one qualified total, reduced by the server page from `vaultHoldings`. */
   readonly qualified?: QualifiedPosition;
+  /**
+   * The resident's recorded qualifying tier (`applications.tier`), read by the
+   * server page from the same application row the Residency surface reads.
+   * Forwarded unchanged to the `QUALIFIED` card; null/absent makes it claim no
+   * tier.
+   */
+  readonly tier?: string | null;
 }
 
 export function HoldingsView({
@@ -55,6 +62,7 @@ export function HoldingsView({
   onAddConnectedWallet,
   vaultHoldings = [],
   qualified,
+  tier,
 }: HoldingsViewProps) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -68,6 +76,7 @@ export function HoldingsView({
       safeAddress={safeAddress}
       vaultHoldings={vaultHoldings}
       qualified={qualified}
+      tier={tier}
       onMoveToVault={onMoveToVault}
       renderVerifyWallets={() => (
         <VerifyWalletsModal
