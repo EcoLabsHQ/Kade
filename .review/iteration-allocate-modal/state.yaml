@@ -1,0 +1,29 @@
+iteration: iteration-allocate-modal
+profile: QUICKFIX
+candidate: 0ac8da34638342c9ff1654bb3936945ad02dfb98
+mode: targeted
+reviewed_scopes: {quickfix: complete}
+active_findings: [F1, F2]
+resolved_findings: []
+next_finding_id: F3
+recheck_attempts: {F1: 0, F2: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  targeted_1:
+    candidate: 293936bf0b291cbfded2e79bbe7423f05de22d5b
+    integrated_as: 0ac8da3
+    verdict: review_passed
+    blocking: []
+    warnings: [F1, F2]
+    notes: >
+      The disclosure assertion is a genuine visible-state proof: hidden beats
+      details in jsdom, where a closed details is not reported hidden. CopyableValue
+      is reused correctly with each address own chain explorer, proven for Ethereum
+      and Base. The two adapted tests keep their cross-chain proof via getByTitle.
+      No derived figure became a literal; Not quoted and the honest unread dash
+      survive. Bounded QUICKFIX.
+carried_warnings:
+  F1: "Reset-to-collapsed on reopen is implemented but not directly tested."
+  F2: "The modal header drops the instrument type; reference-aligned, still shown in the table row."
+human_gate: none

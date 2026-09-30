@@ -1,0 +1,26 @@
+iteration: iteration-sidebar-identity
+profile: QUICKFIX
+candidate: 2f9e897dcb767cff7344c0ebfcb41e4a5bc18071
+mode: targeted
+reviewed_scopes: {quickfix: complete}
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+session_history:
+  targeted_1:
+    candidate: 7724c651f396029e1a9ebc51106c4cf4848304b7
+    integrated_as: 2f9e897
+    verdict: review_passed
+    blocking: []
+    warnings: [F1]
+    notes: >
+      The email left the sidebar proven on the value, not on a label, and the
+      account page still renders it. The avatar-only trigger remains a real,
+      announced, keyboard-reachable button that opens the menu and still posts
+      sign-out to the same route. No behavioural assertion was dropped anywhere.
+carried_warnings:
+  F1: "AppShell.email is a documented no-op prop retained for sibling-owned callers."
+human_gate: none
