@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChainChip } from '@/components/ui/ChainChip';
@@ -231,6 +231,10 @@ export function InvestScreen({
   // defaults on when the un-allocate modal opens.
   const [withdrawAll, setWithdrawAll] = useState(false);
   const [state, setState] = useState<AllocateState>({ kind: 'idle' });
+  // The contract-address block is collapsed behind a disclosure so it does not
+  // dominate the modal. It resets to collapsed each time a modal opens.
+  const [contractsOpen, setContractsOpen] = useState(false);
+  const contractDetailsId = useId();
 
   // The rail a Morpho row deposits into, resolved from the row's own chain id —
   // never a separate selection, so the row's chain and the deposit's chain
@@ -279,6 +283,7 @@ export function InvestScreen({
     setSelected(instrument);
     setDirection(nextDirection);
     setState({ kind: 'idle' });
+    setContractsOpen(false);
     const min = Number(instrument.minimum.replace(/[^0-9]/g, ''));
     setAmount(String(Math.max(10000, Number.isFinite(min) ? min : 10000)));
     // An un-allocate defaults to the whole position so `redeem` leaves no dust
@@ -290,6 +295,7 @@ export function InvestScreen({
     setSelected(null);
     setDirection('allocate');
     setWithdrawAll(false);
+    setContractsOpen(false);
     setState({ kind: 'idle' });
   }
 
@@ -841,10 +847,15 @@ export function InvestScreen({
                 {selected.name}
               </div>
             ) : null}
+            {/*
+              The reference's header line: the instrument's venue, then its
+              terms. The `type` is carried by the table row, so it is not
+              repeated here.
+            */}
             <div
               style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '3px' }}
             >
-              {selected.venue} · {selected.type} · {selected.terms}
+              {selected.venue} · {selected.terms}
             </div>
 
             {selected.wired ? (
@@ -856,26 +867,19 @@ export function InvestScreen({
                 */}
                 <div
                   style={{
-                    marginTop: '12px',
+                    marginTop: '10px',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '6px',
+                    background: tokens.surface,
                     border: `1px solid ${tokens.border}`,
-                    borderRadius: '12px',
-                    padding: '6px 10px',
+                    borderRadius: '999px',
+                    padding: '4px 11px',
+                    fontSize: '11.5px',
+                    color: tokens.chipFg,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: '10.5px',
-                      fontWeight: 700,
-                      letterSpacing: '.06em',
-                      textTransform: 'uppercase',
-                      color: tokens.muted,
-                    }}
-                  >
-                    Settles on
-                  </span>
+                  <span>Settles on</span>
                   <ChainChip
                     name={selected.chain}
                     color={selected.chainColor}
@@ -886,9 +890,10 @@ export function InvestScreen({
                   htmlFor='invest-amount'
                   style={{
                     display: 'block',
-                    marginTop: '14px',
-                    fontSize: '13px',
+                    marginTop: '16px',
+                    fontSize: '12px',
                     fontWeight: 600,
+                    color: tokens.muted,
                   }}
                 >
                   {direction === 'unallocate'
@@ -991,14 +996,18 @@ export function InvestScreen({
                   <div
                     data-testid='invest-allocate-summary'
                     style={{
-                      marginTop: '14px',
+                      marginTop: '16px',
+                      background: tokens.surface,
                       border: `1px solid ${tokens.border}`,
                       borderRadius: '12px',
-                      padding: '2px 14px',
-                      background: '#fff',
+                      padding: '14px 16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      fontSize: '13px',
                     }}
                   >
-                    <Row label='Minimum' value={selected.minimum} first />
+                    <Row label='Minimum' value={selected.minimum} />
                     <Row
                       label='Estimated income'
                       value='Not quoted'
@@ -1020,26 +1029,20 @@ export function InvestScreen({
                   </div>
                 ) : null}
 
-                <dl style={{ margin: '14px 0 0', fontSize: '12.5px' }}>
-                  <Row
-                    label='Vault chain'
-                    value={
-                      selectedRail
-                        ? `${selectedRail.chainName} · ${selectedRail.chainId}`
-                        : 'Not configured'
-                    }
-                  />
-                  <Row
-                    label='MetaMorpho vault'
-                    value={selectedRail?.vault ?? 'Not configured'}
-                    mono={selectedRail?.vault != null}
-                  />
-                  <Row
-                    label='Underlying USDC'
-                    value={selectedRail?.usdc ?? 'Not configured'}
-                    mono={selectedRail?.usdc != null}
-                  />
-                </dl>
+                {/* The reference's closing copy for the allocate direction. */}
+                {direction === 'allocate' ? (
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      fontSize: '12px',
+                      color: tokens.muted,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Settles from vault USDC in one Safe transaction and appears
+                    in Holdings. Stays locked for the permit term.
+                  </div>
+                ) : null}
 
                 {direction === 'unallocate' ? (
                   <div
@@ -1055,9 +1058,114 @@ export function InvestScreen({
                   </div>
                 ) : null}
 
-                <div style={{ marginTop: '16px', marginBottom: '16px'}}>
+                {/*
+                  The owner asked for the contract information to sit behind a
+                  "ver más"-style disclosure rather than dominate the panel. It
+                  is collapsed by default and revealed on demand. The control is
+                  a real <button> carrying `aria-expanded` (keyboard-reachable),
+                  and every address inside reuses `CopyableValue`: shown
+                  truncated, with a copy button holding the full value and an
+                  explorer link pointing at that value's own chain.
+                */}
+                <div
+                  style={{
+                    marginTop: '16px',
+                    borderTop: `1px solid ${tokens.border}`,
+                    paddingTop: '12px',
+                  }}
+                >
+                  <button
+                    type='button'
+                    aria-expanded={contractsOpen}
+                    aria-controls={contractDetailsId}
+                    onClick={() => setContractsOpen((open) => !open)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      border: 0,
+                      background: 'transparent',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: tokens.brandPrimary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span
+                      aria-hidden='true'
+                      style={{
+                        display: 'inline-block',
+                        transition: 'transform .15s ease',
+                        transform: contractsOpen ? 'rotate(90deg)' : 'none',
+                      }}
+                    >
+                      ›
+                    </span>
+                    Show contract details
+                  </button>
+                  <div
+                    hidden={!contractsOpen}
+                    id={contractDetailsId}
+                    data-testid='invest-contract-details'
+                    style={{ marginTop: '8px' }}
+                  >
+                    <dl style={{ margin: 0, fontSize: '12.5px' }}>
+                      <Detail label='Vault chain' first>
+                        <span style={{ color: tokens.chipFg }}>
+                          {selectedRail
+                            ? `${selectedRail.chainName} · ${selectedRail.chainId}`
+                            : 'Not configured'}
+                        </span>
+                      </Detail>
+                      <Detail label='MetaMorpho vault'>
+                        {selectedRail?.vault != null ? (
+                          <CopyableValue
+                            value={selectedRail.vault}
+                            label='MetaMorpho vault address'
+                            explorerUrl={addressExplorerUrl(
+                              selectedRail.chainId,
+                              selectedRail.vault,
+                            )}
+                          />
+                        ) : (
+                          <span style={{ color: tokens.muted }}>
+                            Not configured
+                          </span>
+                        )}
+                      </Detail>
+                      <Detail label='Underlying USDC'>
+                        {selectedRail?.usdc != null ? (
+                          <CopyableValue
+                            value={selectedRail.usdc}
+                            label='USDC address'
+                            explorerUrl={addressExplorerUrl(
+                              selectedRail.chainId,
+                              selectedRail.usdc,
+                            )}
+                          />
+                        ) : (
+                          <span style={{ color: tokens.muted }}>
+                            Not configured
+                          </span>
+                        )}
+                      </Detail>
+                    </dl>
+                  </div>
+                </div>
+
+                {/* The reference's button row: the action and a Cancel. */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '10px',
+                    marginTop: '18px',
+                    marginBottom: '16px',
+                  }}
+                >
                   <Button
-                    style={{ width: '100%' }}
+                    style={{ flex: '1 1 auto' }}
                     variant={canTransact ? 'primary' : 'locked'}
                     disabled={!canTransact || busy}
                     onClick={() => runTransaction(direction)}
@@ -1095,6 +1203,13 @@ export function InvestScreen({
                               ? 'Un-allocate all USDC'
                               : `Un-allocate ${amount} USDC`
                             : `Allocate ${amount} USDC`}
+                  </Button>
+                  <Button
+                    variant='secondary'
+                    onClick={closeModal}
+                    ariaLabel='Cancel'
+                  >
+                    Cancel
                   </Button>
                 </div>
               </>
@@ -1310,19 +1425,19 @@ function Stat({
   );
 }
 
+/**
+ * A label/value line inside the allocate summary box. The box spaces its rows
+ * itself (the reference uses a flex column with a gap), so a row carries no
+ * divider of its own.
+ */
 function Row({
   label,
   value,
-  mono,
-  first,
   title,
   valueColor,
 }: {
   label: string;
   value: string;
-  mono?: boolean;
-  /** Omits the top divider, for the first row inside a bordered box. */
-  first?: boolean;
   /** The specific reason a figure is unknown, shown on hover. */
   title?: string;
   /** Colours the value, e.g. to mark it unknown or to accent it. */
@@ -1334,8 +1449,6 @@ function Row({
         display: 'flex',
         justifyContent: 'space-between',
         gap: '12px',
-        padding: '7px 0',
-        borderTop: first ? undefined : `1px solid ${tokens.border}`,
       }}
     >
       <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>
@@ -1345,9 +1458,7 @@ function Row({
           fontWeight: 600,
           minWidth: 0,
           color: valueColor,
-          fontFamily: mono
-            ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-            : undefined,
+          fontVariantNumeric: 'tabular-nums',
           wordBreak: 'break-all',
           textAlign: 'right',
         }}
@@ -1366,9 +1477,12 @@ function Row({
 function Detail({
   label,
   children,
+  first,
 }: {
   label: string;
   children: React.ReactNode;
+  /** Omits the top divider, for the first row in a bordered block. */
+  first?: boolean;
 }) {
   return (
     <div
@@ -1378,7 +1492,7 @@ function Detail({
         alignItems: 'baseline',
         gap: '12px',
         padding: '7px 0',
-        borderTop: `1px solid ${tokens.border}`,
+        borderTop: first ? undefined : `1px solid ${tokens.border}`,
       }}
     >
       <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>

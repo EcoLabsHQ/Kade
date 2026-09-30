@@ -14,6 +14,7 @@ import {
   morphoChainName,
   readMorphoVaultConfigForChain,
 } from '@/lib/invest/morpho-config';
+import { shortAddress } from '@/lib/wealth/format';
 
 /**
  * The Invest screen (D18 / EXE-014).
@@ -239,8 +240,17 @@ describe('InvestScreen configuration', () => {
   it('shows the configured vault values from props, not literals', () => {
     renderScreen();
     const dialog = openDialog(MORPHO_ETHEREUM);
-    expect(within(dialog).getByText(VAULT)).toBeInTheDocument();
-    expect(within(dialog).getByText(USDC)).toBeInTheDocument();
+    // The contract addresses live behind the collapsed disclosure; expand it.
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /contract details/i }),
+    );
+    // The full address survives as the value even though it renders truncated.
+    expect(within(dialog).getByTitle(VAULT)).toHaveTextContent(
+      shortAddress(VAULT),
+    );
+    expect(within(dialog).getByTitle(USDC)).toHaveTextContent(
+      shortAddress(USDC),
+    );
     // The Ethereum row deposits on Ethereum mainnet, named before signing.
     expect(within(dialog).getByText('Ethereum · 1')).toBeInTheDocument();
   });
@@ -261,19 +271,28 @@ describe('InvestScreen configuration', () => {
     for (const current of cases) {
       renderScreen();
       const dialog = openDialog(current.name);
+      // Contract details are collapsed by default; reveal them for this row.
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: /contract details/i }),
+      );
 
       // The modal names the row's own chain and shows that chain's vault/USDC.
       expect(
         within(dialog).getByText(`${current.chain} · ${current.chainId}`),
       ).toBeInTheDocument();
-      expect(within(dialog).getByText(current.vault)).toBeInTheDocument();
-      expect(within(dialog).getByText(current.usdc)).toBeInTheDocument();
+      // Each address is shown truncated but keeps the full value as its title.
+      expect(within(dialog).getByTitle(current.vault)).toHaveTextContent(
+        shortAddress(current.vault),
+      );
+      expect(within(dialog).getByTitle(current.usdc)).toHaveTextContent(
+        shortAddress(current.usdc),
+      );
 
       // No other chain's vault leaks into this investment's modal, and there is
       // no chain selector to contradict the row.
       for (const other of cases) {
         if (other.vault !== current.vault) {
-          expect(within(dialog).queryByText(other.vault)).toBeNull();
+          expect(within(dialog).queryByTitle(other.vault)).toBeNull();
         }
       }
       expect(
