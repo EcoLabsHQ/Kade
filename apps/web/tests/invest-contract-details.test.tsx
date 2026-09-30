@@ -246,7 +246,7 @@ describe('InvestScreen contract details disclosure', () => {
     const summary = within(dialog).getByTestId('invest-allocate-summary');
 
     // Minimum: the instrument's own minimum, from the rail config.
-    expect(within(summary).getByText('$100')).toBeInTheDocument();
+    expect(within(summary).getByText('$1')).toBeInTheDocument();
     // Estimated income: no live yield source, so it stays "Not quoted".
     expect(within(summary).getByText('Not quoted')).toBeInTheDocument();
     // Vault USDC after: the injected free USDC (12,500) less the default

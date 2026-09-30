@@ -286,9 +286,9 @@ describe('InvestScreen allocate modal summary', () => {
     const summary = within(dialog).getByTestId('invest-allocate-summary');
 
     // Minimum: the instrument's own minimum.
-    expect(within(summary).getByText('$100')).toBeInTheDocument();
-    // Estimated income: no live yield source is connected, so it is not quoted
-    // rather than invented.
+    expect(within(summary).getByText('$1')).toBeInTheDocument();
+    // Estimated income: no yield was injected for this rail, so it is not
+    // quoted rather than invented.
     expect(within(summary).getByText('Not quoted')).toBeInTheDocument();
     // Vault USDC after: the Safe's free USDC on the deposit chain (12,500)
     // less the default amount (10,000).

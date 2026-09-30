@@ -19,6 +19,14 @@ import {
 } from '@/app/invest/actions';
 import { promptPasskeyAssertionParts } from '@/lib/passkey/assertion';
 import { summarizeInvestPosition } from '@/lib/invest/invest-position';
+import {
+  defaultAllocationUsdc,
+  minimumAllocationLabel,
+} from '@/lib/invest/allocation-minimum';
+import {
+  isMorphoYieldReadable,
+  type MorphoYieldRead,
+} from '@/lib/invest/morpho-yield';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import {
   addressExplorerUrl,
@@ -106,6 +114,18 @@ export interface InvestScreenProps {
    * reason and never becomes a zero.
    */
   readonly holdings: readonly VaultHoldingRow[];
+  /**
+   * Each pinned rail's current yield, read **once** by the route from Morpho's
+   * public API through {@link readMorphoVaultYield} and keyed by chain id.
+   *
+   * This is the source the allocate modal's **Estimated income** line uses. It
+   * is passed in rather than fetched in the component so the render stays
+   * offline and deterministic, and so the read is the route's one bounded,
+   * cached call (Next revalidation) rather than a per-render one. A chain whose
+   * read failed is either absent or carries its own `unknown` reason, so the
+   * line says **why** it cannot quote a figure instead of inventing one.
+   */
+  readonly yields?: ReadonlyMap<number, MorphoYieldRead>;
 }
 
 interface Instrument {
@@ -116,6 +136,12 @@ interface Instrument {
   readonly chainColor: string;
   readonly type: string;
   readonly terms: string;
+  /**
+   * The instrument's own minimum, as a display string. For the wired
+   * MetaMorpho rails this is {@link minimumAllocationLabel} — the one source of
+   * truth (`$1`) shared with the modal's summary box — so the column and the
+   * summary cannot state different minimums.
+   */
   readonly minimum: string;
   /** Whether this iteration wires an execution path for the instrument. */
   readonly wired: boolean;
@@ -135,6 +161,11 @@ interface Instrument {
  * configured per-chain rails (see `morphoInstruments`), so the list cannot drift
  * from what can actually execute and an unconfigured rail never becomes
  * something a resident can click.
+ *
+ * Its `$500` minimum is the reference's own locked-instrument figure and is a
+ * **different instrument** from the wired rails, so it is not the shared
+ * allocation minimum; only the wired MetaMorpho rails derive theirs from
+ * {@link minimumAllocationLabel}.
  */
 const USDY_INSTRUMENT: Instrument = {
   key: 'usdy',
@@ -157,9 +188,14 @@ const USDY_INSTRUMENT: Instrument = {
  * can execute. An unconfigured rail produces no row, and nothing to click.
  *
  * The vault's label and venue name the instrument accurately — a **MetaMorpho
- * vault**, not a Morpho Blue market. The row carries no yield figure: this build
- * has no source for the vault's current APY, so it is presented as unavailable
- * rather than quoting the reference's demo number as if it were real.
+ * vault**, not a Morpho Blue market. The row carries no yield figure: the table
+ * has no place for the vault's live APY, so it is presented as unavailable
+ * rather than quoting the reference's demo number as if it were real. (The
+ * modal's **Estimated income** line is the surface that quotes a live figure,
+ * from Morpho, and it is the only one.)
+ *
+ * `minimum` is the owner's flat `$1` floor, from the one source of truth, so the
+ * checklist column and the summary box state the same figure.
  */
 function morphoInstruments(
   vaults: readonly InvestVaultSummary[],
@@ -172,7 +208,7 @@ function morphoInstruments(
       venue: 'MetaMorpho · USDC vault',
       type: 'Lending vault',
       terms: 'Variable APY · not quoted',
-      minimum: '$100',
+      minimum: minimumAllocationLabel(),
       chain: rail.chainName,
       chainColor: chainColor(rail.chainName),
       wired: true,
@@ -231,6 +267,7 @@ export function InvestScreen({
   vaults,
   safeAddress,
   holdings,
+  yields,
 }: InvestScreenProps) {
   // The one position read, reduced for the whole screen: the stat cards, each
   // row's state and the allocate preview all come from these same rows, so the
@@ -297,8 +334,7 @@ export function InvestScreen({
     setDirection(nextDirection);
     setState({ kind: 'idle' });
     setContractsOpen(false);
-    const min = Number(instrument.minimum.replace(/[^0-9]/g, ''));
-    setAmount(String(Math.max(10000, Number.isFinite(min) ? min : 10000)));
+    setAmount(String(defaultAllocationUsdc()));
     // An un-allocate defaults to the whole position so `redeem` leaves no dust
     // share that could not later be withdrawn.
     setWithdrawAll(nextDirection === 'unallocate');
@@ -502,6 +538,43 @@ export function InvestScreen({
     }
     return {
       value: usd(selectedChainFree.usd - amountNumber),
+      title: undefined,
+      muted: false,
+    };
+  })();
+
+  // The allocate modal's **Estimated income**: the amount the resident typed
+  // times the vault's yield read from Morpho, shown as the reference does
+  // (`$500 / yr est.`). The rate comes from the injected per-chain read, never
+  // from the design's demo number; when that read failed or the rail is
+  // unconfigured, the line returns `Not quoted` with the specific reason, and
+  // never a zero or a guessed figure. A genuine `0` rate yields a real `$0`.
+  const selectedYield =
+    selected?.chainId != null ? (yields?.get(selected.chainId) ?? null) : null;
+  const estimatedIncome = ((): {
+    readonly value: string;
+    readonly title: string | undefined;
+    readonly muted: boolean;
+  } => {
+    if (!isMorphoYieldReadable(selectedYield)) {
+      return {
+        value: 'Not quoted',
+        title:
+          selectedYield?.status === 'unknown'
+            ? selectedYield.reason
+            : 'No Morpho yield is available for this vault, so no income can be estimated.',
+        muted: true,
+      };
+    }
+    if (amountNumber === null) {
+      return {
+        value: 'Not quoted',
+        title: 'Enter a positive USDC amount to estimate income.',
+        muted: true,
+      };
+    }
+    return {
+      value: `${usd(amountNumber * selectedYield.netApy)} / yr est.`,
       title: undefined,
       muted: false,
     };
@@ -790,14 +863,22 @@ export function InvestScreen({
               : selected.name
             : 'Allocate'
         }
-        maxWidth={460}
+        // The reference's allocate panel is `max-width: 440px`
+        // (kade-mvp.dc.html, the "New allocation" dialog); the modal default is
+        // the same, so this keeps the panel at the owner's requested width
+        // rather than the 460px the screen previously passed.
+        maxWidth={440}
       >
         {selected ? (
           <div
             style={{
               fontSize: '13px',
               color: tokens.chipFg,
-              padding: '0 24px 24px',
+              // The reference's dialog body padding (kade-mvp.dc.html, the "New
+              // allocation" panel) is `22px` on every side; the header above is
+              // the Modal's, so the top padding here is the reference's 22px
+              // less the header's own bottom spacing.
+              padding: '22px',
             }}
           >
             {/*
@@ -809,7 +890,8 @@ export function InvestScreen({
             {selected.wired ? (
               <div
                 style={{
-                  fontSize: '16px',
+                  // The reference's instrument name: 15px, weight 700.
+                  fontSize: '15px',
                   fontWeight: 700,
                   color: tokens.ink,
                   lineHeight: 1.25,
@@ -820,11 +902,11 @@ export function InvestScreen({
             ) : null}
             {/*
               The reference's header line: the instrument's venue, then its
-              terms. The `type` is carried by the table row, so it is not
-              repeated here.
+              terms (12px, muted, a 4px gap under the name). The `type` is
+              carried by the table row, so it is not repeated here.
             */}
             <div
-              style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '3px' }}
+              style={{ fontSize: '12px', color: tokens.muted, marginTop: '4px' }}
             >
               {selected.venue} · {selected.terms}
             </div>
@@ -838,14 +920,16 @@ export function InvestScreen({
                 */}
                 <div
                   style={{
-                    marginTop: '10px',
+                    marginTop: '6px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
                     background: tokens.surface,
                     border: `1px solid ${tokens.border}`,
                     borderRadius: '999px',
-                    padding: '4px 11px',
+                    // The reference's "Settles on" chip: 11.5px, `3px 9px`,
+                    // radius 999px, a 6px gap under the venue line.
+                    padding: '3px 9px',
                     fontSize: '11.5px',
                     color: tokens.chipFg,
                   }}
@@ -957,11 +1041,13 @@ export function InvestScreen({
                 {/*
                   The reference's allocate summary box. Every figure is derived
                   from real data or is explicitly unknown — never invented:
-                  Minimum is the instrument's own minimum; Estimated income is
-                  "not quoted" because no live yield source is connected; Vault
-                  USDC after is the row chain's free USDC less the amount (or an
-                  explained unknown); Qualifying balance is unchanged by design,
-                  because allocations stay locked and keep counting.
+                  Minimum is the instrument's own minimum, from the one `$1`
+                  source of truth; Estimated income is the typed amount times
+                  the vault's yield read from Morpho (or `Not quoted` with the
+                  specific reason when that read failed); Vault USDC after is the
+                  row chain's free USDC less the amount (or an explained
+                  unknown); Qualifying balance is unchanged by design, because
+                  allocations stay locked and keep counting.
                 */}
                 {direction === 'allocate' ? (
                   <div
@@ -978,12 +1064,19 @@ export function InvestScreen({
                       fontSize: '13px',
                     }}
                   >
-                    <Row label='Minimum' value={selected.minimum} />
+                    <Row
+                      label='Minimum'
+                      value={selected.minimum}
+                      testId='invest-summary-minimum'
+                    />
                     <Row
                       label='Estimated income'
-                      value='Not quoted'
-                      title='No live yield source is connected for this vault, so no income can be estimated.'
-                      valueColor={tokens.muted}
+                      value={estimatedIncome.value}
+                      title={estimatedIncome.title}
+                      valueColor={
+                        estimatedIncome.muted ? tokens.muted : undefined
+                      }
+                      testId='invest-summary-income'
                     />
                     <Row
                       label='Vault USDC after'
@@ -1406,6 +1499,7 @@ function Row({
   value,
   title,
   valueColor,
+  testId,
 }: {
   label: string;
   value: string;
@@ -1413,6 +1507,8 @@ function Row({
   title?: string;
   /** Colours the value, e.g. to mark it unknown or to accent it. */
   valueColor?: string;
+  /** Identifies the row's value in tests; the label stays presentational. */
+  testId?: string;
 }) {
   return (
     <div
@@ -1424,6 +1520,7 @@ function Row({
     >
       <span style={{ color: tokens.muted, flex: '0 0 auto' }}>{label}</span>
       <span
+        data-testid={testId}
         title={title}
         style={{
           fontWeight: 600,

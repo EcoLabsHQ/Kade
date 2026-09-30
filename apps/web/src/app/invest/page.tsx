@@ -12,6 +12,7 @@ import {
   morphoChainName,
   readMorphoVaultConfigForChain,
 } from '@/lib/invest/morpho-config';
+import { readMorphoVaultYield } from '@/lib/invest/morpho-yield';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,21 @@ export default async function InvestPage() {
     loadReviewBar(session.userId),
   ]);
 
+  // Each pinned rail's current yield, read from Morpho's public API for the
+  // **same vault the rail deposits into**, so the allocate modal can estimate
+  // income. The reads are bounded and cached by Next (a day), so this route
+  // does not call Morpho on every render, and a rail whose read fails travels as
+  // an `unknown` carrying its reason — the modal then says `Not quoted` rather
+  // than inventing a figure. Only configured rails are read.
+  const yieldReads = await Promise.all(
+    vaults
+      .filter((rail) => rail.configured)
+      .map(
+        async (rail) => [rail.chainId, await readMorphoVaultYield(rail.chainId)] as const,
+      ),
+  );
+  const yields = new Map(yieldReads);
+
   return (
     <AppShell
       email={session.email}
@@ -77,6 +93,7 @@ export default async function InvestPage() {
           vaults={vaults}
           safeAddress={shellSafe.address}
           holdings={vaultHoldings}
+          yields={yields}
         />
       </ContentContainer>
     </AppShell>
