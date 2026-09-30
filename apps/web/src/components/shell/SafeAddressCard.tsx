@@ -1,6 +1,7 @@
-import Link from 'next/link';
+'use client';
+
 import { tokens } from '@/components/ui/tokens';
-import { GearGlyph } from '@/components/icons/GearGlyph';
+import { useAccountMenu, UserMenu } from './UserMenu';
 import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
 export interface SafeAddressCardProps {
@@ -16,10 +17,16 @@ export interface SafeAddressCardProps {
   readonly status?: SafeDeploymentStatus | null;
   /** Block explorer base, e.g. `https://sepolia.etherscan.io`. */
   readonly explorerUrl?: string | null;
+  /**
+   * Whether the user has a reviewers row, so the card's account menu can offer
+   * `/admin`. The card is the account menu's trigger, so it owns this.
+   */
+  readonly isReviewer?: boolean;
 }
 
 /**
- * The reference's Safe account card.
+ * The reference's Safe account card — and, since the avatar-only button was
+ * removed, the account menu's trigger.
  *
  * The address is never fabricated: it is either the resident's derived address
  * or nothing at all.
@@ -37,6 +44,17 @@ export interface SafeAddressCardProps {
  * There is no retry here any more. Nothing in this step can fail to deploy: there
  * is no deployment in it, and the first operation deploys the account when the
  * paymaster sponsors it.
+ *
+ * **Clicking the card opens the account menu.** The card keeps its text (the
+ * address and the network line), so unlike the avatar-only button it replaced it
+ * cannot be the `<button>` itself without nesting the deployed address link. It
+ * uses the stretched-trigger pattern instead: an absolutely positioned
+ * `<button>` covers the card, and the deployed address link is raised above it so
+ * it stays clickable. The trigger carries the accessible name `Account` and
+ * advertises the menu with `aria-haspopup`/`aria-expanded`. A `▾` in the gear's
+ * old slot is the visible affordance that the card opens something; the whole
+ * card also shows the pointer cursor and takes the browser's focus ring, so it
+ * still reads as clickable.
  */
 export function SafeAddressCard({
   address,
@@ -44,6 +62,7 @@ export function SafeAddressCard({
   deployed = false,
   status = null,
   explorerUrl = null,
+  isReviewer = false,
 }: SafeAddressCardProps) {
   const hasAddress = address !== null && address.length > 0;
   const href =
@@ -68,6 +87,8 @@ export function SafeAddressCard({
           'operation — Kade covers the network fee for it, so there is nothing ' +
           'to do now.';
 
+  const { open, containerRef, triggerRef, toggle, close } = useAccountMenu();
+
   const addressStyle = {
     fontSize: '12.5px',
     fontWeight: 600,
@@ -83,7 +104,13 @@ export function SafeAddressCard({
 
   return (
     <div
+      ref={containerRef}
+      data-testid="safe-address-card"
       style={{
+        position: 'relative',
+        // Keep the trigger and the menu in their own stacking context, so the
+        // trigger's z-index cannot leak over the menu or its siblings.
+        isolation: 'isolate',
         background: tokens.surface,
         border: `1px solid ${tokens.border}`,
         borderRadius: '12px',
@@ -110,7 +137,9 @@ export function SafeAddressCard({
               href={href}
               target="_blank"
               rel="noreferrer noopener"
-              style={addressStyle}
+              // Above the stretched trigger: the address still opens the chain,
+              // while clicking anywhere else on the card opens the menu.
+              style={{ ...addressStyle, position: 'relative', zIndex: 2 }}
               title={help}
             >
               {address}
@@ -127,24 +156,46 @@ export function SafeAddressCard({
             : `Safe · no account yet · ${network}`}
         </div>
       </div>
-      <Link
-        href="/account"
-        aria-label="Account settings"
-        title="Account settings"
+      {/* The gear's old slot: a menu affordance, so the card still reads as
+          clickable once the standalone gear is gone. */}
+      <span
+        aria-hidden
         style={{
           flex: '0 0 auto',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '28px',
-          height: '28px',
-          borderRadius: '8px',
           color: tokens.muted,
-          textDecoration: 'none',
+          fontSize: '11px',
+          lineHeight: 1,
         }}
       >
-        <GearGlyph size={16} />
-      </Link>
+        ▾
+      </span>
+      {/*
+        The stretched trigger. It sits under the address link (z-index 2) so the
+        link keeps working, and under nothing else: the card is the control.
+      */}
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account"
+        title={help}
+        onClick={toggle}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 1,
+          margin: 0,
+          padding: 0,
+          border: 0,
+          background: 'transparent',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          font: 'inherit',
+          color: 'inherit',
+        }}
+      />
+      {open ? <UserMenu isReviewer={isReviewer} onClose={close} /> : null}
     </div>
   );
 }

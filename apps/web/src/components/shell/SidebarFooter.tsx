@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
-import { UserMenu } from './UserMenu';
 
 export interface SidebarFooterProps {
   readonly isReviewer?: boolean;
@@ -14,11 +13,12 @@ export interface SidebarFooterProps {
 }
 
 /**
- * Sidebar footer: the Resident/Admin switch, the account menu, and the Kade
- * attribution.
+ * Sidebar footer: the Resident/Admin switch and the Kade attribution.
  *
  * The signed-in email is deliberately absent: it is account configuration and
- * lives on `/account`. The account menu — and sign-out behind it — stays.
+ * lives on `/account`. The account menu — and sign-out behind it — now belongs
+ * to the Safe card (the resident's account), not to a second, avatar-only
+ * trigger down here, so the footer renders no account control of its own.
  *
  * The review-state notice is **not** rendered here: the MVP reference puts it
  * above the Safe card, so `Sidebar` renders it there from the one review value
@@ -92,7 +92,6 @@ export function SidebarFooter({
           </span>
         )}
       </div>
-      <UserMenu isReviewer={isReviewer} />
       <div
         style={{
           fontSize: '11px',

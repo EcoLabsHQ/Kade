@@ -55,10 +55,9 @@ function precedes(a: Element, b: Element): boolean {
   );
 }
 
-/** The Safe card's wrapper: the account-settings link's grandparent. */
+/** The Safe card's wrapper: the `Sidebar` column div around the card. */
 function safeCardWrapper(): HTMLElement {
-  return screen.getByRole('link', { name: 'Account settings' })
-    .parentElement!.parentElement as HTMLElement;
+  return screen.getByTestId('safe-address-card').parentElement as HTMLElement;
 }
 
 describe('Sidebar vertical layout', () => {
@@ -91,14 +90,12 @@ describe('Sidebar vertical layout', () => {
       false,
     );
 
-    // The card still precedes the footer's content (the account button,
-    // which now owns sign-out).
+    // The account control now lives inside the card, and the card still
+    // precedes the footer's Resident/Admin switch.
     expect(
-      precedes(
-        cardWrapper,
-        screen.getByRole('button', { name: 'Account' }),
-      ),
+      cardWrapper.contains(screen.getByRole('button', { name: 'Account' })),
     ).toBe(true);
+    expect(precedes(cardWrapper, screen.getByText('Resident'))).toBe(true);
     cleanup();
   });
 

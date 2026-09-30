@@ -2,19 +2,29 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The account button and its menu.
+ * The account menu.
  *
- * The trigger is avatar-only — the resident's email is account configuration
- * and lives on `/account` — but it still owns sign-out. The menu must open on
- * click, contain sign-out (and the shell's other user-level actions), and close
- * on an outside click or Escape. Escape also returns focus to the trigger, so
- * the control is usable from the keyboard.
+ * The trigger used to be an avatar-only button in the sidebar footer. The owner
+ * moved it onto the Safe card — the resident's own account — so the card is now
+ * the control. The menu must still open on click, contain sign-out and the
+ * shell's other user-level actions, and close on an outside click or Escape.
+ * Escape also returns focus to the trigger, so the control is usable from the
+ * keyboard.
  */
 
-import { SidebarFooter } from '@/components/shell/SidebarFooter';
+import { SafeAddressCard } from '@/components/shell/SafeAddressCard';
 
-function renderFooter(isReviewer = false) {
-  render(<SidebarFooter isReviewer={isReviewer} />);
+const SAFE = '0x3e8cD8C29a32912f7E6e659c6f8645e4f178A9bb';
+
+function renderMenu(isReviewer = false) {
+  render(
+    <SafeAddressCard
+      address={SAFE}
+      deployed={false}
+      status="predicted"
+      isReviewer={isReviewer}
+    />,
+  );
   return screen.getByRole('button', { name: 'Account' });
 }
 
@@ -23,8 +33,8 @@ afterEach(() => {
 });
 
 describe('UserMenu', () => {
-  it('keeps the menu closed until the user button is clicked', () => {
-    const trigger = renderFooter();
+  it('keeps the menu closed until the card is clicked', () => {
+    const trigger = renderMenu();
 
     expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -33,7 +43,7 @@ describe('UserMenu', () => {
   });
 
   it('opens on click and offers sign-out among the account actions', () => {
-    const trigger = renderFooter();
+    const trigger = renderMenu();
     fireEvent.click(trigger);
 
     const menu = screen.getByRole('menu');
@@ -52,7 +62,7 @@ describe('UserMenu', () => {
   });
 
   it('offers the reviewer queue to a reviewer', () => {
-    const trigger = renderFooter(true);
+    const trigger = renderMenu(true);
     fireEvent.click(trigger);
 
     expect(
@@ -60,8 +70,8 @@ describe('UserMenu', () => {
     ).toHaveAttribute('href', '/admin');
   });
 
-  it('closes on Escape and returns focus to the user button', () => {
-    const trigger = renderFooter();
+  it('closes on Escape and returns focus to the card trigger', () => {
+    const trigger = renderMenu();
     fireEvent.click(trigger);
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
@@ -73,7 +83,7 @@ describe('UserMenu', () => {
   });
 
   it('closes on an outside click', () => {
-    const trigger = renderFooter();
+    const trigger = renderMenu();
     fireEvent.click(trigger);
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
@@ -84,7 +94,7 @@ describe('UserMenu', () => {
   });
 
   it('does not close when the click is inside the menu', () => {
-    const trigger = renderFooter();
+    const trigger = renderMenu();
     fireEvent.click(trigger);
 
     fireEvent.mouseDown(screen.getByRole('menu'));

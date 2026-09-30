@@ -118,6 +118,7 @@ export function Sidebar({
             deployed={safeDeployed}
             status={safeStatus}
             explorerUrl={explorerUrl}
+            isReviewer={isReviewer}
           />
         </div>
 

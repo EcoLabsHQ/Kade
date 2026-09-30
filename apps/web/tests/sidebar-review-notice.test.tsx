@@ -96,22 +96,21 @@ describe('sidebar review notice', () => {
 
     const sidebar = screen.getByRole('complementary');
     const notice = screen.getByTestId('sidebar-review-notice');
-    // The Safe card carries the account-settings gear; the wrapper `Sidebar`
-    // places in the column is the gear link's grandparent.
-    const cardWrapper = screen
-      .getByRole('link', { name: 'Account settings' })
-      .parentElement!.parentElement as HTMLElement;
+    // The Safe card's wrapper is the column div `Sidebar` places it in.
+    const cardWrapper = screen.getByTestId('safe-address-card')
+      .parentElement as HTMLElement;
     const toggle = within(sidebar).getByText('Resident');
     const userButton = screen.getByRole('button', { name: 'Account' });
 
     // All three are direct children of the sidebar column, matching the
-    // reference order: notice → Safe card → Resident/Admin switch → user row.
+    // reference order: notice → Safe card → Resident/Admin switch. The account
+    // control now lives *inside* the card rather than below the switch.
     expect(notice.parentElement).toBe(sidebar);
     expect(cardWrapper.parentElement).toBe(sidebar);
 
     expect(precedes(notice, cardWrapper)).toBe(true);
     expect(precedes(cardWrapper, toggle)).toBe(true);
-    expect(precedes(toggle, userButton)).toBe(true);
+    expect(cardWrapper.contains(userButton)).toBe(true);
     // The notice sits immediately above the card: this pins the reorder, not
     // merely that both are somewhere in the sidebar.
     expect(cardWrapper.previousElementSibling).toBe(notice);

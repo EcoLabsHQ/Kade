@@ -51,7 +51,7 @@ describe('sidebar identity', () => {
     expect(screen.queryByRole('button', { name: EMAIL })).toBeNull();
   });
 
-  it('keeps the avatar-only account trigger, and it opens the menu with sign-out', () => {
+  it('keeps the account trigger on the Safe card, and it opens the menu with sign-out', () => {
     renderShell();
 
     const trigger = screen.getByRole('button', { name: 'Account' });
