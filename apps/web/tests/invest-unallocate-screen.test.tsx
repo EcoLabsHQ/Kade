@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
+import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
 /**
  * The Invest screen's **Un-allocate** direction (the inverse of Allocate).
@@ -74,14 +75,42 @@ const ASSERTION = {
   clientDataJSON: 'e30',
 };
 
-function unallocateFrom(name: string) {
-  return screen.getByRole('button', {
-    name: new RegExp(`un-allocate from ${name}`, 'i'),
-  });
+/** A real held position on Ethereum, as the reader would produce it. */
+function morphoRow(usd: number): VaultHoldingRow {
+  return {
+    key: '1:morpho',
+    kind: 'morpho',
+    chainId: 1,
+    chainName: 'Ethereum',
+    symbol: 'MM',
+    name: 'MetaMorpho USDC vault',
+    amount: `${usd}.000000 USDC`,
+    usd,
+    readError: null,
+  };
 }
 
-function openUnallocate(name: string): HTMLElement {
-  fireEvent.click(unallocateFrom(name));
+/**
+ * Render a screen whose Ethereum rail holds a real position, so the row shows
+ * the amount as its control.
+ */
+function renderHeld() {
+  return render(
+    <InvestScreen
+      vaults={RAILS}
+      safeAddress={SAFE}
+      holdings={[morphoRow(10000)]}
+    />,
+  );
+}
+
+/**
+ * The un-allocate path from a held row is one interaction in: open the
+ * position menu, then take Un-allocate.
+ */
+function openUnallocate(): HTMLElement {
+  fireEvent.click(screen.getByTestId('invest-held-1'));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Un-allocate' }));
   return screen.getByRole('dialog');
 }
 
@@ -111,20 +140,23 @@ afterEach(() => {
 });
 
 describe('InvestScreen un-allocate availability', () => {
-  it('offers both directions on each wired rail, and neither on the unwired instrument', () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
+  it('offers both directions from a held rail, and none on the unwired instrument', () => {
+    renderHeld();
+    // The held amount is the control; opening it exposes both directions.
+    const trigger = screen.getByTestId('invest-held-1');
+    expect(trigger).toHaveTextContent('$10,000 held');
+    fireEvent.click(trigger);
     expect(
-      screen.getByRole('button', { name: /allocate into morpho usdc vault · ethereum/i }),
+      screen.getByRole('menuitem', { name: 'Allocate more' }),
     ).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Un-allocate' })).toBeEnabled();
+
+    // The retained instrument has no execution path, so it has no position
+    // trigger and its one Allocate action stays locked.
+    const usdyRow = screen.getByTestId('invest-row-usdy');
+    expect(usdyRow.querySelector('[aria-haspopup="menu"]')).toBeNull();
     expect(
-      screen.getByRole('button', {
-        name: /un-allocate from morpho usdc vault · ethereum/i,
-      }),
-    ).toBeEnabled();
-    // The retained instrument has no execution path, so its un-allocate is
-    // disabled too.
-    expect(
-      screen.getByRole('button', { name: /un-allocate from ondo usdy/i }),
+      within(usdyRow).getByRole('button', { name: /allocate into ondo usdy/i }),
     ).toBeDisabled();
   });
 
@@ -137,10 +169,9 @@ describe('InvestScreen un-allocate availability', () => {
       />,
     );
     expect(screen.queryByText(MORPHO_ETHEREUM)).toBeNull();
+    expect(screen.queryByRole('menu')).toBeNull();
     expect(
-      screen.queryByRole('button', {
-        name: /un-allocate from morpho usdc vault · ethereum/i,
-      }),
+      screen.queryByRole('menuitem', { name: 'Un-allocate' }),
     ).toBeNull();
     expect(screen.getByText(RETAINED_INSTRUMENT)).toBeInTheDocument();
   });
@@ -148,8 +179,8 @@ describe('InvestScreen un-allocate availability', () => {
 
 describe('InvestScreen un-allocate flow', () => {
   it('defaults to the whole position and states the tier warning before signing', () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
-    const dialog = openUnallocate(MORPHO_ETHEREUM);
+    renderHeld();
+    const dialog = openUnallocate();
 
     // The warning is present before the confirm button is ever pressed.
     const warning = within(dialog).getByTestId('invest-unallocate-tier-warning');
@@ -167,8 +198,8 @@ describe('InvestScreen un-allocate flow', () => {
   });
 
   it('runs beginWithdraw → passkey → completeWithdraw for "all"', async () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
-    const dialog = openUnallocate(MORPHO_ETHEREUM);
+    renderHeld();
+    const dialog = openUnallocate();
 
     await clickUnallocate(dialog);
     await waitFor(() => expect(hoisted.completeWithdraw).toHaveBeenCalledTimes(1));
@@ -197,8 +228,8 @@ describe('InvestScreen un-allocate flow', () => {
   });
 
   it('sends a stated amount when "all" is unset', async () => {
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
-    const dialog = openUnallocate(MORPHO_ETHEREUM);
+    renderHeld();
+    const dialog = openUnallocate();
 
     fireEvent.click(
       within(dialog).getByLabelText(/un-allocate everything/i),
@@ -226,8 +257,8 @@ describe('InvestScreen un-allocate flow', () => {
         'un-allocate needs 10 USDC. The Safe does not hold enough shares to ' +
         'cover it — short by 10 USDC.',
     });
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
-    const dialog = openUnallocate(MORPHO_ETHEREUM);
+    renderHeld();
+    const dialog = openUnallocate();
 
     await clickUnallocate(dialog);
 
@@ -246,8 +277,8 @@ describe('InvestScreen un-allocate flow', () => {
       stage: 'sign',
       reason: 'The passkey attached no signature to the operation.',
     });
-    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={[]} />);
-    const dialog = openUnallocate(MORPHO_ETHEREUM);
+    renderHeld();
+    const dialog = openUnallocate();
 
     await clickUnallocate(dialog);
 

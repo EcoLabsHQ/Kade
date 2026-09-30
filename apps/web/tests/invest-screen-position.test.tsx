@@ -126,10 +126,15 @@ function allocateButton() {
   });
 }
 
-function unallocateButton() {
-  return screen.getByRole('button', {
-    name: /un-allocate from morpho usdc vault · ethereum/i,
-  });
+/**
+ * On a held row the amount is the control, so the un-allocate path is one
+ * interaction in: open the position menu, then take Un-allocate. This helper
+ * performs the open and returns the item, so the test still proves that the
+ * withdraw path is reachable from the row that shows a position.
+ */
+function openHeldUnallocate() {
+  fireEvent.click(screen.getByTestId('invest-held-1'));
+  return screen.getByRole('menuitem', { name: 'Un-allocate' });
 }
 
 afterEach(() => {
@@ -223,11 +228,15 @@ describe('InvestScreen real position', () => {
     expect(screen.getByTestId('invest-held-1')).toHaveTextContent(
       '$10,000 held',
     );
-    // Both directions stay reachable on a held row.
-    expect(allocateButton()).toBeEnabled();
-    expect(unallocateButton()).toBeEnabled();
+    // Both directions stay reachable on a held row: the held amount is the
+    // control, and opening it exposes Allocate more and Un-allocate.
+    const unallocate = openHeldUnallocate();
+    expect(
+      screen.getByRole('menuitem', { name: 'Allocate more' }),
+    ).toBeEnabled();
+    expect(unallocate).toBeEnabled();
 
-    fireEvent.click(unallocateButton());
+    fireEvent.click(unallocate);
     const dialog = screen.getByRole('dialog', { name: 'UN-ALLOCATE' });
     expect(
       within(dialog).getByLabelText(/amount to un-allocate/i),

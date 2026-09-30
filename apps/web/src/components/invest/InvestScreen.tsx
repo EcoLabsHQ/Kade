@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
 import { TransactionProgress } from '@/components/ui/TransactionProgress';
 import { tokens } from '@/components/ui/tokens';
+import { PositionMenu } from '@/components/invest/PositionMenu';
 import {
   beginDeposit,
   beginWithdraw,
@@ -60,8 +61,14 @@ import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
  * and derives everything from it: the two stat cards, each row's state (the
  * real held amount, or `Allocate` when it holds nothing) and the allocate
  * preview. No figure is hardcoded and no failed read becomes a `$0`; a failure
- * keeps its specific reason. Both directions stay reachable on every row, and
- * the state line and the two pills stack so nothing clips in the fixed column.
+ * keeps its specific reason.
+ *
+ * Each row shows **one thing**, and the amount is the control: a row with no
+ * position carries a single `Allocate` button, and a row that holds a position
+ * carries the real held amount as a trigger whose menu holds both directions
+ * (`Allocate more` / `Un-allocate`). An unread position keeps its honest state
+ * as the trigger and opens the same menu, so the withdraw path can never become
+ * unreachable just because a read failed. See {@link PositionMenu}.
  */
 
 export interface InvestScreenProps {
@@ -567,6 +574,7 @@ export function InvestScreen({
               return (
               <div
                 key={instrument.key}
+                data-testid={`invest-row-${instrument.key}`}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: GRID,
@@ -622,70 +630,53 @@ export function InvestScreen({
                   Yes
                 </span>
                 {/*
-                  The row's state and both directions *stack vertically* inside
-                  the fixed 210px action column. Side by side, a held amount and
-                  the two pills cannot fit, and the label clipped; stacked, the
-                  held amount has its own full-width line and the two pills wrap
-                  to a second. Both directions stay reachable in every state and
-                  no line can be clipped.
+                  One thing per row, and the amount is the control. A held
+                  position renders the real amount as a trigger whose menu holds
+                  both directions; an unread read renders its honest state as
+                  the trigger and opens the same menu, so the withdraw path is
+                  never the state that gets dropped. A row with no position
+                  renders the single `Allocate` button. The trigger's own menu
+                  (see `PositionMenu`) carries `Allocate more` / `Un-allocate`
+                  in every state that has a position.
                 */}
                 <div
                   style={{
                     display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    gap: '7px',
+                    justifyContent: 'flex-end',
                     minWidth: 0,
                   }}
                 >
                   {chainPosition?.status === 'held' ? (
-                    <span
-                      data-testid={`invest-held-${instrument.chainId}`}
+                    <PositionMenu
+                      instrumentName={instrument.name}
+                      testId={`invest-held-${instrument.chainId}`}
+                      label={`${usd(chainPosition.usd)} held`}
                       title={`The Safe holds ${usd(chainPosition.usd)} in this vault.`}
-                      style={{
-                        display: 'inline-block',
-                        maxWidth: '100%',
-                        padding: '3px 10px',
-                        borderRadius: '999px',
-                        background: tokens.chipBg,
-                        color: tokens.ink,
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        fontVariantNumeric: 'tabular-nums',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {usd(chainPosition.usd)} held
-                    </span>
+                      hasPosition
+                      variant='held'
+                      onAllocate={() => openInstrument(instrument, 'allocate')}
+                      onUnallocate={() =>
+                        openInstrument(instrument, 'unallocate')
+                      }
+                    />
                   ) : chainPosition?.status === 'unknown' ? (
                     // The read failed: the row shows that the state is unknown
-                    // (with the real reason on hover), never a fabricated $0.
-                    <span
-                      data-testid={`invest-position-unknown-${instrument.chainId}`}
+                    // (with the real reason on hover), never a fabricated $0 —
+                    // and it still opens the menu, so un-allocate stays
+                    // reachable even when the position could not be read.
+                    <PositionMenu
+                      instrumentName={instrument.name}
+                      testId={`invest-position-unknown-${instrument.chainId}`}
+                      label='Position unread'
                       title={chainPosition.reason}
-                      style={{
-                        display: 'inline-block',
-                        maxWidth: '100%',
-                        padding: '3px 10px',
-                        borderRadius: '999px',
-                        background: '#FEF3F2',
-                        color: tokens.danger,
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Position unread
-                    </span>
-                  ) : null}
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '6px',
-                      justifyContent: 'flex-end',
-                      flexWrap: 'wrap',
-                    }}
-                  >
+                      hasPosition={false}
+                      variant='unknown'
+                      onAllocate={() => openInstrument(instrument, 'allocate')}
+                      onUnallocate={() =>
+                        openInstrument(instrument, 'unallocate')
+                      }
+                    />
+                  ) : (
                     <button
                       type='button'
                       aria-label={`Allocate into ${instrument.name}`}
@@ -712,33 +703,7 @@ export function InvestScreen({
                     >
                       Allocate
                     </button>
-                    <button
-                      type='button'
-                      aria-label={`Un-allocate from ${instrument.name}`}
-                      onClick={() => openInstrument(instrument, 'unallocate')}
-                      disabled={!instrument.wired}
-                      title={
-                        instrument.wired
-                          ? 'Redeem USDC from this chain’s MetaMorpho vault'
-                          : 'Only the MetaMorpho vaults are wired in this iteration.'
-                      }
-                      style={{
-                        height: '32px',
-                        padding: '0 14px',
-                        border: `1px solid ${tokens.border}`,
-                        borderRadius: '999px',
-                        background: '#fff',
-                        color: instrument.wired ? tokens.chipFg : tokens.locked,
-                        fontFamily: 'inherit',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                        cursor: instrument.wired ? 'pointer' : 'not-allowed',
-                      }}
-                    >
-                      Un-allocate
-                    </button>
-                  </div>
+                  )}
                 </div>
               </div>
               );

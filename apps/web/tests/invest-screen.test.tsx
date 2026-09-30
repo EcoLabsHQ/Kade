@@ -367,7 +367,11 @@ describe('InvestScreen configuration', () => {
 
   it('locks Allocate when the resident has no Safe recorded', () => {
     renderScreen({ safeAddress: null });
-    const dialog = openDialog(MORPHO_ETHEREUM);
+    // With no Safe the position is unread, so the row's one control is the
+    // unread trigger; its menu still opens the allocate direction.
+    fireEvent.click(screen.getByTestId('invest-position-unknown-1'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Allocate' }));
+    const dialog = screen.getByRole('dialog');
     const button = confirmButton(dialog);
     expect(button).toBeDisabled();
     // The lock says what is actually missing; it must not claim a deployment.
