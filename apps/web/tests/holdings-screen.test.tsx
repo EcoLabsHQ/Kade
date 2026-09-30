@@ -20,6 +20,12 @@ import { shortAddress } from '@/lib/wealth/format';
  * arithmetic is unchanged — the total comes from the real aggregate, an
  * unverified wallet is excluded from it, and a failed read stays an explicit
  * `—`. These tests pin that split: reference copy, real numbers.
+ *
+ * One string is the owner's declared exception: the `QUALIFIED` card's tier
+ * sub-line. The reference hardcoded a tier and the full minimum, which
+ * contradicted the card's own figure and the residency funds check reading the
+ * same total. It is now derived from the real position and the resident's
+ * recorded tier (tests below), and with no tier recorded it claims none.
  */
 
 const ADDRESS = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
@@ -129,6 +135,12 @@ function aggregateWithUnverified(): HoldingsAggregate {
 function cardValue(label: string): string {
   const labelNode = screen.getByText(label);
   return labelNode.parentElement?.children[1]?.textContent ?? '';
+}
+
+/** The rendered sub-line of the summary card with `label`. */
+function cardSub(label: string): string {
+  const labelNode = screen.getByText(label);
+  return labelNode.parentElement?.children[2]?.textContent ?? '';
 }
 
 /** A resident whose every verified wallet's read failed entirely. */
@@ -343,12 +355,18 @@ describe('HoldingsScreen', () => {
         aggregate={aggregate()}
         safeAddress={SAFE_ADDRESS}
         vaultHoldings={[]}
+        tier="3-year"
       />,
     );
 
     expect(screen.getByText('Total holdings')).toBeInTheDocument();
     expect(screen.getByText('vault + linked wallets')).toBeInTheDocument();
     expect(screen.getByText('Qualified')).toBeInTheDocument();
+    // This line used to be the frozen reference string. It is now derived from
+    // the real (empty, so known $0) position and the recorded tier; for a $0
+    // 3-year vault the honest shortfall is genuinely the full minimum, so the
+    // resident still sees the same sentence — but it can no longer contradict
+    // the figure above it or the residency surface.
     expect(
       screen.getByText('Below 3-year tier — $280,000 to go'),
     ).toBeInTheDocument();
@@ -773,5 +791,122 @@ describe('HoldingsScreen', () => {
     expect(paragraph.parentElement).not.toBeNull();
     expect(paragraph.parentElement?.style.background).toBe('rgb(250, 250, 250)');
     expect(paragraph.parentElement?.style.borderRadius).toBe('14px');
+  });
+});
+
+/**
+ * The `QUALIFIED` card's tier sub-line is derived from the real position and
+ * the resident's recorded tier, through the same `tierMinimumUsdc` the
+ * residency funds check uses. These pin every honest case: matches the figure,
+ * the real shortfall, the resident's own tier, the fail-closed reason, and no
+ * invented tier when none is recorded.
+ */
+describe('HoldingsScreen — qualified tier sub-line', () => {
+  it('says the resident meets their own tier, with no shortfall', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 500000 }}
+        tier="3-year"
+      />,
+    );
+
+    // The sentence agrees with the figure on the card.
+    expect(cardValue('Qualified')).toBe('$500,000');
+    expect(cardSub('Qualified')).toBe('Meets the 3-year tier.');
+    expect(screen.queryByText(/to go/)).toBeNull();
+  });
+
+  it('shows the real shortfall below the tier, not the full minimum', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 100000 }}
+        tier="3-year"
+      />,
+    );
+
+    expect(cardValue('Qualified')).toBe('$100,000');
+    // $280,000 minimum − $100,000 held = $180,000, not the whole minimum.
+    expect(cardSub('Qualified')).toBe('Below 3-year tier — $180,000 to go');
+    expect(cardSub('Qualified')).not.toContain('$280,000');
+  });
+
+  it('names the 5-year tier instead of 3-year', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 500000 }}
+        tier="5-year"
+      />,
+    );
+
+    expect(cardSub('Qualified')).toBe('Meets the 5-year tier.');
+    expect(cardSub('Qualified')).not.toMatch(/3-year/);
+  });
+
+  it('names the indefinite tier and its real shortfall, never 3-year', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 500000 }}
+        tier="indefinite"
+      />,
+    );
+
+    // $850,000 minimum − $500,000 held = $350,000.
+    expect(cardSub('Qualified')).toBe('Below indefinite tier — $350,000 to go');
+    expect(cardSub('Qualified')).not.toMatch(/3-year/);
+  });
+
+  it('keeps the specific reason and makes no tier claim when the read failed', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'unknown', reason: 'The Safe read timed out.' }}
+        tier="3-year"
+      />,
+    );
+
+    expect(cardValue('Qualified')).toBe('—');
+    expect(cardSub('Qualified')).toBe('The Safe read timed out.');
+    expect(cardSub('Qualified')).not.toMatch(/tier/i);
+    expect(screen.queryByText(/meets/i)).toBeNull();
+  });
+
+  it('claims no tier when none is recorded, rather than inventing one', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 500000 }}
+      />,
+    );
+
+    expect(cardValue('Qualified')).toBe('$500,000');
+    expect(cardSub('Qualified')).toBe('No qualifying tier is recorded.');
+    expect(screen.queryByText(/meets/i)).toBeNull();
+    expect(screen.queryByText(/to go/)).toBeNull();
+  });
+
+  it('claims no tier for a recorded value it cannot check', () => {
+    render(
+      <HoldingsScreen
+        aggregate={aggregate()}
+        safeAddress={SAFE_ADDRESS}
+        qualified={{ status: 'known', usd: 500000 }}
+        tier="lifetime"
+      />,
+    );
+
+    expect(cardSub('Qualified')).toBe(
+      'The recorded tier is not one we can check.',
+    );
+    expect(screen.queryByText(/meets/i)).toBeNull();
   });
 });

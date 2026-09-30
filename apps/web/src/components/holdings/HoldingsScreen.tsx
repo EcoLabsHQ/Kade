@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { LockedAction } from '@/components/ui/LockedAction';
 import { tokens } from '@/components/ui/tokens';
+import { tierMinimumUsdc } from '@/lib/residency/checks';
 import { chainColor } from '@/lib/wealth/chain-colors';
 import {
   EVM_READ_CHAINS,
@@ -62,6 +63,13 @@ import { provenanceLabel } from './provenance';
  * its **true** reason. "Fund from bank" and "Convert to USDT+" stay disabled
  * with their real reason, and the unverified per-row state stays visible.
  *
+ * The `QUALIFIED` card's tier sub-line is the owner's one unfrozen exception:
+ * the reference hardcoded a tier and the full minimum, which contradicted the
+ * card's own figure and the residency funds check. It is now derived from the
+ * real total and the resident's recorded tier (see `qualifiedTierSub`), so the
+ * two surfaces cannot state different tiers; with no tier recorded it claims
+ * none rather than inventing one.
+ *
  * "Balances by chain" renders the chains we actually read
  * (`EVM_READ_CHAINS` — Ethereum, Base and Arbitrum One) with their real
  * figures, plus only the reference's genuinely unread cards (Optimism, Celo)
@@ -109,6 +117,15 @@ export interface HoldingsScreenProps {
    * the same function, so a bare render stays consistent.
    */
   readonly qualified?: QualifiedPosition;
+  /**
+   * The resident's recorded qualifying tier (`applications.tier`), or
+   * null/absent when none is recorded. The `QUALIFIED` card's sub-line is
+   * derived from this and the real qualified total through
+   * {@link qualifiedTierSub}, using the same `tierMinimumUsdc` the residency
+   * funds check uses, so the two surfaces cannot state different tiers. When
+   * absent the card claims no tier rather than inventing one.
+   */
+  readonly tier?: string | null;
 }
 
 /**
@@ -245,11 +262,48 @@ const REFERENCE_EXTRA_CHAINS = REFERENCE_CHAINS.filter(
 const QUALIFIED_NOTE = 'Ethereum · Base · Arbitrum · KadeLock · locked to Nov 2031';
 
 /**
- * The reference's tier line under the `QUALIFIED` card. Kept verbatim for a
- * known qualified figure; when the position is unknown the card shows the real
- * reason instead, so it is never a mute `—`.
+ * The sub-line under the `QUALIFIED` card, derived from the **real** position
+ * and the resident's recorded tier.
+ *
+ * The reference's tier line is not kept verbatim: it hardcoded a single tier
+ * and the full minimum, which contradicted both the card above it and the
+ * residency funds check reading the same total. The line here is computed from
+ * the one qualified total the card already shows and the one tier threshold the
+ * residency surface uses (`tierMinimumUsdc`, backed by `@kade/shared` `TIERS`),
+ * so the two surfaces cannot disagree:
+ *
+ *   - an unreadable position keeps its specific reason (never a tier claim, and
+ *     never a fabricated figure);
+ *   - at or above the resident's tier it says so, naming that tier;
+ *   - below it shows the real shortfall, not the full minimum;
+ *   - with no tier recorded there is nothing to compare against, so it names no
+ *     tier and claims no threshold.
  */
-const QUALIFIED_TIER_SUB = 'Below 3-year tier — $280,000 to go';
+
+/** Nothing recorded to compare the total to, so no tier is claimed. */
+const NO_TIER_SUB = 'No qualifying tier is recorded.';
+/** A tier is recorded but not one this build can read a minimum for. */
+const UNKNOWN_TIER_SUB = 'The recorded tier is not one we can check.';
+
+function qualifiedTierSub(
+  tier: string | null | undefined,
+  position: QualifiedPosition,
+): string {
+  // Fail closed: an unknown read keeps its real reason. Handled first so a
+  // failed read can never turn into a "meets the tier" claim.
+  if (position.status === 'unknown') return position.reason;
+
+  const recorded = typeof tier === 'string' ? tier.trim() : '';
+  if (recorded === '') return NO_TIER_SUB;
+  const minimum = tierMinimumUsdc(recorded);
+  if (minimum === null) return UNKNOWN_TIER_SUB;
+
+  const balance = position.usd;
+  if (balance >= minimum) return `Meets the ${recorded} tier.`;
+
+  const shortfall = minimum - balance;
+  return `Below ${recorded} tier — ${usd(shortfall)} to go`;
+}
 
 /** The reference's "In linked wallets" section note (verbatim). */
 const LINKED_NOTE = 'Proof of wealth · not counted until moved';
@@ -653,6 +707,7 @@ export function HoldingsScreen({
   onMoveToVault,
   vaultHoldings = [],
   qualified,
+  tier,
 }: HoldingsScreenProps) {
   const { total, walletCount, valuedCount, wallets, unverifiedCount } = aggregate;
 
@@ -714,7 +769,7 @@ export function HoldingsScreen({
         <SummaryCard
           label="Qualified"
           value={qualifiedKnown ? usd(qualifiedPosition.usd) : '—'}
-          sub={qualifiedKnown ? QUALIFIED_TIER_SUB : qualifiedPosition.reason}
+          sub={qualifiedTierSub(tier, qualifiedPosition)}
           valueColor={tokens.brandPrimary}
         />
         <SummaryCard
