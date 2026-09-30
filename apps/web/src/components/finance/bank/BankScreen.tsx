@@ -9,14 +9,17 @@ import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
 
 /**
- * The Bank ↔ Crypto screen — a declared **presentational mock**.
+ * The Bank ↔ Crypto screen — a **disclosed presentational mock**.
  *
  * Finance (D21) is beyond the frozen Week 2 scope, so this screen creates no
  * capability: it has no server action, no Supabase read, no wallet/chain code,
- * and no network call. Every figure, reference and account detail below is a
+ * and no network call. Every figure, reference, account and address below is a
  * demo value reproduced from the design handoff (`kade-mvp.dc.html`, the
  * "Bank ↔ Crypto" screen, and its Fund vault / Cash out dialogs); none of it is
- * a real account, transfer or balance. The two dialogs are local UI state only —
+ * a real account, transfer, balance or address, and none of it should be used.
+ * The screen says so on its face — see the demo notice rendered first, and the
+ * demo line repeated in each dialog — because the shell around it otherwise
+ * shows the resident's real Safe. The two dialogs are local UI state only:
  * "Copy details & close" and "Review & sign transfer" simply close the dialog
  * and never claim a transfer happened.
  *
@@ -254,6 +257,56 @@ const INPUT_LABEL: CSSProperties = {
   marginBottom: '6px',
 };
 
+/**
+ * The demo-disclosure notice, rendered first on the screen so the mock is
+ * unmistakable before any figure is read (the shell around it otherwise shows
+ * the resident's real Safe).
+ */
+function DemoNotice() {
+  return (
+    <div
+      role="note"
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '8px',
+        background: '#FDF6E7',
+        border: '1px solid #F2E3C0',
+        borderRadius: '12px',
+        padding: '12px 14px',
+        fontSize: '12.5px',
+        color: '#8A5A12',
+        marginBottom: '20px',
+        lineHeight: 1.5,
+      }}
+    >
+      <span
+        style={{
+          width: '7px',
+          height: '7px',
+          borderRadius: '50%',
+          background: tokens.warning,
+          flex: '0 0 auto',
+          marginTop: '6px',
+        }}
+      />
+      <span>
+        <strong>Preview · demo data.</strong> This screen is a visual mock. The
+        balances, accounts, addresses and transfers shown are illustrative
+        examples, not real records — no funds move, and none of the addresses
+        should be used.
+      </span>
+    </div>
+  );
+}
+
+/** The demo line repeated at the top of each dialog body. */
+const DIALOG_DEMO: CSSProperties = {
+  fontSize: '12px',
+  color: tokens.muted,
+  marginBottom: '10px',
+};
+
 /** One chain pill in the reference's bordered, selectable chain group. */
 function ChainPills({
   selected,
@@ -325,6 +378,9 @@ function FundVaultModal({
       maxWidth={460}
     >
       <div style={{ padding: '22px' }}>
+        <div style={DIALOG_DEMO}>
+          Demo data — illustrative only; no funds move.
+        </div>
         <div
           style={{ fontSize: '15px', fontWeight: 700, color: tokens.ink }}
         >
@@ -451,7 +507,7 @@ function FundVaultModal({
           <div style={SUMMARY_ROW}>
             <span style={{ color: tokens.muted }}>Credited as</span>
             <span style={{ fontWeight: 600 }}>
-              USDC in Safe 0x5Af1…c09D · {chain}
+              Demo — USDC in Safe 0xDemo…0000 · {chain} (do not send funds)
             </span>
           </div>
           <div style={SUMMARY_ROW}>
@@ -518,6 +574,9 @@ function CashOutModal({
   return (
     <Modal open={open} onClose={onClose} title="Cash out" maxWidth={440}>
       <div style={{ padding: '22px' }}>
+        <div style={DIALOG_DEMO}>
+          Demo data — illustrative only; no funds move.
+        </div>
         <div style={{ fontSize: '15px', fontWeight: 700, color: tokens.ink }}>
           Vault USDC → bank account
         </div>
@@ -748,6 +807,7 @@ export function BankScreen() {
 
   return (
     <div>
+      <DemoNotice />
       <div
         style={{
           display: 'flex',
