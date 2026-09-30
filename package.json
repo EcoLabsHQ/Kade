@@ -19,6 +19,7 @@
     "test:regressions": "vitest run --config vitest.regressions.config.ts",
     "test:acceptance": "vitest run --config vitest.acceptance.config.ts",
     "build": "npm run build --workspace @kade/web",
+    "start": "npm run start --workspace @kade/web",
     "dev": "npm run dev --workspace @kade/web"
   },
   "devDependencies": {
