@@ -2,21 +2,20 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The signed-in identity button and its menu.
+ * The account button and its menu.
  *
- * Sign-out moved behind the user button. The menu must open on click, contain
- * sign-out (and the shell's other user-level actions), and close on an outside
- * click or Escape. Escape also returns focus to the trigger, so the control is
- * usable from the keyboard.
+ * The trigger is avatar-only — the resident's email is account configuration
+ * and lives on `/account` — but it still owns sign-out. The menu must open on
+ * click, contain sign-out (and the shell's other user-level actions), and close
+ * on an outside click or Escape. Escape also returns focus to the trigger, so
+ * the control is usable from the keyboard.
  */
 
 import { SidebarFooter } from '@/components/shell/SidebarFooter';
 
-const EMAIL = 'resident@example.com';
-
 function renderFooter(isReviewer = false) {
-  render(<SidebarFooter email={EMAIL} isReviewer={isReviewer} />);
-  return screen.getByRole('button', { name: EMAIL });
+  render(<SidebarFooter isReviewer={isReviewer} />);
+  return screen.getByRole('button', { name: 'Account' });
 }
 
 afterEach(() => {

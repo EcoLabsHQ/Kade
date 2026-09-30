@@ -3,7 +3,6 @@ import { tokens } from '@/components/ui/tokens';
 import { UserMenu } from './UserMenu';
 
 export interface SidebarFooterProps {
-  readonly email: string | null;
   readonly isReviewer?: boolean;
   /**
    * True when the current route is under `/admin`, so the switch highlights it.
@@ -15,15 +14,17 @@ export interface SidebarFooterProps {
 }
 
 /**
- * Sidebar footer: the Resident/Admin switch, the signed-in identity and its
- * menu, and the Kade attribution.
+ * Sidebar footer: the Resident/Admin switch, the account menu, and the Kade
+ * attribution.
+ *
+ * The signed-in email is deliberately absent: it is account configuration and
+ * lives on `/account`. The account menu — and sign-out behind it — stays.
  *
  * The review-state notice is **not** rendered here: the MVP reference puts it
  * above the Safe card, so `Sidebar` renders it there from the one review value
  * it already shares with the top banner.
  */
 export function SidebarFooter({
-  email,
   isReviewer = false,
   adminActive = false,
 }: SidebarFooterProps) {
@@ -91,7 +92,7 @@ export function SidebarFooter({
           </span>
         )}
       </div>
-      <UserMenu email={email} isReviewer={isReviewer} />
+      <UserMenu isReviewer={isReviewer} />
       <div
         style={{
           fontSize: '11px',

@@ -102,7 +102,6 @@ describe('Sidebar', () => {
         nav={[]}
         network="Ethereum Sepolia"
         safeAddress={null}
-        email={null}
       />,
     );
 
@@ -121,7 +120,6 @@ describe('Sidebar', () => {
         nav={[]}
         network="Ethereum Sepolia"
         safeAddress={null}
-        email={null}
       />,
     );
 

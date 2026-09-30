@@ -21,7 +21,6 @@ function renderSidebar(isReviewer: boolean) {
       nav={NAV}
       network="Ethereum Sepolia"
       safeAddress={null}
-      email="resident@example.com"
       isReviewer={isReviewer}
     />,
   );

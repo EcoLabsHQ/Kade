@@ -102,9 +102,7 @@ describe('sidebar review notice', () => {
       .getByRole('link', { name: 'Account settings' })
       .parentElement!.parentElement as HTMLElement;
     const toggle = within(sidebar).getByText('Resident');
-    const userButton = screen.getByRole('button', {
-      name: 'resident@example.com',
-    });
+    const userButton = screen.getByRole('button', { name: 'Account' });
 
     // All three are direct children of the sidebar column, matching the
     // reference order: notice → Safe card → Resident/Admin switch → user row.

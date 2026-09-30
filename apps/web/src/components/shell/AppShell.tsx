@@ -10,7 +10,12 @@ import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
 export interface AppShellProps {
   readonly children: ReactNode;
-  readonly email: string | null;
+  /**
+   * Retained for callers that still pass it (the shell never rendered anything
+   * else with it). The resident's email is account configuration and is shown
+   * on `/account`; the sidebar no longer displays it.
+   */
+  readonly email?: string | null;
   readonly safeAddress?: string | null;
   readonly safeDeployed?: boolean;
   readonly safeStatus?: SafeDeploymentStatus | null;
@@ -60,7 +65,6 @@ function activeSettlementChainLabel(): string {
  */
 export function AppShell({
   children,
-  email,
   safeAddress = null,
   safeDeployed = false,
   safeStatus = null,
@@ -97,7 +101,6 @@ export function AppShell({
         safeDeployed={safeDeployed}
         safeStatus={safeStatus}
         explorerUrl={explorerUrl}
-        email={email}
         isReviewer={isReviewer}
         review={review}
       />

@@ -252,4 +252,20 @@ describe('AccountPage Safe overview', () => {
 
     cleanup();
   });
+
+  it('shows the signed-in email in the account configuration', async () => {
+    // The address left the sidebar; it must not have left the app with it.
+    hoisted.loadShellSafe.mockResolvedValue({
+      address: null,
+      deployed: false,
+      status: null,
+      explorerUrl: null,
+    });
+
+    render(await AccountPage());
+
+    expect(screen.getByText('resident@example.com')).toBeInTheDocument();
+
+    cleanup();
+  });
 });

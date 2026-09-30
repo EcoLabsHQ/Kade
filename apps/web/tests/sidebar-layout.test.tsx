@@ -68,7 +68,6 @@ describe('Sidebar vertical layout', () => {
         nav={NAV}
         network="Ethereum Sepolia"
         safeAddress={null}
-        email="resident@example.com"
       />,
     );
 
@@ -92,12 +91,12 @@ describe('Sidebar vertical layout', () => {
       false,
     );
 
-    // The card still precedes the footer's content (the user menu button,
+    // The card still precedes the footer's content (the account button,
     // which now owns sign-out).
     expect(
       precedes(
         cardWrapper,
-        screen.getByRole('button', { name: 'resident@example.com' }),
+        screen.getByRole('button', { name: 'Account' }),
       ),
     ).toBe(true);
     cleanup();
@@ -110,7 +109,6 @@ describe('Sidebar vertical layout', () => {
         stepper={STEPS}
         network="Ethereum Sepolia"
         safeAddress={null}
-        email="resident@example.com"
       />,
     );
 

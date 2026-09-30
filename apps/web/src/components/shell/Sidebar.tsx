@@ -27,7 +27,6 @@ export interface SidebarProps {
   /** The record's status, so a failure reads differently from "still pending". */
   readonly safeStatus?: SafeDeploymentStatus | null;
   readonly explorerUrl?: string | null;
-  readonly email: string | null;
   /** Whether the user has a reviewers row, so the Admin switch links to /admin. */
   readonly isReviewer?: boolean;
   /** The review state shared with the top banner; drives the footer notice. */
@@ -46,7 +45,6 @@ export function Sidebar({
   safeDeployed = false,
   safeStatus = null,
   explorerUrl = null,
-  email,
   isReviewer = false,
   review = null,
 }: SidebarProps) {
@@ -126,7 +124,6 @@ export function Sidebar({
         <SidebarFooter
           isReviewer={isReviewer}
           adminActive={pathname.startsWith('/admin')}
-          email={email}
         />
       </aside>
     </>
