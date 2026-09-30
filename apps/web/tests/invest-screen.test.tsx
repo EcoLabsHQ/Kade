@@ -159,6 +159,18 @@ async function clickAllocate(dialog: HTMLElement) {
   await waitFor(() => expect(hoisted.beginDeposit).toHaveBeenCalled());
 }
 
+/**
+ * Open the confirmed transaction's detail disclosure. The hashes and addresses
+ * are collapsed by default, so a test that inspects them must activate the
+ * control first — otherwise a hidden descendant would make the query pass
+ * vacuously.
+ */
+function openDepositDetails(finish: HTMLElement) {
+  fireEvent.click(
+    within(finish).getByRole('button', { name: /deposit details/i }),
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -638,6 +650,7 @@ describe('InvestScreen transaction modal', () => {
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');
+    openDepositDetails(finish);
 
     const txLink = within(finish).getByRole('link', {
       name: /transaction hash on the block explorer/i,
@@ -687,6 +700,7 @@ describe('InvestScreen transaction modal', () => {
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');
+    openDepositDetails(finish);
     expect(
       within(finish).getByRole('link', {
         name: /transaction hash on the block explorer/i,
@@ -708,7 +722,8 @@ describe('InvestScreen transaction modal', () => {
     await clickAllocate(dialog);
 
     const finish = await within(dialog).findByTestId('invest-deposit-complete');
-    expect(within(finish).getByText(/not reported/i)).toBeInTheDocument();
+    openDepositDetails(finish);
+    expect(within(finish).getByText(/not reported/i)).toBeVisible();
     expect(
       within(finish).queryByRole('link', { name: /transaction hash/i }),
     ).toBeNull();

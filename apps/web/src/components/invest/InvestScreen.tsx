@@ -285,6 +285,11 @@ export function InvestScreen({
   // dominate the modal. It resets to collapsed each time a modal opens.
   const [contractsOpen, setContractsOpen] = useState(false);
   const contractDetailsId = useId();
+  // The confirmed-transaction detail block (the hashes and addresses) is folded
+  // away the same way, so the success notice is not buried under four rows of
+  // hex. It resets to collapsed for every fresh finish.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
 
   // The rail a Morpho row deposits into, resolved from the row's own chain id —
   // never a separate selection, so the row's chain and the deposit's chain
@@ -334,6 +339,7 @@ export function InvestScreen({
     setDirection(nextDirection);
     setState({ kind: 'idle' });
     setContractsOpen(false);
+    setDetailsOpen(false);
     setAmount(String(defaultAllocationUsdc()));
     // An un-allocate defaults to the whole position so `redeem` leaves no dust
     // share that could not later be withdrawn.
@@ -345,6 +351,7 @@ export function InvestScreen({
     setDirection('allocate');
     setWithdrawAll(false);
     setContractsOpen(false);
+    setDetailsOpen(false);
     setState({ kind: 'idle' });
   }
 
@@ -363,6 +370,9 @@ export function InvestScreen({
     // "all"; the client never fabricates a share or USDC figure.
     const amountUsdc =
       kind === 'unallocate' && withdrawAll ? 'all' : amount.trim();
+
+    // A fresh finish must not inherit a previously-opened detail panel.
+    setDetailsOpen(false);
 
     // Phase 1: the server builds the operation (signs nothing) for the named
     // chain and returns the SafeOp hash the passkey must sign. A deposit and an
@@ -1385,52 +1395,117 @@ export function InvestScreen({
                       } was submitted and its receipt confirmed on ${state.chainName}.`
                     : `The deposit of ${state.amountUsdc} USDC was submitted and its receipt confirmed on ${state.chainName}.`}
                 </Notice>
-                <dl style={{ margin: '12px 0 0', fontSize: '13px' }}>
-                  <Detail label='Transaction'>
-                    {state.transactionHash ? (
-                      <CopyableValue
-                        value={state.transactionHash}
-                        label='transaction hash'
-                        explorerUrl={transactionExplorerUrl(
-                          state.chainId,
-                          state.transactionHash,
+                {/*
+                  The owner asked for the confirmed transaction's identifiers
+                  to fold away the same way the contract details already do, so
+                  the success notice leads rather than four rows of hex. This is
+                  the same disclosure idiom as the contract block: a real
+                  <button> carrying `aria-expanded`/`aria-controls`, collapsed
+                  by default. Nothing inside is changed — each value stays
+                  truncated with a copy control holding the full value and an
+                  explorer link on its own chain, and a missing transaction hash
+                  still renders "Not reported" with no link.
+                */}
+                <div
+                  style={{
+                    marginTop: '12px',
+                    borderTop: `1px solid ${tokens.border}`,
+                    paddingTop: '12px',
+                  }}
+                >
+                  <button
+                    type='button'
+                    aria-expanded={detailsOpen}
+                    aria-controls={detailsId}
+                    onClick={() => setDetailsOpen((open) => !open)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      border: 0,
+                      background: 'transparent',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: tokens.brandPrimary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span
+                      aria-hidden='true'
+                      style={{
+                        display: 'inline-block',
+                        transition: 'transform .15s ease',
+                        transform: detailsOpen ? 'rotate(90deg)' : 'none',
+                      }}
+                    >
+                      ›
+                    </span>
+                    {direction === 'unallocate'
+                      ? 'Show un-allocate details'
+                      : 'Show deposit details'}
+                  </button>
+                  <div
+                    hidden={!detailsOpen}
+                    id={detailsId}
+                    data-testid={
+                      direction === 'unallocate'
+                        ? 'invest-unallocate-details'
+                        : 'invest-deposit-details'
+                    }
+                    style={{ marginTop: '8px' }}
+                  >
+                    <dl style={{ margin: 0, fontSize: '13px' }}>
+                      <Detail label='Transaction' first>
+                        {state.transactionHash ? (
+                          <CopyableValue
+                            value={state.transactionHash}
+                            label='transaction hash'
+                            explorerUrl={transactionExplorerUrl(
+                              state.chainId,
+                              state.transactionHash,
+                            )}
+                          />
+                        ) : (
+                          <span style={{ color: tokens.muted }}>
+                            Not reported
+                          </span>
                         )}
-                      />
-                    ) : (
-                      <span style={{ color: tokens.muted }}>Not reported</span>
-                    )}
-                  </Detail>
-                  <Detail label='User operation'>
-                    <CopyableValue
-                      value={state.userOperationHash}
-                      label='user operation hash'
-                    />
-                  </Detail>
-                  {state.vault ? (
-                    <Detail label='MetaMorpho vault'>
-                      <CopyableValue
-                        value={state.vault}
-                        label='MetaMorpho vault address'
-                        explorerUrl={addressExplorerUrl(
-                          state.chainId,
-                          state.vault,
-                        )}
-                      />
-                    </Detail>
-                  ) : null}
-                  {safeAddress ? (
-                    <Detail label='Your Safe'>
-                      <CopyableValue
-                        value={safeAddress}
-                        label='Safe address'
-                        explorerUrl={addressExplorerUrl(
-                          state.chainId,
-                          safeAddress,
-                        )}
-                      />
-                    </Detail>
-                  ) : null}
-                </dl>
+                      </Detail>
+                      <Detail label='User operation'>
+                        <CopyableValue
+                          value={state.userOperationHash}
+                          label='user operation hash'
+                        />
+                      </Detail>
+                      {state.vault ? (
+                        <Detail label='MetaMorpho vault'>
+                          <CopyableValue
+                            value={state.vault}
+                            label='MetaMorpho vault address'
+                            explorerUrl={addressExplorerUrl(
+                              state.chainId,
+                              state.vault,
+                            )}
+                          />
+                        </Detail>
+                      ) : null}
+                      {safeAddress ? (
+                        <Detail label='Your Safe'>
+                          <CopyableValue
+                            value={safeAddress}
+                            label='Safe address'
+                            explorerUrl={addressExplorerUrl(
+                              state.chainId,
+                              safeAddress,
+                            )}
+                          />
+                        </Detail>
+                      ) : null}
+                    </dl>
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
