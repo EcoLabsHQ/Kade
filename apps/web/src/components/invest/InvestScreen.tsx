@@ -211,7 +211,13 @@ type AllocateState =
 const AMOUNT_PATTERN = /^\d+(\.\d{1,6})?$/;
 const PRESETS = ['10000', '25000', '50000'] as const;
 
-const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 210px';
+// The last column is the reference's own 110px (kade-mvp.dc.html, the Invest
+// table). It was widened to 210px when the row briefly carried two controls;
+// the row now carries one, so the extra width was dead space. The single
+// control is right-aligned and lays out at its natural width, so a long state
+// (`Position unread`) can bleed only into the free inter-column gutter and is
+// never truncated or clipped. See `PositionMenu`.
+const GRID = '1.9fr .9fr 1fr 1.2fr .9fr .9fr 110px';
 
 /** Which direction the open modal is running. */
 type Direction = 'allocate' | 'unallocate';

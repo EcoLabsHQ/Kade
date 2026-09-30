@@ -57,6 +57,15 @@ export interface PositionMenuProps {
  * `overflow: hidden` and its horizontal scroller, both of which would clip an
  * absolutely positioned dropdown. The portal escapes that clip while the
  * outside-click check still treats the menu as inside the control.
+ *
+ * The collapsed trigger matches the reference's button metrics (`height: 32px`,
+ * `border-radius: 999px`, `font-size: 12px`, `font-weight: 600`) so it fits the
+ * reference's `110px` action column. It carries a small chevron whose own
+ * transition and the menu's enter animation live in {@link MENU_CSS}: inline
+ * style objects cannot express `:hover`, `@keyframes` or a
+ * `prefers-reduced-motion` media query. The animation is pure progressive
+ * enhancement — the menu is fully usable (and every interaction unchanged) if
+ * it never runs.
  */
 export function PositionMenu({
   instrumentName,
@@ -158,10 +167,16 @@ export function PositionMenu({
   const triggerStyle: CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    maxWidth: '100%',
+    gap: '3px',
+    // The reference's button metrics for the collapsed control
+    // (`reference/design-handoff/kade-mvp.dc.html`: height 32px, radius 999px,
+    // font-size 12px, font-weight 600). It is deliberately not width-capped:
+    // it lays out at its natural width inside the row's end-aligned action
+    // cell, so its text is never clipped and any excess falls into the free
+    // inter-column gutter instead of truncating the state it carries.
+    flexShrink: 0,
     height: '32px',
-    padding: '0 10px 0 12px',
+    padding: '0 8px 0 10px',
     borderRadius: '999px',
     border:
       variant === 'unknown' ? `1px solid #FECDD3` : `1px solid ${tokens.border}`,
@@ -169,7 +184,7 @@ export function PositionMenu({
     color: variant === 'unknown' ? tokens.danger : tokens.ink,
     fontFamily: 'inherit',
     fontSize: '12px',
-    fontWeight: 700,
+    fontWeight: 600,
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
     cursor: 'pointer',
@@ -180,9 +195,19 @@ export function PositionMenu({
       ref={containerRef}
       style={{ position: 'relative', display: 'inline-flex', minWidth: 0 }}
     >
+      {/*
+        The `:hover`/`:focus-visible` states, the keyframes and the
+        `prefers-reduced-motion` suppression cannot live in an inline style
+        object. `src/app/globals.css` — where this app keeps its other such
+        rules — is outside this component's scope, so the small stylesheet is
+        rendered with the control that uses it. Its content is static and
+        identical, so a duplicate tag per rendered menu is harmless.
+      */}
+      <style>{MENU_CSS}</style>
       <button
         ref={triggerRef}
         type="button"
+        className="kade-position-trigger"
         data-testid={testId}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -193,13 +218,30 @@ export function PositionMenu({
         {label}
         <span
           aria-hidden
+          className="kade-position-caret"
           style={{
-            fontSize: '10px',
-            lineHeight: 1,
+            display: 'inline-flex',
+            alignItems: 'center',
             color: variant === 'unknown' ? tokens.danger : tokens.muted,
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
           }}
         >
-          ▾
+          <svg
+            width="8"
+            height="8"
+            viewBox="0 0 8 8"
+            fill="none"
+            focusable="false"
+            aria-hidden
+          >
+            <path
+              d="M1.5 3 4 5.5 6.5 3"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       </button>
 
@@ -208,6 +250,7 @@ export function PositionMenu({
             <div
               ref={menuRef}
               role="menu"
+              className="kade-position-menu"
               aria-label={`${instrumentName} position actions`}
               onKeyDown={onMenuKeyDown}
               style={{
@@ -233,6 +276,7 @@ export function PositionMenu({
                 }}
                 type="button"
                 role="menuitem"
+                className="kade-position-menu-item"
                 tabIndex={-1}
                 onClick={() => {
                   setOpen(false);
@@ -248,6 +292,7 @@ export function PositionMenu({
                 }}
                 type="button"
                 role="menuitem"
+                className="kade-position-menu-item"
                 tabIndex={-1}
                 onClick={() => {
                   setOpen(false);
@@ -271,7 +316,11 @@ const menuItem: CSSProperties = {
   padding: '8px 10px',
   border: 0,
   borderRadius: '8px',
-  background: 'transparent',
+  // The base stays transparent even if the stylesheet never applies. The CSS
+  // `:hover` rule sets `--kade-position-item-bg`, which this shorthand reads,
+  // so the hover state lives in CSS without an `!important` fighting the
+  // inline value.
+  background: 'var(--kade-position-item-bg, transparent)',
   color: tokens.chipFg,
   fontFamily: 'inherit',
   fontSize: '12.5px',
@@ -280,3 +329,60 @@ const menuItem: CSSProperties = {
   cursor: 'pointer',
   whiteSpace: 'nowrap',
 };
+
+/**
+ * The control's stylesheet.
+ *
+ * It is rendered as a scoped `<style>` alongside the control rather than added
+ * to `src/app/globals.css` because `src/app/**` is outside this component's
+ * scope, and the rules — `:hover`, `:focus-visible`, `@keyframes` and a
+ * `prefers-reduced-motion` media query — cannot be expressed as inline styles.
+ *
+ * Progressive enhancement: the menu's enter animation and the caret's rotation
+ * are additive. If the keyframes are unsupported or the stylesheet is dropped,
+ * the menu renders in its final, fully usable position; the open/close, focus
+ * and keyboard behaviour are JavaScript and unaffected. `prefers-reduced-motion`
+ * removes the animation and the transitions entirely for a user who asks for
+ * that, leaving an immediate, still-usable menu.
+ */
+const MENU_CSS = `
+@keyframes kade-position-menu-in {
+  from {
+    opacity: 0;
+    transform: translateX(-100%) translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-100%) translateY(0) scale(1);
+  }
+}
+.kade-position-menu {
+  transform-origin: top right;
+  animation: kade-position-menu-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kade-position-menu-item:hover {
+  --kade-position-item-bg: var(--kade-chip-bg, #f2f4f7);
+}
+.kade-position-menu-item:focus-visible {
+  outline: 2px solid var(--kade-action, #0a7cff);
+  outline-offset: -2px;
+}
+.kade-position-caret {
+  transition: transform 0.18s ease;
+}
+.kade-position-trigger {
+  transition: box-shadow 0.14s ease;
+}
+.kade-position-trigger:hover {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .kade-position-menu {
+    animation: none;
+  }
+  .kade-position-caret,
+  .kade-position-trigger {
+    transition: none;
+  }
+}
+`;
