@@ -312,7 +312,7 @@ export function VoteScreen() {
               data-testid="vote-turnout"
             >
               Turnout{' '}
-              <strong style={{ color: tokens.ink }}>{total}</strong> of{' '}
+              <strong style={{ color: tokens.ink }}>{total}</strong> votes of{' '}
               {ELIGIBLE_RESIDENTS} eligible residents
             </div>
           </Card>

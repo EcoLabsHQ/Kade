@@ -60,8 +60,7 @@ describe('VoteScreen reference layout', () => {
 
     // The demo turnout, not a real vote count.
     const turnout = screen.getByTestId('vote-turnout');
-    expect(within(turnout).getByText('106')).toBeInTheDocument();
-    expect(turnout).toHaveTextContent('of 148 eligible residents');
+    expect(turnout).toHaveTextContent('106 votes of 148 eligible residents');
     cleanup();
   });
 
