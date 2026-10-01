@@ -1,0 +1,44 @@
+- id: F1
+  severity: WARN
+  scope: scope_and_honesty
+  title: >-
+    Frozen Week 3 contract did not declare the operator-withdrawal capability or
+    the Invest refresh
+  evidence: >-
+    docs/week-3-frozen-delivery-contract.md:50-56 (§2.4) and :88 (§4) vs the
+    candidate's apps/web/src/app/vault/withdraw/** and InvestScreen.tsx changes
+  failure_mode: >-
+    A reader of the frozen contract would conclude no payout capability and no
+    existing-file changes beyond nav/Modal were introduced.
+  materiality: Documentation/scope-consistency gap; the change is human-requested
+    and gated off by default.
+  status: resolved
+  introduced_by: bf85a96
+  resolved_by: 6a6e85a
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: navigation
+  title: docs/known-gaps.md still says Vote is rendered locked
+  evidence: docs/known-gaps.md:44 vs VOTE-1 (nav.ts, vote-screen.test.tsx:128-136)
+  failure_mode: A reader relying on the gap tracker is told Vote is still locked.
+  materiality: Stale documentation in a pre-existing file; no behavioural effect.
+  status: resolved
+  introduced_by: bf85a96
+  resolved_by: 6a6e85a
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: operator_withdrawal
+  title: Withdrawal authority-refusal branches lack direct coverage
+  evidence: >-
+    apps/web/tests/operator-vault-withdraw.test.tsx:54-86 (mocks only) vs
+    actions.ts:134-177, 224-232, 473-481
+  failure_mode: >-
+    A regression that made a refusal branch pass by accident would not be caught
+    by the suite.
+  materiality: Coverage gap only; the branches are fail-closed refusals.
+  status: open
+  introduced_by: bf85a96
+  resolved_by: null
+  recheck_attempts: 0

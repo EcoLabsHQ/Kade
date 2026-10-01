@@ -1,0 +1,33 @@
+iteration: week3-vote-operator
+profile: NORMAL
+known_good: abaf76e2de086cea9c35d3a98cedfa5cb41b42f4
+candidate: bf85a968d30b99f269aca6c44a84de34bd9e898e
+mode: discovery
+reviewed_scopes:
+  frontend_vote: complete
+  operator_withdrawal: complete
+  invest_refresh: complete
+  navigation: complete
+  scope_and_honesty: complete
+active_findings: [F3]
+resolved_findings: [F1, F2]
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: bf85a968d30b99f269aca6c44a84de34bd9e898e
+  recorded_at: 2026-09-30
+notes:
+  - REVIEW PASSED with no blocking (FAIL) finding; F1-F3 were WARN only.
+  - F1 resolved by docs/week-3-frozen-delivery-contract.md declaring OPERATOR-1
+    and INVEST-REFRESH-1 and listing the new existing-file changes.
+  - F2 resolved by refreshing the Vote row in docs/known-gaps.md.
+  - F3 (WARN, non-blocking): the operator withdrawal's authority-refusal branches
+    (no session / no stored passkey / no recorded Safe / safe-not-verified /
+    sponsor-not-configured) lack direct test coverage. Recorded for the next
+    increment; it is a coverage gap, not a defect.
+  - The post-review change (6a6e85a) is documentation-only and invalidates no
+    reviewed scope.
