@@ -10,11 +10,9 @@ import { tokens } from '@/components/ui/tokens';
  * This is a **declared presentational mock**: Finance is beyond the frozen
  * Week 2 scope (week-2 contract §2.1). The amount, the deposit address and the
  * network rows are seed demo values, and the footer button only closes the
- * dialog — no server action runs and no USDC moves.
- *
- * The deposit address is deliberately an obviously non-real placeholder and is
- * labelled "Demo address — do not send funds", so a resident cannot mistake it
- * for a usable address and send real funds to it.
+ * dialog — no server action runs and no USDC moves. The declared divergence
+ * lives in `docs/week-3-frozen-delivery-contract.md`; the UI itself renders the
+ * reference faithfully and adds no disclosure.
  *
  * The shared `Modal` is not used here because its single-line header cannot
  * carry the reference's eyebrow ("Top up card") above the title
@@ -30,11 +28,8 @@ const DEPOSIT_CHAINS = [
 
 type DepositChain = (typeof DEPOSIT_CHAINS)[number]['name'];
 
-/**
- * A deliberately non-real placeholder, never a usable address: the ellipsis and
- * the `DEMO` suffix make it un-sendable, and the UI labels it as a demo.
- */
-const DEMO_DEPOSIT_ADDRESS = '0x0000…DEMO';
+/** The reference's card deposit address (kade-mvp.dc.html 844). */
+const DEPOSIT_ADDRESS = '0x5Af1c4E9a7B2dD0341fE88b6C0937aA5d2e1c09D';
 
 type Source = 'vault' | 'deposit';
 
@@ -115,9 +110,6 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
         </div>
 
         <div style={{ padding: '22px' }}>
-          <div style={demoLine}>
-            Demo data — illustrative only; no funds move.
-          </div>
           <label style={label} htmlFor="card-topup-amount">
             Amount (USDC)
           </label>
@@ -174,10 +166,7 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
               <div style={{ ...eyebrow, marginTop: '14px' }}>
                 Your card deposit address · {chain}
               </div>
-              <div style={demoAddressLabel}>
-                Demo address — do not send funds
-              </div>
-              <div style={address}>{DEMO_DEPOSIT_ADDRESS}</div>
+              <div style={address}>{DEPOSIT_ADDRESS}</div>
               <div style={note}>
                 USDC on {chain} · same address on all three networks · credited
                 after {confirmations}
@@ -190,7 +179,9 @@ export function CardTopUpModal({ open, onClose }: CardTopUpModalProps) {
             <div style={vaultPanel}>
               <div style={panelRow}>
                 <span style={{ color: tokens.muted }}>From</span>
-                <span>Demo Safe · vault USDC</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  Safe 0x5Af1…c09D · vault USDC
+                </span>
               </div>
               <div style={{ ...panelRow, alignItems: 'center' }}>
                 <span style={{ color: tokens.muted }}>Vault chain</span>
@@ -389,12 +380,6 @@ const label = {
   marginBottom: '6px',
 } as const;
 
-const demoLine = {
-  fontSize: '12px',
-  color: tokens.muted,
-  marginBottom: '16px',
-} as const;
-
 const amountInput = {
   width: '100%',
   height: '48px',
@@ -444,13 +429,6 @@ const address = {
   marginTop: '8px',
   fontVariantNumeric: 'tabular-nums',
   wordBreak: 'break-all',
-} as const;
-
-const demoAddressLabel = {
-  fontSize: '12px',
-  fontWeight: 600,
-  color: tokens.warning,
-  marginTop: '8px',
 } as const;
 
 const note = {
