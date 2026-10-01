@@ -10,18 +10,20 @@ import { CardTopUpModal } from './CardTopUpModal';
 import { CardVisual } from './CardVisual';
 
 /**
- * Card & Banking (D21) — a **declared presentational mock**.
- *
- * Finance is beyond the frozen Week 2 scope (week-2 contract §2.1), so this
- * screen exists only to make the design handoff explorable. Every figure below
- * is a seed demo value; nothing here reads a chain, calls a server action,
- * moves funds or orders a card.
+ * Card & Banking (D21) — the reference screen, rendered as a presentational
+ * mock. Finance is beyond the frozen Week 2 scope, and the declared
+ * presentational divergence for this screen lives in
+ * `docs/week-3-frozen-delivery-contract.md` (owned by the orchestrator); this
+ * module renders the design handoff faithfully and adds no disclosure of its
+ * own. Nothing here reads a chain, calls a server action, moves funds or orders
+ * a card.
  *
  * The default render is the reference's pre-order / in-review state
- * (kade-mvp.dc.html 615–633; screenshot 22). The "Order card" control advances
- * to the active state (kade-mvp.dc.html 559–612; screenshot 23) — a deliberate
- * **mock affordance** for exploring the reference, because the live prototype
- * gates ordering on intake review (`orderCard: () => { if (!inReview) … }`).
+ * (kade-mvp.dc.html 615–633; screenshot 22), where "Order card · after intake
+ * review" is the prototype's gated control and no-ops (`orderCard: () => { if
+ * (!inReview) … }`). The active layout (559–612; screenshot 23) and the top-up
+ * dialog (821–856) are the reference's conditional branches that this state
+ * does not reach; both stay in this module and are covered by direct rendering.
  */
 
 /** Seed demo values — not real balances, limits or transactions. */
@@ -112,52 +114,11 @@ const SPEND_SPLIT = [
 
 const TX_COLUMNS = '.6fr 1.6fr 1fr 1fr';
 
-/** The amber demo disclosure, the first element of the screen. */
-const demoNotice = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '8px',
-  background: '#FDF6E7',
-  border: '1px solid #F2E3C0',
-  borderRadius: '12px',
-  padding: '12px 14px',
-  fontSize: '12.5px',
-  color: '#8A5A12',
-  marginBottom: '20px',
-} as const;
-
-const demoNoticeDot = {
-  width: '7px',
-  height: '7px',
-  borderRadius: '50%',
-  background: '#B7791F',
-  flex: '0 0 auto',
-  marginTop: '5px',
-} as const;
-
 export function CardScreen() {
-  // Mock-only state. `activePreview` switches the pre-order layout to the
-  // active layout for exploration; it is not a real card order.
-  const [activePreview, setActivePreview] = useState(false);
   const [slashApplied, setSlashApplied] = useState(false);
-  const [topupOpen, setTopupOpen] = useState(false);
 
   return (
     <div style={{ maxWidth: '1160px', width: '100%', margin: '0 auto' }}>
-      {/*
-        The disclosure is the first thing on the screen so a resident cannot
-        mistake the mock for their own records before scrolling.
-      */}
-      <div role="note" style={demoNotice}>
-        <span style={demoNoticeDot} />
-        <span>
-          <strong>Preview · demo data.</strong> This screen is a visual mock.
-          The balances, transactions, card and addresses shown are illustrative
-          examples, not real records — no funds move, and none of the addresses
-          should be used.
-        </span>
-      </div>
-
       <div
         style={{
           display: 'flex',
@@ -196,27 +157,22 @@ export function CardScreen() {
         </Chip>
       </div>
 
-      {activePreview ? (
-        <ActiveLayout onTopUp={() => setTopupOpen(true)} />
-      ) : (
-        <PreOrderLayout onPreview={() => setActivePreview(true)} />
-      )}
+      {/*
+        The reference's in-review branch: the gated order control no-ops, so
+        the active layout is not reachable from here (exactly as the prototype).
+      */}
+      <PreOrderLayout />
 
       <AltitudeBanner
         applied={slashApplied}
         onApply={() => setSlashApplied(true)}
-      />
-
-      <CardTopUpModal
-        open={topupOpen}
-        onClose={() => setTopupOpen(false)}
       />
     </div>
   );
 }
 
 /** The reference's pre-order / in-review layout (kade-mvp.dc.html 615–633). */
-function PreOrderLayout({ onPreview }: { readonly onPreview: () => void }) {
+function PreOrderLayout() {
   return (
     <div
       style={{
@@ -230,26 +186,16 @@ function PreOrderLayout({ onPreview }: { readonly onPreview: () => void }) {
       <Card radius={14}>
         <CardVisual number="•••• •••• •••• ••••" expiry="VISA" opacity={0.9} />
         {/*
-          The reference's gated button is genuinely disabled: ordering is gated
-          on intake review, so it must not be interactive. The active layout is
-          reachable through the separately labelled demo-preview control below,
-          which never claims a real order.
+          The reference's gated control: locked grey with a not-allowed cursor,
+          and it does nothing while intake review is pending — the prototype's
+          `orderCard` no-ops under `inReview`.
         */}
         <Button
           variant="locked"
           fullWidth
-          disabled
           style={{ marginTop: '16px', height: '44px', fontSize: '14px' }}
         >
           Order card · after intake review
-        </Button>
-        <Button
-          variant="secondary"
-          fullWidth
-          onClick={onPreview}
-          style={{ marginTop: '8px', height: '36px', fontSize: '12.5px' }}
-        >
-          Preview active card (demo)
         </Button>
       </Card>
 
@@ -302,8 +248,16 @@ function PreOrderLayout({ onPreview }: { readonly onPreview: () => void }) {
   );
 }
 
-/** The reference's active layout (kade-mvp.dc.html 559–612). */
-function ActiveLayout({ onTopUp }: { readonly onTopUp: () => void }) {
+/**
+ * The reference's active layout (kade-mvp.dc.html 559–612; screenshot 23).
+ *
+ * The default in-review screen does not reach this branch — the gated order
+ * control no-ops, exactly as the prototype — so it is exported for direct
+ * rendering in tests and owns the top-up dialog its "Top up" button opens.
+ */
+export function ActiveLayout() {
+  const [topupOpen, setTopupOpen] = useState(false);
+
   return (
     <>
       <div
@@ -375,7 +329,7 @@ function ActiveLayout({ onTopUp }: { readonly onTopUp: () => void }) {
             }}
           >
             <Button
-              onClick={onTopUp}
+              onClick={() => setTopupOpen(true)}
               style={{ height: '36px', padding: '0 14px', fontSize: '12.5px' }}
             >
               Top up
@@ -562,6 +516,11 @@ function ActiveLayout({ onTopUp }: { readonly onTopUp: () => void }) {
           </Card>
         </div>
       </div>
+
+      <CardTopUpModal
+        open={topupOpen}
+        onClose={() => setTopupOpen(false)}
+      />
     </>
   );
 }
