@@ -18,8 +18,10 @@ export interface NavGroupConfig {
  * (Bank ↔ Crypto and Card & Banking) are a purely presentational mock, in scope
  * for the Week 3 increment per `docs/week-3-frozen-delivery-contract.md`
  * (FIN-1): they render demo data and create no capability, so their nav items are
- * plain links. Vote stays locked — the Week 2 contract defers it to the end of
- * the programme (§2.1).
+ * plain links. The Vote screen is a declared presentational mock per
+ * `docs/week-3-frozen-delivery-contract.md` (VOTE-1): it renders reference copy
+ * from local state and creates no capability, so its nav item is a plain link
+ * too.
  *
  * Residency setup (onboarding) and Account & passkey are deliberately **not**
  * nav items: the flow is reached from the Overview, and account settings from the
@@ -34,13 +36,7 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
     label: 'Residency',
     items: [
       { href: '/residency', label: 'Residency' },
-      {
-        href: '/vote',
-        label: 'Vote',
-        locked: true,
-        lockReason:
-          'Vote is deferred to the end of the programme (week-2 contract §2.1)',
-      },
+      { href: '/vote', label: 'Vote' },
     ],
   },
   {
