@@ -2,12 +2,14 @@
 
 **Status:** Frozen v1.0 — human-approved 30 September 2026  
 **Delivery window:** 28 September – 4 October 2026  
-**Scope:** **two increments** — the Finance and Vote presentational mocks.
+**Scope:** **this increment** — the Finance and Vote presentational mocks, the
+off-by-default operator withdrawal tool, and the Invest auto-refresh.
 
-This is a deliberately short, single-increment contract. It records the
-human-directed addition of the Finance screens and the Vote screen as
-**purely presentational mocks** and states the condition on which that increment
-may be promoted. It does not re-open the frozen Week 2 contract
+This is a deliberately short contract. It records the human-directed addition of
+the Finance screens and the Vote screen as **purely presentational mocks**, the
+unlinked, environment-gated operator Safe → wallet withdrawal, and the Invest
+auto-refresh, and states the condition on which this increment may be promoted. It
+does not re-open the frozen Week 2 contract
 (`docs/week-2-frozen-delivery-contract.md`, Frozen v1.8 with amendments to v1.10)
 beyond this increment; everything else it froze remains frozen, and the Week 1
 contract (`docs/week-1-frozen-delivery-contract.md`, Frozen v1.10) is unchanged.
@@ -37,6 +39,21 @@ is reachable from the nav.
 The Finance nav items and the Vote nav item render as plain links (none of them is
 locked).
 
+**OPERATOR-1 — Operator withdrawal (Safe → wallet).** A new, deliberately
+**unlinked** route `/vault/withdraw` moves USDC or the chain's native coin out of
+the resident's Safe to an operator-named destination, so the team can empty a Safe
+for clean testing on the deployment. It is **off by default**: only
+`KADE_OPERATOR_WITHDRAW=1` enables the route and both server actions, and each
+checks the flag server-side. It is **not a backdoor** — the resident's WebAuthn
+passkey remains the only signer, no managed/embedded signer is introduced, and the
+connected EOA has no authority. It reuses the existing Safe-4337 seam, validates
+the destination, amount, chain and balance fail-closed, and reports success only
+for a confirmed receipt. Documented in `docs/operator-vault-withdraw.md`.
+
+**INVEST-REFRESH-1 — Invest auto-refresh.** After a confirmed deposit or
+un-allocate, `InvestScreen` calls `router.refresh()` once so the route re-reads
+the Safe's position without a manual reload. No other Invest behaviour changes.
+
 ## 2. Frozen properties (acceptance)
 
 1. **Purely presentational.** The screens create no capability: no server action,
@@ -52,8 +69,12 @@ locked).
    `apps/web/src/components/shell/nav.ts`; an **additive** optional
    `eyebrow?: string` prop on
    `apps/web/src/components/ui/Modal.tsx` (the default single-line header is
-   unchanged, so no existing caller's behaviour changes); and the `AGENTS.md`
-   current-scope pointer. No existing test is weakened or removed.
+   unchanged, so no existing caller's behaviour changes); the `AGENTS.md`
+   current-scope pointer; `apps/web/src/components/invest/InvestScreen.tsx` (the
+   one `router.refresh()` call); the seven existing `apps/web/tests/invest-*.test.tsx`
+   files (each gaining an additive `vi.mock('next/navigation')`); and
+   `apps/web/tests/finance-bank.test.tsx` (its former "Vote locked" assertion
+   inverted for VOTE-1). No existing test is weakened or removed.
 
 ## 3. Declared presentational divergence
 
@@ -85,7 +106,9 @@ disclosed capability under change control before any resident-facing use.
 This increment does **not** deliver, and does not move into scope:
 
 - GOS integration, card issuance, or any fiat rail;
-- any chain write, deposit, payout or order;
+- any chain write, deposit, payout or order, **except** the off-by-default,
+  unlinked operator withdrawal declared as OPERATOR-1 in §1 — the only
+  fund-moving capability this increment adds;
 - D12 multi-chain coverage, D13 attested fee payment, D14 KadeLock qualified
   vault, D15 wealth indexer — all remain beyond the envelope;
 - a **real** Snapshot vote (space, EIP-712 signature, IPFS storage) and any
@@ -97,17 +120,22 @@ This increment does **not** deliver, and does not move into scope:
 ## 5. Acceptance evidence
 
 - the `/bank`, `/card` and `/vote` routes render inside the authenticated shell;
+- `/vault/withdraw` is a 404 unless `KADE_OPERATOR_WITHDRAW=1`, and both actions
+  refuse when the flag is off;
 - focused component tests: `apps/web/tests/finance-bank.test.tsx`,
-  `apps/web/tests/finance-card.test.tsx` and `apps/web/tests/vote-screen.test.tsx`;
+  `apps/web/tests/finance-card.test.tsx`, `apps/web/tests/vote-screen.test.tsx`,
+  `apps/web/tests/operator-vault-withdraw.test.tsx` and
+  `apps/web/tests/invest-screen.test.tsx`;
 - `./scripts/verify.sh` **PASS** on the exact promoted HEAD;
 - a complete review session with no open blocking finding.
 
 ## 6. Change control
 
 Promoting Finance or Vote from a **mock** to a real capability (GOS integration,
-card issuance, any on-chain/fiat action, or a real Snapshot vote) is a new
-change-control item and requires explicit human approval. The excluded areas in §4
-may not be moved into scope by this contract.
+card issuance, any on-chain/fiat action, or a real Snapshot vote), or enabling the
+operator withdrawal outside its environment gate, is a new change-control item and
+requires explicit human approval. The excluded areas in §4 may not be moved into
+scope by this contract.
 
 ## 7. Promotion condition
 
