@@ -19,6 +19,14 @@ export interface ModalProps {
   readonly onClose: () => void;
   /** The dialog's accessible name, rendered as its heading. */
   readonly title: string;
+  /**
+   * An optional reference eyebrow rendered above the title (11px/700, uppercase,
+   * muted). Supplying it switches the header to the reference's two-line chrome
+   * — the eyebrow above a 15px title, with a bordered round close button and a
+   * bottom divider. Omitting it keeps the original single-line header, so every
+   * existing caller is unchanged.
+   */
+  readonly eyebrow?: string;
   readonly children: ReactNode;
   /** The card's maximum width; the handoff uses 400–460px. */
   readonly maxWidth?: number;
@@ -28,6 +36,7 @@ export function Modal({
   open,
   onClose,
   title,
+  eyebrow,
   children,
   maxWidth = 440,
 }: ModalProps) {
@@ -69,19 +78,38 @@ export function Modal({
         onClick={(event) => event.stopPropagation()}
         style={{ ...card, maxWidth }}
       >
-        <div style={header}>
-          <h2 id={titleId} style={heading}>
-            {title}
-          </h2>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            style={closeButton}
-          >
-            ×
-          </button>
-        </div>
+        {eyebrow ? (
+          <div style={eyebrowHeader}>
+            <div style={{ minWidth: 0 }}>
+              <div style={eyebrowStyle}>{eyebrow}</div>
+              <h2 id={titleId} style={eyebrowHeading}>
+                {title}
+              </h2>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              style={eyebrowCloseButton}
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <div style={header}>
+            <h2 id={titleId} style={heading}>
+              {title}
+            </h2>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              style={closeButton}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>,
@@ -137,4 +165,50 @@ const closeButton: CSSProperties = {
   cursor: 'pointer',
   padding: '4px 6px',
   borderRadius: '8px',
+};
+
+/*
+ * The reference's two-line dialog header (kade-mvp.dc.html, the Fund vault and
+ * Cash out dialogs), used only when `eyebrow` is supplied: an 11px uppercase
+ * eyebrow above a 15px title, a bordered round close button, and a bottom
+ * divider. The single-line header above stays the default for every caller that
+ * does not opt in.
+ */
+const eyebrowHeader: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '12px',
+  padding: '18px 22px',
+  borderBottom: `1px solid ${tokens.border}`,
+};
+
+const eyebrowStyle: CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '.08em',
+  textTransform: 'uppercase',
+  color: tokens.muted,
+};
+
+const eyebrowHeading: CSSProperties = {
+  margin: 0,
+  marginTop: '4px',
+  fontSize: '15px',
+  fontWeight: 700,
+  color: tokens.ink,
+};
+
+const eyebrowCloseButton: CSSProperties = {
+  width: '28px',
+  height: '28px',
+  border: `1px solid ${tokens.border}`,
+  background: '#fff',
+  borderRadius: '50%',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: '14px',
+  color: tokens.muted,
+  lineHeight: 1,
+  flex: '0 0 auto',
 };
