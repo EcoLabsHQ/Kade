@@ -1,0 +1,35 @@
+iteration: finance-visual-mock
+profile: NORMAL
+known_good: 59ec4ef799a06f43a76f9ebdd23d17dc16e7332e
+candidate: 57c9bd0aa1b5b69893f27b3bcbe87c27453eb0dc
+mode: recheck
+reviewed_scopes:
+  frontend: complete
+  navigation: complete
+  scope_and_honesty: complete
+active_findings: []
+resolved_findings: [F1, F2, F3, F4, F5]
+next_finding_id: F6
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+  F4: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 57c9bd0aa1b5b69893f27b3bcbe87c27453eb0dc
+  recorded_at: 2026-09-30
+notes:
+  - F1 resolved by recording docs/week-3-frozen-delivery-contract.md
+    (owner-approved) and pointing AGENTS.md/nav.ts at it.
+  - F2/F3 resolved by explicit owner decision (30 September 2026) for exact
+    reference fidelity; the declared presentational divergence and residual
+    risk live in the Week 3 contract §3 (v1.5 model), not on-screen.
+  - F4 resolved by the additive optional `eyebrow` prop on the shared Modal
+    plus focus-in/restore on the bespoke top-up dialog.
+  - F5 (WARN, non-blocking) resolved by correcting the Week 3 contract §2.4
+    change inventory to list Modal.tsx and AGENTS.md. This post-review change is
+    documentation-only and invalidates no reviewed scope.

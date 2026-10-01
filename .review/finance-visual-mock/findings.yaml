@@ -1,0 +1,86 @@
+- id: F1
+  severity: FAIL
+  scope: scope_and_honesty
+  title: >-
+    Out-of-contract D21 scope promoted with no recorded amendment, plus a false
+    "declared presentational mock" claim in nav.ts
+  evidence: >-
+    apps/web/src/components/shell/nav.ts:18-20; week-2 contract §2.1 item 6 (:57),
+    §4.4 (:280), §9 (:747,755); v1.5 (:516-536); amendment log ends at v1.10 (:376-400)
+  failure_mode: >-
+    A future reviewer reads the nav.ts comment and believes an approved
+    declaration exists; the promotion record then misstates the process that
+    authorised it.
+  materiality: >-
+    Violates the frozen Week 2 contract and the explicit v1.5 promotion condition.
+  status: resolved
+  introduced_by: 189b674
+  resolved_by: d1ce233
+  recheck_attempts: 1
+- id: F2
+  severity: FAIL
+  scope: frontend
+  title: >-
+    Fabricated resident financial data and a hard-coded deposit address rendered
+    as the resident's own, with no on-screen disclosure
+  evidence: >-
+    BankScreen.tsx:34,57-123,454,976-993; CardTopUpModal.tsx:30,150,164;
+    CardScreen.tsx:45-103,271-273,318-321; no visible demo/mock disclosure
+  failure_mode: >-
+    Inside the authenticated resident shell, /bank and /card show a specific
+    person's balances, "Credited"/"Settled" transfers, card status and a
+    specific Ethereum address labelled as the resident's card deposit address.
+    A resident could copy that address and send real USDC to an address that is
+    not theirs.
+  materiality: >-
+    Contradicts the iteration's stated property that nothing claims a real
+    balance/transfer, and the v1.5 honesty rationale.
+  status: resolved
+  introduced_by: 189b674
+  resolved_by: 57c9bd0
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: frontend
+  title: >-
+    "Order card · after intake review" styled as unavailable yet advances to a
+    fabricated active card
+  evidence: CardScreen.tsx:199-207; Button.tsx:46-51; kade-mvp.dc.html:1341
+  failure_mode: >-
+    A control that reads as gated (cursor: not-allowed) is actionable and
+    fabricates a Status Active / Delivered card.
+  materiality: Misleading affordance; documented mock choice; not blocking alone.
+  status: resolved
+  introduced_by: 189b674
+  resolved_by: 57c9bd0
+  recheck_attempts: 1
+- id: F4
+  severity: WARN
+  scope: frontend
+  title: Bespoke CardTopUpModal omits the focus handling the shared Modal provides
+  evidence: >-
+    CardTopUpModal.tsx:67-91 (no tabIndex/focus-on-open/focus-return/portal)
+    vs ui/Modal.tsx:55-57,63-69
+  failure_mode: >-
+    A keyboard/screen-reader user opening "Top up" leaves focus on the page
+    behind the backdrop.
+  materiality: Accessibility gap; no correctness/data impact.
+  status: resolved
+  introduced_by: 189b674
+  resolved_by: ee1c03d
+  recheck_attempts: 1
+- id: F5
+  severity: WARN
+  scope: scope_and_honesty
+  title: Week 3 contract §2.4 understates the change surface
+  evidence: >-
+    docs/week-3-frozen-delivery-contract.md:44-46 vs git diff
+    189b674...57c9bd0 --stat (Modal.tsx, AGENTS.md)
+  failure_mode: >-
+    A future reviewer trusting §2.4 as the change inventory could skip auditing
+    Modal.tsx and AGENTS.md. No runtime or behavioural failure mode.
+  materiality: Non-blocking documentation inaccuracy; behaviour claim holds.
+  status: resolved
+  introduced_by: 189b674
+  resolved_by: null
+  recheck_attempts: 1
