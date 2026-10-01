@@ -41,9 +41,12 @@ The Finance nav items render as plain links (they are no longer locked). Vote
    and screenshots `reference/design-handoff/screenshots/20-…`–`25-…`.
 3. **Reachable and framed.** `/bank` and `/card` are auth-gated and render inside
    the existing resident shell, exactly as `/invest` does.
-4. **Existing behaviour preserved.** The only change to an existing file is the
-   two Finance nav items in `apps/web/src/components/shell/nav.ts`; no existing
-   test is weakened or removed.
+4. **Existing behaviour preserved.** Existing-file changes are limited to: the
+   two Finance nav items in `apps/web/src/components/shell/nav.ts`; an
+   **additive** optional `eyebrow?: string` prop on
+   `apps/web/src/components/ui/Modal.tsx` (the default single-line header is
+   unchanged, so no existing caller's behaviour changes); and the `AGENTS.md`
+   current-scope pointer. No existing test is weakened or removed.
 
 ## 3. Declared presentational divergence
 
