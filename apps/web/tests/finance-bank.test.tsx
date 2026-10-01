@@ -177,10 +177,12 @@ describe('Finance navigation', () => {
     expect(card?.lockReason).toBeUndefined();
   });
 
-  it('leaves Vote locked', () => {
+  it('renders Vote as a plain link (VOTE-1)', () => {
     const vote = RESIDENT_NAV.flatMap((group) => group.items).find(
       (item) => item.href === '/vote',
     );
-    expect(vote?.locked).toBe(true);
+    expect(vote).toBeDefined();
+    expect(vote?.locked).toBeUndefined();
+    expect(vote?.lockReason).toBeUndefined();
   });
 });
