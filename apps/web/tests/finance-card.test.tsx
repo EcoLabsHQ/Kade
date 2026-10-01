@@ -2,14 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The Card & Banking screen (D21), a declared presentational mock.
+ * The Card & Banking screen (D21), rendered to the reference.
  *
- * jsdom does not compute layout, so this proves the reference's structure, the
- * mock's disclosure and its local interactions, not the pixels: the amber demo
- * notice, the header chip, the genuinely-gated order control, the separately
- * labelled demo-preview control, the "Altitude banking" banner and its
- * early-access toggle, and the top-up dialog with its demo-labelled address and
- * focus handling. A reviewer must still confirm the rendering in a browser.
+ * jsdom does not compute layout, so this proves the reference's structure and
+ * the screen's local interactions, not the pixels: the header chip, the
+ * pre-order layout with the gated order control that does not advance, the
+ * "Altitude banking" banner and its early-access toggle, and — rendered
+ * directly, because the default in-review state cannot reach them — the active
+ * layout and the top-up dialog with its address and focus handling. A reviewer
+ * must still confirm the rendering in a browser.
  */
 
 vi.mock('next/navigation', () => ({
@@ -17,14 +18,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-import { CardScreen } from '@/components/finance/card/CardScreen';
+import { ActiveLayout, CardScreen } from '@/components/finance/card/CardScreen';
 
-/** Open the active layout through the honest demo-preview control. */
-function openActivePreview() {
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Preview active card (demo)' }),
-  );
-}
+/** The reference's card deposit address (kade-mvp.dc.html 844). */
+const DEPOSIT_ADDRESS = '0x5Af1c4E9a7B2dD0341fE88b6C0937aA5d2e1c09D';
 
 describe('Card & Banking screen', () => {
   it('renders the header with the review chip and subhead', () => {
@@ -42,26 +39,11 @@ describe('Card & Banking screen', () => {
         'Spend from your vault in XCG anywhere on the island. Ordering unlocks once intake review completes.',
       ),
     ).toBeInTheDocument();
+    // The reference screen carries no disclosure banner above the header.
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
 
-  it('discloses the demo mock as the first element of the screen', () => {
-    render(<CardScreen />);
-
-    const notice = screen.getByRole('note');
-    expect(notice).toHaveTextContent(
-      'Preview · demo data. This screen is a visual mock. The balances, transactions, card and addresses shown are illustrative examples, not real records — no funds move, and none of the addresses should be used.',
-    );
-    // It sits above the h1 header block.
-    const heading = screen.getByRole('heading', {
-      level: 1,
-      name: 'Onchain Island Card',
-    });
-    expect(
-      notice.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('renders the pre-order layout with a genuinely gated order control', () => {
+  it('renders the pre-order layout with a gated order control that does not advance', () => {
     render(<CardScreen />);
 
     expect(
@@ -71,12 +53,12 @@ describe('Card & Banking screen', () => {
     const order = screen.getByRole('button', {
       name: 'Order card · after intake review',
     });
-    expect(order).toBeDisabled();
+    // The prototype keeps the control clickable but no-ops under review.
+    expect(order).not.toBeDisabled();
+    fireEvent.click(order);
 
-    // The active layout is reachable only through the labelled demo preview.
-    expect(
-      screen.getByRole('button', { name: 'Preview active card (demo)' }),
-    ).toBeInTheDocument();
+    // Nothing advances: the active layout stays unreachable from this state.
+    expect(screen.queryByText('XCG 8,946')).not.toBeInTheDocument();
     expect(screen.queryByText('Transactions')).not.toBeInTheDocument();
   });
 
@@ -94,27 +76,19 @@ describe('Card & Banking screen', () => {
     ).toBeInTheDocument();
   });
 
-  it('advances to the active layout through the demo-preview control', () => {
-    render(<CardScreen />);
-
-    openActivePreview();
+  it('renders the active layout and its transactions when rendered directly', () => {
+    render(<ActiveLayout />);
 
     expect(screen.getByText('XCG 8,946')).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'Transactions' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Van den Tweel Supermarket')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', {
-        name: 'Order card · after intake review',
-      }),
-    ).not.toBeInTheDocument();
   });
 
-  it('opens the top-up dialog, focuses it, and shows demo-labelled data', () => {
-    render(<CardScreen />);
+  it('opens the top-up dialog, focuses it, and shows the reference address', () => {
+    render(<ActiveLayout />);
 
-    openActivePreview();
     fireEvent.click(screen.getByRole('button', { name: 'Top up' }));
 
     const dialog = screen.getByRole('dialog');
@@ -122,34 +96,18 @@ describe('Card & Banking screen', () => {
     expect(
       within(dialog).getByText('Onchain Island Card · 4821'),
     ).toBeInTheDocument();
+    // The vault source shows the reference Safe.
     expect(
-      within(dialog).getByText('Demo data — illustrative only; no funds move.'),
+      within(dialog).getByText('Safe 0x5Af1…c09D · vault USDC'),
     ).toBeInTheDocument();
-    // The vault source is honest about being a demo Safe.
-    expect(
-      within(dialog).getByText('Demo Safe · vault USDC'),
-    ).toBeInTheDocument();
-  });
 
-  it('labels the deposit address as a demo, never a usable address', () => {
-    render(<CardScreen />);
-
-    openActivePreview();
-    fireEvent.click(screen.getByRole('button', { name: 'Top up' }));
-
-    const dialog = screen.getByRole('dialog');
     fireEvent.click(
       within(dialog).getByRole('button', {
         name: /Deposit from another source/,
       }),
     );
 
-    expect(
-      within(dialog).getByText('Demo address — do not send funds'),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText('0x0000…DEMO')).toBeInTheDocument();
-    // No fabricated, usable-looking address may remain.
-    expect(within(dialog).queryByText(/0x5Af1/)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(DEPOSIT_ADDRESS)).toBeInTheDocument();
     expect(
       within(dialog).getByRole('button', { name: 'I have sent the funds' }),
     ).toBeInTheDocument();
