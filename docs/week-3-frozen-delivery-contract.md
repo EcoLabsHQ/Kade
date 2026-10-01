@@ -53,14 +53,19 @@ bank/crypto rails, an issued card, and a resident's balances and transfers. This
 divergence is **declared here** and is the condition on which this increment is
 promoted. It creates no capability.
 
-To keep the mock honest, the following are also frozen:
+**The divergence is declared here only.** By explicit owner decision (30
+September 2026) the screens reproduce the design reference **verbatim** and carry
+no on-screen demo banner, dialog notice or demo-labelled control: the declaration
+in this contract — not a UI badge — is what makes the mock honest, exactly as
+Week 2 amendment v1.5 handled the Holdings divergence.
 
-- every screen shows an on-screen demo notice, and every dialog a demo line;
-- no fabricated address is presentable as usable — the card deposit address is a
-  labelled non-real placeholder ("Demo address — do not send funds") and the
-  credit target reads "Demo — … (do not send funds)";
-- any control that changes the mock state is labelled as a demo preview, and the
-  reference's gated "Order card · after intake review" stays genuinely disabled.
+Residual risk, recorded rather than hidden: the screens display seeded demo
+balances, transfers and a card, and the dialogs display reference addresses (the
+credit target "USDC in Safe 0x5Af1…c09D" and the card deposit address
+"0x5Af1c4E9a7B2dD0341fE88b6C0937aA5d2e1c09D"). These are **demo values**; no
+address shown is the resident's, and none should be used to send funds. This
+increment is a demonstration layer and is expected to be replaced by a real,
+disclosed capability under change control before any resident-facing use.
 
 ## 4. Explicit exclusions (unchanged)
 
