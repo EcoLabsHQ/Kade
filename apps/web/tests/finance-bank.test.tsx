@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The Bank ↔ Crypto screen — a disclosed presentational mock.
+ * The Bank ↔ Crypto screen — a presentational divergence declared in
+ * `docs/week-3-frozen-delivery-contract.md`.
  *
- * These tests pin the reference layout and, above all, the mock's honesty: the
- * demo notice is visible on the screen and repeated in each dialog, the demo
- * transfer history renders, the fabricated credit-target address is marked
- * unusable, and both dialogs open and close as local UI state while no action
- * claims a real transfer succeeded.
+ * These tests pin the reference layout and dialog chrome: the reference header,
+ * the two direction cards, the three KPI cards, the five transfer-history rows,
+ * both dialogs opening and closing as local UI state, and the restored
+ * "USDC in Safe 0x5Af1…c09D" credit-target wording.
  *
  * `next/navigation` is mocked as `sidebar-layout.test.tsx` does, because the
  * resident shell imports it.
@@ -95,43 +95,29 @@ describe('BankScreen reference layout', () => {
   });
 });
 
-describe('BankScreen demo disclosure', () => {
-  it('shows the demo notice on the screen, before any figure', () => {
-    render(<BankScreen />);
-    const notice = screen.getByRole('note');
-    expect(notice).toBeVisible();
-    expect(notice).toHaveTextContent(
-      'Preview · demo data. This screen is a visual mock. The balances, accounts, addresses and transfers shown are illustrative examples, not real records — no funds move, and none of the addresses should be used.',
-    );
-    // The notice is the first thing in the screen content, above the header.
-    expect(notice.compareDocumentPosition(screen.getByRole('heading', { name: 'Bank ↔ Crypto' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    cleanup();
-  });
-});
-
 describe('BankScreen dialogs', () => {
-  it('opens the Fund vault dialog and closes it again', () => {
+  it('opens the Fund vault dialog with the reference two-line header and closes it again', () => {
     render(<BankScreen />);
     expect(screen.queryByRole('dialog')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fund vault' }));
 
     const dialog = screen.getByRole('dialog');
+    // The reference header: eyebrow above the title.
+    expect(within(dialog).getByText('Fund your vault')).toBeInTheDocument();
     expect(
-      within(dialog).getByText('Demo data — illustrative only; no funds move.'),
+      within(dialog).getByRole('heading', {
+        name: 'Send from your bank via GOS',
+      }),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText('GOS Payments B.V. (for Marcus Feldt)'),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('OI-0409-MF')).toBeInTheDocument();
-
-    // The fabricated credit target is marked unusable, not presented as a real
-    // Safe the resident could send funds to.
+    // The reference's credit-target wording, restored.
     expect(
-      within(dialog).getByText(/Demo — USDC in Safe 0xDemo…0000/),
+      within(dialog).getByText(/USDC in Safe 0x5Af1…c09D/),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText(/do not send funds/)).toBeInTheDocument();
-    expect(within(dialog).queryByText(/0x5Af1…c09D/)).toBeNull();
 
     fireEvent.click(
       within(dialog).getByRole('button', { name: /copy details & close/i }),
@@ -140,18 +126,18 @@ describe('BankScreen dialogs', () => {
     cleanup();
   });
 
-  it('opens the Cash out dialog from the locked-looking button', () => {
+  it('opens the Cash out dialog with the reference two-line header from the locked-looking button', () => {
     render(<BankScreen />);
     fireEvent.click(
       screen.getByRole('button', { name: 'Unlocks after review' }),
     );
 
     const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Cash out')).toBeInTheDocument();
     expect(
-      within(dialog).getByText('Demo data — illustrative only; no funds move.'),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText('Vault USDC → bank account'),
+      within(dialog).getByRole('heading', {
+        name: 'Vault USDC → bank account',
+      }),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText('Bank payouts unlock once intake review completes.'),
