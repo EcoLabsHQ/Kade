@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ChainChip } from '@/components/ui/ChainChip';
@@ -274,6 +275,12 @@ export function InvestScreen({
   // screen cannot show two different versions of the resident's position.
   const position = summarizeInvestPosition({ holdings, safeAddress, vaults });
 
+  // The App Router router, used **once per completed operation** to re-read the
+  // route's server data (the Safe's position) after a confirmed receipt. The
+  // route is `force-dynamic`, so a refresh re-runs its on-chain read and the
+  // stat cards and rows update without a manual reload.
+  const router = useRouter();
+
   const [selected, setSelected] = useState<Instrument | null>(null);
   const [direction, setDirection] = useState<Direction>('allocate');
   const [amount, setAmount] = useState('25000');
@@ -484,6 +491,11 @@ export function InvestScreen({
         vault:
           vaults.find((rail) => rail.chainId === builtChainId)?.vault ?? null,
       });
+      // The receipt is confirmed, so re-read the route's position exactly once
+      // for this completed operation. It is called here (not in a render or an
+      // effect) so it fires once per confirmed deposit/un-allocate and never on
+      // a re-render.
+      router.refresh();
       return;
     }
 

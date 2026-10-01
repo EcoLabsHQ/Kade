@@ -3,6 +3,10 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 import {
   MIN_ALLOCATION_USDC,
   defaultAllocationUsdc,

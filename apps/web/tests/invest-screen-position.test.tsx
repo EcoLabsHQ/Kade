@@ -10,6 +10,10 @@ import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 /**
  * The Invest screen's **real position** (T40).
  *

@@ -39,11 +39,16 @@ const hoisted = vi.hoisted(() => ({
   beginDeposit: vi.fn(),
   completeDeposit: vi.fn(),
   promptPasskeyAssertionParts: vi.fn(),
+  refresh: vi.fn(),
 }));
 
 vi.mock('@/app/invest/actions', () => ({
   beginDeposit: hoisted.beginDeposit,
   completeDeposit: hoisted.completeDeposit,
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: hoisted.refresh }),
 }));
 
 vi.mock('@/lib/passkey/assertion', () => ({
@@ -517,6 +522,31 @@ describe('InvestScreen allocate flow', () => {
       within(dialog).getByText(/receipt confirmed/i),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('0xfeed')).toBeInTheDocument();
+  });
+
+  it('re-reads the route once when a deposit is confirmed', async () => {
+    // The owner's requirement: a confirmed receipt must re-read the position so
+    // the stat cards and rows update without a manual reload. It runs once per
+    // completed operation — not on every render.
+    hoisted.beginDeposit.mockResolvedValue(READY);
+    renderScreen();
+    const dialog = openDialog(MORPHO_ETHEREUM);
+
+    await clickAllocate(dialog);
+
+    await within(dialog).findByText(/receipt confirmed/i);
+    expect(hoisted.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-read the route when the build is gated', async () => {
+    // A refusal is not a completed operation, so no refresh is issued.
+    renderScreen();
+    const dialog = openDialog(MORPHO_ETHEREUM);
+
+    await clickAllocate(dialog);
+
+    await within(dialog).findByText(/deposit gated/i);
+    expect(hoisted.refresh).not.toHaveBeenCalled();
   });
 
   it('reports a gated build with the server reason, without prompting the passkey', async () => {

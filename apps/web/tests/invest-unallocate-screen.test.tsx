@@ -11,6 +11,10 @@ import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 /**
  * The Invest screen's **Un-allocate** direction (the inverse of Allocate).
  *

@@ -11,6 +11,10 @@ import { InvestScreen } from '@/components/invest/InvestScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
 import { shortAddress } from '@/lib/wealth/format';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 /**
  * The Invest modal's **confirmed-transaction detail** disclosure (QF6).
  *

@@ -12,6 +12,10 @@ import type { InvestVaultSummary } from '@/app/invest/actions';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 import { shortAddress } from '@/lib/wealth/format';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 /**
  * The Invest allocate modal's **contract details** disclosure (QF3).
  *
