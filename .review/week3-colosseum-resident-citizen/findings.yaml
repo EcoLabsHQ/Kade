@@ -1,0 +1,55 @@
+- id: F1
+  severity: FAIL
+  scope: security
+  title: "Colosseum eligibility is client-forgeable: sync RPC trusts p_met and the citizen RPC never re-checks the four checks"
+  evidence: "supabase/migrations/20261002000001_colosseum_residency.sql:147-311 (server-only RPCs, p_profile_id, profile_id = p_profile_id); :330-348 (EXECUTE revoked from public/anon/authenticated, granted only to service_role); apps/web/src/app/colosseum/actions.ts:132-139,161-172,200-218 (service client + server-recomputed p_met + config guard)"
+  failure_mode: "Closed: a signed-in user can no longer reach the RPCs with their own JWT; the clock and passport require a server-set resident_since and a server-recomputed met."
+  materiality: "Resolved; the server-only authority model closes the forged eligibility/clock/passport path."
+  status: resolved
+  introduced_by: 50fc2f1d976922efb8adb19d4691d0bab20ba4c1
+  resolved_by: 48cc2f4d73896560507c470ae17044ebf8b83f19
+  recheck_attempts: 1
+- id: F2
+  severity: FAIL
+  scope: frontend
+  title: "A lapsed residency check does not reset the 2-minute clock in the UI flow"
+  evidence: "apps/web/src/components/colosseum/ColosseumScreen.tsx:117-143 (no early return on !met; showTransition = met); apps/web/src/app/colosseum/actions.ts:165-172 (server recomputes p_met); apps/web/tests/colosseum-citizenship.test.tsx (clock-decay coverage)"
+  failure_mode: "Closed: a registered non-citizen syncs on any check-state change and the RPC clears resident_since on p_met=false."
+  materiality: "Resolved; the decay path is reachable and the loading transition is not shown when !met."
+  status: resolved
+  introduced_by: 50fc2f1d976922efb8adb19d4691d0bab20ba4c1
+  resolved_by: 48cc2f4d73896560507c470ae17044ebf8b83f19
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: frontend
+  title: "Registering for Colosseum overwrites the resident's production application tier"
+  evidence: "apps/web/src/components/colosseum/ColosseumScreen.tsx:268-272; docs/colosseum-residency.md:48-53; supabase/migrations/20261002000001_colosseum_residency.sql:25-43"
+  failure_mode: "The behaviour is unchanged but now declared; the copy and migration header no longer claim the production tier is untouched."
+  materiality: "Resolved as a documentation-accuracy warning; the tier replacement is an owner-approved declared demo behaviour."
+  status: resolved
+  introduced_by: 50fc2f1d976922efb8adb19d4691d0bab20ba4c1
+  resolved_by: 48cc2f4d73896560507c470ae17044ebf8b83f19
+  recheck_attempts: 0
+- id: F4
+  severity: WARN
+  scope: database
+  title: "Corrective migration leaves the old client-callable overloads undropped"
+  evidence: "supabase/migrations/20261002000001_colosseum_residency.sql:148-150 (drops register_colosseum_residency(), sync_colosseum_residency(boolean), record_colosseum_citizen() before recreating the uuid writers at :162,:216,:283)"
+  failure_mode: "Resolved by b10533d: the migration now drops the stale ()/(boolean) overloads before recreating the server-only writers. `drop function if exists <sig>()` cannot remove the new uuid overloads; a no-op on a clean database and the required cleanup on a re-applied one."
+  materiality: "Non-blocking; the promoted artifact applies migrations from a clean database, and the drop is correct on both paths."
+  status: resolved
+  introduced_by: 48cc2f4d73896560507c470ae17044ebf8b83f19
+  resolved_by: b10533db9fa156513a8500a75067373636459cfa
+  recheck_attempts: 1
+- id: F5
+  severity: WARN
+  scope: security
+  title: "Authority documentation omits the pre-existing direct applications.tier UPDATE grant"
+  evidence: "supabase/migrations/20260916000009_rls.sql:99 (grant update (tier) to authenticated, pre-existing); supabase/migrations/20261002000001_colosseum_residency.sql:197-202; docs/colosseum-residency.md:97-104; docs/week-3-frozen-delivery-contract.md:245-249"
+  failure_mode: "Closed: docs/colosseum-residency.md and the week-3 contract §8.5 now explicitly state the tier value is not protected by the RPC grants (pre-existing direct grant) while the clock and passport remain server-only, so the claim is no longer stronger than true."
+  materiality: "Non-blocking documentation-accuracy warning, now resolved by corrective commits fd53c60/96b6b9d."
+  status: resolved
+  introduced_by: 48cc2f4d73896560507c470ae17044ebf8b83f19
+  resolved_by: 96b6b9d528c276ed0ab3eed581361918a6524f49
+  recheck_attempts: 1

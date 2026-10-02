@@ -1,0 +1,34 @@
+iteration: week3-colosseum-resident-citizen
+profile: NORMAL
+known_good: 1bb0b230f224eb8666e4a12e459557cdbdb88db0
+candidate: 96b6b9d528c276ed0ab3eed581361918a6524f49
+mode: recheck
+reviewed_scopes:
+  security: complete
+  database: complete
+  frontend: complete
+  shared: complete
+  docs: complete
+active_findings: []
+resolved_findings: [F1, F2, F3, F4, F5]
+next_finding_id: F6
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 0
+  F4: 1
+  F5: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 96b6b9d528c276ed0ab3eed581361918a6524f49
+  recorded_at: 2026-10-02
+notes:
+  - "DISCOVERY batch 1: F1 (security, FAIL), F2 (frontend, FAIL), F3 (WARN)."
+  - "RECHECK: F1 and F2 resolved at the root by the server-only authority model (T5); F3 resolved by corrected copy/declaration."
+  - "F4 (WARN, corrective migration stale overloads) resolved by b10533d (drop function if exists before recreating)."
+  - "RESUME: security/database/frontend/docs revisited; all complete. REVIEW PASSED."
+  - "F5 (WARN, docs overstated the tier-write authority) resolved by 96b6b9d: docs and contract now disclose the pre-existing direct applications.tier UPDATE grant while preserving the server-only clock+passport boundary."
+  - "Final mechanical verification PASS on the exact promotion HEAD 96b6b9d."
