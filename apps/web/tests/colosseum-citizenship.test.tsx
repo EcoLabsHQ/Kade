@@ -45,13 +45,14 @@ const ALL_MET: ResidencyFacts = {
   permit: { issued: false, uid: null },
 };
 
-function snapshot(): ResidencySnapshot {
+function snapshot(overrides: Partial<ResidencyFacts> = {}): ResidencySnapshot {
+  const facts: ResidencyFacts = { ...ALL_MET, ...overrides };
   return {
     applicationId: 'app-1',
     applicationRef: 'CW-2026-0409',
-    tier: ALL_MET.tier,
+    tier: facts.tier,
     status: 'pre_approved',
-    view: deriveResidencyView(ALL_MET, true),
+    view: deriveResidencyView(facts, true),
     preapprovalPaid: true,
     serviceFeeAmountUsdc: 10,
     preapprovalUsdc: 447,
@@ -133,6 +134,43 @@ describe('Colosseum citizenship countdown', () => {
     expect(
       screen.getByRole('button', { name: /Become a Citizen/i }),
     ).toBeEnabled();
+  });
+});
+
+describe('Colosseum clock decay', () => {
+  it('still syncs the server clock when a check has lapsed, without the loading transition', async () => {
+    render(
+      <ColosseumScreen
+        snapshot={snapshot({ review: 'pending' })}
+        membership={membership({ residentSince: isoSecondsAgo(80) })}
+      />,
+    );
+
+    // The registered-but-not-met resident is not a citizen, so the clock must
+    // still be synced so the server can clear a lapsed `resident_since`.
+    await waitFor(() => expect(hoisted.sync).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('colosseum-loading')).toBeNull();
+    expect(screen.queryByTestId('colosseum-congrats')).toBeNull();
+  });
+
+  it('re-syncs the clock when compliance lapses after being met', async () => {
+    const { rerender } = render(
+      <ColosseumScreen snapshot={snapshot()} membership={null} />,
+    );
+    await screen.findByTestId('colosseum-congrats');
+    expect(hoisted.sync).toHaveBeenCalledTimes(1);
+
+    // The same resident, now with a lapsed check. The sync runs again and the
+    // server recomputes `p_met: false` to clear the clock.
+    rerender(
+      <ColosseumScreen
+        snapshot={snapshot({ review: 'pending' })}
+        membership={membership({ residentSince: isoSecondsAgo(80) })}
+      />,
+    );
+
+    await waitFor(() => expect(hoisted.sync).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('colosseum-congrats')).toBeNull();
   });
 });
 

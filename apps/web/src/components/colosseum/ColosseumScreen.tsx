@@ -108,24 +108,30 @@ export function ColosseumScreen({
 
   const isCitizen = Boolean(membership?.citizenAt);
 
-  // On first arrival with all four checks met (and not yet a citizen), start
-  // the persisted clock server-side. The loading transition is shown while the
-  // sync is in flight, with a short minimum so the transition reads.
+  // For a registered, non-citizen resident, sync the persisted clock
+  // server-side whenever the check state changes — including when it lapses.
+  // The server recomputes the truth and passes `p_met`; a false clears
+  // `resident_since` so the 2-minute clock restarts, and a later recovery
+  // restarts it from the recovery time. The loading transition is shown only
+  // while starting the clock (`met`), with a short minimum so it reads.
   useEffect(() => {
-    if (!registered || !met || isCitizen) return;
+    if (!registered || isCitizen) return;
     let cancelled = false;
-    setSyncPhase('loading');
+    const showTransition = met;
+    if (showTransition) setSyncPhase('loading');
     const startedAt = Date.now();
     void (async () => {
       const result = await syncColosseumResidencyAction();
       const elapsed = Date.now() - startedAt;
-      const wait = Math.max(0, CONGRATS_TRANSITION_MS - elapsed);
+      const wait = showTransition
+        ? Math.max(0, CONGRATS_TRANSITION_MS - elapsed)
+        : 0;
       window.setTimeout(() => {
         if (cancelled) return;
         if (result.status === 'ok') {
           setMembership(result.membership);
-          setSyncPhase('ready');
-        } else {
+          if (showTransition) setSyncPhase('ready');
+        } else if (showTransition) {
           setNotice(result.reason);
           setSyncPhase('failed');
         }
@@ -262,8 +268,8 @@ function RegisterState({
         <strong>{COLOSSEUM_TIER.minUsdc} USDC</strong> and the same four real
         residency checks as the production programme — identity, qualified
         holdings, intake review and the residency service fee. Registering sets
-        your tier to <code>colosseum</code>; it does not change the production
-        tiers.
+        your own residency tier to Colosseum (10 USDC); it replaces your
+        recorded tier and leaves the production tiers unchanged.
       </p>
       <button
         type="button"
