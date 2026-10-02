@@ -94,6 +94,14 @@ When enabled, the route is auth-gated like every other app page. This mirrors th
 - `passport_serial` is **server-generated**, never client-supplied.
 - Timing eligibility (the 2-minute window) is computed **server-side** from
   `resident_since`, so a client cannot claim eligibility early.
+- The `'colosseum'` **tier value itself is not protected by the RPC grants**:
+  `applications.tier` carries a pre-existing `update (tier)` column grant to
+  `authenticated`, so a signed-in resident can set their own tier directly
+  (bounded by the `applications_tier_check` constraint). This does not weaken
+  eligibility: the clock and the passport stay server-only, the four checks are
+  recomputed at claim time, and a `pending` application is not eligible by the
+  `funds` check path the register action completes. The register RPC is simply
+  the path that also leaves the application in a usable state.
 - No on-chain write, EAS emission or permit is involved.
 
 ## What is real and what is demo

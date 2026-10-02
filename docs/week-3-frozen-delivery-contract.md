@@ -242,7 +242,10 @@ This amendment does **not** deliver, and does not move into scope:
 - the 2-minute compliance window is enforced server-side from
   `public.colosseum_memberships.resident_since` by server-only RPCs (granted to
   `service_role`), so the client cannot start the clock or mint the passport; a
-  lapsed check resets it, and "Become a Citizen" is refused until it elapses;
+  lapsed check resets it, and "Become a Citizen" is refused until it elapses.
+  (The `colosseum` tier value on `applications.tier` is bounded by the
+  `applications_tier_check` constraint and the pre-existing column grant; it is
+  not the eligibility boundary.)
 - `/colosseum` is a 404 unless `KADE_COLOSSEUM=1`, and the feature is inert when
   off;
 - focused tests: `apps/web/tests/residency-checks.test.ts` (the `colosseum` tier
