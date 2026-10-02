@@ -142,3 +142,117 @@ scope by this contract.
 Promotion requires mechanical verification PASS on the exact HEAD and a completed
 review session with no open blocking finding, per
 `docs/DEVELOPMENT_CONTRACT.md` §15.
+
+## 8. Amendment v1.1 — COLOSSEUM-1 (human-approved 2 October 2026)
+
+**Status:** Amendment v1.1 to Frozen v1.0, human-approved 2 October 2026. This
+amendment **appends** to the frozen v1.0 body; it does not alter any v1.0 clause.
+
+### 8.1 What this amendment adds
+
+**COLOSSEUM-1 — Colosseum residency (hackathon/demo residency layer).** A new
+residency tier value `'colosseum'` ("Colosseum Resident") with a **10 USDC**
+qualifying minimum, added by explicit human request on 2 October 2026. It is
+registered through a dedicated **"Register for Colosseum Residency"** action, not
+through an onboarding tier card. The production tiers (`3-year` $280k, `5-year`
+$425k, `Indefinite` $850k) are unchanged.
+
+The increment **reuses the real residency machinery**: the qualified-position
+read (`loadVaultHoldings` reduced by `summarizeQualifiedPosition`) and the four
+real residency checks (`identity`, `funds`, `review`, `service-fee` in
+`apps/web/src/lib/residency/checks.ts`). The `funds` check requires 10 USDC when
+the tier is `colosseum`. The checkmarks reflect real state; nothing is fabricated.
+
+The flow is:
+
+1. after the real qualified position meets the 10 USDC minimum, a pop-up points
+   the resident to complete their residency steps;
+2. when all four real checks are `met`, a loading screen congratulates the
+   resident as a **Colosseum Resident**, lists the perks, and states: *"Remain a
+   compliant resident for 2 minutes to be eligible to become a Colosseum
+   Citizen."*;
+3. a persisted **2-minute compliance window** starts when all four checks first
+   become `met` (timestamp `resident_since` in
+   `public.colosseum_memberships`). If the checks stop being `met` before
+   citizenship, the clock resets. Eligibility is enforced **server-side**, not
+   client-only;
+4. after 2 minutes of continued compliance, a **"Become a Citizen"** control
+   unlocks. Becoming a citizen persists `citizen_at` and a server-generated
+   `passport_serial`, plays an animation, and shows a **saved virtual passport**
+   on the Colosseum surface.
+
+The increment is **off by default**: `KADE_COLOSSEUM=1` enables the `/colosseum`
+route (404 when off) and the feature. It mirrors the `KADE_OPERATOR_WITHDRAW`
+pattern. Documented in `docs/colosseum-residency.md`.
+
+### 8.2 Frozen properties (acceptance)
+
+1. **Reuses real state.** The surface is driven by the qualified-position read
+   (`loadVaultHoldings` + `summarizeQualifiedPosition`) and the four real
+   residency checks. The `funds` check requires 10 USDC for the `colosseum` tier.
+   No checkmark, balance or outcome is fabricated.
+2. **Server-enforced timing.** The 2-minute compliance window is persisted as
+   `resident_since` in `public.colosseum_memberships` and eligibility is judged
+   **server-side**. A client cannot claim eligibility early, and a lapsed check
+   resets the clock.
+3. **Off by default.** `/colosseum` is a 404 unless `KADE_COLOSSEUM=1` (the exact
+   string `1`), and the feature is inert when off, mirroring the
+   `KADE_OPERATOR_WITHDRAW` gate.
+4. **No existing behaviour changed.** The change is additive: a new tier value, a
+   new route, and a new membership table. It does not change authentication, Safe
+   ownership, KadeLock, the fee model, or any frozen schema, and it adds no
+   on-chain write. Existing tests are not weakened or removed.
+5. **Declared divergence.** The demo nature of the surface is declared in §8.3,
+   which is the condition on which this increment may be promoted.
+
+### 8.3 Declared divergence
+
+**Colosseum Resident, Colosseum Citizen and the virtual passport are hackathon
+constructs.** They confer **no real residency, citizenship, legal status, or
+on-chain record**. The passport is a **visual artifact**, not a document, and is
+not an attestation. The **10 USDC minimum is a hackathon value**, not a
+production permit minimum.
+
+The increment reuses real state but adds **no on-chain write, no EAS emission, no
+permit**, and no change to authentication, Safe ownership, KadeLock, the fee
+model, or any frozen schema.
+
+As with FIN-1 and VOTE-1 (§3), the surface carries **no on-screen demo banner** by
+explicit owner decision (2 October 2026): the declaration in this contract — not a
+UI badge — is what makes it honest.
+
+### 8.4 Explicit exclusions
+
+This amendment does **not** deliver, and does not move into scope:
+
+- any **real** citizenship, residency, legal status, passport document or
+  attestation;
+- any on-chain record, EAS emission, permit or fund movement for the Colosseum
+  surface;
+- any change to authentication, Safe ownership, EAS schema encoding, KadeLock
+  enforcement, wallet-connection authority, database security, or the fee model;
+- any change to the production tiers or their qualifying minima.
+
+### 8.5 Acceptance evidence
+
+- the four real residency checks drive the surface, and the `funds` check
+  requires 10 USDC for the `colosseum` tier;
+- the 2-minute compliance window is enforced server-side from
+  `public.colosseum_memberships.resident_since`; a lapsed check resets it, and
+  "Become a Citizen" is refused until it elapses;
+- `/colosseum` is a 404 unless `KADE_COLOSSEUM=1`, and the feature is inert when
+  off;
+- focused tests: `apps/web/tests/residency-checks.test.ts` (the `colosseum` tier
+  minimum), `apps/web/tests/colosseum-residency.test.tsx`, and
+  `apps/web/tests/colosseum-citizenship.test.tsx`;
+- `./scripts/verify.sh` **PASS** on the exact promoted HEAD;
+- a complete review session with no open blocking finding.
+
+### 8.6 Change control
+
+Making citizenship, the passport or the residency status **real** (any legal
+effect, on-chain record, EAS attestation or permit), enabling the `colosseum`
+tier outside its environment gate, or exposing the surface as a resident-facing
+production capability, is a new change-control item and requires explicit human
+approval. The excluded areas in §8.4 may not be moved into scope by this
+amendment.
