@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
 import { PreApprovedBanner } from './PreApprovedBanner';
-import { RESIDENT_NAV, type NavGroupConfig } from './nav';
+import { residentNav, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { ShellReviewState } from './ReviewStatusChip';
 import { readChainEnv } from '@/lib/env';
+import { isColosseumEnabled } from '@/lib/colosseum/gate';
 import type { SafeDeploymentStatus } from '@/lib/safe/manifest';
 
 export interface AppShellProps {
@@ -21,6 +22,12 @@ export interface AppShellProps {
   readonly safeStatus?: SafeDeploymentStatus | null;
   readonly explorerUrl?: string | null;
   readonly network?: string;
+  /**
+   * The sidebar's nav. Defaults to the gate-aware resident nav
+   * (`residentNav({ colosseum: isColosseumEnabled() })`), so the Colosseum item
+   * appears only when the surface is enabled. An explicit value still wins, so
+   * onboarding and other callers can pass their own.
+   */
   readonly nav?: readonly NavGroupConfig[];
   /** When present, the sidebar shows the pre-registration stepper instead of nav. */
   readonly stepper?: readonly StepperItem[];
@@ -70,13 +77,18 @@ export function AppShell({
   safeStatus = null,
   explorerUrl = null,
   network = activeSettlementChainLabel(),
-  nav = RESIDENT_NAV,
+  nav,
   stepper,
   reviewBar = null,
   showReviewBar = false,
   reviewReference = null,
   isReviewer = false,
 }: AppShellProps) {
+  // The nav is gate-aware: the Colosseum item is present only when the surface
+  // is enabled, so the shell never renders a dead link to a 404. An explicit
+  // `nav` prop still overrides the default.
+  const resolvedNav = nav ?? residentNav({ colosseum: isColosseumEnabled() });
+
   // One resolved review value for the whole shell. The banner and the sidebar
   // notice are two renderings of this single object, never two computations.
   const review: ShellReviewState = reviewBar ?? {
@@ -94,7 +106,7 @@ export function AppShell({
       }}
     >
       <Sidebar
-        nav={nav}
+        nav={resolvedNav}
         stepper={stepper}
         network={network}
         safeAddress={safeAddress}
