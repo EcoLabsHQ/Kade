@@ -26,7 +26,8 @@ import type { ColosseumMembership } from '@/lib/colosseum/server';
 const hoisted = vi.hoisted(() => ({
   isColosseumEnabled: vi.fn(),
   getSessionUser: vi.fn(),
-  createSupabaseServerClient: vi.fn(),
+  isServiceRoleConfigured: vi.fn(),
+  createSupabaseServiceClient: vi.fn(),
   loadResidencySnapshot: vi.fn(),
   revalidatePath: vi.fn(),
 }));
@@ -36,7 +37,8 @@ vi.mock('@/lib/colosseum/gate', () => ({
 }));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
-  createSupabaseServerClient: hoisted.createSupabaseServerClient,
+  isServiceRoleConfigured: hoisted.isServiceRoleConfigured,
+  createSupabaseServiceClient: hoisted.createSupabaseServiceClient,
 }));
 vi.mock('@/lib/residency/server', () => ({
   loadResidencySnapshot: hoisted.loadResidencySnapshot,
@@ -136,6 +138,7 @@ function createFakeClient(result: FakeResult = {}): {
 interface SeedOptions {
   readonly enabled?: boolean;
   readonly session?: typeof SESSION | null;
+  readonly serviceRoleConfigured?: boolean;
   readonly snapshot?: ResidencySnapshot | null;
   readonly rpc?: FakeResult;
 }
@@ -146,10 +149,13 @@ function seed(options: SeedOptions = {}): ReturnType<typeof createFakeClient> {
   hoisted.getSessionUser.mockResolvedValue(
     options.session === undefined ? SESSION : options.session,
   );
+  hoisted.isServiceRoleConfigured.mockReturnValue(
+    options.serviceRoleConfigured ?? true,
+  );
   const fake = createFakeClient(
     options.rpc ?? { data: MEMBERSHIP_ROW, error: null },
   );
-  hoisted.createSupabaseServerClient.mockResolvedValue(fake.client);
+  hoisted.createSupabaseServiceClient.mockResolvedValue(fake.client);
   hoisted.loadResidencySnapshot.mockResolvedValue(
     options.snapshot === undefined ? snapshot() : options.snapshot,
   );
@@ -175,7 +181,31 @@ describe('Colosseum actions: environment gate', () => {
     }
     // The gate runs first: no session read, no client, no RPC.
     expect(hoisted.getSessionUser).not.toHaveBeenCalled();
-    expect(hoisted.createSupabaseServerClient).not.toHaveBeenCalled();
+    expect(hoisted.isServiceRoleConfigured).not.toHaveBeenCalled();
+    expect(hoisted.createSupabaseServiceClient).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('Colosseum actions: service-role configuration', () => {
+  it('refuses every action without a service-role key and never touches the database', async () => {
+    const { rpc } = seed({ serviceRoleConfigured: false });
+
+    const register = await registerColosseumResidencyAction();
+    const sync = await syncColosseumResidencyAction();
+    const become = await becomeColosseumCitizenAction();
+
+    for (const result of [register, sync, become]) {
+      expect(result.status).toBe('refused');
+      if (result.status !== 'refused') throw new Error('expected refused');
+      expect(result.reason).toMatch(/not configured in this environment/i);
+    }
+    // The guard runs after the session read but before any snapshot read or
+    // client construction, so the server-only RPCs are unreachable and nothing
+    // touches the database.
+    expect(hoisted.getSessionUser).toHaveBeenCalledTimes(3);
+    expect(hoisted.loadResidencySnapshot).not.toHaveBeenCalled();
+    expect(hoisted.createSupabaseServiceClient).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 });
@@ -194,7 +224,7 @@ describe('Colosseum actions: session re-read', () => {
       expect(result.reason).toMatch(/must be signed in/i);
     }
     expect(hoisted.getSessionUser).toHaveBeenCalledTimes(3);
-    expect(hoisted.createSupabaseServerClient).not.toHaveBeenCalled();
+    expect(hoisted.createSupabaseServiceClient).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 });
@@ -207,7 +237,10 @@ describe('registerColosseumResidencyAction', () => {
 
     expect(result).toEqual({ status: 'ok' });
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith('register_colosseum_residency');
+    expect(rpc).toHaveBeenCalledWith('register_colosseum_residency', {
+      p_profile_id: 'user-1',
+    });
+    expect(hoisted.createSupabaseServiceClient).toHaveBeenCalledTimes(1);
     expect(hoisted.revalidatePath).toHaveBeenCalledWith('/colosseum');
   });
 
@@ -218,7 +251,9 @@ describe('registerColosseumResidencyAction', () => {
 
     const result = await registerColosseumResidencyAction();
 
-    expect(rpc).toHaveBeenCalledWith('register_colosseum_residency');
+    expect(rpc).toHaveBeenCalledWith('register_colosseum_residency', {
+      p_profile_id: 'user-1',
+    });
     expect(result.status).toBe('refused');
     if (result.status !== 'refused') throw new Error('expected refused');
     expect(result.reason).toMatch(/no residency application is recorded/i);
@@ -243,10 +278,12 @@ describe('syncColosseumResidencyAction', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     const call = rpc.mock.calls.at(0);
     expect(call?.[0]).toBe('sync_colosseum_residency');
-    expect(call?.[1]).toEqual({ p_met: true });
-    // The RPC receives only the server-derived boolean, nothing else.
-    expect(Object.keys(call?.[1] ?? {})).toEqual(['p_met']);
+    expect(call?.[1]).toEqual({ p_profile_id: 'user-1', p_met: true });
+    // The RPC receives only the server-resolved profile id and the
+    // server-derived boolean; no client input reaches it.
+    expect(Object.keys(call?.[1] ?? {}).sort()).toEqual(['p_met', 'p_profile_id']);
     expect(result).toEqual({ status: 'ok', membership: MEMBERSHIP });
+    expect(hoisted.createSupabaseServiceClient).toHaveBeenCalledTimes(1);
     // The action accepts no argument, so a client cannot pass `met`.
     expect(syncColosseumResidencyAction).toHaveLength(0);
   });
@@ -278,6 +315,7 @@ describe('syncColosseumResidencyAction', () => {
       const result = await syncColosseumResidencyAction();
 
       expect(rpc).toHaveBeenCalledWith('sync_colosseum_residency', {
+        p_profile_id: 'user-1',
         p_met: false,
       });
       expect(result.status).toBe('ok');
@@ -316,8 +354,11 @@ describe('becomeColosseumCitizenAction', () => {
 
     expect(hoisted.loadResidencySnapshot).toHaveBeenCalledWith('user-1');
     expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith('record_colosseum_citizen');
+    expect(rpc).toHaveBeenCalledWith('record_colosseum_citizen', {
+      p_profile_id: 'user-1',
+    });
     expect(result).toEqual({ status: 'ok', membership: MEMBERSHIP });
+    expect(hoisted.createSupabaseServiceClient).toHaveBeenCalledTimes(1);
     expect(hoisted.revalidatePath).toHaveBeenCalledWith('/colosseum');
     // The action accepts no argument, so the serial/eligibility cannot be forged.
     expect(becomeColosseumCitizenAction).toHaveLength(0);
@@ -335,7 +376,9 @@ describe('becomeColosseumCitizenAction', () => {
 
     const result = await becomeColosseumCitizenAction();
 
-    expect(rpc).toHaveBeenCalledWith('record_colosseum_citizen');
+    expect(rpc).toHaveBeenCalledWith('record_colosseum_citizen', {
+      p_profile_id: 'user-1',
+    });
     expect(result.status).toBe('refused');
     if (result.status !== 'refused') throw new Error('expected refused');
     expect(result.reason).toMatch(/2-minute compliance window has not elapsed/i);
