@@ -155,7 +155,8 @@ drop function if exists public.record_colosseum_citizen();
 -- SECURITY DEFINER and granted only to `service_role`: the server, after
 -- resolving the signed-in resident, passes their id as `p_profile_id`.
 -- `applications.tier` is writable by authenticated directly (20260916000009),
--- but this is the single, explicit path that sets the Colosseum value, and it
+-- so this RPC is not the only writer of the value; it is the only path that
+-- sets the Colosseum tier *and* leaves the application in a usable state. It
 -- refuses when the resident has no application. The explicit owner predicate
 -- (profile_id = p_profile_id) is the only row it reaches.
 -- ---------------------------------------------------------------------------
