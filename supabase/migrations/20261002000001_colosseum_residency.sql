@@ -36,9 +36,11 @@
 --   Membership rows are server-written. `authenticated` has SELECT only, scoped
 --   by `profile_id = auth.uid()`, so a resident may read only their own row.
 --   Reads fail closed: a missing row is "not a resident", never a fabricated
---   membership. The tier value is written only through
---   `register_colosseum_residency(p_profile_id)`, so the authenticated role
---   gains no new direct write path.
+--   membership. The Colosseum tier is set through
+--   `register_colosseum_residency(p_profile_id)`. `applications.tier` is also
+--   writable by `authenticated` directly through the pre-existing grant
+--   (20260916000009), which this migration does not change; the value is
+--   therefore constrained by the CHECK above, not by the RPC alone.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
