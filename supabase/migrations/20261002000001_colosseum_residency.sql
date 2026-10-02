@@ -135,6 +135,21 @@ comment on policy colosseum_memberships_select_own on public.colosseum_membershi
   'functions.';
 
 -- ---------------------------------------------------------------------------
+-- 4. Drop stale overloads from any earlier revision of this migration.
+--
+-- The writers below changed signature (they take an explicit `p_profile_id` and
+-- are granted only to `service_role`). `create or replace` cannot change a
+-- function's argument list, so an earlier revision that granted the old
+-- `()`/`(boolean)` overloads to `authenticated` would survive. Drop them first;
+-- on a clean database these are no-ops. (A database that already recorded this
+-- migration as applied does not re-run it, so it would need these same drops
+-- applied by hand before the corrected file can take effect.)
+-- ---------------------------------------------------------------------------
+drop function if exists public.register_colosseum_residency();
+drop function if exists public.sync_colosseum_residency(boolean);
+drop function if exists public.record_colosseum_citizen();
+
+-- ---------------------------------------------------------------------------
 -- 4a. Register a resident's Colosseum residency.
 --
 -- SECURITY DEFINER and granted only to `service_role`: the server, after
