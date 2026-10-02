@@ -146,6 +146,35 @@ export function tierDatabaseValue(index: TierIndex): string {
   return TIER_DATABASE_VALUES[index].value;
 }
 
+/**
+ * The Colosseum residency tier.
+ *
+ * [documented] The Colosseum Crypto World's Fair increment adds a fourth
+ * residency track alongside the three production programme tiers: a Colosseum
+ * resident qualifies at a demo-scale 10 USDC and progresses resident → citizen
+ * → passport. It is stored as the plain string `'colosseum'` in
+ * `applications.tier` (see the Colosseum residency migration, which extends the
+ * column's CHECK constraint).
+ *
+ * This constant is deliberately **not** part of `TIERS`, `TierIndex`,
+ * `TierName` or `TIER_DATABASE_VALUES`: those describe the three production
+ * tiers and their prototype index encoding, which stay frozen. The residency
+ * funds check (`tierMinimumUsdc` in the web app) consults this constant, so a
+ * `'colosseum'` tier requires 10 USDC without changing the production tier
+ * table.
+ */
+export interface ColosseumTier {
+  /** The `applications.tier` database value. */
+  readonly name: 'colosseum';
+  /** Qualifying minimum in whole USDC. */
+  readonly minUsdc: number;
+}
+
+export const COLOSSEUM_TIER: ColosseumTier = {
+  name: 'colosseum',
+  minUsdc: 10,
+};
+
 /* -------------------------------------------------------------------------- */
 /* Schemas                                                                    */
 /* -------------------------------------------------------------------------- */
