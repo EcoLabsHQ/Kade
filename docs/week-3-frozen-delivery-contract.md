@@ -193,8 +193,10 @@ pattern. Documented in `docs/colosseum-residency.md`.
    No checkmark, balance or outcome is fabricated.
 2. **Server-enforced timing.** The 2-minute compliance window is persisted as
    `resident_since` in `public.colosseum_memberships` and eligibility is judged
-   **server-side**. A client cannot claim eligibility early, and a lapsed check
-   resets the clock.
+   **server-side**. Eligibility writes are performed by **server-only RPCs**
+   (granted to `service_role`, not to `authenticated`), so the client cannot
+   start the clock or mint the passport. A client cannot claim eligibility early,
+   and a lapsed check resets the clock.
 3. **Off by default.** `/colosseum` is a 404 unless `KADE_COLOSSEUM=1` (the exact
    string `1`), and the feature is inert when off, mirroring the
    `KADE_OPERATOR_WITHDRAW` gate.
@@ -238,8 +240,9 @@ This amendment does **not** deliver, and does not move into scope:
 - the four real residency checks drive the surface, and the `funds` check
   requires 10 USDC for the `colosseum` tier;
 - the 2-minute compliance window is enforced server-side from
-  `public.colosseum_memberships.resident_since`; a lapsed check resets it, and
-  "Become a Citizen" is refused until it elapses;
+  `public.colosseum_memberships.resident_since` by server-only RPCs (granted to
+  `service_role`), so the client cannot start the clock or mint the passport; a
+  lapsed check resets it, and "Become a Citizen" is refused until it elapses;
 - `/colosseum` is a 404 unless `KADE_COLOSSEUM=1`, and the feature is inert when
   off;
 - focused tests: `apps/web/tests/residency-checks.test.ts` (the `colosseum` tier

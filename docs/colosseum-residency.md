@@ -47,7 +47,10 @@ When enabled, the route is auth-gated like every other app page. This mirrors th
 
 1. **Register.** From the Colosseum surface the resident chooses "Register for
    Colosseum Residency". This records the `'colosseum'` tier for the resident; it
-   is not an onboarding tier card and does not change the production tiers.
+   is not an onboarding tier card and does not change the production tiers. It
+   **replaces the resident's own recorded `applications.tier`** with the
+   `colosseum` value (a declared demo behaviour, confined to the gated demo
+   environment).
 2. **Meet the 10 USDC threshold.** The `funds` check reads the real qualified
    position and requires **10 USDC** when the tier is `colosseum`. A qualified
    position at or above 10 USDC makes the check `met`.
@@ -72,10 +75,22 @@ When enabled, the route is auth-gated like every other app page. This mirrors th
 ## Authority and state model
 
 - Membership is a per-resident row in `public.colosseum_memberships`, scoped to
-  the owner (`auth.uid()`): one resident cannot read or write another's row.
-- Writes go through `SECURITY DEFINER` functions, as the other residency writers
-  do (for example the service-fee and signer writers): the client cannot set
-  `resident_since`, `citizen_at` or `passport_serial` directly.
+  the owner (`auth.uid()`) for reads: one resident cannot read another's row.
+- Eligibility **writes are server-only**. The three `SECURITY DEFINER` RPCs —
+  `register_colosseum_residency(p_profile_id)`,
+  `sync_colosseum_residency(p_profile_id, p_met)` and
+  `record_colosseum_citizen(p_profile_id)` — have `EXECUTE` revoked from
+  `public`, `anon` and `authenticated` and granted only to `service_role`. A
+  signed-in resident cannot call them through the Supabase REST/RPC endpoint
+  with their own JWT, so the client cannot start the clock or mint the passport.
+- The server actions call the RPCs with the elevated service client and pass the
+  session's `userId` explicitly as `p_profile_id`; each function predicates every
+  read and write on `profile_id = p_profile_id`, so it can reach only that
+  resident's row. `p_met` is the server's recomputation of the four real checks,
+  never a client-supplied value.
+- `SUPABASE_SERVICE_ROLE_KEY` is **required**. Without it the actions return a
+  distinct "not configured" refusal and touch nothing: the feature is inert, and
+  no membership row, clock or passport can be written.
 - `passport_serial` is **server-generated**, never client-supplied.
 - Timing eligibility (the 2-minute window) is computed **server-side** from
   `resident_since`, so a client cannot claim eligibility early.
