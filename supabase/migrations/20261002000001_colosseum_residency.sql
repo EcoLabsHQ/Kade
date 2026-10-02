@@ -14,21 +14,31 @@
 --      production values ('3-year', '5-year', 'indefinite');
 --   2. creates `public.colosseum_memberships`, one row per profile;
 --   3. enables RLS with an owner-only SELECT policy and no client writes;
---   4. adds SECURITY DEFINER writers in the exact shape of
---      `public.record_residency_service_fee_tx` (20260922000040):
---        register_colosseum_residency()          -> tier = 'colosseum'
---        sync_colosseum_residency(p_met boolean) -> membership clock
---        record_colosseum_citizen()              -> citizen_at + passport_serial
+--   4. adds SECURITY DEFINER writers, granted only to `service_role`, in the
+--      exact shape of `public.record_identity_attestation` (20260924000020):
+--        register_colosseum_residency(p_profile_id uuid)          -> tier = 'colosseum'
+--        sync_colosseum_residency(p_profile_id uuid, p_met boolean) -> membership clock
+--        record_colosseum_citizen(p_profile_id uuid)              -> citizen_at + passport_serial
 --      Their names and signatures are the interface a later task calls; they
 --      are stable.
 --
--- Security
+-- Security / authority model
+--   The three writers are **server-only**: EXECUTE is revoked from `public`,
+--   `anon` and `authenticated` and granted only to `service_role`. A signed-in
+--   resident cannot call them through the Supabase REST/RPC endpoint with their
+--   own JWT, so the client cannot start the clock or mint the passport. Only the
+--   server — which recomputes the four real residency checks and passes the
+--   resulting `p_met` — can do either. The server identifies the resident with
+--   an explicit `p_profile_id` (there is no `auth.uid()` inside a service-role
+--   call), and each function predicates every read/write on `profile_id =
+--   p_profile_id`, so a caller cannot reach another resident's row.
+--
 --   Membership rows are server-written. `authenticated` has SELECT only, scoped
---   by `profile_id = auth.uid()`; the three writers are SECURITY DEFINER and
---   predicate every read/write on the caller's own profile. Reads fail closed:
---   a missing row is "not a resident", never a fabricated membership. The tier
---   value is written only through `register_colosseum_residency()`, so the
---   authenticated role gains no new direct write path.
+--   by `profile_id = auth.uid()`, so a resident may read only their own row.
+--   Reads fail closed: a missing row is "not a resident", never a fabricated
+--   membership. The tier value is written only through
+--   `register_colosseum_residency(p_profile_id)`, so the authenticated role
+--   gains no new direct write path.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -123,31 +133,34 @@ comment on policy colosseum_memberships_select_own on public.colosseum_membershi
   'functions.';
 
 -- ---------------------------------------------------------------------------
--- 4a. Register the caller's Colosseum residency.
+-- 4a. Register a resident's Colosseum residency.
 --
--- SECURITY DEFINER: `applications.tier` is writable by authenticated directly
--- (20260916000009), but this is the single, explicit path that sets the
--- Colosseum value, and it refuses when the caller has no application. The
--- explicit owner predicate (profile_id = auth.uid()) is the only row it reaches.
+-- SECURITY DEFINER and granted only to `service_role`: the server, after
+-- resolving the signed-in resident, passes their id as `p_profile_id`.
+-- `applications.tier` is writable by authenticated directly (20260916000009),
+-- but this is the single, explicit path that sets the Colosseum value, and it
+-- refuses when the resident has no application. The explicit owner predicate
+-- (profile_id = p_profile_id) is the only row it reaches.
 -- ---------------------------------------------------------------------------
-create or replace function public.register_colosseum_residency()
+create or replace function public.register_colosseum_residency(
+  p_profile_id uuid
+)
 returns public.applications
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid uuid := auth.uid();
   v_row public.applications;
 begin
-  if v_uid is null then
-    raise exception 'register_colosseum_residency requires an authenticated user'
-      using errcode = '28000';
+  if p_profile_id is null then
+    raise exception 'register_colosseum_residency requires a profile id'
+      using errcode = '22023';
   end if;
 
   select * into v_row
     from public.applications
-   where profile_id = v_uid
+   where profile_id = p_profile_id
    for update;
 
   if not found then
@@ -164,23 +177,27 @@ begin
 end;
 $$;
 
-comment on function public.register_colosseum_residency() is
-  'Sets the calling resident''s own application tier to ''colosseum''. '
-  'SECURITY DEFINER so the Colosseum value is written through one controlled '
-  'path; the explicit owner predicate (profile_id = auth.uid()) is the only row '
-  'it can reach. Refuses when the caller has no application.';
+comment on function public.register_colosseum_residency(uuid) is
+  'Sets a resident''s own application tier to ''colosseum'', identified by the '
+  'server-supplied p_profile_id. SECURITY DEFINER with EXECUTE granted only to '
+  'service_role, so the client cannot write the Colosseum tier directly; the '
+  'explicit owner predicate (profile_id = p_profile_id) is the only row it can '
+  'reach. Refuses when the resident has no application.';
 
 -- ---------------------------------------------------------------------------
--- 4b. Sync the Colosseum residency clock.
+-- 4b. Sync a resident's Colosseum residency clock.
 --
--- Upserts the caller's membership row:
+-- Upserts the membership row identified by `p_profile_id`:
 --   * p_met true  -> resident_since = coalesce(resident_since, now());
 --   * p_met false -> clear resident_since only while not yet a citizen, so the
 --                    2-minute clock restarts on decay; a citizen keeps the
 --                    record they earned.
--- SECURITY DEFINER: authenticated has no INSERT/UPDATE privilege on the table.
+-- `p_met` is the server's recomputation of the four real checks, never a client
+-- value. SECURITY DEFINER and granted only to `service_role`: authenticated has
+-- no INSERT/UPDATE privilege on the table.
 -- ---------------------------------------------------------------------------
 create or replace function public.sync_colosseum_residency(
+  p_profile_id uuid,
   p_met boolean
 )
 returns public.colosseum_memberships
@@ -189,12 +206,11 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid uuid := auth.uid();
   v_row public.colosseum_memberships;
 begin
-  if v_uid is null then
-    raise exception 'sync_colosseum_residency requires an authenticated user'
-      using errcode = '28000';
+  if p_profile_id is null then
+    raise exception 'sync_colosseum_residency requires a profile id'
+      using errcode = '22023';
   end if;
 
   insert into public.colosseum_memberships as m (
@@ -203,11 +219,11 @@ begin
     resident_since
   )
   values (
-    v_uid,
+    p_profile_id,
     (
       select a.id
         from public.applications a
-       where a.profile_id = v_uid
+       where a.profile_id = p_profile_id
        order by a.id
        limit 1
     ),
@@ -227,40 +243,45 @@ begin
 end;
 $$;
 
-comment on function public.sync_colosseum_residency(boolean) is
-  'Upserts the calling resident''s Colosseum membership row. When p_met is true '
-  'it sets resident_since = coalesce(resident_since, now()); when false and the '
-  'resident is not yet a citizen it clears resident_since so the 2-minute clock '
-  'restarts on decay. SECURITY DEFINER because authenticated has no write '
-  'privilege on the table; the row is scoped to profile_id = auth.uid().';
+comment on function public.sync_colosseum_residency(uuid, boolean) is
+  'Upserts a resident''s Colosseum membership row, identified by the '
+  'server-supplied p_profile_id. When p_met is true it sets resident_since = '
+  'coalesce(resident_since, now()); when false and the resident is not yet a '
+  'citizen it clears resident_since so the 2-minute clock restarts on decay. '
+  'p_met is the server''s recomputation of the four real checks, never a client '
+  'value. SECURITY DEFINER with EXECUTE granted only to service_role because '
+  'authenticated has no write privilege on the table; the row is scoped to '
+  'profile_id = p_profile_id.';
 
 -- ---------------------------------------------------------------------------
--- 4c. Record the Colosseum citizen transition.
+-- 4c. Record a resident's Colosseum citizen transition.
 --
 -- Fail closed: requires an existing membership with a resident_since at least
 -- 2 minutes old. Only then does it set citizen_at and issue a server-generated
 -- passport_serial. Idempotent: a second call preserves the first citizen_at and
--- passport_serial rather than re-issuing them.
--- SECURITY DEFINER: authenticated has no UPDATE privilege on the table.
+-- passport_serial rather than re-issuing them. SECURITY DEFINER and granted only
+-- to `service_role`: the server re-checks all four real checks and passes the
+-- resident id as `p_profile_id`; authenticated has no UPDATE privilege.
 -- ---------------------------------------------------------------------------
-create or replace function public.record_colosseum_citizen()
+create or replace function public.record_colosseum_citizen(
+  p_profile_id uuid
+)
 returns public.colosseum_memberships
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_uid uuid := auth.uid();
   v_row public.colosseum_memberships;
 begin
-  if v_uid is null then
-    raise exception 'record_colosseum_citizen requires an authenticated user'
-      using errcode = '28000';
+  if p_profile_id is null then
+    raise exception 'record_colosseum_citizen requires a profile id'
+      using errcode = '22023';
   end if;
 
   select * into v_row
     from public.colosseum_memberships
-   where profile_id = v_uid
+   where profile_id = p_profile_id
    for update;
 
   if not found or v_row.resident_since is null then
@@ -280,43 +301,45 @@ begin
            'KADE-CL-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 12))
          ),
          updated_at = now()
-   where profile_id = v_uid
+   where profile_id = p_profile_id
   returning * into v_row;
 
   return v_row;
 end;
 $$;
 
-comment on function public.record_colosseum_citizen() is
-  'Records the calling resident''s Colosseum citizen transition: requires a '
-  'resident_since at least 2 minutes old, then sets citizen_at and a '
-  'server-generated passport_serial. Fails closed otherwise and never accepts a '
-  'client-supplied serial. SECURITY DEFINER because authenticated has no write '
-  'privilege on the table; the row is scoped to profile_id = auth.uid().';
+comment on function public.record_colosseum_citizen(uuid) is
+  'Records a resident''s Colosseum citizen transition, identified by the '
+  'server-supplied p_profile_id: requires a resident_since at least 2 minutes '
+  'old, then sets citizen_at and a server-generated passport_serial. Fails '
+  'closed otherwise and never accepts a client-supplied serial. SECURITY '
+  'DEFINER with EXECUTE granted only to service_role, because the server '
+  're-checks the four real checks and authenticated has no write privilege on '
+  'the table; the row is scoped to profile_id = p_profile_id.';
 
 -- ---------------------------------------------------------------------------
--- 5. Privileges — matching 20260922000040_residency_service_fee.sql.
+-- 5. Privileges — server-only, matching 20260924000020_identity_attestation_issuance.sql.
+--
+-- The three writers are revoked from every client role and granted only to
+-- `service_role`: a signed-in resident cannot call them through the Supabase
+-- REST/RPC endpoint with their own JWT. Reads stay owner-scoped through the RLS
+-- SELECT policy above.
 -- ---------------------------------------------------------------------------
-revoke all on function public.register_colosseum_residency() from public, anon;
-grant execute on function public.register_colosseum_residency()
-  to authenticated;
-
-revoke all on function public.sync_colosseum_residency(boolean) from public, anon;
-grant execute on function public.sync_colosseum_residency(boolean)
-  to authenticated;
-
-revoke all on function public.record_colosseum_citizen() from public, anon;
-grant execute on function public.record_colosseum_citizen()
-  to authenticated;
+revoke all on function public.register_colosseum_residency(uuid)
+  from public, anon, authenticated;
+revoke all on function public.sync_colosseum_residency(uuid, boolean)
+  from public, anon, authenticated;
+revoke all on function public.record_colosseum_citizen(uuid)
+  from public, anon, authenticated;
 
 do $$
 begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    grant execute on function public.register_colosseum_residency()
+    grant execute on function public.register_colosseum_residency(uuid)
       to service_role;
-    grant execute on function public.sync_colosseum_residency(boolean)
+    grant execute on function public.sync_colosseum_residency(uuid, boolean)
       to service_role;
-    grant execute on function public.record_colosseum_citizen()
+    grant execute on function public.record_colosseum_citizen(uuid)
       to service_role;
   end if;
 end
