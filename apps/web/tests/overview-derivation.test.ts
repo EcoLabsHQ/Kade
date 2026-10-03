@@ -38,6 +38,7 @@ function input(overrides: Partial<OverviewInput> = {}): OverviewInput {
     safeAddress: '0x5Af1000000000000000000000000000000000c09D',
     safeDeployed: true,
     qualified: { status: 'known', usd: 403216 },
+    preapprovalPaid: true,
     ...overrides,
   };
 }
@@ -85,7 +86,6 @@ describe('the Overview money figure', () => {
     for (const model of [a, b]) {
       expect(rendered(model)).not.toContain('$425,000');
       expect(rendered(model)).not.toContain('$280,000');
-      expect(rendered(model)).not.toContain('1.75 USDC');
     }
 
     // The fee amount tracks the stored value rather than a source literal.
@@ -181,12 +181,22 @@ describe('the Overview stages and steps are derived', () => {
     expect(identity.status).toBe('See Residency');
   });
 
-  it('quotes no service-fee figure and derives the test-shaped stage list from the records', () => {
+  it('quotes no service-fee figure and derives the tracker from the records', () => {
     const model = buildOverview(input());
     expect(model.stages.every((s) => !s.title.includes('2,000'))).toBe(true);
-    // The tracker is the real six stages; only the ones with a source carry a
-    // real state.
-    expect(model.stages).toHaveLength(6);
+    // The real end-to-end tracker: profile, fee, identity, funds, documents,
+    // intake review, service fee, start residency. The Colosseum rows are only
+    // added when demo progress is passed in.
+    expect(model.stages.map((s) => s.title)).toEqual([
+      'Profile, household & proof of wealth',
+      'Fee paid · account pre-approved',
+      'Identity verified',
+      'Qualified holdings funded',
+      'Documents complete',
+      'Intake review',
+      'Residency service fee',
+      'Start Residency',
+    ]);
   });
 
   it('drops "move funds" once the tier is met and keeps it with the real shortfall until then', () => {
@@ -236,5 +246,138 @@ describe('the honesty chip', () => {
     expect(demoBadgeLabel(withDemo)).toBe(
       'Demo data · not this resident’s records',
     );
+  });
+});
+
+describe('the Overview residency tracker reflects the real flow', () => {
+  it('marks identity done only when a kyc UID is present, and says so otherwise', () => {
+    // The default input carries no kyc UID: the Overview does not read Self, so
+    // the row must not claim a verification.
+    const notRead = stage(buildOverview(input()), 'Identity verified');
+    expect(notRead.state).toBe('queued');
+    expect(notRead.provenance).toBe('unknown');
+    expect(notRead.meta).toContain('Not read on this screen');
+
+    const read = stage(
+      buildOverview(input({ kycUid: '0xabc' })),
+      'Identity verified',
+    );
+    expect(read.state).toBe('done');
+    expect(read.status).toBe('Verified');
+    expect(read.provenance).toBe('record');
+  });
+
+  it('carries the documents flag as a declared demo done, never a false done', () => {
+    expect(stage(buildOverview(input()), 'Documents complete').state).toBe(
+      'queued',
+    );
+    const done = stage(
+      buildOverview(input({ documentsComplete: true })),
+      'Documents complete',
+    );
+    expect(done.state).toBe('done');
+    expect(done.provenance).toBe('demo');
+  });
+
+  it('ties Start Residency to the permit/service-fee milestones instead of always-queued', () => {
+    const queued = stage(
+      buildOverview(
+        input({ serviceUid: null, preapprovalPaid: false, serviceFeeUnlocked: false }),
+      ),
+      'Start Residency',
+    );
+    expect(queued.state).toBe('queued');
+
+    const inProgress = stage(
+      buildOverview(
+        input({
+          serviceUid: null,
+          fee: paidFee(),
+          serviceFeeUnlocked: true,
+        }),
+      ),
+      'Start Residency',
+    );
+    expect(inProgress.state).toBe('active');
+
+    const submitted = stage(
+      buildOverview(input({ serviceUid: '0xpermit', serviceFeeUnlocked: true })),
+      'Start Residency',
+    );
+    expect(submitted.state).toBe('done');
+    expect(submitted.status).toBe('Submitted');
+  });
+
+  it('adds the Colosseum resident/citizen rows from the persisted demo progress and flags them demo', () => {
+    const noProgress = buildOverview(input());
+    expect(noProgress.stages.map((s) => s.title)).not.toContain(
+      'Colosseum Resident',
+    );
+
+    const resident = buildOverview(
+      input({
+        colosseum: {
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: null,
+          passportSerial: null,
+        },
+      }),
+    );
+    const residentRow = stage(resident, 'Colosseum Resident');
+    expect(residentRow.state).toBe('active');
+    expect(residentRow.provenance).toBe('demo');
+    expect(stage(resident, 'Colosseum Citizen').state).toBe('queued');
+
+    const citizen = buildOverview(
+      input({
+        colosseum: {
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-01T00:02:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        },
+      }),
+    );
+    expect(stage(citizen, 'Colosseum Citizen').state).toBe('done');
+    expect(stage(citizen, 'Colosseum Citizen').meta).toContain(
+      'KADE-CL-ABCD2345',
+    );
+    // The demo rows turn the honesty chip on so they cannot pose as records.
+    expect(demoBadgeLabel(citizen)).toBe('Demo data · not this resident’s records');
+  });
+});
+
+describe('the Attestations stat is honest about what is tracked', () => {
+  it('counts only issued UIDs and names the gate-blocked ones as pending approval', () => {
+    const none = stat(buildOverview(input({ preapprovalPaid: false })), 'Attestations');
+    expect(none.value).toBe('0');
+    expect(none.sub).toContain('Pending approval: kade.review.v1');
+    expect(none.sub).toContain('kade.kyc.v1');
+    expect(none.sub).toContain('kade.permit.v1');
+    expect(none.tone).toBe('muted');
+
+    const permitOnly = stat(
+      buildOverview(
+        input({ serviceUid: '0xpermit', preapprovalPaid: false }),
+      ),
+      'Attestations',
+    );
+    expect(permitOnly.value).toBe('1');
+    expect(permitOnly.sub).toContain('Issued: kade.permit.v1');
+    expect(permitOnly.sub).toContain('Pending approval: kade.review.v1');
+  });
+
+  it('records the fee attestation only when the pre-approval fee is verified', () => {
+    const notPaid = stat(
+      buildOverview(input({ preapprovalPaid: false, preapprovalUsdc: 1.75 })),
+      'Attestations',
+    );
+    expect(notPaid.sub).not.toContain('Fee attestation');
+
+    const paid = stat(
+      buildOverview(input({ preapprovalPaid: true, preapprovalUsdc: 1.75 })),
+      'Attestations',
+    );
+    expect(paid.value).toBe('1');
+    expect(paid.sub).toContain('Fee attestation recorded (1.75 USDC)');
   });
 });
