@@ -138,7 +138,16 @@ describe('ColosseumResidency — states', () => {
 
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
     expect(screen.getByText(/virtual passport/i)).toBeInTheDocument();
-    expect(screen.getByText('Demo · not a real passport')).toBeInTheDocument();
+    // The artifact is still declared demo, and carries a serial/MRZ footer.
+    expect(
+      screen.getByText(/not a real travel or identity document/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/the demo layer|demo artifact only/i),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-passport-serial')).toHaveTextContent(
+      /^KADE-CL-/,
+    );
     // Becoming a citizen clears the nav highlight.
     expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
   });

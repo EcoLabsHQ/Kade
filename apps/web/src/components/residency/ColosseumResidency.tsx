@@ -1,12 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { tokens } from '@/components/ui/tokens';
+import { useCallback, useEffect, useState } from 'react';import { tokens } from '@/components/ui/tokens';
 import { Modal } from '@/components/ui/Modal';
 import type { ResidencyCheckId } from '@/lib/residency/checks';
 import {
   setColosseumAttention,
 } from '@/components/shell/colosseum-attention';
+import {
+  clearResidentSince,
+  generatePassportSerial,
+  markCitizen,
+  markResidentSince,
+  readColosseumProgress,
+  type ColosseumProgress,
+} from './colosseum-progress';
 
 /**
  * The Colosseum flow, rendered as a mocked sub-section INSIDE the Residency step.
@@ -14,8 +21,10 @@ import {
  * This is a declared demo layer: "Colosseum Resident" / "Colosseum Citizen" and
  * the virtual passport confer no real residency, citizenship, legal status or
  * on-chain record. Nothing here writes a table or calls an RPC. The 2-minute
- * clock and the passport are plain component state; a page reload resets them,
- * which is acceptable for a demo.
+ * clock and the passport are demo state, persisted per profile through the
+ * `localStorage`-backed `./colosseum-progress` store (the same pattern as the
+ * nav highlight), so navigating away or reloading does not restart the clock or
+ * re-lock "Become a Citizen".
  *
  * Everything the section says about the resident comes from the real Residency
  * snapshot: the four derived checks (`identity`, `funds`, `review`,
@@ -57,12 +66,26 @@ export interface ColosseumResidencyProps {
    * minimum, so the section does not claim 10 USDC reaches it.
    */
   readonly tier: string | null;
+  /**
+   * The stable key the demo clock and passport are stored under (the recorded
+   * `applications.id`). Null/absent scopes the demo state under a constant.
+   */
+  readonly profileKey?: string | null;
 }
 
 function formatCountdown(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+/** Seconds remaining in the compliance window, computed from the persisted start. */
+function secondsRemainingFrom(residentSince: string | null, now: number): number {
+  if (!residentSince) return 0;
+  const startedAt = Date.parse(residentSince);
+  if (!Number.isFinite(startedAt)) return 0;
+  const elapsed = Math.floor((now - startedAt) / 1000);
+  return Math.max(0, COLOSSEUM_COMPLIANCE_WINDOW_SECONDS - elapsed);
 }
 
 /**
@@ -77,7 +100,7 @@ function qualifiedFigure(detail: string): string | null {
   return match ? `$${match[1]}` : null;
 }
 
-export function ColosseumResidency({ checks, tier }: ColosseumResidencyProps) {
+export function ColosseumResidency({ checks, tier, profileKey }: ColosseumResidencyProps) {
   const funds = checks.find((check) => check.id === 'funds');
   const fundsMet = funds?.state === 'met';
   const allChecksMet = REQUIRED_CHECKS.every(
@@ -89,46 +112,78 @@ export function ColosseumResidency({ checks, tier }: ColosseumResidencyProps) {
   // satisfies it.
   const onColosseumTier = (tier ?? '').trim().toLowerCase() === 'colosseum';
 
-  // The mocked demo clock. It starts when all four checks are green (the real
-  // "Start Residency" milestone) and is not persisted; a reload resets it.
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(
-    COLOSSEUM_COMPLIANCE_WINDOW_SECONDS,
-  );
-  const [citizen, setCitizen] = useState(false);
-  const [passportAnimate, setPassportAnimate] = useState(false);
+  // The demo clock and passport, persisted per profile (see ./colosseum-progress).
+  // The state is seeded from storage on the client so a citizen load shows the
+  // passport immediately and a resident load resumes the window rather than
+  // restarting it. On the server (and the first client render) the returned
+  // snapshot is hidden until hydration, so there is no mismatch.
+  const [mounted, setMounted] = useState(false);
+  const [progress, setProgress] = useState<ColosseumProgress>({
+    residentSince: null,
+    citizenAt: null,
+    passportSerial: null,
+  });
+  const [now, setNow] = useState(() => Date.now());
   const [stepsModalOpen, setStepsModalOpen] = useState(false);
 
-  const windowElapsed = secondsRemaining <= 0;
+  useEffect(() => {
+    setMounted(true);
+    setProgress(readColosseumProgress(profileKey ?? null));
+    setNow(Date.now());
+  }, [profileKey]);
+
+  const citizen = progress.citizenAt !== null;
+  const secondsRemaining = secondsRemainingFrom(progress.residentSince, now);
+  const windowElapsed =
+    progress.residentSince !== null && secondsRemaining <= 0;
   const citizenEligible = allChecksMet && windowElapsed && !citizen;
 
-  // Start (or restart) the countdown whenever the real milestone is met and the
-  // resident is not yet a citizen. Nothing ticks otherwise.
+  // Keep the persisted clock honest against the real milestone, and tick it only
+  // while the window is live. Runs only after mount so the server render never
+  // writes (or reads) demo state.
   useEffect(() => {
+    if (!mounted) return;
     if (!allChecksMet || citizen) {
-      setSecondsRemaining(COLOSSEUM_COMPLIANCE_WINDOW_SECONDS);
+      // The checks stopped being green before citizenship: the clock resets,
+      // matching the existing decay. Once a citizen, the record is kept.
+      if (!citizen) setProgress(clearResidentSince(profileKey ?? null));
       return;
     }
-    setSecondsRemaining(COLOSSEUM_COMPLIANCE_WINDOW_SECONDS);
-    const interval = window.setInterval(() => {
-      setSecondsRemaining((value) => (value <= 1 ? 0 : value - 1));
-    }, 1000);
+    if (progress.residentSince === null) {
+      // First time all four checks are green: start the window.
+      setProgress(markResidentSince(profileKey ?? null, new Date().toISOString()));
+      setNow(Date.now());
+      return;
+    }
+    if (secondsRemaining <= 0) return;
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
-  }, [allChecksMet, citizen]);
+  }, [
+    mounted,
+    allChecksMet,
+    citizen,
+    progress.residentSince,
+    secondsRemaining,
+    profileKey,
+  ]);
 
   // The nav highlight is on exactly while "Become a Citizen" is available. It
   // is deliberately NOT cleared on unmount, so the highlight persists when the
-  // resident navigates away from /residency and can guide them back. Returning
-  // to /residency re-runs this effect against the (possibly reset) demo clock,
-  // which clears a stale highlight; becoming a citizen clears it explicitly.
+  // resident navigates away from /residency and can guide them back; returning
+  // re-evaluates it against the persisted window, and becoming a citizen clears
+  // it explicitly.
   useEffect(() => {
     setColosseumAttention(citizenEligible);
   }, [citizenEligible]);
 
-  function becomeCitizen() {
-    setCitizen(true);
-    setPassportAnimate(true);
+  const becomeCitizen = useCallback(() => {
+    setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
     setColosseumAttention(false);
-  }
+  }, [profileKey]);
+
+  const showPassport = mounted && citizen;
+  const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
+  const showStateC = mounted && allChecksMet && !citizen && !windowElapsed;
 
   return (
     <section data-testid="colosseum-section" style={card}>
@@ -170,20 +225,20 @@ export function ColosseumResidency({ checks, tier }: ColosseumResidencyProps) {
       ) : null}
 
       {/* State D — the 2-minute window has elapsed: "Become a Citizen" unlocks. */}
-      {allChecksMet && !citizen && windowElapsed ? (
-        <StateD
-          countdown="0:00"
-          onBecomeCitizen={becomeCitizen}
+      {showStateD ? (
+        <StateD countdown="0:00" onBecomeCitizen={becomeCitizen} />
+      ) : null}
+
+      {/* State C — all four checks green; the persisted countdown is running. */}
+      {showStateC ? <StateC countdown={formatCountdown(secondsRemaining)} /> : null}
+
+      {/* State E — already a citizen (persisted): passport, re-rendered on reload. */}
+      {showPassport ? (
+        <StateE
+          animate={progress.citizenAt !== null}
+          serial={progress.passportSerial}
         />
       ) : null}
-
-      {/* State C — all four checks green; the mocked countdown is running. */}
-      {allChecksMet && !citizen && !windowElapsed ? (
-        <StateC countdown={formatCountdown(secondsRemaining)} />
-      ) : null}
-
-      {/* State E — already a citizen (in-session): passport without re-animating. */}
-      {citizen ? <StateE animate={passportAnimate} /> : null}
     </section>
   );
 }
@@ -328,30 +383,62 @@ function StateD({
   );
 }
 
-/** State E — already a Colosseum Citizen in this session: show the passport. */
-function StateE({ animate }: { readonly animate: boolean }) {
+/** State E — already a Colosseum Citizen: the virtual passport artifact. */
+function StateE({
+  animate,
+  serial,
+}: {
+  readonly animate: boolean;
+  readonly serial: string | null;
+}) {
   return (
-    <div
-      data-testid="colosseum-state-e"
-      className={animate ? 'kade-passport-reveal' : undefined}
-      style={passport}
-    >
-      <div style={passportEyebrow}>Colosseum Citizen</div>
-      <h3 style={passportTitle}>Virtual passport</h3>
-      <p style={passportNote}>
-        A demo artifact only — it is not a real travel or identity document and
-        confers no status, onchain or otherwise.
-      </p>
-      <dl style={passportFields}>
-        <div style={passportField}>
-          <dt style={passportLabel}>Document</dt>
-          <dd style={passportValue}>Colosseum Citizen</dd>
+    <div data-testid="colosseum-state-e" style={passportStage}>
+      <div
+        className={animate ? 'kade-passport-reveal' : undefined}
+        style={passportSceneStyle}
+      >
+        <div
+          className={animate ? 'kade-passport-flip' : undefined}
+          style={passportCard}
+        >
+          <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
+          <div aria-hidden style={passportEmblem}>✦</div>
+
+          <div style={passportHeader}>
+            <div style={passportOrg}>Colosseum · Demo Passport</div>
+            <div style={passportType}>Citizen</div>
+          </div>
+
+          <div style={passportTitleRow}>
+            <span style={passportTitle}>Virtual passport</span>
+            <span style={passportDocChip}>Demo</span>
+          </div>
+
+          <p style={passportNote}>Not a real travel or identity document.</p>
+
+          <dl style={passportFields}>
+            <div style={passportField}>
+              <dt style={passportLabel}>Document</dt>
+              <dd style={passportValue}>Colosseum Citizen</dd>
+            </div>
+            <div style={passportField}>
+              <dt style={passportLabel}>Serial</dt>
+              <dd data-testid="colosseum-passport-serial" style={passportValueMono}>
+                {serial ?? '—'}
+              </dd>
+            </div>
+          </dl>
+
+          <div aria-hidden style={passportMrz}>
+            <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
+            <span data-testid="colosseum-passport-mrz">{serial ?? '—'}</span>
+          </div>
+
+          <p style={passportDisclaimer}>
+            Demo artifact only · confers no status, onchain or otherwise.
+          </p>
         </div>
-        <div style={passportField}>
-          <dt style={passportLabel}>Status</dt>
-          <dd style={passportValue}>Demo · not a real passport</dd>
-        </div>
-      </dl>
+      </div>
     </div>
   );
 }
@@ -481,56 +568,165 @@ const secondaryButton = {
   cursor: 'pointer',
 };
 
-const passport = {
+const passportStage = {
   marginTop: '14px',
-  background: 'linear-gradient(135deg, #0A2A43 0%, #0A7CFF 100%)',
-  borderRadius: '16px',
-  padding: '24px',
-  color: '#fff',
-  boxShadow: '0 20px 50px -24px rgba(10,42,67,.55)',
+  perspective: '1000px',
 };
 
-const passportEyebrow = {
-  fontSize: '11px',
+const passportSceneStyle: React.CSSProperties = {
+  position: 'relative',
+  transformStyle: 'preserve-3d',
+};
+
+const passportCard: React.CSSProperties = {
+  position: 'relative',
+  overflow: 'hidden',
+  background:
+    'radial-gradient(120% 140% at 18% 0%, #12415f 0%, #0a2a43 45%, #071d30 100%)',
+  borderRadius: '18px',
+  padding: '22px 22px 16px',
+  color: '#f4f8ff',
+  border: '1px solid rgba(255,255,255,.18)',
+  boxShadow:
+    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 26px 60px -26px rgba(7,29,48,.8)',
+  transformStyle: 'preserve-3d',
+};
+
+const passportTexture: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  opacity: 0.5,
+  background:
+    'repeating-radial-gradient(circle at 12% 8%, rgba(255,255,255,.10) 0 1px, transparent 1px 12px), repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 1px, transparent 1px 9px)',
+  pointerEvents: 'none',
+};
+
+const passportEmblem: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  right: '-6px',
+  transform: 'translateY(-50%)',
+  fontSize: '150px',
+  lineHeight: 1,
+  color: 'rgba(255,255,255,.05)',
+  pointerEvents: 'none',
+};
+
+const passportHeader: React.CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '10px',
+  borderBottom: '1px solid rgba(255,255,255,.2)',
+  paddingBottom: '10px',
+};
+
+const passportOrg: React.CSSProperties = {
+  fontSize: '10.5px',
   fontWeight: 700,
-  letterSpacing: '.12em',
-  textTransform: 'uppercase' as const,
-  opacity: 0.8,
-};
-
-const passportTitle = {
-  margin: '6px 0 8px',
-  fontSize: '20px',
-  fontWeight: 700,
-};
-
-const passportNote = {
-  margin: '0 0 16px',
-  fontSize: '12px',
-  lineHeight: 1.6,
+  letterSpacing: '.16em',
+  textTransform: 'uppercase',
   opacity: 0.85,
 };
 
-const passportFields = {
+const passportType: React.CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '.14em',
+  textTransform: 'uppercase',
+  padding: '3px 8px',
+  borderRadius: '999px',
+  background: 'rgba(255,255,255,.12)',
+  border: '1px solid rgba(255,255,255,.25)',
+};
+
+const passportTitleRow: React.CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '10px',
+  marginTop: '14px',
+};
+
+const passportTitle: React.CSSProperties = {
+  fontSize: '21px',
+  fontWeight: 700,
+  letterSpacing: '.01em',
+};
+
+const passportDocChip: React.CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '.1em',
+  textTransform: 'uppercase',
+  color: '#ffd479',
+  border: '1px solid rgba(255,212,121,.5)',
+  borderRadius: '6px',
+  padding: '2px 7px',
+};
+
+const passportNote: React.CSSProperties = {
+  position: 'relative',
+  margin: '4px 0 16px',
+  fontSize: '12px',
+  lineHeight: 1.6,
+  opacity: 0.8,
+};
+
+const passportFields: React.CSSProperties = {
+  position: 'relative',
   margin: 0,
   display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
   gap: '12px',
 };
 
-const passportField = {
-  borderTop: '1px solid rgba(255,255,255,.25)',
-  paddingTop: '10px',
+const passportField: React.CSSProperties = {
+  borderTop: '1px solid rgba(255,255,255,.22)',
+  paddingTop: '9px',
 };
 
-const passportLabel = {
-  fontSize: '11px',
-  letterSpacing: '.06em',
-  textTransform: 'uppercase' as const,
-  opacity: 0.75,
+const passportLabel: React.CSSProperties = {
+  fontSize: '10px',
+  letterSpacing: '.08em',
+  textTransform: 'uppercase',
+  opacity: 0.7,
 };
 
-const passportValue = {
+const passportValue: React.CSSProperties = {
   margin: '4px 0 0',
-  fontSize: '15px',
+  fontSize: '14.5px',
   fontWeight: 700,
+};
+
+const passportValueMono: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontSize: '13.5px',
+  fontWeight: 700,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  letterSpacing: '.04em',
+};
+
+const passportMrz: React.CSSProperties = {
+  position: 'relative',
+  marginTop: '16px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: '10px',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10.5px',
+  letterSpacing: '.18em',
+  color: 'rgba(244,248,255,.72)',
+  borderTop: '1px dashed rgba(255,255,255,.28)',
+  paddingTop: '9px',
+};
+
+const passportDisclaimer: React.CSSProperties = {
+  position: 'relative',
+  margin: '10px 0 0',
+  fontSize: '10.5px',
+  letterSpacing: '.02em',
+  opacity: 0.62,
 };

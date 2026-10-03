@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Hex } from 'viem';
 import { tokens } from '@/components/ui/tokens';
@@ -14,6 +14,7 @@ import {
 } from '@/app/residency/actions';
 import { ServiceFeePayment } from './ServiceFeePayment';
 import { ColosseumResidency } from './ColosseumResidency';
+import { documentsFlagKey, readDocumentsComplete, writeDocumentsComplete } from './colosseum-progress';
 import {
   SelfVerificationModal,
   type SelfModalState,
@@ -101,10 +102,19 @@ export function ResidencyStep({
   const [notice, setNotice] = useState<string | null>(null);
   const [selfOpen, setSelfOpen] = useState(false);
   const [selfState, setSelfState] = useState<SelfModalState | null>(null);
-  // Demo-only: documents are not collected in this build, so Upload simply marks
-  // the row complete in local state (no upload, no persistence).
+  // Demo-only: documents are not collected in this build, so Upload marks the
+  // row complete in local state. The presence flag is persisted (localStorage)
+  // so the Overview tracker can read it too; the count stays session-only.
   const [documentsUploaded, setDocumentsUploaded] = useState(false);
   const { view } = snapshot;
+
+  // The stable key the Colosseum demo progress (and the documents flag) are
+  // stored under — the same `applications.id` the Overview page reads.
+  const profileKey = snapshot.applicationId ?? null;
+
+  useEffect(() => {
+    setDocumentsUploaded(readDocumentsComplete(documentsFlagKey(profileKey)));
+  }, [profileKey]);
 
   const identity = view.checks.find((c) => c.id === 'identity');
   const funds = view.checks.find((c) => c.id === 'funds');
@@ -147,7 +157,10 @@ export function ResidencyStep({
         : '0 of 6 uploaded · hashed & pinned',
       done: documentsUploaded,
       action: 'Upload',
-      onClick: () => setDocumentsUploaded(true),
+      onClick: () => {
+        setDocumentsUploaded(true);
+        writeDocumentsComplete(documentsFlagKey(profileKey), true);
+      },
     },
     {
       key: 'review',
@@ -362,7 +375,11 @@ export function ResidencyStep({
         milestone. It reuses the four real checks and their derived state; its
         2-minute clock and passport are client-side demo state (see the file).
       */}
-      <ColosseumResidency checks={view.checks} tier={snapshot.tier} />
+      <ColosseumResidency
+        checks={view.checks}
+        tier={snapshot.tier}
+        profileKey={profileKey}
+      />
 
       {notice ? (
         <p role="status" style={{ ...feeBody, color: tokens.chipFg, marginTop: '16px' }}>

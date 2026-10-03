@@ -336,10 +336,46 @@ textarea {
   animation: kade-nav-pulse 1.6s ease-in-out infinite;
 }
 
-/* The Colosseum virtual-passport reveal reuses the existing `fadeUp` keyframe,
-   so the demo layer adds no second animation. */
+/* The Colosseum virtual-passport reveal. The demo layer adds two keyframes: the
+   card rises and settles, then tips through a subtle 3D flip (the scene provides
+   `perspective`). Both are skipped under `prefers-reduced-motion`. */
+@keyframes kade-passport-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes kade-passport-flip {
+  from {
+    transform: rotateY(-24deg) rotateX(6deg);
+  }
+  60% {
+    transform: rotateY(6deg) rotateX(2deg);
+  }
+  to {
+    transform: rotateY(0deg) rotateX(0deg);
+  }
+}
+
 .kade-passport-reveal {
-  animation: fadeUp .5s ease-out;
+  animation: kade-passport-reveal 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.kade-passport-flip {
+  animation: kade-passport-flip 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kade-passport-reveal,
+  .kade-passport-flip {
+    animation: none;
+  }
 }
 
 /* DatePicker popover affordances. Inline styles cannot express :hover, so the
