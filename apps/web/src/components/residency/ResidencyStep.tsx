@@ -101,6 +101,9 @@ export function ResidencyStep({
   const [notice, setNotice] = useState<string | null>(null);
   const [selfOpen, setSelfOpen] = useState(false);
   const [selfState, setSelfState] = useState<SelfModalState | null>(null);
+  // Demo-only: documents are not collected in this build, so Upload simply marks
+  // the row complete in local state (no upload, no persistence).
+  const [documentsUploaded, setDocumentsUploaded] = useState(false);
   const { view } = snapshot;
 
   const identity = view.checks.find((c) => c.id === 'identity');
@@ -138,11 +141,13 @@ export function ResidencyStep({
     {
       key: 'documents',
       title: 'Documents complete',
-      // Documents are not collected in this build, so the count is the real one.
-      meta: '0 of 6 uploaded · hashed & pinned',
-      done: false,
+      // Demo-only: Upload marks this row complete in local state for the demo.
+      meta: documentsUploaded
+        ? '6 of 6 uploaded · hashed & pinned'
+        : '0 of 6 uploaded · hashed & pinned',
+      done: documentsUploaded,
       action: 'Upload',
-      onClick: () => {},
+      onClick: () => setDocumentsUploaded(true),
     },
     {
       key: 'review',
