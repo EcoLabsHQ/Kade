@@ -54,7 +54,10 @@ export interface PermitFact {
 }
 
 export interface ResidencyFacts {
-  /** `applications.tier`: '3-year' | '5-year' | 'indefinite', or null. */
+  /**
+   * `applications.tier`: '3-year' | '5-year' | 'indefinite' | 'colosseum', or
+   * null. The Colosseum Resident value is the demo-scale fourth tier.
+   */
   readonly tier: string | null;
   readonly identity: IdentityFact | null;
   /**

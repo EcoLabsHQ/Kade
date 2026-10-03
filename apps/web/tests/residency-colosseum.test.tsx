@@ -49,6 +49,7 @@ describe('ColosseumResidency — states', () => {
   it('State A: below 10 USDC shows the threshold and the real qualified figure', () => {
     render(
       <ColosseumResidency
+        tier="colosseum"
         checks={checks(facts({ qualified: { status: 'known', usd: 4 } }))}
       />,
     );
@@ -64,6 +65,7 @@ describe('ColosseumResidency — states', () => {
   it('State A: an unread vault never shows a fabricated figure', () => {
     render(
       <ColosseumResidency
+        tier="colosseum"
         checks={checks(
           facts({ qualified: { status: 'unknown', reason: 'RPC failed.' } }),
         )}
@@ -79,6 +81,7 @@ describe('ColosseumResidency — states', () => {
   it('State B: funds met but other checks pending shows the steps pop-up pointer', () => {
     render(
       <ColosseumResidency
+        tier="colosseum"
         checks={checks(facts({ identity: null }))}
       />,
     );
@@ -91,7 +94,7 @@ describe('ColosseumResidency — states', () => {
   });
 
   it('State C: all four checks green shows the congrats and the exact sentence', () => {
-    render(<ColosseumResidency checks={checks(facts())} />);
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
     expect(screen.getByText(/you’re a colosseum resident/i)).toBeInTheDocument();
@@ -104,7 +107,7 @@ describe('ColosseumResidency — states', () => {
   });
 
   it('keeps "Become a Citizen" locked until the 2 minutes elapse', () => {
-    render(<ColosseumResidency checks={checks(facts())} />);
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     // Still counting down: no available citizen action yet.
     expect(screen.queryByTestId('colosseum-state-d')).toBeNull();
@@ -123,7 +126,7 @@ describe('ColosseumResidency — states', () => {
   });
 
   it('State D → E: becoming a citizen shows the virtual passport and clears the highlight', () => {
-    render(<ColosseumResidency checks={checks(facts())} />);
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     act(() => {
       vi.advanceTimersByTime(120_000);
@@ -143,11 +146,29 @@ describe('ColosseumResidency — states', () => {
   it('does not highlight or count down before the checks are green', () => {
     render(
       <ColosseumResidency
+        tier="colosseum"
         checks={checks(facts({ review: 'pending' }))}
       />,
     );
 
     expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
     expect(screen.queryByTestId('colosseum-countdown')).toBeNull();
+  });
+
+  it('State A on a production tier points at the Colosseum tier instead of claiming 10 USDC reaches it', () => {
+    render(
+      <ColosseumResidency
+        tier="5-year"
+        checks={checks(
+          facts({ tier: '5-year', qualified: { status: 'known', usd: 4 } }),
+        )}
+      />,
+    );
+
+    const stateA = screen.getByTestId('colosseum-state-a');
+    // The real qualified figure is still shown, but the copy must not tell a
+    // production-tier resident that 10 USDC unlocks their funds check.
+    expect(stateA).toHaveTextContent(/choose the colosseum resident tier/i);
+    expect(stateA).not.toHaveTextContent(/fund your qualified vault to reach the 10 usdc/i);
   });
 });

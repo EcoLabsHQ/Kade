@@ -357,7 +357,7 @@ export function ResidencyStep({
         milestone. It reuses the four real checks and their derived state; its
         2-minute clock and passport are client-side demo state (see the file).
       */}
-      <ColosseumResidency checks={view.checks} />
+      <ColosseumResidency checks={view.checks} tier={snapshot.tier} />
 
       {notice ? (
         <p role="status" style={{ ...feeBody, color: tokens.chipFg, marginTop: '16px' }}>

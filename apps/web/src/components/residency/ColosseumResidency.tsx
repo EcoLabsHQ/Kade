@@ -50,6 +50,13 @@ export interface ColosseumResidencyProps {
     readonly state: 'met' | 'pending' | 'blocked';
     readonly detail: string;
   }[];
+  /**
+   * The resident's recorded `applications.tier`. The Colosseum threshold shown
+   * here is only the real funds minimum when the resident is on the Colosseum
+   * demo tier; on a production tier the real funds check is gated on that tier's
+   * minimum, so the section does not claim 10 USDC reaches it.
+   */
+  readonly tier: string | null;
 }
 
 function formatCountdown(totalSeconds: number): string {
@@ -70,12 +77,17 @@ function qualifiedFigure(detail: string): string | null {
   return match ? `$${match[1]}` : null;
 }
 
-export function ColosseumResidency({ checks }: ColosseumResidencyProps) {
+export function ColosseumResidency({ checks, tier }: ColosseumResidencyProps) {
   const funds = checks.find((check) => check.id === 'funds');
   const fundsMet = funds?.state === 'met';
   const allChecksMet = REQUIRED_CHECKS.every(
     (id) => checks.find((check) => check.id === id)?.state === 'met',
   );
+  // The Colosseum demo threshold is the real funds minimum only when the
+  // resident is on the Colosseum tier. On a production tier the real funds check
+  // is gated on that tier's own minimum, so the section must not claim 10 USDC
+  // satisfies it.
+  const onColosseumTier = (tier ?? '').trim().toLowerCase() === 'colosseum';
 
   // The mocked demo clock. It starts when all four checks are green (the real
   // "Start Residency" milestone) and is not persisted; a reload resets it.
@@ -137,9 +149,15 @@ export function ColosseumResidency({ checks }: ColosseumResidencyProps) {
       </p>
 
       {/* State A — not eligible yet: the real funds check is below the 10 USDC
-          threshold. The figure is the resident's real qualified amount. */}
+          threshold. The figure is the resident's real qualified amount. When the
+          resident is on a production tier the real funds check is gated on that
+          tier's minimum, so the copy points at the Colosseum tier rather than
+          claiming 10 USDC reaches it. */}
       {!fundsMet ? (
-        <StateA detail={funds?.detail ?? 'No qualifying tier is set.'} />
+        <StateA
+          detail={funds?.detail ?? 'No qualifying tier is set.'}
+          onColosseumTier={onColosseumTier}
+        />
       ) : null}
 
       {/* State B — threshold met, but the four real checks are not all green. */}
@@ -171,16 +189,31 @@ export function ColosseumResidency({ checks }: ColosseumResidencyProps) {
 }
 
 /** State A — the resident has not reached the Colosseum threshold yet. */
-function StateA({ detail }: { readonly detail: string }) {
+function StateA({
+  detail,
+  onColosseumTier,
+}: {
+  readonly detail: string;
+  readonly onColosseumTier: boolean;
+}) {
   const figure = qualifiedFigure(detail);
   return (
     <div data-testid="colosseum-state-a" style={stateBox}>
       <h3 style={stateTitle}>Reach the 10 USDC threshold</h3>
-      <p style={body}>
-        Fund your qualified vault to reach the 10 USDC Colosseum threshold. It
-        is read through the same qualified-holdings check as the production
-        tiers.
-      </p>
+      {onColosseumTier ? (
+        <p style={body}>
+          Fund your qualified vault to reach the 10 USDC Colosseum threshold. It
+          is read through the same qualified-holdings check as the production
+          tiers.
+        </p>
+      ) : (
+        <p style={body}>
+          The Colosseum track qualifies at 10 USDC. Your current tier has its own
+          qualified-holdings minimum, so the Colosseum step unlocks once that
+          check is met — or choose the Colosseum Resident tier in onboarding to
+          qualify at 10 USDC.
+        </p>
+      )}
       <div style={metricRow}>
         <span style={metricLabel}>Your qualified position</span>
         <span data-testid="colosseum-qualified" style={metricValue}>
