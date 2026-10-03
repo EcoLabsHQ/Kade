@@ -11,7 +11,12 @@ function usd(amount: number): string {
   return `$${amount.toLocaleString('en-US')}`;
 }
 
-/** The reference's three tier cards, `$280,000 / $425,000 / $850,000`. */
+/** "Colosseum Resident" is rendered as "Colosseum" + "Resident" on two lines. */
+function tierNameLines(name: string): readonly string[] {
+  return name.split(' ');
+}
+
+/** The reference's tier cards, plus the Colosseum Resident demo tier. */
 export function TierSelector({ value, onSelect, invalid }: TierSelectorProps) {
   return (
     <div
@@ -19,7 +24,7 @@ export function TierSelector({ value, onSelect, invalid }: TierSelectorProps) {
       aria-label="Permit tier you are aiming for"
       aria-invalid={invalid || undefined}
       className="kade-grid-tiers"
-      style={{ gap: '8px' }}
+      style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}
     >
       {TIERS.map((tier) => {
         const selected = value === tier.index;
@@ -48,7 +53,9 @@ export function TierSelector({ value, onSelect, invalid }: TierSelectorProps) {
             }}
           >
             <div style={{ fontSize: '14px', fontWeight: 700, color: tokens.ink }}>
-              {tier.name}
+              {tierNameLines(tier.name).map((line) => (
+                <div key={line}>{line}</div>
+              ))}
             </div>
             <div
               style={{

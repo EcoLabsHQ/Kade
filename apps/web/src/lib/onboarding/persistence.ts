@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   COUNTRY_CODES,
   TIER_DATABASE_VALUES,
+  TIERS,
   type ApplicantProfile,
   type CountryCode,
   type HouseholdMember,
@@ -75,8 +76,8 @@ function isCountryCode(value: unknown): value is CountryCode {
 }
 
 function tierIndexFromDatabaseValue(value: unknown): TierIndex | null {
-  for (const index of [0, 1, 2] as const) {
-    if (TIER_DATABASE_VALUES[index].value === value) return index;
+  for (const tier of TIERS) {
+    if (TIER_DATABASE_VALUES[tier.index].value === value) return tier.index;
   }
   return null;
 }
