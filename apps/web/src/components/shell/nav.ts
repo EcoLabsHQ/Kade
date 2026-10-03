@@ -54,31 +54,3 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
     ],
   },
 ];
-
-/**
- * The resident nav for the current environment.
- *
- * The Colosseum residency surface is off by default (`KADE_COLOSSEUM=1`
- * enables it), so the nav must not link to a route that is a 404. When the gate
- * is on, the Residency group gains a Colosseum item; when it is off the item is
- * absent. `RESIDENT_NAV` stays the canonical gate-off list and is unchanged, so
- * a caller that wants the base nav can still read it directly.
- */
-export function residentNav({
-  colosseum,
-}: {
-  readonly colosseum: boolean;
-}): readonly NavGroupConfig[] {
-  if (!colosseum) return RESIDENT_NAV;
-  return RESIDENT_NAV.map((group) =>
-    group.label === 'Residency'
-      ? {
-          ...group,
-          items: [
-            ...group.items,
-            { href: '/colosseum', label: 'Colosseum' },
-          ],
-        }
-      : group,
-  );
-}

@@ -316,44 +316,6 @@ textarea {
   animation: kade-spin .8s linear infinite;
 }
 
-/* The Colosseum residency surface (COLOSSEUM-1): the loading → congrats
-   transition and the virtual-passport reveal. Inline styles cannot express
-   keyframes, so the animations live here and the elements keep their inline
-   layout and colours. */
-@keyframes kade-colosseum-rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.kade-colosseum-congrats {
-  animation: kade-colosseum-rise .4s ease-out;
-}
-
-@keyframes kade-passport-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(18px) rotate(-2deg) scale(.92);
-  }
-  60% {
-    opacity: 1;
-    transform: translateY(-4px) rotate(1deg) scale(1.02);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.kade-passport-reveal {
-  animation: kade-passport-reveal .7s ease-out;
-}
-
 /* DatePicker popover affordances. Inline styles cannot express :hover, so the
    two interactive states live here. */
 .kade-datepicker-nav:hover {
