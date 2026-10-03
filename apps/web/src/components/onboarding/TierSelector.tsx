@@ -24,7 +24,7 @@ export function TierSelector({ value, onSelect, invalid }: TierSelectorProps) {
       aria-label="Permit tier you are aiming for"
       aria-invalid={invalid || undefined}
       className="kade-grid-tiers"
-      style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}
+      style={{ gap: '8px' }}
     >
       {TIERS.map((tier) => {
         const selected = value === tier.index;

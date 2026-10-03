@@ -156,7 +156,10 @@ textarea {
 
 .kade-grid-tiers {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Four columns: the three production tiers plus the Colosseum Resident demo
+     tier. The media query below collapses this to one column at the narrow
+     breakpoint, so the column list must live here and never inline. */
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .kade-grid-file-row {
