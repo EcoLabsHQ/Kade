@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';import { tokens } from '@/components/ui/tokens';
+import { useCallback, useEffect, useState } from 'react';
+import { tokens } from '@/components/ui/tokens';
 import { Modal } from '@/components/ui/Modal';
 import type { ResidencyCheckId } from '@/lib/residency/checks';
 import {

@@ -153,7 +153,7 @@ export function ResidencyStep({
       title: 'Documents complete',
       // Demo-only: Upload marks this row complete in local state for the demo.
       meta: documentsUploaded
-        ? '6 of 6 uploaded · hashed & pinned'
+        ? 'Marked complete in the demo · no document is uploaded'
         : '0 of 6 uploaded · hashed & pinned',
       done: documentsUploaded,
       action: 'Upload',
