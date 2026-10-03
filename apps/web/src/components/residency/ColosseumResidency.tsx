@@ -123,6 +123,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
     citizenAt: null,
     passportSerial: null,
   });
+  const [justBecameCitizen, setJustBecameCitizen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [stepsModalOpen, setStepsModalOpen] = useState(false);
 
@@ -178,6 +179,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
 
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
+    setJustBecameCitizen(true);
     setColosseumAttention(false);
   }, [profileKey]);
 
@@ -235,7 +237,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
       {/* State E — already a citizen (persisted): passport, re-rendered on reload. */}
       {showPassport ? (
         <StateE
-          animate={progress.citizenAt !== null}
+          animate={justBecameCitizen}
           serial={progress.passportSerial}
         />
       ) : null}

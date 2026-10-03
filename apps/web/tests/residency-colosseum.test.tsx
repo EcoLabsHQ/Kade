@@ -181,3 +181,132 @@ describe('ColosseumResidency — states', () => {
     expect(stateA).not.toHaveTextContent(/fund your qualified vault to reach the 10 usdc/i);
   });
 });
+
+describe('ColosseumResidency — persisted demo progress', () => {
+  const KEY = 'app-42';
+
+  it('resumes the countdown from the stored residentSince instead of restarting it', () => {
+    // A window that started one minute ago: 1:00 should remain, not 2:00.
+    window.localStorage.setItem(
+      'kade.colosseum.progress.app-42',
+      JSON.stringify({
+        residentSince: new Date(Date.now() - 60_000).toISOString(),
+        citizenAt: null,
+        passportSerial: null,
+      }),
+    );
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('1:00');
+  });
+
+  it('shows the passport immediately from a stored citizenship, without re-animating', () => {
+    window.localStorage.setItem(
+      'kade.colosseum.progress.app-42',
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-01T00:02:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+      }),
+    );
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-passport-serial')).toHaveTextContent(
+      'KADE-CL-ABCD2345',
+    );
+    // A stored citizen load is not re-animated.
+    expect(
+      document.querySelector('.kade-passport-flip'),
+    ).toBeNull();
+    // And no countdown state is shown.
+    expect(screen.queryByTestId('colosseum-countdown')).toBeNull();
+  });
+
+  it('writes citizenAt and a demo serial on becoming a citizen, and clears the clock on decay', () => {
+    const { unmount } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    const stored = JSON.parse(
+      window.localStorage.getItem('kade.colosseum.progress.app-42')!,
+    ) as { citizenAt: string | null; passportSerial: string | null };
+    expect(stored.citizenAt).not.toBeNull();
+    expect(stored.passportSerial).toMatch(/^KADE-CL-/);
+    unmount();
+
+    // Decay: checks stop being green before citizenship clears the live clock.
+    window.localStorage.removeItem('kade.colosseum.progress.app-42');
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    // Start the window, then drop a check.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(window.localStorage.getItem('kade.colosseum.progress.app-42')).not.toBeNull();
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts({ review: 'pending' }))}
+        profileKey={KEY}
+      />,
+    );
+    const afterDecay = JSON.parse(
+      window.localStorage.getItem('kade.colosseum.progress.app-42') ?? 'null',
+    ) as { residentSince: string | null } | null;
+    expect(afterDecay?.residentSince ?? null).toBeNull();
+  });
+
+  it('scopes the demo progress per profile', () => {
+    window.localStorage.setItem(
+      'kade.colosseum.progress.other-app',
+      JSON.stringify({
+        residentSince: null,
+        citizenAt: null,
+        passportSerial: null,
+      }),
+    );
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    // A different profile's (empty) record must not hide this profile's clock.
+    expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+  });
+});
