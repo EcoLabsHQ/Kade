@@ -308,6 +308,28 @@ describe('the Overview residency tracker reflects the real flow', () => {
     expect(submitted.status).toBe('Submitted');
   });
 
+  it('says the service-fee reachability is not read here rather than guessing', () => {
+    // Not passed by the page: the row must say it is not read, not claim a
+    // state the Overview cannot know.
+    const notRead = stage(buildOverview(input()), 'Residency service fee');
+    expect(notRead.provenance).toBe('unknown');
+    expect(notRead.status).toBe('See Residency');
+
+    const unlocked = stage(
+      buildOverview(input({ serviceFeeUnlocked: true })),
+      'Residency service fee',
+    );
+    expect(unlocked.state).toBe('active');
+    expect(unlocked.provenance).toBe('record');
+
+    const locked = stage(
+      buildOverview(input({ serviceFeeUnlocked: false })),
+      'Residency service fee',
+    );
+    expect(locked.state).toBe('queued');
+    expect(locked.provenance).toBe('record');
+  });
+
   it('adds the Colosseum resident/citizen rows from the persisted demo progress and flags them demo', () => {
     const noProgress = buildOverview(input());
     expect(noProgress.stages.map((s) => s.title)).not.toContain(

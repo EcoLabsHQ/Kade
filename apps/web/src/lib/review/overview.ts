@@ -499,13 +499,24 @@ function documentsStage(input: OverviewInput): OverviewStage {
 /** The residency service fee: only reachable after the prerequisites are green. */
 function serviceFeeStage(input: OverviewInput): OverviewStage {
   const title = 'Residency service fee';
-  if (input.serviceFeeUnlocked) {
+  if (input.serviceFeeUnlocked === true) {
     return {
       title,
       meta: 'Prerequisites green — pay on the Residency step',
       status: 'Action needed',
       state: 'active',
       provenance: 'record',
+    };
+  }
+  if (input.serviceFeeUnlocked === undefined) {
+    // The Overview does not read the residency prerequisites, so it cannot say
+    // whether the fee is reachable; it says so rather than guessing.
+    return {
+      title,
+      meta: 'Reachability is not read on this screen — open Residency',
+      status: 'See Residency',
+      state: 'queued',
+      provenance: 'unknown',
     };
   }
   return {

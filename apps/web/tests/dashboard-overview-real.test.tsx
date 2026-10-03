@@ -208,7 +208,10 @@ describe('Overview dashboard real state', () => {
     render(await OverviewPage());
 
     expect(
-      screen.getByText(/Not read on this screen/i),
+      screen.getAllByText(/Not read on this screen/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/open Residency for the live check/i),
     ).toBeInTheDocument();
 
     cleanup();
