@@ -8,7 +8,7 @@ import {
   readDocumentsComplete,
 } from '@/components/residency/colosseum-progress';
 import type { OverviewInput, OverviewStage } from '@/lib/review/overview';
-import { buildOverview } from '@/lib/review/overview';
+import { buildOverview, demoBadgeLabel } from '@/lib/review/overview';
 
 /**
  * The "Getting ready for residency" tracker rows, with the persisted demo state
@@ -42,19 +42,22 @@ export function OverviewTracker({ input, profileKey }: OverviewTrackerProps) {
   const [rows, setRows] = useState<readonly OverviewStage[]>(
     buildOverview(input).stages,
   );
+  const [demoBadge, setDemoBadge] = useState<string | null>(null);
 
   useEffect(() => {
     const documentsComplete = readDocumentsComplete(documentsFlagKey(profileKey));
     const progress = readColosseumProgress(profileKey);
     const hasProgress =
       progress.residentSince !== null || progress.citizenAt !== null;
-    setRows(
-      buildOverview({
-        ...input,
-        documentsComplete,
-        colosseum: hasProgress ? progress : null,
-      }).stages,
-    );
+    const model = buildOverview({
+      ...input,
+      documentsComplete,
+      colosseum: hasProgress ? progress : null,
+    });
+    setRows(model.stages);
+    // The honour chip is derived from the same model, so a persisted demo row
+    // cannot be shown without it.
+    setDemoBadge(demoBadgeLabel(model));
   }, [input, profileKey]);
 
   return (
@@ -124,6 +127,14 @@ export function OverviewTracker({ input, profileKey }: OverviewTrackerProps) {
           </span>
         </div>
       ))}
+      {demoBadge ? (
+        <div
+          data-testid="overview-tracker-demo"
+          style={{ marginTop: '12px', fontSize: '12px', color: tokens.muted }}
+        >
+          {demoBadge}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -48,6 +48,8 @@ describe('OverviewTracker persisted demo state', () => {
     expect(
       screen.queryByText('Colosseum Resident'),
     ).toBeNull();
+    // Nothing demo is shown, so no chip.
+    expect(screen.queryByTestId('overview-tracker-demo')).toBeNull();
   });
 
   it('reflects the persisted documents flag from the Residency step store', () => {
@@ -56,6 +58,10 @@ describe('OverviewTracker persisted demo state', () => {
     render(<OverviewTracker input={input()} profileKey={PROFILE} />);
 
     expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
+    // The documents row is itself demo state, so the chip turns on.
+    expect(screen.getByTestId('overview-tracker-demo')).toHaveTextContent(
+      /Demo data/,
+    );
   });
 
   it('reflects the persisted Colosseum progress', () => {
@@ -73,5 +79,9 @@ describe('OverviewTracker persisted demo state', () => {
     expect(screen.getByText('Colosseum Resident')).toBeInTheDocument();
     expect(screen.getByText('Colosseum Citizen')).toBeInTheDocument();
     expect(screen.getByText(/KADE-CL-ABCD2345/)).toBeInTheDocument();
+    // The demo rows turn the honesty chip on, so they cannot pose as records.
+    expect(screen.getByTestId('overview-tracker-demo')).toHaveTextContent(
+      /Demo data/,
+    );
   });
 });
