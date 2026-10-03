@@ -13,13 +13,10 @@
  * support.
  *
  * The tier minimum is read from `@kade/shared` `TIERS`, never re-typed here, so
- * a change to the frozen tier table cannot drift from the check. The Colosseum
- * tier is a separate `@kade/shared` constant (`COLOSSEUM_TIER`), because it is
- * not one of the three production tiers: `TIERS` stays frozen and a Colosseum
- * residency qualifies at its own 10 USDC minimum.
+ * a change to the frozen tier table cannot drift from the check.
  */
 
-import { COLOSSEUM_TIER, TIERS } from '@kade/shared';
+import { TIERS } from '@kade/shared';
 import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 
 /* -------------------------------------------------------------------------- */
@@ -57,7 +54,7 @@ export interface PermitFact {
 }
 
 export interface ResidencyFacts {
-  /** `applications.tier`: '3-year' | '5-year' | 'indefinite' | 'colosseum', or null. */
+  /** `applications.tier`: '3-year' | '5-year' | 'indefinite', or null. */
   readonly tier: string | null;
   readonly identity: IdentityFact | null;
   /**
@@ -97,13 +94,8 @@ export interface ResidencyCheck {
 /** The production qualifying minimum for `applications.tier`, or null. */
 export function tierMinimumUsdc(tier: string | null): number | null {
   if (!tier) return null;
-  const normalized = tier.trim().toLowerCase();
-  // The Colosseum tier is not in the frozen `TIERS` table: it is a separate
-  // demo-scale track with its own constant. Check it before the production
-  // tiers so a 'colosseum' tier requires 10 USDC rather than reading as null.
-  if (normalized === COLOSSEUM_TIER.name) return COLOSSEUM_TIER.minUsdc;
   const match = TIERS.find(
-    (candidate) => candidate.name.toLowerCase() === normalized,
+    (candidate) => candidate.name.toLowerCase() === tier.trim().toLowerCase(),
   );
   return match ? match.minUsdc : null;
 }

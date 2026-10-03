@@ -50,12 +50,6 @@ describe('tierMinimumUsdc', () => {
     expect(tierMinimumUsdc('INDEFINITE')).toBe(850000);
   });
 
-  it('reads the Colosseum tier from the shared constant at 10 USDC', () => {
-    expect(tierMinimumUsdc('colosseum')).toBe(10);
-    expect(tierMinimumUsdc('COLOSSEUM')).toBe(10);
-    expect(tierMinimumUsdc(' colosseum ')).toBe(10);
-  });
-
   it('returns null for no tier or an unknown tier', () => {
     expect(tierMinimumUsdc(null)).toBeNull();
     expect(tierMinimumUsdc('platinum')).toBeNull();
@@ -109,21 +103,6 @@ describe('deriveChecks — funds', () => {
       check(facts({ qualified: { status: 'known', usd: 280001 } }), 'funds')
         .state,
     ).toBe('met');
-  });
-
-  it('requires only 10 USDC for a Colosseum tier', () => {
-    const below = check(
-      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 9 } }),
-      'funds',
-    );
-    expect(below.state).toBe('pending');
-    expect(below.detail).toBe('$9 of $10.');
-
-    const at = check(
-      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 10 } }),
-      'funds',
-    );
-    expect(at.state).toBe('met');
   });
 
   it('is a real $0 when the vault read succeeded and holds nothing', () => {
