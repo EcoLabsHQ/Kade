@@ -104,41 +104,56 @@ export const COUNTRIES: readonly Country[] = [
 /* -------------------------------------------------------------------------- */
 
 /** The prototype stores a tier index, not a name (handoff "State"). */
-export type TierIndex = 0 | 1 | 2;
+export type TierIndex = 0 | 1 | 2 | 3;
 
-export type TierName = '3-year' | '5-year' | 'Indefinite';
+export type TierName = '3-year' | '5-year' | 'Indefinite' | 'Colosseum Resident';
 
 export interface Tier {
   readonly index: TierIndex;
   readonly name: TierName;
-  /** Production qualifying minimum in whole USDC (DOCX section 4). */
+  /**
+   * Production qualifying minimum in whole USDC (DOCX section 4), or the
+   * demo-scale Colosseum minimum. A demo figure is labelled in `TIERS` below.
+   */
   readonly minUsdc: number;
 }
 
 /**
- * [documented] The three tiers and their production minimums are stated in the
+ * [documented] The three production tiers and their minimums are stated in the
  * handoff "Business rules" and DOCX section 4 / section 7
  * (`3-year $280k · 5-year $425k · Indefinite $850k`). The DOCX demo table also
  * scales these to $100 / $250 / $500; the frozen fee schedule is what controls
  * demo amounts (contract section 2.1), so the production minimums are kept
  * here.
+ *
+ * [arbitrary] The fourth entry is the Colosseum Resident demo tier: a
+ * demo-scale 10 USDC minimum (DOCX section 7 demo table) that reuses the same
+ * `funds` check as the production tiers (`tierMinimumUsdc`). It is not a
+ * production programme tier.
  */
 export const TIERS: readonly Tier[] = [
   { index: 0, name: '3-year', minUsdc: 280000 },
   { index: 1, name: '5-year', minUsdc: 425000 },
   { index: 2, name: 'Indefinite', minUsdc: 850000 },
+  { index: 3, name: 'Colosseum Resident', minUsdc: 10 },
 ];
 
 /**
  * `applications.tier` stores the string form, not the prototype index
- * (20260916000002_applications.sql: `tier in ('3-year','5-year','indefinite')`).
- * [arbitrary] the migration records the lower-case encoding of "Indefinite"
- * as a chosen value; the other two are [documented].
+ * (20260916000002_applications.sql: `tier in ('3-year','5-year','indefinite')`
+ * as extended by 20261002000001_colosseum_tier.sql). [arbitrary] the migration
+ * records the lower-case encoding of "Indefinite" as a chosen value and the
+ * "colosseum" encoding of "Colosseum Resident"; the other two are [documented].
  */
 export const TIER_DATABASE_VALUES: Readonly<Record<TierIndex, Sourced<string>>> = {
   0: sourced('3-year', 'documented'),
   1: sourced('5-year', 'documented'),
   2: sourced('indefinite', 'arbitrary', 'the migration lower-cases "Indefinite"'),
+  3: sourced(
+    'colosseum',
+    'arbitrary',
+    'the migration encoding for the Colosseum Resident demo tier',
+  ),
 };
 
 /** The `applications.tier` value for a prototype tier index. */
@@ -361,8 +376,13 @@ export const residenceList = z
 
 export type ResidenceList = z.infer<typeof residenceList>;
 
-/** `0 | 1 | 2`, the tier index the prototype stores. */
-export const tierIndex = z.union([z.literal(0), z.literal(1), z.literal(2)]);
+/** `0 | 1 | 2 | 3`, the tier index the prototype stores. */
+export const tierIndex = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+]);
 
 /**
  * A household member's date of birth, carrying the same 18+ rule as the

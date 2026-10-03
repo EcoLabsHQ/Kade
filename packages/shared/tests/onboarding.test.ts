@@ -76,25 +76,40 @@ describe('COUNTRIES', () => {
 });
 
 describe('TIERS', () => {
-  it('matches the three handoff tiers and carries the prototype index', () => {
+  it('matches the three handoff tiers, plus the Colosseum demo tier, with the prototype index', () => {
     expect(TIERS).toEqual([
+      { index: 0, name: '3-year', minUsdc: 280000 },
+      { index: 1, name: '5-year', minUsdc: 425000 },
+      { index: 2, name: 'Indefinite', minUsdc: 850000 },
+      { index: 3, name: 'Colosseum Resident', minUsdc: 10 },
+    ]);
+  });
+
+  it('keeps the three production tiers unchanged', () => {
+    expect(TIERS.slice(0, 3)).toEqual([
       { index: 0, name: '3-year', minUsdc: 280000 },
       { index: 1, name: '5-year', minUsdc: 425000 },
       { index: 2, name: 'Indefinite', minUsdc: 850000 },
     ]);
   });
 
+  it('the Colosseum Resident tier is a demo-scale 10 USDC', () => {
+    const colosseum = TIERS.find((tier) => tier.name === 'Colosseum Resident');
+    expect(colosseum?.minUsdc).toBe(10);
+  });
+
   it('maps the index to the applications.tier encoding', () => {
     expect(tierDatabaseValue(0)).toBe('3-year');
     expect(tierDatabaseValue(1)).toBe('5-year');
     expect(tierDatabaseValue(2)).toBe('indefinite');
+    expect(tierDatabaseValue(3)).toBe('colosseum');
   });
 
-  it('tierIndex accepts 0, 1, 2 and rejects anything else', () => {
-    for (const index of [0, 1, 2]) {
+  it('tierIndex accepts 0, 1, 2, 3 and rejects anything else', () => {
+    for (const index of [0, 1, 2, 3]) {
       expect(tierIndex.safeParse(index).success).toBe(true);
     }
-    expect(tierIndex.safeParse(3).success).toBe(false);
+    expect(tierIndex.safeParse(4).success).toBe(false);
     expect(tierIndex.safeParse(-1).success).toBe(false);
   });
 });
