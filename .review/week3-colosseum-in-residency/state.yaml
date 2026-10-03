@@ -1,0 +1,26 @@
+iteration: week3-colosseum-in-residency
+profile: NORMAL
+known_good: 1bb0b230f224eb8666e4a12e459557cdbdb88db0
+candidate: 303a5e5fd7805bbe92f58760cbaac0c2af8850b6
+mode: discovery
+reviewed_scopes:
+  shared: complete
+  frontend: complete
+  shell: complete
+  database: complete
+active_findings: []
+resolved_findings: [F1, F2]
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 303a5e5fd7805bbe92f58760cbaac0c2af8850b6
+  recorded_at: 2026-10-02
+notes:
+  - "REVIEW PASSED at d6b5f4b with no blocking finding; 3 WARN (F1 fixed-10-USDC copy, F2 stale comment, F3 cosmetic persisted highlight)."
+  - "W1/W2 corrected by 303a5e5 (Colosseum threshold copy scoped to the Colosseum tier + refreshed comment; tests cover both Colosseum and production tier). W3 left as declared cosmetic design behaviour."
+  - "A re-run of ./scripts/verify.sh initially failed only on a flaky 15s timeout in onboarding-flow.test.tsx under full-suite load; the file passes in isolation (41/41) and the gate passed on re-run. Classified FLAKY/ENVIRONMENTAL, no code change."
+  - "Promoted HEAD 303a5e5; pushed to origin/main and moved known-good."

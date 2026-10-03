@@ -1,0 +1,33 @@
+- id: F1
+  severity: WARN
+  scope: frontend
+  title: "Fixed 10 USDC Colosseum threshold shown regardless of the resident's tier"
+  evidence: "apps/web/src/components/residency/ColosseumResidency.tsx:174-206; apps/web/src/lib/residency/checks.ts:160-203"
+  failure_mode: "Closed by 303a5e5: on a production tier State A no longer claims 10 USDC reaches the funds check; it points at the Colosseum tier and states the tier's own minimum applies. Covered by a new test."
+  materiality: "Was misleading demo guidance; now scoped correctly. No fabricated check/balance."
+  status: resolved
+  introduced_by: d6b5f4be2ef1a1c38f391f6ab5faa490e65dff9f
+  resolved_by: 303a5e5fd7805bbe92f58760cbaac0c2af8850b6
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: shared
+  title: "Stale tier-value comment in checks.ts"
+  evidence: "apps/web/src/lib/residency/checks.ts:56-60"
+  failure_mode: "Closed by 303a5e5: the comment now lists colosseum among the tier values."
+  materiality: "Documentation completeness only."
+  status: resolved
+  introduced_by: d6b5f4be2ef1a1c38f391f6ab5faa490e65dff9f
+  resolved_by: 303a5e5fd7805bbe92f58760cbaac0c2af8850b6
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: shell
+  title: "Persisted nav highlight can be momentarily stale after reload"
+  evidence: "apps/web/src/components/shell/colosseum-attention.ts:18-68; ColosseumResidency.tsx:82-113"
+  failure_mode: "After a full reload outside /residency, the Residency nav item can highlight while the citizen action is not yet available until the 2-minute clock re-runs."
+  materiality: "Cosmetic, declared-by-design demo state; cleared on the next Residency mount; no PII. Not corrected: intentional demo behaviour."
+  status: open
+  introduced_by: d6b5f4be2ef1a1c38f391f6ab5faa490e65dff9f
+  resolved_by: null
+  recheck_attempts: 0
