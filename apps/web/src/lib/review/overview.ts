@@ -82,6 +82,39 @@ export interface OverviewInput {
    * residency tier check also call.
    */
   readonly qualified: QualifiedPosition;
+  /** True when the pre-approval fee is verified on chain. */
+  readonly preapprovalPaid: boolean;
+  /**
+   * The `kade.kyc.v1` identity attestation UID, when one exists. Issuance is
+   * gate-blocked today, so this is normally null; the tracker reports it
+   * truthfully rather than assuming an identity proof.
+   */
+  readonly kycUid?: string | null;
+  /**
+   * The residency service fee is payable on the Residency step, but the
+   * prerequisite state that unlocks it is read there. The Overview can only say
+   * whether the fee is reachable (its prerequisites are green) without quoting
+   * the amount, so this is a coarse "unlocked / not" the route may pass.
+   */
+  readonly serviceFeeUnlocked?: boolean;
+  /**
+   * Whether the persisted "Documents complete" demo flag is set. Read on the
+   * client from the same store the Residency step writes; absence means the flag
+   * is not set (documents are not issued), never a fabricated done.
+   */
+  readonly documentsComplete?: boolean;
+  /**
+   * The persisted Colosseum demo progress, if the caller reads it. These are
+   * declared demo state and always `provenance: 'demo'`.
+   */
+  readonly colosseum?: OverviewColosseumProgress | null;
+}
+
+/** The Colosseum demo progress the Overview tracker may reflect. */
+export interface OverviewColosseumProgress {
+  readonly residentSince: string | null;
+  readonly citizenAt: string | null;
+  readonly passportSerial: string | null;
 }
 
 export interface OverviewModel {
@@ -245,15 +278,48 @@ function feeStat(input: OverviewInput): OverviewStat {
   }
 }
 
+/**
+ * The programme's tracked attestations, in issue order:
+ *   - `kade.review.v1` — the intake-review approval, from `applications.review_uid`;
+ *   - `kade.kyc.v1`    — the identity proof, from `self_verifications` /
+ *                        `applications.kyc_uid` (gate-blocked today);
+ *   - `kade.permit.v1` — the residency permit, from `applications.service_uid`;
+ *   - the fee attestation — the fee rail's own on-chain record.
+ *
+ * UIDs are already in `OverviewInput`; a schema is issued only when its UID is
+ * present. A missing UID is reported as not issued, never as issued. Issuance is
+ * gate-blocked in this build, so the value is an honest count (usually 0) with a
+ * sub that names the tracked attestations and their real state.
+ */
 function attestationStat(input: OverviewInput): OverviewStat {
-  const issued: string[] = [];
-  if (input.reviewUid) issued.push('kade.review.v1');
-  if (input.serviceUid) issued.push('kade.permit.v1');
+  const tracked: readonly { readonly name: string; readonly uid: string | null }[] = [
+    { name: 'kade.review.v1', uid: input.reviewUid },
+    { name: 'kade.kyc.v1', uid: input.kycUid ?? null },
+    { name: 'kade.permit.v1', uid: input.serviceUid },
+  ];
+  const issued = tracked.filter((entry) => entry.uid !== null);
+  const awaiting = tracked
+    .filter((entry) => entry.uid === null)
+    .map((entry) => entry.name);
+  // The fee attestation is genuinely recorded once the pre-approval fee is
+  // verified on chain; otherwise it is not issued.
+  const feeIssued = input.preapprovalPaid;
+
+  const value = String(issued.length + (feeIssued ? 1 : 0));
+  const parts: string[] = [];
+  if (issued.length > 0) parts.push(`Issued: ${issued.map((e) => e.name).join(' · ')}`);
+  if (feeIssued && input.preapprovalUsdc !== null) {
+    parts.push(`Fee attestation recorded (${input.preapprovalUsdc} USDC)`);
+  }
+  if (awaiting.length > 0) {
+    parts.push(`Pending approval: ${awaiting.join(' · ')}`);
+  }
+
   return {
     label: 'Attestations',
-    value: String(issued.length),
-    sub: issued.length > 0 ? issued.join(' · ') : 'None issued yet',
-    tone: issued.length > 0 ? 'ink' : 'muted',
+    value,
+    sub: parts.length > 0 ? parts.join(' · ') : 'None issued yet',
+    tone: value === '0' ? 'muted' : 'ink',
     highlight: false,
     provenance: 'record',
   };
@@ -386,6 +452,138 @@ function fundsStage(input: OverviewInput): OverviewStage {
   };
 }
 
+/** The identity row: a real read when a kyc UID exists, else an honest pointer. */
+function identityStage(input: OverviewInput): OverviewStage {
+  const title = 'Identity verified';
+  if (input.kycUid) {
+    return {
+      title,
+      meta: `kade.kyc.v1 · ${input.kycUid}`,
+      status: 'Verified',
+      state: 'done',
+      provenance: 'record',
+    };
+  }
+  // The Overview does not read Self, so it cannot claim a verification. It says
+  // so instead of inventing one.
+  return {
+    title,
+    meta: 'Not read on this screen — open Residency for the live check',
+    status: 'See Residency',
+    state: 'queued',
+    provenance: 'unknown',
+  };
+}
+
+/** The documents row: the persisted demo flag, or an honest "not marked". */
+function documentsStage(input: OverviewInput): OverviewStage {
+  const title = 'Documents complete';
+  if (input.documentsComplete) {
+    return {
+      title,
+      meta: 'Marked complete in the demo — see Residency',
+      status: 'Completed',
+      state: 'done',
+      provenance: 'demo',
+    };
+  }
+  return {
+    title,
+    meta: 'Not marked complete — open Residency to upload',
+    status: 'Not started',
+    state: 'queued',
+    provenance: 'record',
+  };
+}
+
+/** The residency service fee: only reachable after the prerequisites are green. */
+function serviceFeeStage(input: OverviewInput): OverviewStage {
+  const title = 'Residency service fee';
+  if (input.serviceFeeUnlocked) {
+    return {
+      title,
+      meta: 'Prerequisites green — pay on the Residency step',
+      status: 'Action needed',
+      state: 'active',
+      provenance: 'record',
+    };
+  }
+  return {
+    title,
+    meta: 'Unlocks once identity, funds and the intake review are green',
+    status: 'Queued',
+    state: 'queued',
+    provenance: 'record',
+  };
+}
+
+/**
+ * "Start Residency" is the real milestone: it is reached once the service fee is
+ * paid and the permit is issued, not a fixed "queued". The permit is the
+ * programme's `kade.permit.v1`, so its presence is the honest "submitted" signal.
+ */
+function startResidencyStage(input: OverviewInput): OverviewStage {
+  const title = 'Start Residency';
+  if (input.serviceUid) {
+    return {
+      title,
+      meta: 'Submitted — your package is with the Immigration Service',
+      status: 'Submitted',
+      state: 'done',
+      provenance: 'record',
+    };
+  }
+  if (input.fee.status === 'paid' && input.serviceFeeUnlocked) {
+    return {
+      title,
+      meta: 'Service fee paid — permit issuance is pending approval',
+      status: 'In progress',
+      state: 'active',
+      provenance: 'record',
+    };
+  }
+  return {
+    title,
+    meta: 'Unlocks when the readiness checks are met — open Residency',
+    status: 'Queued',
+    state: 'queued',
+    provenance: 'record',
+  };
+}
+
+/**
+ * The Colosseum resident/citizen rows, from the persisted demo progress. These
+ * are declared demo state (`provenance: 'demo'`), so the honesty chip turns on
+ * while they are shown — the tracker never presents them as a real record.
+ */
+function colosseumStages(
+  progress: OverviewColosseumProgress | null | undefined,
+): readonly OverviewStage[] {
+  if (!progress) return [];
+  const citizen = progress.citizenAt !== null;
+  const since = progress.residentSince !== null || citizen;
+  return [
+    {
+      title: 'Colosseum Resident',
+      meta: since
+        ? 'Demo status unlocked on the Residency step'
+        : 'Not started — a 10 USDC demo threshold, open Residency',
+      status: since ? 'Demo · active' : 'Not started',
+      state: since ? 'active' : 'queued',
+      provenance: 'demo',
+    },
+    {
+      title: 'Colosseum Citizen',
+      meta: citizen
+        ? `Demo passport${progress.passportSerial ? ` · ${progress.passportSerial}` : ''}`
+        : 'Unlocks after 2 compliant demo minutes — open Residency',
+      status: citizen ? 'Demo · citizen' : since ? 'In progress' : 'Queued',
+      state: citizen ? 'done' : 'queued',
+      provenance: 'demo',
+    },
+  ];
+}
+
 function buildStages(input: OverviewInput): readonly OverviewStage[] {
   return [
     {
@@ -399,28 +597,13 @@ function buildStages(input: OverviewInput): readonly OverviewStage[] {
       provenance: 'record',
     },
     feeStage(input),
-    {
-      // Identity is read and attested on the Residency step, not here. Saying so
-      // is honest; inventing a status (the old "Verify with Self · in progress")
-      // is not.
-      title: 'Identity verified',
-      meta: 'Not read on this screen — open Residency for the live check',
-      status: 'See Residency',
-      state: 'queued',
-      provenance: 'unknown',
-    },
+    identityStage(input),
     fundsStage(input),
+    documentsStage(input),
     reviewStage(input.gate),
-    {
-      // The service-fee amount is resolved on the Residency step from
-      // `fee_schedule`; no figure is quoted here rather than pasted from the
-      // reference.
-      title: 'Start Residency',
-      meta: 'Unlocks when the readiness checks are met — open Residency',
-      status: 'Queued',
-      state: 'queued',
-      provenance: 'record',
-    },
+    serviceFeeStage(input),
+    startResidencyStage(input),
+    ...colosseumStages(input.colosseum),
   ];
 }
 

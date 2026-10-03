@@ -7,6 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { StatCard } from '@/components/ui/StatCard';
 import { tokens } from '@/components/ui/tokens';
 import { ReviewGateWatcher } from '@/components/review/ReviewGateWatcher';
+import { OverviewTracker } from '@/components/review/OverviewTracker';
 import { hasCompletedOnboarding } from '@/lib/onboarding/state';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
 import {
@@ -121,7 +122,7 @@ export default async function OverviewPage() {
     rows: vaultHoldings,
   });
 
-  const overview = buildOverview({
+  const overviewInput = {
     gate: reviewGate,
     tier: reviewState.tier,
     preapprovalUsdc: reviewState.preapprovalUsdc,
@@ -131,7 +132,16 @@ export default async function OverviewPage() {
     safeAddress: shellSafe.address,
     safeDeployed: shellSafe.deployed,
     qualified,
-  });
+    // The pre-approval fee is "paid" only when the receipt re-verifies; the
+    // attestation stat uses this to say whether the fee attestation is recorded.
+    preapprovalPaid: fee.status === 'paid',
+    // The Overview does not read Self or the residency gate, so a kyc UID is not
+    // available here and the tracker says so rather than claiming a proof.
+    kycUid: null,
+    // The persisted documents flag and Colosseum demo progress live only in the
+    // browser; the client `OverviewTracker` reads them and re-derives the rows.
+  };
+  const overview = buildOverview(overviewInput);
   const badge = demoBadgeLabel(overview);
 
   return (
@@ -233,73 +243,7 @@ export default async function OverviewPage() {
               </Link>
             </div>
 
-            <div style={{ marginTop: '10px' }}>
-              {overview.stages.map((stage, index) => (
-                <div
-                  key={stage.title}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '26px 1fr auto',
-                    gap: '12px',
-                    alignItems: 'center',
-                    padding: '11px 0',
-                    borderTop: `1px solid ${tokens.border}`,
-                    opacity: stage.state === 'queued' ? 0.6 : 1,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: '22px',
-                      height: '22px',
-                      borderRadius: '50%',
-                      background:
-                        stage.state === 'done'
-                          ? tokens.brandPrimary
-                          : stage.state === 'active'
-                            ? '#FDF6E7'
-                            : tokens.chipBg,
-                      color:
-                        stage.state === 'done'
-                          ? '#fff'
-                          : stage.state === 'active'
-                            ? tokens.warning
-                            : tokens.muted,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                    }}
-                  >
-                    {stage.state === 'done' ? '✓' : index + 1}
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '13.5px', fontWeight: 600 }}>
-                      {stage.title}
-                    </div>
-                    <div style={{ fontSize: '12px', color: tokens.muted }}>
-                      {stage.meta}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                      color:
-                        stage.state === 'done'
-                          ? tokens.success
-                          : stage.state === 'active'
-                            ? tokens.warning
-                            : tokens.muted,
-                    }}
-                  >
-                    {stage.status}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <OverviewTracker input={overviewInput} profileKey={session.userId} />
           </Card>
 
           <div style={{ display: 'grid', gap: '16px' }}>
