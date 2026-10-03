@@ -243,7 +243,10 @@ export default async function OverviewPage() {
               </Link>
             </div>
 
-            <OverviewTracker input={overviewInput} profileKey={session.userId} />
+            <OverviewTracker
+              input={overviewInput}
+              profileKey={reviewState.applicationId ?? session.userId}
+            />
           </Card>
 
           <div style={{ display: 'grid', gap: '16px' }}>

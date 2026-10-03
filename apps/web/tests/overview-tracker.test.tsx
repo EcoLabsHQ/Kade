@@ -85,3 +85,41 @@ describe('OverviewTracker persisted demo state', () => {
     );
   });
 });
+
+/**
+ * Regression (review finding F1): the Overview and the Residency step must key
+ * the persisted demo state on the SAME identity — `applications.id`, which is
+ * what `ResidencyStep` writes and what the Overview page now passes as
+ * `profileKey`. This test writes under the application id (the real writer key)
+ * and reads it back, pinning that the two surfaces agree.
+ */
+describe('OverviewTracker key agreement with the Residency step', () => {
+  const APPLICATION_ID = 'app-9f3c2b1a-0000-4000-8000-000000000001';
+
+  it('reads documents + Colosseum state persisted under the application id', () => {
+    window.localStorage.setItem(documentsFlagKey(APPLICATION_ID), '1');
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${APPLICATION_ID}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: null,
+        passportSerial: null,
+      }),
+    );
+
+    render(<OverviewTracker input={input()} profileKey={APPLICATION_ID} />);
+
+    expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
+    expect(screen.getByText('Colosseum Resident')).toBeInTheDocument();
+  });
+
+  it('does not read state written under a different identity', () => {
+    // Written under the auth user id (the wrong key), read under the application
+    // id: the tracker must show nothing, so a future key drift is caught.
+    window.localStorage.setItem(documentsFlagKey('a-different-user-id'), '1');
+
+    render(<OverviewTracker input={input()} profileKey={APPLICATION_ID} />);
+
+    expect(screen.getByText(/not marked complete/i)).toBeInTheDocument();
+  });
+});

@@ -148,6 +148,12 @@ function groupBy<T, K extends string>(
  * lets the screen stop hard-coding them.
  */
 export interface ResidentReviewState {
+  /**
+   * The resident's `applications.id`, or null when there is no application. It is
+   * the identity the Residency step persists demo state under, so the Overview
+   * reads the same key. Never the auth user id (they differ).
+   */
+  readonly applicationId: string | null;
   readonly status: ApplicationStatus | null;
   readonly tier: string | null;
   readonly preapprovalUsdc: number | null;
@@ -158,6 +164,7 @@ export interface ResidentReviewState {
 
 /** The all-unknown state, so a failed or absent read is explicit. */
 export const NO_RESIDENT_REVIEW_STATE: ResidentReviewState = {
+  applicationId: null,
   status: null,
   tier: null,
   preapprovalUsdc: null,
@@ -192,6 +199,7 @@ export async function loadResidentReviewState(
 
   const latest = (events as unknown as ReviewEventRow[] | null)?.[0] ?? null;
   const row = application as {
+    id: string;
     status: ApplicationStatus;
     tier: string | null;
     preapproval_usdc: number | string | null;
@@ -199,6 +207,7 @@ export async function loadResidentReviewState(
     service_uid: string | null;
   };
   return {
+    applicationId: row.id,
     status: row.status,
     tier: row.tier,
     preapprovalUsdc: toNumber(row.preapproval_usdc),
