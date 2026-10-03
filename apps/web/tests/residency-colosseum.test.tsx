@@ -1,0 +1,153 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
+import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
+
+/**
+ * The mocked Colosseum sub-section inside Residency.
+ *
+ * States A–E are driven by the real derived checks; the 2-minute clock and the
+ * passport are component state. The clock is advanced with fake timers so the
+ * "Become a Citizen" gate and the nav highlight can be exercised without a real
+ * two-minute wait.
+ */
+
+function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
+  return {
+    tier: 'colosseum',
+    identity: {
+      provider: 'self',
+      status: 'valid',
+      verifiedAt: '2026-09-20T00:00:00Z',
+      selfNullifier: 'n',
+    },
+    qualified: { status: 'known', usd: 10 },
+    review: 'cleared',
+    serviceFee: { recorded: true, verified: true, amountUsdc: 10 },
+    permit: { issued: false, uid: null },
+    ...overrides,
+  };
+}
+
+function checks(f: ResidencyFacts) {
+  return deriveResidencyView(f, true).checks;
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  window.localStorage.clear();
+});
+
+afterEach(() => {
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
+  cleanup();
+  window.localStorage.clear();
+});
+
+describe('ColosseumResidency — states', () => {
+  it('State A: below 10 USDC shows the threshold and the real qualified figure', () => {
+    render(
+      <ColosseumResidency
+        checks={checks(facts({ qualified: { status: 'known', usd: 4 } }))}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-state-a')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-qualified')).toHaveTextContent('$4');
+    expect(screen.getByTestId('colosseum-threshold')).toHaveTextContent(
+      '10 USDC',
+    );
+    expect(screen.queryByTestId('colosseum-state-c')).toBeNull();
+  });
+
+  it('State A: an unread vault never shows a fabricated figure', () => {
+    render(
+      <ColosseumResidency
+        checks={checks(
+          facts({ qualified: { status: 'unknown', reason: 'RPC failed.' } }),
+        )}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-qualified')).toHaveTextContent(
+      'Not available yet',
+    );
+    expect(screen.getByTestId('colosseum-qualified')).not.toHaveTextContent(/\$/);
+  });
+
+  it('State B: funds met but other checks pending shows the steps pop-up pointer', () => {
+    render(
+      <ColosseumResidency
+        checks={checks(facts({ identity: null }))}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-state-b')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: /complete your residency steps/i }),
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('State C: all four checks green shows the congrats and the exact sentence', () => {
+    render(<ColosseumResidency checks={checks(facts())} />);
+
+    expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
+    expect(screen.getByText(/you’re a colosseum resident/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /remain a compliant resident for 2 minutes to be eligible to become a colosseum citizen\./i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+  });
+
+  it('keeps "Become a Citizen" locked until the 2 minutes elapse', () => {
+    render(<ColosseumResidency checks={checks(facts())} />);
+
+    // Still counting down: no available citizen action yet.
+    expect(screen.queryByTestId('colosseum-state-d')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /become a citizen/i }),
+    ).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+
+    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /become a citizen/i }),
+    ).toBeEnabled();
+  });
+
+  it('State D → E: becoming a citizen shows the virtual passport and clears the highlight', () => {
+    render(<ColosseumResidency checks={checks(facts())} />);
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    // The highlight is on in State D.
+    expect(window.localStorage.getItem('kade.colosseum.attention')).toBe('1');
+
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
+    expect(screen.getByText(/virtual passport/i)).toBeInTheDocument();
+    expect(screen.getByText('Demo · not a real passport')).toBeInTheDocument();
+    // Becoming a citizen clears the nav highlight.
+    expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
+  });
+
+  it('does not highlight or count down before the checks are green', () => {
+    render(
+      <ColosseumResidency
+        checks={checks(facts({ review: 'pending' }))}
+      />,
+    );
+
+    expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
+    expect(screen.queryByTestId('colosseum-countdown')).toBeNull();
+  });
+});

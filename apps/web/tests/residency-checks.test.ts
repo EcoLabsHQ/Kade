@@ -50,9 +50,39 @@ describe('tierMinimumUsdc', () => {
     expect(tierMinimumUsdc('INDEFINITE')).toBe(850000);
   });
 
+  it('reads the Colosseum Resident demo tier at 10 USDC', () => {
+    expect(tierMinimumUsdc('colosseum')).toBe(10);
+  });
+
+  it('leaves the three production tiers unchanged', () => {
+    expect(tierMinimumUsdc('3-year')).toBe(280000);
+    expect(tierMinimumUsdc('5-year')).toBe(425000);
+    expect(tierMinimumUsdc('indefinite')).toBe(850000);
+  });
+
   it('returns null for no tier or an unknown tier', () => {
     expect(tierMinimumUsdc(null)).toBeNull();
     expect(tierMinimumUsdc('platinum')).toBeNull();
+  });
+});
+
+describe('deriveChecks — funds at the Colosseum tier', () => {
+  it('is met at 10 USDC through the same funds check as the production tiers', () => {
+    const result = check(
+      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 10 } }),
+      'funds',
+    );
+    expect(result.state).toBe('met');
+    expect(result.detail).toBe('$10 meets the tier.');
+  });
+
+  it('is pending below 10 USDC and names the Colosseum threshold', () => {
+    const result = check(
+      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 4 } }),
+      'funds',
+    );
+    expect(result.state).toBe('pending');
+    expect(result.detail).toBe('$4 of $10.');
   });
 });
 

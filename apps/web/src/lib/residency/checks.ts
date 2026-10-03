@@ -16,7 +16,7 @@
  * a change to the frozen tier table cannot drift from the check.
  */
 
-import { TIERS } from '@kade/shared';
+import { TIERS, TIER_DATABASE_VALUES } from '@kade/shared';
 import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 
 /* -------------------------------------------------------------------------- */
@@ -91,11 +91,23 @@ export interface ResidencyCheck {
   readonly blocksServiceFee: boolean;
 }
 
-/** The production qualifying minimum for `applications.tier`, or null. */
+/**
+ * The production qualifying minimum for `applications.tier`, or null.
+ *
+ * The argument is the stored `applications.tier` value. The database encoding
+ * is the authority, so this matches `TIER_DATABASE_VALUES` (and, for
+ * compatibility, the tier's display name) case-insensitively. The three
+ * production encodings equal their lower-cased names, so this is unchanged for
+ * them; the Colosseum Resident demo tier stores `colosseum`, which is its
+ * database value rather than its two-word name.
+ */
 export function tierMinimumUsdc(tier: string | null): number | null {
   if (!tier) return null;
+  const normalized = tier.trim().toLowerCase();
   const match = TIERS.find(
-    (candidate) => candidate.name.toLowerCase() === tier.trim().toLowerCase(),
+    (candidate) =>
+      TIER_DATABASE_VALUES[candidate.index].value.toLowerCase() === normalized ||
+      candidate.name.toLowerCase() === normalized,
   );
   return match ? match.minUsdc : null;
 }

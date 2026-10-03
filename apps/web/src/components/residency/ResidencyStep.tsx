@@ -13,6 +13,7 @@ import {
   type SelfSessionActionOutcome,
 } from '@/app/residency/actions';
 import { ServiceFeePayment } from './ServiceFeePayment';
+import { ColosseumResidency } from './ColosseumResidency';
 import {
   SelfVerificationModal,
   type SelfModalState,
@@ -350,6 +351,13 @@ export function ResidencyStep({
         onClose={() => setSelfOpen(false)}
         state={selfState}
       />
+
+      {/*
+        The mocked Colosseum sub-section, anchored to the real "Start Residency"
+        milestone. It reuses the four real checks and their derived state; its
+        2-minute clock and passport are client-side demo state (see the file).
+      */}
+      <ColosseumResidency checks={view.checks} />
 
       {notice ? (
         <p role="status" style={{ ...feeBody, color: tokens.chipFg, marginTop: '16px' }}>
