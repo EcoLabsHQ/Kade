@@ -156,14 +156,35 @@ describe('ResidencyStep — reference layout', () => {
 
   it('marks a row Ready when its record is present', () => {
     renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
-    expect(screen.getAllByText('Ready')).toHaveLength(3);
+    // The qualified row carries the tier's required amount beside the status,
+    // so only the other two met rows read a bare "Ready".
+    expect(screen.getAllByText('Ready')).toHaveLength(2);
+    expect(screen.getByText('Ready · $280,000')).toBeInTheDocument();
     expect(screen.getAllByText('3 of 4 ready').length).toBeGreaterThan(0);
+  });
+
+  it('shows the tier minimum beside the Ready status on the qualified row', () => {
+    // The recorded tier's real minimum, from the shared tier table, not a
+    // literal in the component.
+    renderStep(facts({ tier: 'colosseum', qualified: { status: 'known', usd: 10 } }));
+    expect(screen.getByText('Ready · $10')).toBeInTheDocument();
   });
 
   it('shows the below-tier shortfall in the baseline wording', () => {
     renderStep(pendingFacts());
     expect(
-      screen.getByText(/\$0 of \$280,000 · \$280,000 to go/),
+      screen.getByText(/\$0\.00 of \$280,000 · \$280,000\.00 to go/),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the "to go" rewrite for a fractional balance', () => {
+    // The reported defect: the "$X of $Y · $Z to go" rewrite stopped matching
+    // once the balance carried decimals, so it fell back to "$X of $Y.".
+    renderStep(
+      pendingFacts({ qualified: { status: 'known', usd: 279_986.162 } }),
+    );
+    expect(
+      screen.getByText(/\$279,986\.16 of \$280,000 · \$13\.84 to go/),
     ).toBeInTheDocument();
   });
 
@@ -184,11 +205,11 @@ describe('ResidencyStep — reference layout', () => {
     expect(screen.queryByText(/\$0 of/)).toBeNull();
   });
 
-  it('shows the fee amount and the pre-approval paid line', () => {
+  it('shows the fee amount and the pre-approval paid line with two decimals', () => {
     renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
-    expect(screen.getByText('10 USDC')).toBeInTheDocument();
+    expect(screen.getByText('10.00 USDC')).toBeInTheDocument();
     expect(
-      screen.getByText(/pre-approval fee already paid: 447 USDC/i),
+      screen.getByText(/pre-approval fee already paid: 447\.00 USDC/i),
     ).toBeInTheDocument();
   });
 });
