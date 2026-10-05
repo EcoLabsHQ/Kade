@@ -77,7 +77,15 @@ export default async function HoldingsPage() {
   // The Safe's qualified holdings are a fresh on-chain read pointed at the Safe
   // address. No deposit flow persists a vault position, so the chain is the only
   // truthful source; a failed read stays visible rather than becoming a zero.
-  const vaultHoldings = await loadVaultHoldings(shellSafe.address);
+  //
+  // The review bar is an independent record read that depends only on the
+  // session, so it is issued in the same stage as the chain read rather than
+  // serially after it. Both start as soon as the Safe address is known; neither
+  // waits on the other.
+  const [vaultHoldings, reviewBar] = await Promise.all([
+    loadVaultHoldings(shellSafe.address),
+    loadReviewBar(session.userId),
+  ]);
 
   // The one qualified total, reduced once from the rows above. The residency
   // tier check reduces the same Safe's rows with the same function, so the
@@ -88,7 +96,6 @@ export default async function HoldingsPage() {
   });
 
   const walletConfigured = readWalletConnectProjectId() !== null;
-  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <WalletProvider>
