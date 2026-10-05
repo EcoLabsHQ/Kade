@@ -33,7 +33,11 @@ import {
   addressExplorerUrl,
   transactionExplorerUrl,
 } from '@/lib/wealth/explorer';
-import { usd } from '@/lib/wealth/format';
+import { usd, usd2 } from '@/lib/wealth/format';
+import {
+  summarizeQualifiedPosition,
+  type QualifiedPosition,
+} from '@/lib/wealth/qualified-position';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
 /**
@@ -115,6 +119,20 @@ export interface InvestScreenProps {
    * reason and never becomes a zero.
    */
   readonly holdings: readonly VaultHoldingRow[];
+  /**
+   * The Safe's **qualified** total, produced once by the route with
+   * {@link summarizeQualifiedPosition} from the same `holdings` rows. This is
+   * the native-inclusive total — native coin + USDC + MetaMorpho allocations —
+   * and it is the **same** reduction the Holdings `QUALIFIED` card and the
+   * residency tier check consume, so Invest and Holdings cannot disagree. When
+   * omitted the screen reduces `holdings` with the same function, so a bare
+   * render stays consistent.
+   *
+   * It is deliberately separate from {@link summarizeInvestPosition}, which
+   * stays USDC/Morpho only: native coin counts toward the qualified total but is
+   * **not** an Invest instrument and cannot be allocated.
+   */
+  readonly qualified?: QualifiedPosition;
   /**
    * Each pinned rail's current yield, read **once** by the route from Morpho's
    * public API through {@link readMorphoVaultYield} and keyed by chain id.
@@ -268,12 +286,23 @@ export function InvestScreen({
   vaults,
   safeAddress,
   holdings,
+  qualified,
   yields,
 }: InvestScreenProps) {
   // The one position read, reduced for the whole screen: the stat cards, each
   // row's state and the allocate preview all come from these same rows, so the
   // screen cannot show two different versions of the resident's position.
   const position = summarizeInvestPosition({ holdings, safeAddress, vaults });
+
+  // The one **qualified** total, over the same rows: the route computes it with
+  // `summarizeQualifiedPosition` and passes it in, so Invest reads the exact
+  // value Holdings and the residency tier check consume. A bare render (no prop)
+  // still reduces the same rows with the same function, so the two can never
+  // disagree. This is native-inclusive; it is not the Invest position and does
+  // not make native coin allocatable.
+  const qualifiedPosition =
+    qualified ??
+    summarizeQualifiedPosition({ safeAddress, rows: holdings });
 
   // The App Router router, used **once per completed operation** to re-read the
   // route's server data (the Safe's position) after a confirmed receipt. The
@@ -828,10 +857,34 @@ export function InvestScreen({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1fr 1fr 1fr',
           gap: '16px',
         }}
       >
+        {/*
+          The qualified total, native-inclusive. It is the **same** reduction the
+          Holdings `QUALIFIED` card and the residency tier check consume, so the
+          two screens render the identical figure. It is shown here so a resident
+          whose Safe holds native ETH sees that value count toward their permit
+          rather than vanishing from Invest. It is deliberately distinct from the
+          two USDC/Morpho figures beside it: native coin is **not** an Invest
+          instrument and cannot be allocated.
+        */}
+        <Stat
+          label='Qualified position'
+          testId='invest-stat-qualified'
+          value={
+            qualifiedPosition.status === 'known'
+              ? usd2(qualifiedPosition.usd)
+              : '—'
+          }
+          mutedValue={qualifiedPosition.status === 'unknown'}
+          note={
+            qualifiedPosition.status === 'known'
+              ? 'Native, USDC and allocations · the same total as Holdings'
+              : qualifiedPosition.reason
+          }
+        />
         <Stat
           label='Vault USDC available'
           testId='invest-stat-vault-usdc'
@@ -843,7 +896,7 @@ export function InvestScreen({
           mutedValue={position.freeUsdc.status === 'unknown'}
           note={
             position.freeUsdc.status === 'known'
-              ? 'Allocating does not change your qualifying balance.'
+              ? 'Free USDC only · not the qualified total.'
               : position.freeUsdc.reason
           }
         />
