@@ -1,0 +1,33 @@
+- id: F1
+  severity: FAIL
+  scope: overview-tracker-client
+  title: "Overview tracker reads a different profile key than the Residency step writes"
+  evidence: "apps/web/src/components/residency/ResidencyStep.tsx:113,162,381; apps/web/src/app/page.tsx:248; apps/web/src/lib/review/queue.ts:210; apps/web/src/lib/residency/server.ts:237; apps/web/tests/overview-tracker.test.tsx"
+  failure_mode: "Closed by eadb2f6 and confirmed at 618e8e3: the Residency step writes demo state under applications.id (snapshot.applicationId) and the Overview page reads under the same applications.id (reviewState.applicationId). Both ids are the same row selected by profile_id = session.userId. A regression writes under the application id and reads it back; a negative case pins that a different identity is not read."
+  materiality: "Resolved; reader and writer agree on the key."
+  status: resolved
+  introduced_by: e125e3af891296c6e5c3a312b7bab68d9be37260
+  resolved_by: eadb2f6085cd4ff3e8564f35d70846891dd7cff8
+  recheck_attempts: 1
+- id: F2
+  severity: WARN
+  scope: residency-demo-persistence
+  title: "Upload renders a fabricated '6 of 6 uploaded' with no demo marker on the Residency screen"
+  evidence: "apps/web/src/components/residency/ResidencyStep.tsx:155-157"
+  failure_mode: "Resolved by 618e8e3: the completed state now reads 'Marked complete in the demo · no document is uploaded' instead of claiming a completed upload."
+  materiality: "Resolved; the copy no longer fabricates an upload."
+  status: resolved
+  introduced_by: e125e3af891296c6e5c3a312b7bab68d9be37260
+  resolved_by: 618e8e3
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: passport-ui
+  title: "Two import statements merged onto one line"
+  evidence: "apps/web/src/components/residency/ColosseumResidency.tsx:3-4"
+  failure_mode: "Resolved by 618e8e3: the `react` and `tokens` imports are now on separate lines."
+  materiality: "Style, not behavior. Resolved."
+  status: resolved
+  introduced_by: e125e3af891296c6e5c3a312b7bab68d9be37260
+  resolved_by: 618e8e3
+  recheck_attempts: 1

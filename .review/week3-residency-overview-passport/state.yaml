@@ -1,0 +1,31 @@
+iteration: week3-residency-overview-passport
+profile: NORMAL
+known_good: de93e7cf64c7b162d55f73f77e35f5123d97cb68
+candidate: 618e8e3
+mode: resume
+reviewed_scopes:
+  residency-demo-persistence: complete
+  overview-derivation: complete
+  overview-tracker-client: complete
+  passport-ui: complete
+  tests: complete
+active_findings: []
+resolved_findings: [F1, F2, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 618e8e3
+  recorded_at: 2026-10-05
+  note: "Run with Node v22.17.0 per .nvmrc; the default shell Node v18.19.1 fails vitest config load for apps/web (environmental, not a regression)."
+notes:
+  - "RECHECK closed F1/F2/F3 (all resolved at 618e8e3). The run then continued into RESUME and completed the remaining partial scopes."
+  - "Invalidation: 618e8e3 touched passport-ui's ColosseumResidency.tsx (import fix); the scope was re-covered and returned to complete before this verdict."
+  - "F1 reader/writer agreement verified against the real call sites, not only the test: both applicationId values are applications.id selected by profile_id."
+  - "Minor non-blocking observation: Overview reader falls back to session.userId for a null applicationId while Residency normalizes null to 'unrecorded'; unreachable because Residency only renders with an application."
