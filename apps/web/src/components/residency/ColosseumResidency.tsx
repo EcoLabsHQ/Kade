@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { tokens } from '@/components/ui/tokens';
 import { Modal } from '@/components/ui/Modal';
-import type { ResidencyCheckId } from '@/lib/residency/checks';
+import { tierMinimumUsdc, type ResidencyCheckId } from '@/lib/residency/checks';
 import {
   setColosseumAttention,
 } from '@/components/shell/colosseum-attention';
@@ -35,6 +35,26 @@ import {
  * tiers (`tierMinimumUsdc`), so this section adds no separate threshold of its
  * own.
  */
+
+function resolveColosseumMinimum(): number {
+  const minimum = tierMinimumUsdc('colosseum');
+  if (minimum === null) {
+    // `TIERS` always carries the Colosseum entry; a missing one is a programming
+    // error, not a state to render.
+    throw new Error('The Colosseum tier is missing from the shared TIERS table.');
+  }
+  return minimum;
+}
+
+/**
+ * The Colosseum demo minimum, resolved from the shared tier table through the
+ * same `tierMinimumUsdc` the production `funds` check uses, so this section's
+ * threshold copy cannot drift from the real config.
+ */
+const COLOSSEUM_MINIMUM_USDC = resolveColosseumMinimum();
+
+/** The threshold as this section writes it, e.g. `10 USDC`. */
+const COLOSSEUM_THRESHOLD = `${COLOSSEUM_MINIMUM_USDC.toLocaleString('en-US')} USDC`;
 
 /** The four real residency checks the Colosseum layer reuses, in display order. */
 const REQUIRED_CHECKS: readonly ResidencyCheckId[] = [
@@ -92,12 +112,14 @@ function secondsRemainingFrom(residentSince: string | null, now: number): number
 /**
  * The real qualified figure carried by the funds check detail. The funds check
  * formats a below-threshold balance as "$X of $Y." and a met balance as "$X
- * meets the tier."; the leading "$X" is the resident's real qualified amount.
- * When the detail does not carry a figure (e.g. an unread vault), this returns
- * null and the caller says so, so the section never invents a balance.
+ * meets the tier."; the leading "$X" is the resident's real qualified amount,
+ * now with two decimals. The pattern accepts the decimal part so a fractional
+ * balance is shown in full rather than truncated at the point. When the detail
+ * does not carry a figure (e.g. an unread vault), this returns null and the
+ * caller says so, so the section never invents a balance.
  */
 function qualifiedFigure(detail: string): string | null {
-  const match = detail.match(/^\$([\d,]+)/);
+  const match = detail.match(/^\$([\d,]+(?:\.\d+)?)/);
   return match ? `$${match[1]}` : null;
 }
 
@@ -203,7 +225,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
       <p style={body}>
         The Colosseum track reuses your real residency checks and your real
         qualified position — it adds no check of its own. A Colosseum Resident
-        qualifies at a demo-scale 10 USDC.
+        qualifies at a demo-scale {COLOSSEUM_THRESHOLD}.
       </p>
 
       {/* State A — not eligible yet: the real funds check is below the 10 USDC
@@ -257,19 +279,19 @@ function StateA({
   const figure = qualifiedFigure(detail);
   return (
     <div data-testid="colosseum-state-a" style={stateBox}>
-      <h3 style={stateTitle}>Reach the 10 USDC threshold</h3>
+      <h3 style={stateTitle}>Reach the {COLOSSEUM_THRESHOLD} threshold</h3>
       {onColosseumTier ? (
         <p style={body}>
-          Fund your qualified vault to reach the 10 USDC Colosseum threshold. It
-          is read through the same qualified-holdings check as the production
-          tiers.
+          Fund your qualified vault to reach the {COLOSSEUM_THRESHOLD} Colosseum
+          threshold. It is read through the same qualified-holdings check as the
+          production tiers.
         </p>
       ) : (
         <p style={body}>
-          The Colosseum track qualifies at 10 USDC. Your current tier has its own
-          qualified-holdings minimum, so the Colosseum step unlocks once that
-          check is met — or choose the Colosseum Resident tier in onboarding to
-          qualify at 10 USDC.
+          The Colosseum track qualifies at {COLOSSEUM_THRESHOLD}. Your current
+          tier has its own qualified-holdings minimum, so the Colosseum step
+          unlocks once that check is met — or choose the Colosseum Resident tier
+          in onboarding to qualify at {COLOSSEUM_THRESHOLD}.
         </p>
       )}
       <div style={metricRow}>
@@ -281,7 +303,7 @@ function StateA({
       <div style={metricRow}>
         <span style={metricLabel}>Colosseum threshold</span>
         <span data-testid="colosseum-threshold" style={metricValue}>
-          10 USDC
+          {COLOSSEUM_THRESHOLD}
         </span>
       </div>
     </div>
@@ -300,7 +322,7 @@ function StateB({
 }) {
   return (
     <div data-testid="colosseum-state-b" style={stateBox}>
-      <h3 style={stateTitle}>You meet the 10 USDC threshold</h3>
+      <h3 style={stateTitle}>You meet the {COLOSSEUM_THRESHOLD} threshold</h3>
       <p style={body}>
         Your qualified position is above the Colosseum minimum. Complete your
         four residency checks above to become a Colosseum Resident.

@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Hex } from 'viem';
 import { tokens } from '@/components/ui/tokens';
-import type { ResidencyCheck } from '@/lib/residency/checks';
+import { tierMinimumUsdc, type ResidencyCheck } from '@/lib/residency/checks';
+import { usd, usd2, usdc2 } from '@/lib/wealth/format';
 import type { ResidencySnapshot } from '@/lib/residency/server';
 import type { PermitIssuanceResult } from '@/lib/residency/permit';
 import {
@@ -74,19 +75,23 @@ function permitMessage(result: PermitIssuanceResult): string {
 
 /**
  * The funds row meta in the baseline's wording: "$X of $Y · $Z to go". The
- * numbers come from the derived check, which formats them as "$X of $Y."; the
- * shortfall is recomputed here so the copy matches the reference.
+ * numbers come from the derived check, which formats the balance with two
+ * decimals ("$X of $Y."); the shortfall is recomputed here so the copy matches
+ * the reference. The pattern accepts a decimal balance, so a fractional figure
+ * keeps the "to go" rewrite instead of silently falling back to the detail.
  */
 function fundsMeta(check: ResidencyCheck | undefined): string {
   if (!check) return 'No qualifying tier is set.';
-  const match = check.detail.match(/^\$([\d,]+) of \$([\d,]+)\.$/);
+  const match = check.detail.match(
+    /^\$([\d,]+(?:\.\d+)?) of \$([\d,]+(?:\.\d+)?)\.$/,
+  );
   if (!match) return check.detail;
   const haveRaw = match[1] ?? '0';
   const needRaw = match[2] ?? '0';
   const have = Number(haveRaw.replace(/,/g, ''));
   const need = Number(needRaw.replace(/,/g, ''));
   const toGo = Math.max(0, need - have);
-  return `$${haveRaw} of $${needRaw} · $${toGo.toLocaleString('en-US')} to go`;
+  return `$${haveRaw} of $${needRaw} · ${usd2(toGo)} to go`;
 }
 
 export function ResidencyStep({
@@ -127,6 +132,9 @@ export function ResidencyStep({
   const submitted = view.permitIssued;
   const serviceFeeUnlocked = snapshot.preapprovalPaid && view.serviceFeeUnlocked;
   const tierLabel = snapshot.tier ?? '5-year';
+  // The recorded tier's real minimum, for the required amount beside the
+  // qualified row's "Ready" status. Null when no/unknown tier: no amount shown.
+  const tierMinimum = tierMinimumUsdc(snapshot.tier);
 
   // Documents are not tracked in this iteration; the row mirrors the baseline.
   const readiness = [
@@ -142,7 +150,13 @@ export function ResidencyStep({
     },
     {
       key: 'funds',
-      title: `Qualified holdings meet ${tierLabel} tier`,
+      // The recorded tier's real required amount sits immediately after the
+      // label, derived from the tier config rather than a literal and rendered
+      // whole-dollar like the threshold. Null/unknown tier appends nothing.
+      title:
+        tierMinimum === null
+          ? `Qualified holdings meet ${tierLabel} tier`
+          : `Qualified holdings meet ${tierLabel} tier · ${usd(tierMinimum)}`,
       meta: fundsMeta(funds),
       done: funds?.state === 'met',
       action: 'Move funds',
@@ -298,7 +312,7 @@ export function ResidencyStep({
           <div style={feeAmount}>
             {snapshot.serviceFeeAmountUsdc === null
               ? '—'
-              : `${snapshot.serviceFeeAmountUsdc.toLocaleString('en-US')} USDC`}
+              : `${usdc2(snapshot.serviceFeeAmountUsdc)} USDC`}
           </div>
           <div style={{ fontSize: '12.5px', color: tokens.muted, marginTop: '2px' }}>
             Payable once — only when all four checks are ready
@@ -309,7 +323,7 @@ export function ResidencyStep({
             fee already paid:{' '}
             {snapshot.preapprovalUsdc === null
               ? '—'
-              : `${snapshot.preapprovalUsdc.toLocaleString('en-US')}`}{' '}
+              : usdc2(snapshot.preapprovalUsdc)}{' '}
             USDC.
           </div>
           <div style={{ flex: 1 }} />

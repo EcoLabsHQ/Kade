@@ -168,7 +168,7 @@ describe('the qualified total', () => {
     );
 
     expect(cardValue('Qualified')).toBe('$7,777');
-    expect(fundsDetail(position)).toBe('$7,777 of $280,000.');
+    expect(fundsDetail(position)).toBe('$7,777.00 of $280,000.');
   });
 
   it('reports unknown with its specific reason — and never a fabricated $0 — when the position read failed', () => {
@@ -234,7 +234,7 @@ describe('the qualified total', () => {
     // A successful read of an empty Safe is a real, known zero.
     const empty = summarizeQualifiedPosition({ safeAddress: SAFE, rows: [] });
     expect(empty).toEqual({ status: 'known', usd: 0 });
-    expect(fundsDetail(empty)).toBe('$0 of $280,000.');
+    expect(fundsDetail(empty)).toBe('$0.00 of $280,000.');
 
     render(
       <HoldingsScreen
