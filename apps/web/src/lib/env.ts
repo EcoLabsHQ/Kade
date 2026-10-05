@@ -25,11 +25,24 @@ const DEFAULT_SITE_URL = 'http://localhost:3000';
 /** [arbitrary] the Supabase SSR callback path, from .env.example. */
 const DEFAULT_CALLBACK_PATH = '/auth/callback';
 
+/**
+ * The site's absolute origin, used for auth callbacks and for the document
+ * metadata base (canonical/OpenGraph URLs).
+ *
+ * `NEXT_PUBLIC_SITE_URL` is the single source of truth for the public origin;
+ * the localhost fallback keeps local development working when it is unset.
+ * Metadata must not hard-code a production URL, so `layout.tsx` resolves its
+ * `metadataBase` through here rather than inventing a second constant.
+ */
+export function readSiteUrl(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL?.trim() || DEFAULT_SITE_URL;
+}
+
 export function readAuthEnv(): AuthEnv {
   return {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || null,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || null,
-    siteUrl: process.env.NEXT_PUBLIC_SITE_URL?.trim() || DEFAULT_SITE_URL,
+    siteUrl: readSiteUrl(),
     callbackPath:
       process.env.NEXT_PUBLIC_AUTH_CALLBACK_PATH?.trim() || DEFAULT_CALLBACK_PATH,
   };
