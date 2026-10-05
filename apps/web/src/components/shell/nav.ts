@@ -15,7 +15,7 @@ export interface NavGroupConfig {
  *
  * Week 2 unlocks the Residency step, Holdings and Invest — they are in scope per
  * `docs/week-2-frozen-delivery-contract.md` (D16–D18). The Finance rails
- * (Bank ↔ Crypto and Card & Banking) are a purely presentational mock, in scope
+ * (Bank ↔ Crypto and Card) are a purely presentational mock, in scope
  * for the Week 3 increment per `docs/week-3-frozen-delivery-contract.md`
  * (FIN-1): they render demo data and create no capability, so their nav items are
  * plain links. The Vote screen is a declared presentational mock per
@@ -50,7 +50,7 @@ export const RESIDENT_NAV: readonly NavGroupConfig[] = [
     label: 'Finance',
     items: [
       { href: '/bank', label: 'Bank ↔ Crypto' },
-      { href: '/card', label: 'Card & Banking' },
+      { href: '/card', label: 'Card' },
     ],
   },
 ];
