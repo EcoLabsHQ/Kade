@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { chainsForEnv } from '@kade/shared';
 import { Sidebar } from './Sidebar';
 import { PreApprovedBanner } from './PreApprovedBanner';
+import { SiteFooter } from './SiteFooter';
 import { RESIDENT_NAV, type NavGroupConfig } from './nav';
 import type { StepperItem } from '@/components/onboarding/PreRegistrationStepper';
 import type { ShellReviewState } from './ReviewStatusChip';
@@ -114,6 +115,13 @@ export function AppShell({
       >
         {review.show ? <PreApprovedBanner reference={review.reference} /> : null}
         {children}
+        {/*
+          The global footer lives here, in the one shell every authenticated
+          route renders, rather than being passed per-route through
+          `ContentContainer footer={...}`. It is a sibling of the page's padded
+          content column, so its own spacing is the only gap below it.
+        */}
+        <SiteFooter />
       </main>
     </div>
   );

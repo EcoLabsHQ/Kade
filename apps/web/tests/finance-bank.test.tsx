@@ -28,9 +28,11 @@ describe('BankScreen reference layout', () => {
     expect(
       screen.getByRole('heading', { name: 'Bank ↔ Crypto' }),
     ).toBeInTheDocument();
+    // The human-directed description (demo-feedback-1): the previous
+    // "cash out to one. GOS handles the rails…" copy is replaced verbatim.
     expect(
       screen.getByText(
-        /Fund your vault from a bank account, or cash out to one\./,
+        'Fund your vault from a bank account, or offramp into your bank.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('powered by GOS')).toBeInTheDocument();

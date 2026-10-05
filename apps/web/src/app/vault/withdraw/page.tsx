@@ -1,7 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
-import { SiteFooter } from '@/components/shell/SiteFooter';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadReviewBar } from '@/lib/review/review-bar';
@@ -57,7 +56,7 @@ export default async function OperatorWithdrawPage() {
       reviewReference={reviewBar.reference}
       isReviewer={reviewBar.isReviewer}
     >
-      <ContentContainer footer={<SiteFooter />}>
+      <ContentContainer>
         <WithdrawScreen safeAddress={shellSafe.address} balances={balances} />
       </ContentContainer>
     </AppShell>

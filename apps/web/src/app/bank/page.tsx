@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
-import { SiteFooter } from '@/components/shell/SiteFooter';
 import { BankScreen } from '@/components/finance/bank/BankScreen';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
@@ -41,7 +40,7 @@ export default async function BankPage() {
       reviewReference={reviewBar.reference}
       isReviewer={reviewBar.isReviewer}
     >
-      <ContentContainer footer={<SiteFooter />}>
+      <ContentContainer>
         <BankScreen />
       </ContentContainer>
     </AppShell>

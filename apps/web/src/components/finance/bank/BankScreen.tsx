@@ -774,8 +774,7 @@ export function BankScreen() {
               textWrap: 'pretty',
             }}
           >
-            Fund your vault from a bank account, or cash out to one. GOS handles
-            the rails and compliance; you sign once.
+            Fund your vault from a bank account, or offramp into your bank.
           </p>
         </div>
         <span

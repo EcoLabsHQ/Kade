@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
-import { SiteFooter } from '@/components/shell/SiteFooter';
 import { CardScreen } from '@/components/finance/card/CardScreen';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
@@ -41,7 +40,7 @@ export default async function CardPage() {
       reviewReference={reviewBar.reference}
       isReviewer={reviewBar.isReviewer}
     >
-      <ContentContainer footer={<SiteFooter />}>
+      <ContentContainer>
         <CardScreen />
       </ContentContainer>
     </AppShell>

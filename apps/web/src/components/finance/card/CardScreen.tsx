@@ -148,8 +148,7 @@ export function CardScreen() {
               textWrap: 'pretty',
             }}
           >
-            Spend from your vault in XCG anywhere on the island. Ordering
-            unlocks once intake review completes.
+            Spend from your vault in XCG anywhere on the island.
           </p>
         </div>
         <Chip tone="muted" dot>
@@ -612,7 +611,20 @@ function InfoTile({
   );
 }
 
-/** The "Altitude banking" banner, shown in both states (615–643). */
+/**
+ * The prefilled `mailto:` for "Apply for early access". The subject is
+ * URL-encoded (spaces as `%20`) so it arrives verbatim in the mail client.
+ */
+const EARLY_ACCESS_MAILTO =
+  'mailto:info@labs.eco?subject=Please%20keep%20me%20up%20to%20date%20on%20Banking%20opportunities.';
+
+/**
+ * The banking banner, shown in both states (615–643).
+ *
+ * Before applying, the call to action is a `mailto:` link that opens the
+ * resident's mail client and records the local "already applied" state; after
+ * applying it is a plain button. Neither state creates a capability.
+ */
 function AltitudeBanner({
   applied,
   onApply,
@@ -627,7 +639,7 @@ function AltitudeBanner({
       style={{
         border: '1px dashed #C6D2E0',
         display: 'grid',
-        gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr) auto',
+        gridTemplateColumns: 'minmax(0,1.5fr) auto',
         gap: '24px',
         alignItems: 'center',
       }}
@@ -635,7 +647,7 @@ function AltitudeBanner({
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>
-            Altitude banking
+            Banking
           </h2>
           <Chip tone="warning" dot>
             Coming later
@@ -651,35 +663,51 @@ function AltitudeBanner({
         >
           Full USD and entity accounts connected to your Onchain Island
           identity — salary, rent, invoices and your Curaçao B.V., mirrored
-          into this platform. Verified residents get priority.
+          into this platform.
         </div>
       </div>
-      <div
-        style={{ fontSize: '12.5px', color: tokens.muted, lineHeight: 1.7 }}
-      >
-        USD account · Entity accounts
-        <br />
-        Treasury yield on idle cash · Vault sync
-      </div>
-      <Button
-        variant="secondary"
-        onClick={onApply}
-        style={{
-          height: '42px',
-          padding: '0 20px',
-          fontSize: '14px',
-          whiteSpace: 'nowrap',
-          ...(applied
-            ? {
-                background: tokens.ink,
-                color: '#fff',
-                border: `1px solid ${tokens.ink}`,
-              }
-            : { border: `1px solid ${tokens.ink}` }),
-        }}
-      >
-        {applied ? 'On the early-access list ✓' : 'Apply for early access'}
-      </Button>
+      {applied ? (
+        <Button
+          variant="secondary"
+          onClick={onApply}
+          style={{
+            height: '42px',
+            padding: '0 20px',
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+            background: tokens.ink,
+            color: '#fff',
+            border: `1px solid ${tokens.ink}`,
+          }}
+        >
+          On the early-access list ✓
+        </Button>
+      ) : (
+        <a
+          href={EARLY_ACCESS_MAILTO}
+          onClick={onApply}
+          style={{
+            height: '42px',
+            padding: '0 20px',
+            borderRadius: '999px',
+            fontFamily: 'inherit',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            whiteSpace: 'nowrap',
+            textDecoration: 'none',
+            background: '#fff',
+            color: tokens.ink,
+            border: `1px solid ${tokens.ink}`,
+          }}
+        >
+          Apply for early access
+        </a>
+      )}
     </Card>
   );
 }
