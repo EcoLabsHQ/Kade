@@ -17,6 +17,7 @@
  */
 
 import { TIERS, TIER_DATABASE_VALUES } from '@kade/shared';
+import { usd, usd2 } from '@/lib/wealth/format';
 import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 
 /* -------------------------------------------------------------------------- */
@@ -187,13 +188,16 @@ function deriveFundsCheck(facts: ResidencyFacts): ResidencyCheck {
     };
   }
   const balance = facts.qualified.usd;
+  // Eligibility compares the unrounded balance; only the copy rounds. The
+  // threshold stays whole-dollar (`usd`), the balance is shown with two decimals
+  // (`usd2`), so a fractional balance no longer prints three decimals.
   if (balance >= minimum) {
     return {
       id,
       label,
       blocksServiceFee,
       state: 'met',
-      detail: `$${balance.toLocaleString('en-US')} meets the tier.`,
+      detail: `${usd2(balance)} meets the tier.`,
     };
   }
   return {
@@ -201,7 +205,7 @@ function deriveFundsCheck(facts: ResidencyFacts): ResidencyCheck {
     label,
     blocksServiceFee,
     state: 'pending',
-    detail: `$${balance.toLocaleString('en-US')} of $${minimum.toLocaleString('en-US')}.`,
+    detail: `${usd2(balance)} of ${usd(minimum)}.`,
   };
 }
 

@@ -73,7 +73,7 @@ describe('deriveChecks — funds at the Colosseum tier', () => {
       'funds',
     );
     expect(result.state).toBe('met');
-    expect(result.detail).toBe('$10 meets the tier.');
+    expect(result.detail).toBe('$10.00 meets the tier.');
   });
 
   it('is pending below 10 USDC and names the Colosseum threshold', () => {
@@ -82,7 +82,30 @@ describe('deriveChecks — funds at the Colosseum tier', () => {
       'funds',
     );
     expect(result.state).toBe('pending');
-    expect(result.detail).toBe('$4 of $10.');
+    expect(result.detail).toBe('$4.00 of $10.');
+  });
+
+  it('shows a fractional qualified balance with two decimals, not three', () => {
+    // The reported defect: a $13.838 balance printed as "$13.838 meets the
+    // tier." The display now rounds to two decimals; the value stays above the
+    // $10 Colosseum minimum, so the outcome is unchanged.
+    const result = check(
+      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 13.838 } }),
+      'funds',
+    );
+    expect(result.state).toBe('met');
+    expect(result.detail).toBe('$13.84 meets the tier.');
+  });
+
+  it('compares the unrounded balance, so a fractional figure just below the minimum stays pending', () => {
+    // 9.999 displays as "$10.00" at two decimals but is below the $10 minimum:
+    // rounding is for display only and must not change eligibility.
+    const result = check(
+      facts({ tier: 'colosseum', qualified: { status: 'known', usd: 9.999 } }),
+      'funds',
+    );
+    expect(result.state).toBe('pending');
+    expect(result.detail).toBe('$10.00 of $10.');
   });
 });
 
@@ -138,7 +161,7 @@ describe('deriveChecks — funds', () => {
   it('is a real $0 when the vault read succeeded and holds nothing', () => {
     const result = check(facts({ qualified: { status: 'known', usd: 0 } }), 'funds');
     expect(result.state).toBe('pending');
-    expect(result.detail).toBe('$0 of $280,000.');
+    expect(result.detail).toBe('$0.00 of $280,000.');
   });
 
   it('keeps the specific reason and stays pending when the vault read failed — never a fabricated $0', () => {

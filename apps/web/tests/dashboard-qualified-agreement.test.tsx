@@ -269,7 +269,7 @@ describe('the dashboard, the Holdings card and the residency check agree', () =>
     cleanup();
 
     // 3. The residency tier check reads the same value.
-    expect(fundsDetail(qualified)).toBe('$10,500 of $280,000.');
+    expect(fundsDetail(qualified)).toBe('$10,500.00 of $280,000.');
   });
 
   it('keeps unknown unknown with its reason on every surface — never a fabricated $0', async () => {
@@ -317,6 +317,6 @@ describe('the dashboard, the Holdings card and the residency check agree', () =>
     expect(cardValue('Qualified')).toBe('$0');
     cleanup();
 
-    expect(fundsDetail(qualified)).toBe('$0 of $280,000.');
+    expect(fundsDetail(qualified)).toBe('$0.00 of $280,000.');
   });
 });
