@@ -53,10 +53,12 @@ import BankLoading from '@/app/bank/loading';
 import CardLoading from '@/app/card/loading';
 import VoteLoading from '@/app/vote/loading';
 import AccountLoading from '@/app/account/loading';
+import LoginLoading from '@/app/login/loading';
+import OnboardingLoading from '@/app/onboarding/loading';
 import { NavItem } from '@/components/shell/NavItem';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
-/** Every covered route's fallback, so a missing file fails the suite. */
+/** Every resident-shell route's fallback, so a missing file fails the suite. */
 const LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
   ['/', RootLoading],
   ['/holdings', HoldingsLoading],
@@ -66,6 +68,15 @@ const LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
   ['/card', CardLoading],
   ['/vote', VoteLoading],
   ['/account', AccountLoading],
+];
+
+/**
+ * The non-resident routes. They render their own setup flow, never the resident
+ * `AppShell`, so their fallbacks must not draw a resident sidebar or frame.
+ */
+const PLAIN_LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
+  ['/login', LoginLoading],
+  ['/onboarding', OnboardingLoading],
 ];
 
 /** The text the fallback's decorative placeholder regions contain. */
@@ -134,6 +145,48 @@ describe('route loading shells', () => {
     // Identical output means the per-route files really re-use the one shell
     // rather than drifting into eight copies.
     expect(new Set(rendered).size).toBe(1);
+  });
+});
+
+describe('plain loading shells for non-resident routes', () => {
+  for (const [route, Loading] of PLAIN_LOADERS) {
+    it(`renders a neutral, shell-free placeholder for ${route}`, () => {
+      const { container } = render(<Loading />);
+
+      // The minimal placeholder is present...
+      expect(screen.getByTestId('route-loading-plain')).toBeInTheDocument();
+
+      // ...and the resident shell frame is entirely absent: no sidebar, no
+      // shell wrapper, no resident skeleton, no Safe card, no footer.
+      expect(container.querySelector('.kade-shell')).toBeNull();
+      expect(container.querySelector('.kade-sidebar')).toBeNull();
+      expect(screen.queryByTestId('route-loading')).toBeNull();
+      expect(screen.queryByTestId('route-loading-sidebar')).toBeNull();
+      expect(screen.queryByTestId('safe-address-card')).toBeNull();
+      expect(container.querySelectorAll('footer')).toHaveLength(0);
+
+      // No fabricated text or data anywhere (only the honest status).
+      const text = container.textContent ?? '';
+      expect(text).not.toMatch(/[0-9]/);
+      expect(text).not.toMatch(/[$€£%]/);
+      expect(text).not.toMatch(/0x/i);
+      expect(text.toLowerCase()).not.toContain('no account yet');
+      expect(text.toLowerCase()).not.toContain('created');
+      expect(text.toLowerCase()).not.toContain('deployed');
+
+      // An honest status is exposed to assistive tech.
+      expect(screen.getByRole('status')).toHaveTextContent('Loading');
+
+      cleanup();
+    });
+  }
+
+  it('still renders the resident shell frame on the resident routes', () => {
+    const { container } = render(<RootLoading />);
+    expect(container.querySelector('.kade-shell')).not.toBeNull();
+    expect(container.querySelector('.kade-sidebar')).not.toBeNull();
+    expect(container.querySelectorAll('footer')).toHaveLength(1);
+    cleanup();
   });
 });
 
