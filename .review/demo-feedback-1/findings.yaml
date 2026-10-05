@@ -1,0 +1,22 @@
+- id: W1
+  severity: WARN
+  scope: onboarding-model
+  title: "householdMemberDob doc claims an injectable `today` the schema does not expose"
+  evidence: "packages/shared/src/onboarding.ts:447 (doc) vs :449-452 (no today parameter)"
+  failure_mode: "Comment-level inaccuracy only: the standalone helper latestDobForAge is injectable, the zod schema calls it with a fixed 0 offset. Behaviour is correct and tested."
+  materiality: "Documentation, not behaviour. Non-gating."
+  status: open
+  introduced_by: 3921d0b8069eaf4724314f3bfc4346c73a4abe1d
+  resolved_by: null
+  recheck_attempts: 0
+- id: W2
+  severity: WARN
+  scope: date-picker
+  title: "Calendar day-click commits a future date with no client-side guard, unlike the typed path"
+  evidence: "apps/web/src/components/ui/DatePicker.tsx:408-414"
+  failure_mode: "A user can pick a future day from the grid while the typed path rejects it. Persistence is still blocked by the shared schemas (householdMemberDob/applicant dob refine), so no invalid date can be saved."
+  materiality: "UI consistency note; explicitly permitted by the task (display/navigation is fine). Non-gating."
+  status: open
+  introduced_by: 7638416420340dcd0854920762ebb4d2fd268d8f
+  resolved_by: null
+  recheck_attempts: 0

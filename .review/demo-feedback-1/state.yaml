@@ -1,0 +1,43 @@
+iteration: demo-feedback-1
+profile: NORMAL
+known_good: b3472dc6d6e67a1b84768ed28eaf8ad8077deee0
+candidate: 862c454f8d20f005d84d9bc60a76895139f3735b
+mode: discovery
+reviewed_scopes:
+  onboarding-model: complete
+  onboarding-db-migration: complete
+  date-picker: complete
+  payment-entry-cta: complete
+  shell-footer-nav: complete
+  finance-bank-card-copy: complete
+  seo-metadata: complete
+  routing-public-metadata: complete
+  residency-money-display: complete
+  invest-qualified-parity: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 862c454
+  recorded_at: 2026-10-05
+  note: "Run with Node v22.17.0 per .nvmrc; default shell Node v18.19.1 fails the apps/web vitest config load."
+human_decisions:
+  - "Child: household 18+ rule removed entirely; minimum age 0; Child calendar opens at 16 years."
+  - "Relation: strict enum Spouse|Partner|Child; Son/Daughter map to Child; unmapped legacy values preserved and re-selected on edit."
+  - "Gender: required for new submissions (Male/Female/Other); additive nullable columns; existing rows stay NULL."
+  - "Invest parity: Qualified-position summary using the same native-inclusive reduction as Holdings; no new ETH instrument."
+  - "Footer: global on every route; year dynamic; Privacy/Terms have NO link target yet (deliberate)."
+  - "SEO: full metadata; robots stays noindex."
+  - "DOB offsets: applicant 40y, Spouse 40y, Partner 40y, Child 16y; positions the calendar only, never pre-fills."
+  - "Decimals: 2 decimals on qualified money; tier thresholds natural; required tier amount goes AFTER the row label text."
+  - "Early-access mailto subject INCLUDES the trailing period."
+notes:
+  - "Migration 20261005000001 read-verified: drop signature matches the 7-arg original exactly; grants cover every RPC-written column; server action args match. NOT executed against a live database (no local Postgres/supabase CLI)."
+  - "Eligibility math unchanged: deriveFundsCheck/qualifiedTierSub still compare the unrounded balance; only display formatting moved to usd2."
+  - "Two non-gating WARNs recorded in findings.yaml."
