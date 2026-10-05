@@ -7,7 +7,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
  * jsdom does not compute layout, so this proves the reference's structure and
  * the screen's local interactions, not the pixels: the header chip, the
  * pre-order layout with the gated order control that does not advance, the
- * "Altitude banking" banner and its early-access toggle, and — rendered
+ * "Banking" banner and its early-access mailto, and — rendered
  * directly, because the default in-review state cannot reach them — the active
  * layout and the top-up dialog with its address and focus handling. A reviewer
  * must still confirm the rendering in a browser.
@@ -34,9 +34,11 @@ describe('Card & Banking screen', () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByText('Unlocks after review')).toBeInTheDocument();
+    // The struck subtitle tail ("Ordering unlocks once intake review
+    // completes.") is gone; the remaining sentence is unchanged.
     expect(
       screen.getByText(
-        'Spend from your vault in XCG anywhere on the island. Ordering unlocks once intake review completes.',
+        'Spend from your vault in XCG anywhere on the island.',
       ),
     ).toBeInTheDocument();
     // The reference screen carries no disclosure banner above the header.
@@ -62,15 +64,26 @@ describe('Card & Banking screen', () => {
     expect(screen.queryByText('Transactions')).not.toBeInTheDocument();
   });
 
-  it('applies to the early-access list locally', () => {
+  it('opens the early-access mailto and applies locally', () => {
     render(<CardScreen />);
 
+    // The banner heading was shortened from "Altitude banking" to "Banking".
     expect(
-      screen.getByRole('heading', { name: 'Altitude banking' }),
+      screen.getByRole('heading', { name: 'Banking' }),
     ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Apply for early access' }),
+
+    // "Apply for early access" is a mailto: link carrying the exact,
+    // URL-encoded subject — not a bare button and not a "#" placeholder.
+    const apply = screen.getByRole('link', { name: 'Apply for early access' });
+    expect(apply).toHaveAttribute(
+      'href',
+      'mailto:info@labs.eco?subject=Please%20keep%20me%20up%20to%20date%20on%20Banking%20opportunities.',
     );
+
+    // Stop jsdom's (unimplemented) document navigation; the React handler must
+    // still run, exactly as a real mailto click would open the mail client.
+    apply.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(apply);
     expect(
       screen.getByRole('button', { name: 'On the early-access list ✓' }),
     ).toBeInTheDocument();
