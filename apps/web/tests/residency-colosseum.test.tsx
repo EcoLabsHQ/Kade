@@ -55,11 +55,24 @@ describe('ColosseumResidency — states', () => {
     );
 
     expect(screen.getByTestId('colosseum-state-a')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-qualified')).toHaveTextContent('$4');
+    expect(screen.getByTestId('colosseum-qualified')).toHaveTextContent('$4.00');
     expect(screen.getByTestId('colosseum-threshold')).toHaveTextContent(
       '10 USDC',
     );
     expect(screen.queryByTestId('colosseum-state-c')).toBeNull();
+  });
+
+  it('State A: shows a fractional qualified figure in full, not truncated at the point', () => {
+    // The reported defect: the figure was read with `/^\$([\d,]+)/`, so a
+    // two-decimal "$9.84" was truncated to "$9".
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts({ qualified: { status: 'known', usd: 9.838 } }))}
+      />,
+    );
+
+    expect(screen.getByTestId('colosseum-qualified')).toHaveTextContent('$9.84');
   });
 
   it('State A: an unread vault never shows a fabricated figure', () => {
