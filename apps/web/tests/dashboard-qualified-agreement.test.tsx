@@ -258,14 +258,15 @@ describe('the dashboard, the Holdings card and the residency check agree', () =>
     expect(screen.queryByText('$3,000')).toBeNull();
     cleanup();
 
-    // 2. The Holdings card consumes that exact value when passed in...
+    // 2. The Holdings card consumes that exact value when passed in, rendered
+    // with the shared two-decimal helper...
     renderCard(rows, qualified);
-    expect(cardValue('Qualified')).toBe('$10,500');
+    expect(cardValue('Qualified')).toBe('$10,500.00');
     cleanup();
 
     // ...and reduces the same rows with the same function when it is not.
     renderCard(rows);
-    expect(cardValue('Qualified')).toBe('$10,500');
+    expect(cardValue('Qualified')).toBe('$10,500.00');
     cleanup();
 
     // 3. The residency tier check reads the same value.
@@ -314,7 +315,7 @@ describe('the dashboard, the Holdings card and the residency check agree', () =>
     cleanup();
 
     renderCard([], qualified);
-    expect(cardValue('Qualified')).toBe('$0');
+    expect(cardValue('Qualified')).toBe('$0.00');
     cleanup();
 
     expect(fundsDetail(qualified)).toBe('$0.00 of $280,000.');

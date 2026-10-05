@@ -145,7 +145,9 @@ describe('the qualified total', () => {
       />,
     );
 
-    expect(cardValue('Qualified')).toBe('$7,500');
+    // The card renders the one total with the shared two-decimal helper, the
+    // same presentation the residency check and the Invest qualified card use.
+    expect(cardValue('Qualified')).toBe('$7,500.00');
     // The same figure is the section's real holding, so the card and the table
     // below it cannot disagree.
     expect(screen.getByText('2.000000 ETH')).toBeInTheDocument();
@@ -167,7 +169,7 @@ describe('the qualified total', () => {
       />,
     );
 
-    expect(cardValue('Qualified')).toBe('$7,777');
+    expect(cardValue('Qualified')).toBe('$7,777.00');
     expect(fundsDetail(position)).toBe('$7,777.00 of $280,000.');
   });
 
@@ -224,7 +226,7 @@ describe('the qualified total', () => {
 
     // Qualified is the vault alone; Not qualified is the linked wallets alone,
     // so the vault's $5,000 is not claimed by both cards...
-    expect(cardValue('Qualified')).toBe('$5,000');
+    expect(cardValue('Qualified')).toBe('$5,000.00');
     expect(cardValue('Not qualified')).toBe('$9,000');
     // ...and the two partition the total truthfully.
     expect(cardValue('Total holdings')).toBe('$14,000');
@@ -244,7 +246,7 @@ describe('the qualified total', () => {
         qualified={empty}
       />,
     );
-    expect(cardValue('Qualified')).toBe('$0');
+    expect(cardValue('Qualified')).toBe('$0.00');
     expect(cardValue('Total holdings')).toBe('$1,000');
 
     // No recorded Safe is honestly unknown, not a fabricated $0.

@@ -7,7 +7,9 @@ import {
   within,
 } from '@testing-library/react';
 import { InvestScreen } from '@/components/invest/InvestScreen';
+import { HoldingsScreen } from '@/components/holdings/HoldingsScreen';
 import type { InvestVaultSummary } from '@/app/invest/actions';
+import type { HoldingsAggregate } from '@/lib/wealth/holdings';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
 
 vi.mock('next/navigation', () => ({
@@ -89,6 +91,22 @@ function morphoRow(usd: number): VaultHoldingRow {
     symbol: 'MM',
     name: 'MetaMorpho USDC vault',
     amount: `${usd}.000000 USDC`,
+    usd,
+    readError: null,
+  };
+}
+
+/** A real native holding in the Safe (the coin that counts but is not an
+ * Invest instrument). */
+function nativeRow(usd: number): VaultHoldingRow {
+  return {
+    key: '1:native',
+    kind: 'native',
+    chainId: 1,
+    chainName: 'Ethereum',
+    symbol: 'ETH',
+    name: 'Ether',
+    amount: '2.000000 ETH',
     usd,
     readError: null,
   };
@@ -204,9 +222,15 @@ describe('InvestScreen real position', () => {
     expect(screen.getByTestId('invest-stat-allocated')).toHaveTextContent('—');
     expect(screen.queryByText('$0')).toBeNull();
 
-    // Each failed read carries its own reason to the screen.
-    expect(screen.getByText(/rate limiting this read/i)).toBeInTheDocument();
-    expect(screen.getByText(/execution reverted/i)).toBeInTheDocument();
+    // Each failed read carries its own reason to the screen. The qualified
+    // card carries the same reason as the USDC/Morpho cards (one reduction), so
+    // each reason can legitimately appear more than once.
+    expect(
+      screen.getAllByText(/rate limiting this read/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/execution reverted/i).length,
+    ).toBeGreaterThan(0);
     // The row's own state is unknown, not empty.
     expect(screen.getByTestId('invest-position-unknown-1')).toBeInTheDocument();
   });
@@ -249,6 +273,124 @@ describe('InvestScreen real position', () => {
     expect(
       within(dialog).getByText('Un-allocate all USDC'),
     ).toBeInTheDocument();
+  });
+});
+
+const EMPTY_AGGREGATE: HoldingsAggregate = {
+  total: 0,
+  walletCount: 0,
+  valuedCount: 0,
+  unvaluedCount: 0,
+  wallets: [],
+  unverifiedWallets: [],
+  unverifiedCount: 0,
+};
+
+/** The rendered value of the Holdings summary card with `label`. */
+function holdingsCardValue(label: string): string {
+  const labelNode = screen.getByText(label);
+  return labelNode.parentElement?.children[1]?.textContent ?? '';
+}
+
+/** The rendered sub line of the Holdings summary card with `label`. */
+function holdingsCardSub(label: string): string {
+  const labelNode = screen.getByText(label);
+  return labelNode.parentElement?.children[2]?.textContent ?? '';
+}
+
+/**
+ * The qualified total is **one** figure over the Safe's rows — native coin
+ * included — and Invest and Holdings must render it identically. These pin the
+ * exact case that used to diverge: a Safe holding native ETH, which counts
+ * toward the qualified total but is not an Invest instrument.
+ */
+describe('InvestScreen qualified position parity with Holdings', () => {
+  it('renders the same native-inclusive total on both screens', () => {
+    const rows = [nativeRow(7500), usdcRow(2000), morphoRow(1000)];
+
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={rows} />);
+    // Two decimals, the shared helper, and the whole qualified total (10,500),
+    // not the USDC-only Invest position (3,000).
+    expect(screen.getByTestId('invest-stat-qualified')).toHaveTextContent(
+      '$10,500.00',
+    );
+    cleanup();
+
+    render(
+      <HoldingsScreen
+        aggregate={EMPTY_AGGREGATE}
+        safeAddress={SAFE}
+        vaultHoldings={rows}
+      />,
+    );
+    expect(holdingsCardValue('Qualified')).toBe('$10,500.00');
+  });
+
+  it('shows a non-zero qualified figure for a native-ETH-only Safe on both screens', () => {
+    const rows = [nativeRow(7500)];
+
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={rows} />);
+    expect(screen.getByTestId('invest-stat-qualified')).toHaveTextContent(
+      '$7,500.00',
+    );
+    cleanup();
+
+    render(
+      <HoldingsScreen
+        aggregate={EMPTY_AGGREGATE}
+        safeAddress={SAFE}
+        vaultHoldings={rows}
+      />,
+    );
+    expect(holdingsCardValue('Qualified')).toBe('$7,500.00');
+  });
+
+  it('keeps an unread position unknown with its reason on both screens, never $0', () => {
+    const reason = 'the balance provider is rate limiting this read (HTTP 429).';
+    const rows = [unreadRow(reason)];
+    const expectedReason = `Ethereum: ${reason}`;
+
+    render(<InvestScreen vaults={RAILS} safeAddress={SAFE} holdings={rows} />);
+    expect(screen.getByTestId('invest-stat-qualified')).toHaveTextContent('—');
+    expect(screen.getByTestId('invest-stat-qualified')).not.toHaveTextContent('$0');
+    // The qualified card carries the same reduction's reason as the USDC card.
+    expect(screen.getAllByText(expectedReason).length).toBeGreaterThan(0);
+    cleanup();
+
+    render(
+      <HoldingsScreen
+        aggregate={EMPTY_AGGREGATE}
+        safeAddress={SAFE}
+        vaultHoldings={rows}
+      />,
+    );
+    expect(holdingsCardValue('Qualified')).toBe('—');
+    expect(holdingsCardSub('Qualified')).toBe(expectedReason);
+  });
+
+  it('keeps the qualified card distinct from the USDC-only cards', () => {
+    // Native + USDC + Morpho: the qualified card is 10,500, while the free-USDC
+    // and allocated cards stay USDC/Morpho only (2,000 and 1,000). A reader
+    // cannot mistake native coin for an Invest instrument.
+    render(
+      <InvestScreen
+        vaults={RAILS}
+        safeAddress={SAFE}
+        holdings={[nativeRow(7500), usdcRow(2000), morphoRow(1000)]}
+      />,
+    );
+
+    expect(screen.getByTestId('invest-stat-qualified')).toHaveTextContent(
+      '$10,500.00',
+    );
+    expect(screen.getByTestId('invest-stat-vault-usdc')).toHaveTextContent(
+      '$2,000',
+    );
+    expect(screen.getByTestId('invest-stat-allocated')).toHaveTextContent(
+      '$1,000',
+    );
+    // Native ETH is not an instrument row and cannot be allocated.
+    expect(screen.queryByText('Ether')).toBeNull();
   });
 });
 
