@@ -130,7 +130,12 @@ describe('Step 2 wizard', () => {
     renderWizard(makeStore().store);
 
     const dob = screen.getByLabelText('Date of birth');
-    expect(dob).toHaveTextContent('dd/mm/yyyy');
+    // The field is a typeable text input now, so the empty state lives in the
+    // placeholder rather than in the element's text. It is still not a native
+    // date input.
+    expect(dob).toHaveAttribute('type', 'text');
+    expect(dob).toHaveAttribute('placeholder', 'dd/mm/yyyy');
+    expect(dob).toHaveValue('');
     expect(document.querySelector('input[type="date"]')).toBeNull();
   });
 
@@ -179,7 +184,8 @@ describe('Step 2 wizard', () => {
     fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
 
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByLabelText('Date of birth')).toHaveTextContent(
+    // The field is a text input, so the chosen date is its value.
+    expect(screen.getByLabelText('Date of birth')).toHaveValue(
       `15/${month}/${year}`,
     );
   });
