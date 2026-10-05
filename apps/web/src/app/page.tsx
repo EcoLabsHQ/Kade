@@ -74,34 +74,52 @@ async function loadFeeOrUnread(userId: string): Promise<OverviewFee> {
   }
 }
 
+/**
+ * The application row the reviewer's action flips. A failed read degrades to
+ * the all-unknown state rather than claiming a status or a figure.
+ *
+ * Kept as its own async unit so it can be issued in the same stage as the other
+ * session-only reads; its error handling is unchanged.
+ */
+async function loadReviewStateOrUnknown(
+  userId: string,
+): Promise<ResidentReviewState> {
+  if (!isAuthConfigured(readAuthEnv())) {
+    return NO_RESIDENT_REVIEW_STATE;
+  }
+  try {
+    const client = await createSupabaseServerClient();
+    return await loadResidentReviewState(client, userId);
+  } catch (cause) {
+    console.warn(
+      '[kade] Could not read the resident review state:',
+      cause instanceof Error ? cause.message : cause,
+    );
+    return NO_RESIDENT_REVIEW_STATE;
+  }
+}
+
 export default async function OverviewPage() {
   const session = await getSessionUser();
   if (!session) {
     redirect('/login');
   }
-  const shellSafe = await loadShellSafe(session.userId);
+
+  // The shell Safe, the onboarding gate and the review row depend only on the
+  // session, so they are issued in one stage rather than one after another.
+  const [shellSafe, onboarded, reviewState] = await Promise.all([
+    loadShellSafe(session.userId),
+    hasCompletedOnboarding(session.userId),
+    loadReviewStateOrUnknown(session.userId),
+  ]);
 
   // Spec section 8: an authenticated session is not enough to see the account
   // screens. Until the onboarding steps are complete there is no account state
   // to show, so the resident is sent to the step that is actually pending.
-  if (!(await hasCompletedOnboarding(session.userId))) {
+  if (!onboarded) {
     redirect('/onboarding');
   }
 
-  // The application row the reviewer's action flips. A failed read degrades to
-  // the all-unknown state rather than claiming a status or a figure.
-  let reviewState: ResidentReviewState = NO_RESIDENT_REVIEW_STATE;
-  if (isAuthConfigured(readAuthEnv())) {
-    try {
-      const client = await createSupabaseServerClient();
-      reviewState = await loadResidentReviewState(client, session.userId);
-    } catch (cause) {
-      console.warn(
-        '[kade] Could not read the resident review state:',
-        cause instanceof Error ? cause.message : cause,
-      );
-    }
-  }
   const reviewGate: ResidentGate = residentGate(reviewState.status);
 
   const [reviewBar, vaultHoldings, fee] = await Promise.all([

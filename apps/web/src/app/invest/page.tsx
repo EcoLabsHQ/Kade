@@ -58,10 +58,30 @@ export default async function InvestPage() {
   // persists a vault position, so the chain is the only truthful source; a
   // failed read travels as rows carrying their own reasons rather than as a
   // fabricated zero.
-  const [vaultHoldings, reviewBar] = await Promise.all([
+  // The Safe's position, the review bar and each configured rail's yield are
+  // independent reads — none depends on another's result — so they are issued
+  // in one stage. Previously the yields waited for the chain read to finish;
+  // now they run alongside it.
+  //
+  // Each pinned rail's yield is read from Morpho's public API for the **same
+  // vault the rail deposits into**, so the allocate modal can estimate income.
+  // The reads are bounded and cached by Next (a day), so this route does not
+  // call Morpho on every render, and a rail whose read fails travels as an
+  // `unknown` carrying its reason — the modal then says `Not quoted` rather
+  // than inventing a figure. Only configured rails are read.
+  const [vaultHoldings, reviewBar, yieldReads] = await Promise.all([
     loadVaultHoldings(shellSafe.address),
     loadReviewBar(session.userId),
+    Promise.all(
+      vaults
+        .filter((rail) => rail.configured)
+        .map(
+          async (rail) =>
+            [rail.chainId, await readMorphoVaultYield(rail.chainId)] as const,
+        ),
+    ),
   ]);
+  const yields = new Map(yieldReads);
 
   // The Safe's **qualified** total, reduced **once** here from the same rows
   // through the same function the Holdings card and the residency tier check
@@ -72,21 +92,6 @@ export default async function InvestPage() {
     safeAddress: shellSafe.address,
     rows: vaultHoldings,
   });
-
-  // Each pinned rail's current yield, read from Morpho's public API for the
-  // **same vault the rail deposits into**, so the allocate modal can estimate
-  // income. The reads are bounded and cached by Next (a day), so this route
-  // does not call Morpho on every render, and a rail whose read fails travels as
-  // an `unknown` carrying its reason — the modal then says `Not quoted` rather
-  // than inventing a figure. Only configured rails are read.
-  const yieldReads = await Promise.all(
-    vaults
-      .filter((rail) => rail.configured)
-      .map(
-        async (rail) => [rail.chainId, await readMorphoVaultYield(rail.chainId)] as const,
-      ),
-  );
-  const yields = new Map(yieldReads);
 
   return (
     <AppShell
