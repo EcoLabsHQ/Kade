@@ -126,7 +126,7 @@ describe('ResidencyStep — reference layout', () => {
     expect(screen.getByText('Before you can start')).toBeInTheDocument();
     expect(screen.getByText('Identity verified')).toBeInTheDocument();
     expect(
-      screen.getByText('Qualified holdings meet 3-year tier'),
+      screen.getByText('Qualified holdings meet 3-year tier · $280,000'),
     ).toBeInTheDocument();
     expect(screen.getByText('Documents complete')).toBeInTheDocument();
     expect(screen.getByText('Intake review cleared')).toBeInTheDocument();
@@ -156,18 +156,23 @@ describe('ResidencyStep — reference layout', () => {
 
   it('marks a row Ready when its record is present', () => {
     renderStep(facts({ serviceFee: { recorded: false, verified: false, amountUsdc: 10 } }));
-    // The qualified row carries the tier's required amount beside the status,
-    // so only the other two met rows read a bare "Ready".
-    expect(screen.getAllByText('Ready')).toHaveLength(2);
-    expect(screen.getByText('Ready · $280,000')).toBeInTheDocument();
+    // The status is a bare "Ready" on every met row; the qualified row's
+    // required amount sits in the title instead.
+    expect(screen.getAllByText('Ready')).toHaveLength(3);
+    expect(
+      screen.getByText('Qualified holdings meet 3-year tier · $280,000'),
+    ).toBeInTheDocument();
     expect(screen.getAllByText('3 of 4 ready').length).toBeGreaterThan(0);
   });
 
-  it('shows the tier minimum beside the Ready status on the qualified row', () => {
+  it('shows the tier minimum after the qualified row label, not on the status', () => {
     // The recorded tier's real minimum, from the shared tier table, not a
-    // literal in the component.
+    // literal in the component. The right-hand status stays a bare "Ready".
     renderStep(facts({ tier: 'colosseum', qualified: { status: 'known', usd: 10 } }));
-    expect(screen.getByText('Ready · $10')).toBeInTheDocument();
+    expect(
+      screen.getByText('Qualified holdings meet colosseum tier · $10'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Ready · /)).toBeNull();
   });
 
   it('shows the below-tier shortfall in the baseline wording', () => {

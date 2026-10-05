@@ -150,7 +150,13 @@ export function ResidencyStep({
     },
     {
       key: 'funds',
-      title: `Qualified holdings meet ${tierLabel} tier`,
+      // The recorded tier's real required amount sits immediately after the
+      // label, derived from the tier config rather than a literal and rendered
+      // whole-dollar like the threshold. Null/unknown tier appends nothing.
+      title:
+        tierMinimum === null
+          ? `Qualified holdings meet ${tierLabel} tier`
+          : `Qualified holdings meet ${tierLabel} tier · ${usd(tierMinimum)}`,
       meta: fundsMeta(funds),
       done: funds?.state === 'met',
       action: 'Move funds',
@@ -289,12 +295,7 @@ export function ResidencyStep({
                   <span
                     style={{ fontSize: '11.5px', fontWeight: 600, color: tokens.success }}
                   >
-                    {/* The qualified row carries the tier's required amount next
-                        to the status, so "meets the tier" still names the bar.
-                        Derived from the tier config, never a literal. */}
-                    {row.key === 'funds' && tierMinimum !== null
-                      ? `Ready · ${usd(tierMinimum)}`
-                      : 'Ready'}
+                    Ready
                   </span>
                 ) : row.action && row.onClick ? (
                   <button type="button" onClick={row.onClick} style={rowButton}>
