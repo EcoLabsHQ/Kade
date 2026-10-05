@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { chainsForEnv } from '@kade/shared';
 import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
-import { SiteFooter } from '@/components/shell/SiteFooter';
 import { ResidencyStep } from '@/components/residency/ResidencyStep';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { getSessionUser } from '@/lib/supabase/server';
@@ -65,7 +64,7 @@ export default async function ResidencyPage() {
         reviewBar={reviewBar}
         isReviewer={reviewBar.isReviewer}
       >
-        <ContentContainer footer={<SiteFooter />}>
+        <ContentContainer>
           <ResidencyStep
             snapshot={snapshot}
             network={network}

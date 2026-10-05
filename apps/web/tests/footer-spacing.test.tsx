@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { SiteFooter } from '@/components/shell/SiteFooter';
 import { ContentContainer } from '@/components/shell/ContentContainer';
+import { AppShell } from '@/components/shell/AppShell';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 
 vi.mock('@/lib/supabase/browser', () => ({
@@ -12,6 +13,15 @@ vi.mock('@/lib/supabase/browser', () => ({
     },
   }),
 }));
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
+// SafeAddressCard imports the server action lazily; mocking it keeps the
+// browser bundle's server-only dependencies out of jsdom.
+vi.mock('@/app/onboarding/deploy-actions', () => ({ deployAccount: vi.fn() }));
 
 /** The footer rendered as the last item of a shell-like flex column. */
 function renderFooterBelow(contentHeight: number) {
@@ -92,5 +102,29 @@ describe('footer bottom spacing', () => {
     // that was the merge bug, and it applied the padding a third time.
     const main = column.parentElement as HTMLElement;
     expect(main.className ?? '').not.toContain('kade-content');
+  });
+
+  it('renders exactly once from the shared shell, with a dynamic year', () => {
+    const { container } = render(
+      <AppShell network="Ethereum Sepolia">
+        <div>content</div>
+      </AppShell>,
+    );
+
+    // The footer is global: the shell renders it once, not per route.
+    const footers = container.querySelectorAll('footer');
+    expect(footers).toHaveLength(1);
+
+    const footer = footers[0] as HTMLElement;
+    // The year is computed at render time, never hard-coded.
+    expect(footer).toHaveTextContent(
+      `© ${new Date().getFullYear()} EcoLabs B.V.`,
+    );
+    expect(footer).toHaveTextContent('Willemstad, Curaçao');
+    expect(footer).toHaveTextContent('Privacy');
+    expect(footer).toHaveTextContent('Terms');
+    // Privacy and Terms are labels until the human supplies their URLs: no
+    // link (and so no invented href, and no "#") may be rendered yet.
+    expect(footer.querySelectorAll('a')).toHaveLength(0);
   });
 });
