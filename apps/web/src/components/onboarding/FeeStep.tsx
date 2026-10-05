@@ -296,9 +296,14 @@ export function FeeStep({
 
           <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
             {paid ? (
-              <button type="button" onClick={onEnter} style={{ ...primaryButton, width: '100%' }}>
-                Enter the platform →
-              </button>
+              // Once paid, the modal that confirmed the payment hosts the entry.
+              // While it is open the page button is suppressed so exactly one
+              // "Enter the platform" is offered; closing the modal restores it.
+              depositOpen ? null : (
+                <button type="button" onClick={onEnter} style={{ ...primaryButton, width: '100%' }}>
+                  Enter the platform →
+                </button>
+              )
             ) : breakdown === null ? (
               <p style={{ margin: 0, fontSize: '13px', color: '#FECDCA' }}>
                 The configured fee could not be read, so payment is unavailable.
@@ -374,7 +379,7 @@ export function FeeStep({
                   usdcAddress={usdcAddress as `0x${string}`}
                   explorerUrl={explorerUrl}
                   onPaid={onPaid}
-                  onClose={closeDeposit}
+                  onEnter={onEnter}
                 />
               </div>
             </div>

@@ -48,8 +48,13 @@ export interface FeePaymentProps {
   readonly usdcAddress: `0x${string}`;
   readonly explorerUrl: string;
   readonly onPaid: (txHash: Hex) => void;
-  /** Closes the host modal; shown next to the receipt on completion. */
-  readonly onClose?: () => void;
+  /**
+   * Enters the platform once the payment is verified. It is the same path the
+   * page-level entry uses, so the completion surface leads somewhere instead of
+   * being a dead end; the host modal's own X, overlay and Escape still dismiss
+   * it.
+   */
+  readonly onEnter: () => void;
 }
 
 function messageFor(result: RecordFeeResult): string {
@@ -196,7 +201,7 @@ export function FeePayment({
   usdcAddress,
   explorerUrl,
   onPaid,
-  onClose,
+  onEnter,
 }: FeePaymentProps) {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
@@ -392,9 +397,10 @@ export function FeePayment({
     );
   }
 
-  // The receipt has been verified: the transaction link is offered only now,
-  // never while the payment is still confirming, and the Close button is left
-  // for the owner to lay out.
+  // The receipt has been verified: the transaction link and the platform entry
+  // are offered only now, never while the payment is still confirming. Entering
+  // goes through the same path as the page-level button; the host modal is still
+  // dismissible through its own X, overlay and Escape.
   if (paid) {
     return (
       <div data-testid='fee-complete-actions'>
@@ -414,11 +420,13 @@ export function FeePayment({
         </p>
 
         <div style={actions}>
-          {onClose ? (
-            <button type='button' onClick={onClose} style={{ ...primaryButton, width: '100%' }}>
-              Close
-            </button>
-          ) : null}
+          <button
+            type='button'
+            onClick={onEnter}
+            style={{ ...primaryButton, width: '100%' }}
+          >
+            Enter the platform
+          </button>
         </div>
       </div>
     );

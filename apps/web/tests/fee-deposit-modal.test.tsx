@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import {
   fireEvent,
   render,
@@ -80,6 +81,7 @@ const BREAKDOWN = preapprovalBreakdownFromSchedule(
 
 function renderStep(overrides: Partial<FeeStepProps> = {}) {
   const onPaid = vi.fn();
+  const onEnter = vi.fn();
   const props: FeeStepProps = {
     rows: [],
     breakdown: BREAKDOWN,
@@ -89,12 +91,40 @@ function renderStep(overrides: Partial<FeeStepProps> = {}) {
     usdcAddress: USDC,
     explorerUrl: 'https://sepolia.etherscan.io',
     onPaid,
-    onEnter: vi.fn(),
+    onEnter,
     onBack: vi.fn(),
     ...overrides,
   };
   render(<FeeStep {...props} />);
-  return { onPaid };
+  return { onPaid, onEnter };
+}
+
+/**
+ * A stateful FeeStep: confirming the payment in the modal flips the flow's
+ * `paid` prop, exactly as `OnboardingFlow` does when the server verifies the
+ * receipt while the modal is still open.
+ */
+function renderControlledStep() {
+  const onEnter = vi.fn();
+  function Harness() {
+    const [paid, setPaid] = useState(false);
+    return (
+      <FeeStep
+        rows={[]}
+        breakdown={BREAKDOWN}
+        paid={paid}
+        paymentConfigured
+        treasuryAddress={TREASURY}
+        usdcAddress={USDC}
+        explorerUrl="https://sepolia.etherscan.io"
+        onPaid={() => setPaid(true)}
+        onEnter={onEnter}
+        onBack={vi.fn()}
+      />
+    );
+  }
+  render(<Harness />);
+  return { onEnter };
 }
 
 function openDeposit() {
@@ -251,12 +281,12 @@ describe('FeeStep deposit modal', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows Close and a View transaction button once the payment confirms', async () => {
+  it('offers Enter the platform and the receipt link once the payment confirms', async () => {
     hoisted.write.data = TX;
     hoisted.receipt.isSuccess = true;
     hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
 
-    renderStep();
+    const { onEnter } = renderStep();
     openDeposit();
 
     const actions = await screen.findByTestId('fee-complete-actions');
@@ -271,7 +301,46 @@ describe('FeeStep deposit modal', () => {
       within(actions).queryByRole('button', { name: /pay 1\.75 usdc/i }),
     ).toBeNull();
 
-    fireEvent.click(within(actions).getByRole('button', { name: /^close$/i }));
+    // The completion surface now leads into the platform instead of dead-ending
+    // on the old dismiss-only Close control.
+    expect(
+      within(actions).queryByRole('button', { name: /^close$/i }),
+    ).toBeNull();
+    fireEvent.click(
+      within(actions).getByRole('button', { name: /enter the platform/i }),
+    );
+    expect(onEnter).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays dismissible from its own close affordance after the payment confirms', async () => {
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+
+    renderStep();
+    openDeposit();
+    await screen.findByTestId('fee-complete-actions');
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /^close$/i }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows exactly one Enter the platform while the paid modal is open', async () => {
+    hoisted.write.data = TX;
+    hoisted.receipt.isSuccess = true;
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+
+    renderControlledStep();
+    fireEvent.click(screen.getByRole('button', { name: /^deposit$/i }));
+
+    // Confirming flips the flow to paid; the page-level entry is suppressed so
+    // the modal's is the only way into the platform.
+    await screen.findByTestId('fee-complete-actions');
+    const entries = screen.getAllByRole('button', {
+      name: /enter the platform/i,
+    });
+    expect(entries).toHaveLength(1);
+    expect(screen.getByRole('dialog')).toContainElement(entries[0]!);
   });
 });

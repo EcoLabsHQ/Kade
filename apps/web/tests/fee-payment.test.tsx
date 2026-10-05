@@ -64,6 +64,7 @@ interface WriteCall {
 
 function renderPayment() {
   const onPaid = vi.fn();
+  const onEnter = vi.fn();
   const element = () => (
     <FeePayment
       amountUsdc="1.75"
@@ -71,11 +72,13 @@ function renderPayment() {
       usdcAddress={USDC}
       explorerUrl="https://sepolia.etherscan.io"
       onPaid={onPaid}
+      onEnter={onEnter}
     />
   );
   const view = render(element());
   return {
     onPaid,
+    onEnter,
     rerender: () => view.rerender(element()),
     unmount: () => view.unmount(),
   };
@@ -166,6 +169,40 @@ describe('FeePayment', () => {
 
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith(TX));
     expect(hoisted.record).toHaveBeenCalledWith(TX, CONNECTED);
+  });
+
+  it('offers Enter the platform, through the shared path, only once verified', async () => {
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+    const { onEnter, rerender } = renderPayment();
+
+    // An unverified payment cannot enter the platform: the control is absent
+    // until the server confirms the receipt.
+    expect(
+      screen.queryByRole('button', { name: /enter the platform/i }),
+    ).toBeNull();
+
+    payAndConfirm(rerender);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /enter the platform/i }),
+    );
+    expect(onEnter).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no platform entry after an underpayment', async () => {
+    hoisted.record.mockResolvedValue({
+      status: 'underpaid',
+      requiredUsdc: '1.75',
+      receivedUsdc: '1.00',
+    });
+    const { rerender } = renderPayment();
+
+    payAndConfirm(rerender);
+
+    await screen.findByText(/1\.00 USDC but the fee is 1\.75 USDC/i);
+    expect(
+      screen.queryByRole('button', { name: /enter the platform/i }),
+    ).toBeNull();
   });
 
   it('does not open the platform on an underpayment', async () => {
