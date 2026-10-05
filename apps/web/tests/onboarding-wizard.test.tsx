@@ -34,7 +34,12 @@ const YEAR = new Date().getFullYear();
 
 /** A restored, fully valid snapshot; the applicant alone is a household of one. */
 const validSnapshot: OnboardingSnapshot = {
-  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  profile: {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    dob: '1990-01-01',
+    gender: 'Female',
+  },
   citizenships: ['NL'],
   residences: [{ countryCode: 'NL', fromYear: YEAR - 5, toYear: 'present' }],
   tier: 1,
@@ -119,6 +124,10 @@ describe('Step 2 wizard', () => {
       'aria-invalid',
       'true',
     );
+    expect(screen.getByLabelText('Gender')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
     expect(
       screen.getByRole('radiogroup', {
         name: 'Permit tier you are aiming for',
@@ -143,7 +152,7 @@ describe('Step 2 wizard', () => {
     const withMember: OnboardingSnapshot = {
       ...validSnapshot,
       members: [
-        { name: 'Grace', relation: 'Daughter', dob: '1992-05-05', citizenship: 'DE' },
+        { name: 'Grace', relation: 'Child', dob: '1992-05-05', citizenship: 'DE', gender: 'Female' },
       ],
     };
     renderWizard(makeStore().store, 'supabase', withMember);
@@ -153,11 +162,11 @@ describe('Step 2 wizard', () => {
     expect(document.querySelector('input[type="date"]')).toBeNull();
   });
 
-  it('blocks an under-18 household member with the shared message', () => {
+  it('accepts a minor household member: the 18+ floor was removed', async () => {
     const withChild: OnboardingSnapshot = {
       ...validSnapshot,
       members: [
-        { name: 'Grace', relation: 'Daughter', dob: '2015-05-05', citizenship: 'DE' },
+        { name: 'Grace', relation: 'Child', dob: '2015-05-05', citizenship: 'DE', gender: 'Female' },
       ],
     };
     const { store, save } = makeStore();
@@ -165,9 +174,25 @@ describe('Step 2 wizard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
 
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  });
+
+  it('still blocks a future household date of birth', () => {
+    const nextYear = new Date().getFullYear() + 1;
+    const withFuture: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Grace', relation: 'Child', dob: `${nextYear}-05-05`, citizenship: 'DE', gender: 'Female' },
+      ],
+    };
+    const { store, save } = makeStore();
+    renderWizard(store, 'supabase', withFuture);
+
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
     expect(save).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Household members must be at least 18 years old.'),
+      screen.getByText('Date of birth cannot be in the future.'),
     ).toBeInTheDocument();
   });
 
@@ -179,7 +204,8 @@ describe('Step 2 wizard', () => {
       screen.getByRole('dialog', { name: 'Date of birth' }),
     ).toBeInTheDocument();
 
-    const year = new Date().getFullYear();
+    // The empty applicant calendar opens 40 years ago; pick a day in that view.
+    const year = new Date().getFullYear() - 40;
     const month = String(new Date().getMonth() + 1).padStart(2, '0');
     fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
 
@@ -188,6 +214,95 @@ describe('Step 2 wizard', () => {
     expect(screen.getByLabelText('Date of birth')).toHaveValue(
       `15/${month}/${year}`,
     );
+  });
+
+  it('opens the empty applicant calendar at 40 years ago without committing a value', () => {
+    renderWizard(makeStore().store);
+
+    fireEvent.click(screen.getByLabelText('Date of birth'));
+
+    const year = new Date().getFullYear() - 40;
+    expect(screen.getByLabelText('Year')).toHaveValue(String(year));
+    expect(screen.getByRole('textbox', { name: 'Date of birth' })).toHaveValue('');
+  });
+
+  it('opens a Child household calendar at 16 years ago and others at 40', () => {
+    const withMembers: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Grace', relation: 'Child', dob: '', citizenship: 'DE', gender: 'Female' },
+        { name: 'Lena', relation: 'Spouse', dob: '', citizenship: 'NL', gender: 'Female' },
+      ],
+    };
+    renderWizard(makeStore().store, 'supabase', withMembers);
+
+    fireEvent.click(screen.getByLabelText('Household member 1 date of birth'));
+    expect(screen.getByLabelText('Year')).toHaveValue(
+      String(new Date().getFullYear() - 16),
+    );
+    fireEvent.keyDown(
+      screen.getByLabelText('Household member 1 date of birth'),
+      { key: 'Escape' },
+    );
+
+    fireEvent.click(screen.getByLabelText('Household member 2 date of birth'));
+    expect(screen.getByLabelText('Year')).toHaveValue(
+      String(new Date().getFullYear() - 40),
+    );
+    expect(screen.getByLabelText('Household member 2 date of birth')).toHaveValue(
+      '',
+    );
+  });
+
+  it('shows the gender dropdown and restores the stored gender', () => {
+    renderWizard(makeStore().store, 'supabase', validSnapshot);
+    expect(screen.getByLabelText('Gender')).toHaveValue('Female');
+  });
+
+  it('offers exactly Spouse, Partner and Child for a household relation', () => {
+    const withMember: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Grace', relation: 'Child', dob: '2015-05-05', citizenship: 'DE', gender: 'Female' },
+      ],
+    };
+    renderWizard(makeStore().store, 'supabase', withMember);
+
+    const relation = screen.getByLabelText('Household member 1 relation');
+    const options = Array.from(
+      relation.querySelectorAll('option'),
+    ).map((option) => (option as HTMLOptionElement).value);
+    expect(options).toContain('Spouse');
+    expect(options).toContain('Partner');
+    expect(options).toContain('Child');
+    // The three values plus the empty placeholder; no free-text relations.
+    expect(options.filter((value) => value !== '')).toEqual([
+      'Spouse',
+      'Partner',
+      'Child',
+    ]);
+  });
+
+  it('shows a legacy relation as needing re-selection and blocks saving', () => {
+    const withLegacy: OnboardingSnapshot = {
+      ...validSnapshot,
+      members: [
+        { name: 'Pat', relation: 'Dependent parent', dob: '1950-01-01', citizenship: 'NL', gender: 'Other' },
+      ],
+    };
+    const { store, save } = makeStore();
+    renderWizard(store, 'supabase', withLegacy);
+
+    // It loads without crashing and is visible in the dropdown.
+    expect(screen.getByLabelText('Household member 1 relation')).toHaveValue(
+      'Dependent parent',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(save).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Choose Spouse, Partner or Child to continue.'),
+    ).toBeInTheDocument();
   });
 
   it('does not mention the pre-approval fee: it belongs to step 4', () => {
@@ -213,6 +328,7 @@ describe('Step 2 wizard', () => {
       firstName: 'Ada',
       lastName: 'Lovelace',
       dob: '1990-01-01',
+      gender: 'Female',
     });
     expect(snapshot?.members).toHaveLength(0);
 

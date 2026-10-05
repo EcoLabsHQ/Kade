@@ -81,12 +81,23 @@ function createFakeClient(options: {
 }
 
 const snapshot: OnboardingSnapshot = {
-  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  profile: {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    dob: '1990-01-01',
+    gender: 'Female',
+  },
   citizenships: ['NL'],
   residences: [{ countryCode: 'NL', fromYear: 2000, toYear: 'present' }],
   tier: 2,
   members: [
-    { name: 'Grace', relation: 'Daughter', dob: '2015-05-05', citizenship: 'DE' },
+    {
+      name: 'Grace',
+      relation: 'Child',
+      dob: '2015-05-05',
+      citizenship: 'DE',
+      gender: 'Female',
+    },
   ],
 };
 
@@ -124,6 +135,50 @@ describe('saveOnboardingStep2 (the live write path)', () => {
     expect(call.args.p_residences).toEqual([
       { countryCode: 'NL', fromYear: 2000, toYear: 'present' },
     ]);
+  });
+
+  it('sends the applicant gender and each member gender', async () => {
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    await saveOnboardingStep2(snapshot);
+
+    const call = rpcCalls[0];
+    if (!call) throw new Error('the RPC was not called');
+    expect(call.args.p_gender).toBe('Female');
+    expect(call.args.p_members).toEqual([
+      {
+        name: 'Grace',
+        relation: 'Child',
+        dob: '2015-05-05',
+        citizenship: 'DE',
+        gender: 'Female',
+      },
+    ]);
+  });
+
+  it('rejects a snapshot with no applicant gender, server-side', async () => {
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const invalid: OnboardingSnapshot = {
+      ...snapshot,
+      profile: { ...snapshot.profile, gender: '' },
+    };
+    await expect(saveOnboardingStep2(invalid)).rejects.toThrow(/gender/i);
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('rejects an out-of-enum relation server-side, even if the client sent it', async () => {
+    const { client, rpcCalls } = createFakeClient();
+    hoisted.createSupabaseServerClient.mockResolvedValue(client);
+
+    const invalid: OnboardingSnapshot = {
+      ...snapshot,
+      members: [{ ...snapshot.members[0]!, relation: 'Son' }],
+    };
+    await expect(saveOnboardingStep2(invalid)).rejects.toThrow(/relation/i);
+    expect(rpcCalls).toHaveLength(0);
   });
 
   it('reads the database-recomputed fee back rather than computing it', async () => {

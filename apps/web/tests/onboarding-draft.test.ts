@@ -13,6 +13,7 @@ import {
   addResidence,
   canRemoveCitizenship,
   draftFieldErrors,
+  draftFromSnapshot,
   draftToSnapshot,
   emptyDraft,
   evaluateDraft,
@@ -42,6 +43,7 @@ function validDraft(): OnboardingDraft {
     firstName: 'Ada',
     lastName: 'Lovelace',
     dob: '1990-01-01',
+    gender: 'Female',
     citizenships: ['NL'],
     residences: fullSpan,
     tier: 0,
@@ -70,9 +72,10 @@ describe('household size and the configured fee', () => {
 
     const withMember = updateMember(addMember(base), 0, {
       name: 'Grace',
-      relation: 'Daughter',
+      relation: 'Child',
       dob: '1992-05-05',
       citizenship: 'DE',
+      gender: 'Female',
     });
     expect(evaluateDraft(withMember, 'demo').householdSize).toBe(2);
 
@@ -148,6 +151,7 @@ describe('field-level errors', () => {
     expect(errors.firstName).toBeTruthy();
     expect(errors.lastName).toBeTruthy();
     expect(errors.dob).toBeTruthy();
+    expect(errors.gender).toBeTruthy();
     expect(errors.citizenships).toBeTruthy();
     expect(errors.residences).toBeTruthy();
     expect(errors.tier).toBeTruthy();
@@ -214,36 +218,111 @@ describe('applicant age — at least 18', () => {
   });
 });
 
-describe('household member age — at least 18', () => {
-  const HOUSEHOLD_ADULT_MESSAGE =
-    'Household members must be at least 18 years old.';
+describe('household member age — minimum 0, no future', () => {
+  // Human-directed change: the 18+ floor was removed. Minimum age is now 0; only
+  // impossible and future dates are rejected.
+  const FUTURE_DOB_MESSAGE = 'Date of birth cannot be in the future.';
 
   function withMember(dob: string): OnboardingDraft {
     return updateMember(addMember(validDraft()), 0, {
       name: 'Grace',
-      relation: 'Daughter',
+      relation: 'Child',
       dob,
       citizenship: 'DE',
+      gender: 'Female',
     });
   }
 
-  it('blocks Continue for a household member under 18, and shows why', () => {
+  it('accepts a minor household member instead of blocking at 18', () => {
     const draft = withMember('2015-05-05');
     const evaluation = evaluateDraft(draft, 'demo');
-    expect(evaluation.canContinue).toBe(false);
-    expect(evaluation.blockers).toContain(HOUSEHOLD_ADULT_MESSAGE);
-    expect(draftFieldErrors(draft, 'demo').members).toBe(HOUSEHOLD_ADULT_MESSAGE);
+    expect(evaluation.canContinue).toBe(true);
+    expect(draftFieldErrors(draft, 'demo').members).toBeUndefined();
   });
 
-  it('accepts a household member who is exactly 18', () => {
-    expect(evaluateDraft(withMember(latestDobForAge(18)), 'demo').canContinue).toBe(
-      true,
+  it('still rejects a future household date of birth', () => {
+    const future = addDays(latestDobForAge(0), 1);
+    const draft = withMember(future);
+    expect(evaluateDraft(draft, 'demo').canContinue).toBe(false);
+    expect(draftFieldErrors(draft, 'demo').members).toBe(FUTURE_DOB_MESSAGE);
+  });
+});
+
+describe('gender and relation on the draft', () => {
+  it('blocks Continue until the applicant gender is selected', () => {
+    const draft: OnboardingDraft = { ...validDraft(), gender: '' };
+    expect(evaluateDraft(draft, 'demo').canContinue).toBe(false);
+    expect(draftFieldErrors(draft, 'demo').gender).toBe('Select a gender.');
+  });
+
+  it('blocks Continue until every household member has a gender', () => {
+    const draft = updateMember(addMember(validDraft()), 0, {
+      name: 'Grace',
+      relation: 'Child',
+      dob: '2015-05-05',
+      citizenship: 'DE',
+      gender: '',
+    });
+    expect(evaluateDraft(draft, 'demo').canContinue).toBe(false);
+    expect(draftFieldErrors(draft, 'demo').members).toBe('Select a gender.');
+  });
+
+  it('rejects a free-text relation on write', () => {
+    const draft = updateMember(addMember(validDraft()), 0, {
+      name: 'Grace',
+      relation: 'Dependent parent',
+      dob: '2015-05-05',
+      citizenship: 'DE',
+      gender: 'Female',
+    });
+    expect(evaluateDraft(draft, 'demo').canContinue).toBe(false);
+    expect(draftFieldErrors(draft, 'demo').members).toBe(
+      'Select a valid relation.',
     );
   });
 
-  it('rejects a household member one day short of 18', () => {
-    const oneDayShort = addDays(latestDobForAge(18), 1);
-    expect(evaluateDraft(withMember(oneDayShort), 'demo').canContinue).toBe(false);
+  it('maps legacy Son/Daughter to Child when loading a snapshot', () => {
+    const loaded = draftFromSnapshot({
+      profile: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dob: '1990-01-01',
+        gender: '',
+      },
+      citizenships: ['NL'],
+      residences: fullSpan,
+      tier: 0,
+      members: [
+        { name: 'Grace', relation: 'Daughter', dob: '2015-05-05', citizenship: 'DE', gender: '' },
+        { name: 'Alan', relation: 'Son', dob: '2013-01-01', citizenship: 'DE', gender: 'Male' },
+      ],
+    });
+    expect(loaded.members.map((member) => member.relation)).toEqual([
+      'Child',
+      'Child',
+    ]);
+    // The NULL gender is surfaced as unset, never invented.
+    expect(loaded.gender).toBe('');
+    expect(loaded.members[0]?.gender).toBe('');
+  });
+
+  it('keeps an unknown legacy relation so it must be re-selected', () => {
+    const loaded = draftFromSnapshot({
+      profile: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dob: '1990-01-01',
+        gender: 'Female',
+      },
+      citizenships: ['NL'],
+      residences: fullSpan,
+      tier: 0,
+      members: [
+        { name: 'Pat', relation: 'Dependent parent', dob: '1950-01-01', citizenship: 'NL', gender: 'Other' },
+      ],
+    });
+    expect(loaded.members[0]?.relation).toBe('Dependent parent');
+    expect(evaluateDraft(loaded, 'demo').canContinue).toBe(false);
   });
 });
 

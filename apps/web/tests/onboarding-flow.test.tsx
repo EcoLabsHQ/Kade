@@ -352,14 +352,16 @@ function setField(label: string, value: string) {
 /** The applicant's date of birth is a calendar trigger, not a native input. */
 function pickApplicantDob() {
   fireEvent.click(screen.getByLabelText('Date of birth'));
-  // Step 1 rejects an applicant under 18, so step back to an unambiguously
-  // adult year before choosing the day.
+  // The empty applicant calendar opens 40 years ago (emptyViewYearsAgo), so
+  // step forward to an unambiguously adult year before choosing the day.
   const age = 30;
   const now = new Date();
   const year = now.getFullYear() - age;
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  for (let i = 0; i < age; i += 1) {
-    fireEvent.click(screen.getByRole('button', { name: 'Previous year' }));
+  let viewYear = now.getFullYear() - 40;
+  while (viewYear < year) {
+    fireEvent.click(screen.getByRole('button', { name: 'Next year' }));
+    viewYear += 1;
   }
   fireEvent.click(screen.getByRole('button', { name: `${year}-${month}-15` }));
 }
@@ -367,9 +369,10 @@ function pickApplicantDob() {
 /**
  * Pick a household member's date of birth through the styled calendar, the same
  * control the applicant uses. The native date input is gone, so the test drives
- * the picker the way a resident would.
+ * the picker the way a resident would. The calendar opens at an offset that
+ * depends on the selected relation: 16 years ago for a Child, 40 otherwise.
  */
-function pickHouseholdDob(index: number, dob: string) {
+function pickHouseholdDob(index: number, dob: string, relation: string) {
   const [year, month, day] = dob.split('-').map(Number);
   fireEvent.click(
     screen.getByLabelText(`Household member ${index} date of birth`),
@@ -388,9 +391,8 @@ function pickHouseholdDob(index: number, dob: string) {
     viewMonth += 1;
   }
 
-  // The calendar opens clamped to the 18+ ceiling (currentYear - 18), so step
-  // back one year at a time to the target year.
-  let viewYear = new Date().getFullYear() - 18;
+  // The calendar opens at the relation-dependent offset; step to the target.
+  let viewYear = now.getFullYear() - (relation === 'Child' ? 16 : 40);
   while (viewYear > year!) {
     fireEvent.click(screen.getByRole('button', { name: 'Previous year' }));
     viewYear -= 1;
@@ -410,12 +412,14 @@ function addHouseholdMember(
   relation: string,
   dob: string,
   citizenship: string,
+  gender = 'Female',
 ) {
   fireEvent.click(screen.getByRole('button', { name: /add member/i }));
   const index = screen.getAllByLabelText(/household member \d+ name/i).length;
   setField(`Household member ${index} name`, name);
   setField(`Household member ${index} relation`, relation);
-  pickHouseholdDob(index, dob);
+  setField(`Household member ${index} gender`, gender);
+  pickHouseholdDob(index, dob, relation);
   fireEvent.change(screen.getByLabelText(`Household member ${index} citizenship`), {
     target: { value: citizenship },
   });
@@ -440,6 +444,7 @@ function fillStep2Wizard() {
 
   setField('First name', 'Marcus');
   setField('Last name', 'Feldt');
+  setField('Gender', 'Male');
   pickApplicantDob();
 
   if (screen.queryByRole('button', { name: /remove germany citizenship/i }) === null) {
@@ -455,9 +460,9 @@ function fillStep2Wizard() {
 
   fireEvent.click(screen.getByRole('radio', { name: /3-year/ }));
 
-  addHouseholdMember('Lena Feldt', 'Spouse', '1985-07-22', 'NL');
-  // Every household member is an adult: this form also carries the 18+ rule.
-  addHouseholdMember('Emil Feldt', 'Son', '1988-05-03', 'DE');
+  addHouseholdMember('Lena Feldt', 'Spouse', '1985-07-22', 'NL', 'Female');
+  // A minor is a valid household member now: the 18+ floor was removed.
+  addHouseholdMember('Emil Feldt', 'Child', '2010-05-03', 'DE', 'Male');
 }
 
 describe('step 1, the transaction passkey', () => {
@@ -952,7 +957,12 @@ function expectNoInternalVocabulary() {
 
 /** A restored resident: household of three, aiming at the 5-year tier. */
 const RESTORED_SNAPSHOT: OnboardingSnapshot = {
-  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  profile: {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    dob: '1990-01-01',
+    gender: 'Female',
+  },
   citizenships: ['NL'],
   residences: [{ countryCode: 'NL', fromYear: 2021, toYear: 'present' }],
   tier: 1,
@@ -962,12 +972,14 @@ const RESTORED_SNAPSHOT: OnboardingSnapshot = {
       relation: 'Daughter',
       dob: '1992-05-05',
       citizenship: 'DE',
+      gender: 'Female',
     },
     {
       name: 'Alan Lovelace',
       relation: 'Son',
       dob: '1990-01-01',
       citizenship: 'DE',
+      gender: 'Male',
     },
   ],
 };
