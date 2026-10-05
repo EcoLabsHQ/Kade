@@ -243,8 +243,12 @@ describe('InvestScreen reference layout', () => {
     expect(screen.queryByText(/4\.62%/)).toBeNull();
   });
 
-  it('renders the two baseline stat cards', () => {
+  it('renders the qualified summary and the two baseline USDC/Morpho stat cards', () => {
     renderScreen();
+    // The native-inclusive qualified total, labelled so it cannot be mistaken
+    // for an Invest instrument.
+    expect(screen.getByText('Qualified position')).toBeInTheDocument();
+    expect(screen.getByTestId('invest-stat-qualified')).toBeInTheDocument();
     expect(screen.getByText('Vault USDC available')).toBeInTheDocument();
     // The figure is the Safe's current on-chain position, not a per-session
     // count (nothing persists a session figure), so the label was renamed from

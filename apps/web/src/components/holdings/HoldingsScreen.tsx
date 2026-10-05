@@ -12,7 +12,7 @@ import {
   USDC_DECIMALS,
   usdcAddressForChain,
 } from '@/lib/wealth/evm';
-import { shortAddress, usd } from '@/lib/wealth/format';
+import { shortAddress, usd, usd2 } from '@/lib/wealth/format';
 import type {
   HoldingWallet,
   HoldingsAggregate,
@@ -768,7 +768,11 @@ export function HoldingsScreen({
         />
         <SummaryCard
           label="Qualified"
-          value={qualifiedKnown ? usd(qualifiedPosition.usd) : '—'}
+          // Two decimals (`usd2`), the same presentation the residency tier
+          // check and the Invest "Qualified position" card use, so the one
+          // qualified total renders identically on every surface. `usd` stays
+          // whole-dollar for the figures whose design calls for it.
+          value={qualifiedKnown ? usd2(qualifiedPosition.usd) : '—'}
           sub={qualifiedTierSub(tier, qualifiedPosition)}
           valueColor={tokens.brandPrimary}
         />

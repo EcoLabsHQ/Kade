@@ -812,8 +812,8 @@ describe('HoldingsScreen — qualified tier sub-line', () => {
       />,
     );
 
-    // The sentence agrees with the figure on the card.
-    expect(cardValue('Qualified')).toBe('$500,000');
+    // The sentence agrees with the figure on the card (two decimals, `usd2`).
+    expect(cardValue('Qualified')).toBe('$500,000.00');
     expect(cardSub('Qualified')).toBe('Meets the 3-year tier.');
     expect(screen.queryByText(/to go/)).toBeNull();
   });
@@ -828,7 +828,7 @@ describe('HoldingsScreen — qualified tier sub-line', () => {
       />,
     );
 
-    expect(cardValue('Qualified')).toBe('$100,000');
+    expect(cardValue('Qualified')).toBe('$100,000.00');
     // $280,000 minimum − $100,000 held = $180,000, not the whole minimum.
     expect(cardSub('Qualified')).toBe('Below 3-year tier — $180,000 to go');
     expect(cardSub('Qualified')).not.toContain('$280,000');
@@ -888,7 +888,7 @@ describe('HoldingsScreen — qualified tier sub-line', () => {
       />,
     );
 
-    expect(cardValue('Qualified')).toBe('$500,000');
+    expect(cardValue('Qualified')).toBe('$500,000.00');
     expect(cardSub('Qualified')).toBe('No qualifying tier is recorded.');
     expect(screen.queryByText(/meets/i)).toBeNull();
     expect(screen.queryByText(/to go/)).toBeNull();

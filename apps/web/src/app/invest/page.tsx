@@ -7,6 +7,7 @@ import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
+import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
 import {
   isMorphoRailConfiguredForChain,
   morphoChainName,
@@ -62,6 +63,16 @@ export default async function InvestPage() {
     loadReviewBar(session.userId),
   ]);
 
+  // The Safe's **qualified** total, reduced **once** here from the same rows
+  // through the same function the Holdings card and the residency tier check
+  // use. Native coin counts toward it (it is not an Invest instrument and is
+  // not allocatable); reducing it once is what keeps Invest and Holdings from
+  // showing two different qualified figures.
+  const qualified = summarizeQualifiedPosition({
+    safeAddress: shellSafe.address,
+    rows: vaultHoldings,
+  });
+
   // Each pinned rail's current yield, read from Morpho's public API for the
   // **same vault the rail deposits into**, so the allocate modal can estimate
   // income. The reads are bounded and cached by Next (a day), so this route
@@ -93,6 +104,7 @@ export default async function InvestPage() {
           vaults={vaults}
           safeAddress={shellSafe.address}
           holdings={vaultHoldings}
+          qualified={qualified}
           yields={yields}
         />
       </ContentContainer>
