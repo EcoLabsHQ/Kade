@@ -1,7 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { readFeeMode } from '@/lib/env';
 import { loadFeePayment } from '@/lib/payments/server';
-import { loadShellSafe } from '@/lib/safe/shell';
+import { loadShellSafe, type ShellSafe } from '@/lib/safe/shell';
 import {
   summarizeQualifiedPosition,
   type QualifiedPosition,
@@ -151,9 +151,13 @@ async function loadIdentityFact(profileId: string): Promise<IdentityFact | null>
  */
 async function loadQualifiedPosition(
   profileId: string,
+  shellSafe?: ShellSafe,
 ): Promise<QualifiedPosition> {
   try {
-    const safe = await loadShellSafe(profileId);
+    // The page already resolves the shell Safe for its own chrome, so it is
+    // passed in and reused rather than read a second time here. Callers that
+    // have no Safe in hand still resolve it, keeping this read self-contained.
+    const safe = shellSafe ?? (await loadShellSafe(profileId));
     const rows = await loadVaultHoldings(safe.address);
     return summarizeQualifiedPosition({ safeAddress: safe.address, rows });
   } catch (cause) {
@@ -182,10 +186,11 @@ export async function loadResidencyFacts(
   profileId: string,
   row: ApplicationResidencyRow,
   serviceFeeAmountUsdc: number | null,
+  shellSafe?: ShellSafe,
 ): Promise<ResidencyFacts> {
   const [identity, qualified, servicePayment] = await Promise.all([
     loadIdentityFact(profileId),
-    loadQualifiedPosition(profileId),
+    loadQualifiedPosition(profileId, shellSafe),
     loadResidencyServiceFeePayment(profileId),
   ]);
 
@@ -211,9 +216,17 @@ export async function loadResidencyFacts(
   };
 }
 
-/** The complete snapshot the Residency step renders, or null with no application. */
+/**
+ * The complete snapshot the Residency step renders, or null with no application.
+ *
+ * The shell Safe is an optional input: the page resolves it once for its own
+ * chrome and passes it here so the qualified-position read reuses it instead of
+ * reading the deployment record a second time. Omit it and the snapshot resolves
+ * it itself, so the returned shape and its meaning are unchanged either way.
+ */
 export async function loadResidencySnapshot(
   profileId: string,
+  shellSafe?: ShellSafe,
 ): Promise<ResidencySnapshot | null> {
   const row = await loadApplicationResidencyRow(profileId);
   if (!row) return null;
@@ -230,7 +243,12 @@ export async function loadResidencySnapshot(
   }
 
   const preapproval = await loadFeePayment(profileId);
-  const facts = await loadResidencyFacts(profileId, row, serviceFeeAmountUsdc);
+  const facts = await loadResidencyFacts(
+    profileId,
+    row,
+    serviceFeeAmountUsdc,
+    shellSafe,
+  );
   const view = deriveResidencyView(facts, preapproval.status === 'paid');
 
   return {

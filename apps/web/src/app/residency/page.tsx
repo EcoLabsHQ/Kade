@@ -36,21 +36,30 @@ export default async function ResidencyPage() {
     redirect('/login');
   }
 
-  const snapshot = await loadResidencySnapshot(session.userId);
+  // Resolve the shell Safe once for the whole route and hand it to the snapshot,
+  // whose qualified-position read then reuses it instead of reading the
+  // deployment record a second time.
+  const shellSafe = await loadShellSafe(session.userId);
+
+  // The snapshot (application, fee rail and chain reads) and the review bar are
+  // independent, so they are issued together rather than the review bar waiting
+  // for every snapshot read to finish.
+  const [snapshot, reviewBar] = await Promise.all([
+    loadResidencySnapshot(session.userId, shellSafe),
+    loadReviewBar(session.userId),
+  ]);
   if (!snapshot) {
     // No application means pre-registration is not finished; send the resident
     // to the step that is actually pending rather than rendering empty state.
     redirect('/onboarding');
   }
 
-  const shellSafe = await loadShellSafe(session.userId);
   const settlement = activeSettlementChain();
   const network = settlement?.name ?? 'Ethereum Sepolia';
   const feeConfig = readResidencyServiceFeeConfig();
   const walletConfigured = readWalletConnectProjectId() !== null;
   const usdcAddress = settlement?.usdcAddress.value ?? '';
   const explorerUrl = settlement?.explorerUrl ?? 'https://sepolia.etherscan.io';
-  const reviewBar = await loadReviewBar(session.userId);
 
   return (
     <WalletProvider>
