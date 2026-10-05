@@ -1,0 +1,33 @@
+iteration: demo-feedback-2
+profile: NORMAL
+known_good: 3519da8931ee56cdb021faa33ec1ed167bacad70
+candidate: a4ee4d6536d2a06d6f77c5d7a2b46f03171bac22
+mode: discovery
+reviewed_scopes:
+  route-loading-shells: complete
+  nav-prefetch: complete
+  route-waterfalls: complete
+  residency-safe-dedupe: complete
+  rendered-output-preservation: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: a4ee4d6
+  recorded_at: 2026-10-05
+  note: "Run with Node v22.17.0 per .nvmrc."
+requirements:
+  - "Add immediate loading shells for the hot routes; no fabricated data; no auth bypass."
+  - "Remove route-level serial awaits (Holdings, Residency, Invest, Overview) WITHOUT changing rendered output, statuses, reasons, or error handling."
+  - "Residency resolves the shell Safe once instead of twice."
+  - "NO caching added; no router.refresh change; per-chain RPC reads deliberately NOT parallelized."
+  - "Loading shells for /login and /onboarding must be shell-free (no resident sidebar)."
+notes:
+  - "The concurrency tests were shown to FAIL against the pre-change code (negative control), so they pin the improvement rather than merely passing."
+  - "F1 (WARN): residency/overview now issue reads on the no-application/not-onboarded redirect path; no output/security change. Accepted as a deliberate trade-off: removing the extra read would re-serialize a read on the success path, which is the path the human complained about."

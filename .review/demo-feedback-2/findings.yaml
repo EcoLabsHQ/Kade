@@ -1,0 +1,11 @@
+- id: F1
+  severity: WARN
+  scope: route-waterfalls
+  title: "Redirect paths now perform reads they previously did not"
+  evidence: "apps/web/src/app/residency/page.tsx:42,47-55; apps/web/src/app/page.tsx:110-121"
+  failure_mode: "A signed-in user with no application (residency) or incomplete onboarding (overview) now triggers extra applications/reviewers and Safe-deployment reads before the redirect, adding load/latency on the gated path; rendered output and error handling are unchanged."
+  materiality: "Behavior change in a page loader on a cold path; no correctness, output, or data-leak consequence (own rows, results discarded). Non-blocking. Accepted as a deliberate trade-off: reverting it would re-serialize a read on the success path, which is the path the human reported as slow."
+  status: open
+  introduced_by: a4ee4d6536d2a06d6f77c5d7a2b46f03171bac22
+  resolved_by: null
+  recheck_attempts: 0
