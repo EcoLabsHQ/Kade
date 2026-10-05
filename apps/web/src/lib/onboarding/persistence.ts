@@ -3,6 +3,7 @@ import {
   COUNTRY_CODES,
   TIER_DATABASE_VALUES,
   TIERS,
+  normalizeRelationForRead,
   type ApplicantProfile,
   type CountryCode,
   type HouseholdMember,
@@ -133,7 +134,7 @@ export function createSupabaseOnboardingStore(
 
       const profileResult = await client
         .from('profiles')
-        .select('first_name, last_name, dob')
+        .select('first_name, last_name, dob, gender')
         .eq('id', userId)
         .maybeSingle();
       if (profileResult.error) {
@@ -143,6 +144,7 @@ export function createSupabaseOnboardingStore(
         first_name: string | null;
         last_name: string | null;
         dob: string | null;
+        gender: string | null;
       } | null;
       if (!profile || profile.dob === null) return null;
 
@@ -208,7 +210,7 @@ export function createSupabaseOnboardingStore(
 
       const memberResult = await client
         .from('household_members')
-        .select('name, relation, dob, citizenship')
+        .select('name, relation, dob, citizenship, gender')
         .eq('application_id', application.id);
       if (memberResult.error) {
         throw new Error(
@@ -234,11 +236,16 @@ export function createSupabaseOnboardingStore(
             relation: string;
             dob: string;
             citizenship: CountryCode;
+            gender: string | null;
           }) => ({
             name: row.name,
-            relation: row.relation,
+            // Lenient on read: Son/Daughter become Child, any other legacy text
+            // is preserved so the form can flag it before the next save.
+            relation: normalizeRelationForRead(row.relation),
             dob: row.dob,
             citizenship: row.citizenship,
+            // A NULL gender (legacy row) is shown as unset, never invented.
+            gender: row.gender ?? '',
           }),
         );
 
@@ -247,6 +254,7 @@ export function createSupabaseOnboardingStore(
           firstName: profile.first_name ?? '',
           lastName: profile.last_name ?? '',
           dob: profile.dob,
+          gender: profile.gender ?? '',
         },
         citizenships,
         residences,

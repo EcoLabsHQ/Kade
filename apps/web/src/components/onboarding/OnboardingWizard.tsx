@@ -3,7 +3,13 @@
 import { useRouter } from 'next/navigation';
 
 import { useMemo, useState } from 'react';
-import { COUNTRIES, type CountryCode, type FeeMode, type TierIndex } from '@kade/shared';
+import {
+  COUNTRIES,
+  GENDER_VALUES,
+  type CountryCode,
+  type FeeMode,
+  type TierIndex,
+} from '@kade/shared';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DatePicker } from '@/components/ui/DatePicker';
@@ -71,6 +77,26 @@ const eyebrowStyle = {
   letterSpacing: '.08em',
   textTransform: 'uppercase',
   color: tokens.muted,
+} as const;
+
+const selectLabelStyle = {
+  display: 'block',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: tokens.muted,
+  marginBottom: '6px',
+} as const;
+
+const selectControlStyle = {
+  width: '100%',
+  height: '44px',
+  border: `1px solid ${tokens.border}`,
+  borderRadius: '10px',
+  padding: '0 14px',
+  fontSize: '14.5px',
+  background: '#fff',
+  color: tokens.ink,
+  outline: 'none',
 } as const;
 
 /**
@@ -273,8 +299,47 @@ export function OnboardingWizard({
               value={draft.dob}
               invalid={Boolean(fieldErrors.dob)}
               error={fieldErrors.dob}
+              emptyViewYearsAgo={40}
               onChange={(value) => setDraft((d) => ({ ...d, dob: value }))}
             />
+            <div>
+              <label htmlFor="gender" style={selectLabelStyle}>
+                Gender
+              </label>
+              <select
+                id="gender"
+                aria-label="Gender"
+                aria-invalid={Boolean(fieldErrors.gender) || undefined}
+                value={draft.gender}
+                onChange={(event) =>
+                  setDraft((d) => ({ ...d, gender: event.target.value }))
+                }
+                style={{
+                  ...selectControlStyle,
+                  borderColor: fieldErrors.gender
+                    ? tokens.danger
+                    : tokens.border,
+                }}
+              >
+                <option value="">Select gender</option>
+                {GENDER_VALUES.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.gender ? (
+                <div
+                  style={{
+                    fontSize: '11.5px',
+                    color: tokens.danger,
+                    marginTop: '6px',
+                  }}
+                >
+                  {fieldErrors.gender}
+                </div>
+              ) : null}
+            </div>
             <CitizenshipEditor
               id="citizenships"
               citizenships={draft.citizenships}

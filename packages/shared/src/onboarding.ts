@@ -162,6 +162,49 @@ export function tierDatabaseValue(index: TierIndex): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Gender                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * [human-directed] The three accepted gender values, exactly. Gender is
+ * required for new submissions on the principal applicant and on every
+ * household member. The stored columns are nullable text so existing rows keep
+ * a NULL value; a value is never invented for them.
+ */
+export const GENDER_VALUES = ['Male', 'Female', 'Other'] as const;
+
+export type Gender = (typeof GENDER_VALUES)[number];
+
+export const gender = z.enum(GENDER_VALUES, 'Select a gender.');
+
+/* -------------------------------------------------------------------------- */
+/* Relation                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * [human-directed] The three accepted household relations, exactly. The stored
+ * column stays `text`: legacy rows are not rejected by a CHECK constraint, and
+ * the enum is enforced in the application layer on write.
+ */
+export const RELATION_VALUES = ['Spouse', 'Partner', 'Child'] as const;
+
+export type Relation = (typeof RELATION_VALUES)[number];
+
+export const relation = z.enum(RELATION_VALUES, 'Select a valid relation.');
+
+/**
+ * Lenient read mapping for a stored `relation` value. Legacy `Son`/`Daughter`
+ * become `Child` (case-insensitive). Any other value is returned unchanged, so
+ * it surfaces in the form as an invalid selection that must be corrected before
+ * saving, rather than being silently rewritten or dropped.
+ */
+export function normalizeRelationForRead(value: string): string {
+  const trimmed = value.trim();
+  if (/^son$/i.test(trimmed) || /^daughter$/i.test(trimmed)) return 'Child';
+  return value;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Schemas                                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -216,7 +259,7 @@ export const applicantDob = z
 
 /**
  * The applicant profile. Column mapping (profiles): firstName → first_name,
- * lastName → last_name, dob → dob (`date`).
+ * lastName → last_name, dob → dob (`date`), gender → gender (`text`).
  */
 export const applicantProfile = z.object({
   firstName: z.string().trim().min(1, 'First name is required.'),
@@ -226,9 +269,23 @@ export const applicantProfile = z.object({
    * carrying the 18+ rule.
    */
   dob: applicantDob,
+  /** Required for new submissions; one of `GENDER_VALUES`. */
+  gender,
 });
 
-export type ApplicantProfile = z.infer<typeof applicantProfile>;
+/**
+ * The applicant profile as carried through the draft and persistence seam.
+ *
+ * `gender` is a plain string here rather than the strict enum so a legacy row
+ * with a NULL gender can be loaded and shown as unset. `applicantProfile`
+ * validates it strictly on write.
+ */
+export interface ApplicantProfile {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly dob: string;
+  readonly gender: string;
+}
 
 /**
  * A single country code from the 14-country list. Used for citizenships,
@@ -385,36 +442,49 @@ export const tierIndex = z.union([
 ]);
 
 /**
- * A household member's date of birth, carrying the same 18+ rule as the
- * applicant: every permit holder listed here must be an adult. Kept separate
- * from `applicantDob` so the message names the household member rather than the
- * principal applicant.
+ * A household member's date of birth. The minimum age is 0 (human-directed: the
+ * 18+ rule was removed), so any real date up to today is accepted. Impossible
+ * and future dates are still rejected; `today` is injectable for tests.
  */
 export const householdMemberDob = z.iso.date().refine(
-  (value) => isApplicantAdult(value),
-  { message: 'Household members must be at least 18 years old.' },
+  (value) => value <= latestDobForAge(0),
+  { message: 'Date of birth cannot be in the future.' },
 );
 
 /**
  * A household member. Column mapping (household_members): name → name,
- * relation → relation, dob → dob, citizenship → citizenship.
+ * relation → relation, dob → dob, citizenship → citizenship, gender → gender.
  *
- * [arbitrary] the migration allows NULL for relation, dob and citizenship, but
- * the handoff presents every member row as fully filled, so the form schema is
- * stricter than the table. That is compatible: these columns accept the
- * validated values.
+ * [arbitrary] the migration allows NULL for relation, dob, citizenship and
+ * gender, but the handoff presents every member row as fully filled, so the form
+ * schema is stricter than the table. That is compatible: these columns accept
+ * the validated values.
  *
- * The date of birth carries the 18+ rule: a household member, like the
- * applicant, must be an adult to hold a dependent permit.
+ * `relation` is one of `RELATION_VALUES` on write. `gender` is required for new
+ * submissions. There is no age floor beyond "not in the future".
  */
 export const householdMember = z.object({
   name: z.string().trim().min(1, 'Household member name is required.'),
-  relation: z.string().trim().min(1, 'Household member relation is required.'),
+  relation,
   dob: householdMemberDob,
   citizenship,
+  gender,
 });
 
-export type HouseholdMember = z.infer<typeof householdMember>;
+/**
+ * A household member as carried through the draft and persistence seam.
+ *
+ * `relation` and `gender` are plain strings here so a legacy row (a stored
+ * `Son`/`Daughter`/free text, or a NULL gender) can be loaded without crashing.
+ * `householdMember` validates both strictly on write.
+ */
+export interface HouseholdMember {
+  readonly name: string;
+  readonly relation: string;
+  readonly dob: string;
+  readonly citizenship: CountryCode;
+  readonly gender: string;
+}
 
 /**
  * The household list. Zero members is valid: the applicant alone is a

@@ -4,6 +4,7 @@ import {
   applicantProfile,
   citizenshipList,
   householdMemberList,
+  normalizeRelationForRead,
   residenceList,
   stepOneComplete,
   stepTwoComplete,
@@ -35,12 +36,14 @@ export interface HouseholdMemberDraft {
   readonly relation: string;
   readonly dob: string;
   readonly citizenship: CountryCode | '';
+  readonly gender: string;
 }
 
 export interface OnboardingDraft {
   readonly firstName: string;
   readonly lastName: string;
   readonly dob: string;
+  readonly gender: string;
   readonly citizenships: readonly CountryCode[];
   readonly residences: readonly Residence[];
   readonly tier: TierIndex | null;
@@ -54,6 +57,7 @@ export function emptyDraft(): OnboardingDraft {
     firstName: '',
     lastName: '',
     dob: '',
+    gender: '',
     citizenships: [],
     residences: [],
     tier: null,
@@ -158,7 +162,7 @@ export function addMember(draft: OnboardingDraft): OnboardingDraft {
     ...draft,
     members: [
       ...draft.members,
-      { name: '', relation: '', dob: '', citizenship: '' },
+      { name: '', relation: '', dob: '', citizenship: '', gender: '' },
     ],
   };
 }
@@ -214,6 +218,7 @@ export function evaluateDraft(
       firstName: draft.firstName,
       lastName: draft.lastName,
       dob: draft.dob,
+      gender: draft.gender,
     },
     citizenships: draft.citizenships,
     residences: draft.residences,
@@ -242,6 +247,7 @@ export interface DraftFieldErrors {
   readonly firstName?: string;
   readonly lastName?: string;
   readonly dob?: string;
+  readonly gender?: string;
   readonly citizenships?: string;
   readonly residences?: string;
   readonly tier?: string;
@@ -267,6 +273,7 @@ export function draftFieldErrors(
     firstName?: string;
     lastName?: string;
     dob?: string;
+    gender?: string;
     citizenships?: string;
     residences?: string;
     tier?: string;
@@ -277,6 +284,7 @@ export function draftFieldErrors(
     firstName: draft.firstName,
     lastName: draft.lastName,
     dob: draft.dob,
+    gender: draft.gender,
   });
   if (!profile.success) {
     for (const issue of profile.error.issues) {
@@ -287,6 +295,8 @@ export function draftFieldErrors(
         errors.lastName = issue.message;
       } else if (field === 'dob' && errors.dob === undefined) {
         errors.dob = issue.message;
+      } else if (field === 'gender' && errors.gender === undefined) {
+        errors.gender = issue.message;
       }
     }
   }
@@ -330,12 +340,14 @@ export function draftToSnapshot(
     relation: member.relation.trim(),
     dob: member.dob,
     citizenship: member.citizenship as CountryCode,
+    gender: member.gender,
   }));
   return {
     profile: {
       firstName: draft.firstName.trim(),
       lastName: draft.lastName.trim(),
       dob: draft.dob,
+      gender: draft.gender,
     },
     citizenships: [...draft.citizenships],
     residences: [...draft.residences],
@@ -349,14 +361,16 @@ export function draftFromSnapshot(snapshot: OnboardingSnapshot): OnboardingDraft
     firstName: snapshot.profile.firstName,
     lastName: snapshot.profile.lastName,
     dob: snapshot.profile.dob,
+    gender: snapshot.profile.gender,
     citizenships: [...snapshot.citizenships],
     residences: [...snapshot.residences],
     tier: snapshot.tier,
     members: snapshot.members.map((member) => ({
       name: member.name,
-      relation: member.relation,
+      relation: normalizeRelationForRead(member.relation),
       dob: member.dob,
       citizenship: member.citizenship,
+      gender: member.gender,
     })),
   };
 }

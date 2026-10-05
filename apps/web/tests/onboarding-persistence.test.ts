@@ -152,12 +152,23 @@ function createFakeSupabase(responses: FakeResponses = {}): {
 }
 
 const snapshot: OnboardingSnapshot = {
-  profile: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+  profile: {
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    dob: '1990-01-01',
+    gender: 'Female',
+  },
   citizenships: ['NL', 'DE'],
   residences: [{ countryCode: 'NL', fromYear: 2000, toYear: 'present' }],
   tier: 2,
   members: [
-    { name: 'Grace', relation: 'Daughter', dob: '2015-05-05', citizenship: 'DE' },
+    {
+      name: 'Grace',
+      relation: 'Child',
+      dob: '2015-05-05',
+      citizenship: 'DE',
+      gender: 'Female',
+    },
   ],
 };
 
@@ -184,7 +195,12 @@ describe('supabase store', () => {
 
   it('restores a saved draft, reading a NULL to_year back as "present"', async () => {
     const { client } = createFakeSupabase({
-      profile: { first_name: 'Ada', last_name: 'Lovelace', dob: '1990-01-01' },
+      profile: {
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        dob: '1990-01-01',
+        gender: 'Female',
+      },
       application: { id: 'app-1', tier: '5-year' },
       citizenships: [{ country_code: 'NL' }],
       residences: [
@@ -197,6 +213,7 @@ describe('supabase store', () => {
           relation: 'Daughter',
           dob: '2015-05-05',
           citizenship: 'DE',
+          gender: 'Female',
         },
       ],
     });
@@ -210,5 +227,65 @@ describe('supabase store', () => {
     ]);
     expect(loaded?.citizenships).toEqual(['NL']);
     expect(loaded?.members).toHaveLength(1);
+    // Legacy Son/Daughter load as Child, not as an invalid value.
+    expect(loaded?.members[0]?.relation).toBe('Child');
+    expect(loaded?.profile.gender).toBe('Female');
+    expect(loaded?.members[0]?.gender).toBe('Female');
+  });
+
+  it('loads a NULL gender as unset instead of inventing a value', async () => {
+    const { client } = createFakeSupabase({
+      profile: {
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        dob: '1990-01-01',
+        gender: null,
+      },
+      application: { id: 'app-1', tier: '5-year' },
+      citizenships: [{ country_code: 'NL' }],
+      residences: [{ country_code: 'NL', from_year: 2019, to_year: null }],
+      members: [
+        {
+          name: 'Pat',
+          relation: 'Child',
+          dob: '2015-05-05',
+          citizenship: 'DE',
+          gender: null,
+        },
+      ],
+    });
+    const store = createSupabaseOnboardingStore(() => client);
+    const loaded = await store.load('user-1');
+
+    expect(loaded?.profile.gender).toBe('');
+    expect(loaded?.members[0]?.gender).toBe('');
+  });
+
+  it('preserves an unknown legacy relation so it can be re-selected', async () => {
+    const { client } = createFakeSupabase({
+      profile: {
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        dob: '1990-01-01',
+        gender: 'Female',
+      },
+      application: { id: 'app-1', tier: '5-year' },
+      citizenships: [{ country_code: 'NL' }],
+      residences: [{ country_code: 'NL', from_year: 2019, to_year: null }],
+      members: [
+        {
+          name: 'Pat',
+          relation: 'Dependent parent',
+          dob: '1950-01-01',
+          citizenship: 'NL',
+          gender: 'Other',
+        },
+      ],
+    });
+    const store = createSupabaseOnboardingStore(() => client);
+    const loaded = await store.load('user-1');
+
+    // Not silently rewritten: the form must surface and correct it.
+    expect(loaded?.members[0]?.relation).toBe('Dependent parent');
   });
 });

@@ -4,11 +4,16 @@ import {
   citizenshipList,
   COUNTRIES,
   COUNTRY_CODES,
+  gender,
+  GENDER_VALUES,
   householdMemberDob,
   householdSize,
   isApplicantAdult,
   latestDobForAge,
+  normalizeRelationForRead,
   preapprovalFeeUsdc,
+  relation,
+  RELATION_VALUES,
   residence,
   residenceCoverage,
   residenceList,
@@ -22,8 +27,7 @@ import {
 } from '../src/index.js';
 
 const ADULT_DOB_MESSAGE = 'You must be at least 18 years old.';
-const HOUSEHOLD_ADULT_MESSAGE =
-  'Household members must be at least 18 years old.';
+const FUTURE_DOB_MESSAGE = 'Date of birth cannot be in the future.';
 
 /** `iso` plus `days`, as a `YYYY-MM-DD` string, without a date library. */
 function addDays(iso: string, days: number): string {
@@ -132,6 +136,53 @@ describe('citizenshipList', () => {
   });
 });
 
+describe('gender', () => {
+  it('is exactly Male, Female and Other', () => {
+    expect(GENDER_VALUES).toEqual(['Male', 'Female', 'Other']);
+  });
+
+  it('accepts each allowed value and rejects anything else', () => {
+    for (const value of GENDER_VALUES) {
+      expect(gender.safeParse(value).success).toBe(true);
+    }
+    expect(gender.safeParse('male').success).toBe(false);
+    expect(gender.safeParse('Non-binary').success).toBe(false);
+    expect(gender.safeParse('').success).toBe(false);
+  });
+});
+
+describe('relation', () => {
+  it('is exactly Spouse, Partner and Child', () => {
+    expect(RELATION_VALUES).toEqual(['Spouse', 'Partner', 'Child']);
+  });
+
+  it('accepts each allowed value and rejects free text', () => {
+    for (const value of RELATION_VALUES) {
+      expect(relation.safeParse(value).success).toBe(true);
+    }
+    expect(relation.safeParse('Son').success).toBe(false);
+    expect(relation.safeParse('Dependent parent').success).toBe(false);
+    expect(relation.safeParse('sibling').success).toBe(false);
+  });
+
+  it('maps legacy Son/Daughter to Child on read, case-insensitively', () => {
+    expect(normalizeRelationForRead('Son')).toBe('Child');
+    expect(normalizeRelationForRead('son')).toBe('Child');
+    expect(normalizeRelationForRead('Daughter')).toBe('Child');
+    expect(normalizeRelationForRead('DAUGHTER')).toBe('Child');
+    expect(normalizeRelationForRead('  Son  ')).toBe('Child');
+  });
+
+  it('leaves the three valid values and unknown legacy text untouched on read', () => {
+    for (const value of RELATION_VALUES) {
+      expect(normalizeRelationForRead(value)).toBe(value);
+    }
+    // Not silently rewritten: an unrecognised value surfaces so it can be fixed.
+    expect(normalizeRelationForRead('Dependent parent')).toBe('Dependent parent');
+    expect(normalizeRelationForRead('sibling')).toBe('sibling');
+  });
+});
+
 const fullSpan: Residence[] = [
   { countryCode: 'NL', fromYear: YEAR - 5, toYear: 'present' },
 ];
@@ -222,7 +273,12 @@ describe('applicant age — at least 18', () => {
   it('accepts exactly-18 through step one and blocks one day short', () => {
     const cutoff = latestDobForAge(18);
     const exactly18 = stepOneComplete({
-      applicant: { firstName: 'Ada', lastName: 'Lovelace', dob: cutoff },
+      applicant: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        dob: cutoff,
+        gender: 'Female',
+      },
       citizenships: ['NL'],
       residences: fullSpan,
     });
@@ -233,6 +289,7 @@ describe('applicant age — at least 18', () => {
         firstName: 'Ada',
         lastName: 'Lovelace',
         dob: addDays(cutoff, 1),
+        gender: 'Female',
       },
       citizenships: ['NL'],
       residences: fullSpan,
@@ -242,17 +299,23 @@ describe('applicant age — at least 18', () => {
   });
 });
 
-// Every member is an adult: the household-member form carries the same 18+ rule
-// as the applicant, so a member's date of birth must be at least 18 years back.
+// Household members no longer carry an 18+ floor (human-directed: the rule was
+// removed; minimum age is 0). These members mix relations and include a minor,
+// and are used to prove the size/fee derivation rather than an age rule.
 const threeMembers: HouseholdMember[] = [
-  { name: 'Ada', relation: 'spouse', dob: '1990-01-01', citizenship: 'NL' },
-  { name: 'Grace', relation: 'sibling', dob: '1992-05-05', citizenship: 'DE' },
-  { name: 'Alan', relation: 'sibling', dob: '1988-08-08', citizenship: 'US' },
+  { name: 'Ada', relation: 'Spouse', dob: '1990-01-01', citizenship: 'NL', gender: 'Female' },
+  { name: 'Grace', relation: 'Child', dob: '2015-05-05', citizenship: 'DE', gender: 'Female' },
+  { name: 'Alan', relation: 'Child', dob: '2012-08-08', citizenship: 'US', gender: 'Male' },
 ];
 
 describe('step one — profile, citizenships, residence history', () => {
   const valid = {
-    applicant: { firstName: 'Ada', lastName: 'Lovelace', dob: '1990-01-01' },
+    applicant: {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      dob: '1990-01-01',
+      gender: 'Female',
+    },
     citizenships: ['NL'],
     residences: fullSpan,
   };
@@ -264,10 +327,19 @@ describe('step one — profile, citizenships, residence history', () => {
   it('blocks an empty profile', () => {
     const status = stepOneComplete({
       ...valid,
-      applicant: { firstName: '', lastName: '', dob: '' },
+      applicant: { firstName: '', lastName: '', dob: '', gender: '' },
     });
     expect(status.complete).toBe(false);
     expect(status.blockers.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('blocks a profile with no gender selected', () => {
+    const status = stepOneComplete({
+      ...valid,
+      applicant: { ...valid.applicant, gender: '' },
+    });
+    expect(status.complete).toBe(false);
+    expect(status.blockers).toContain('Select a gender.');
   });
 
   it('blocks when no citizenship remains', () => {
@@ -319,27 +391,64 @@ describe('step two — tier and household, with the live fee', () => {
     const status = stepTwoComplete({
       mode: 'demo',
       tier: 0,
-      members: [{ name: '', relation: '', dob: 'not-a-date', citizenship: 'XX' }],
+      members: [
+        {
+          name: '',
+          relation: '',
+          dob: 'not-a-date',
+          citizenship: 'XX',
+          gender: '',
+        },
+      ],
     });
     expect(status.complete).toBe(false);
     expect(status.householdSize).toBe(2);
   });
 
-  it('requires every household member to be at least 18', () => {
+  it('accepts a minor household member: the 18+ floor was removed', () => {
+    // Human-directed change: minimum age is now 0. A child born in 2015 is a
+    // valid household member.
     const memberDob = householdMemberDob.safeParse('2015-05-05');
-    expect(memberDob.success).toBe(false);
-    expect(memberDob.error?.issues[0]?.message).toBe(HOUSEHOLD_ADULT_MESSAGE);
+    expect(memberDob.success).toBe(true);
 
-    expect(householdMemberDob.safeParse(latestDobForAge(18)).success).toBe(true);
-
-    const tooYoung = stepTwoComplete({
+    const status = stepTwoComplete({
       mode: 'demo',
       tier: 0,
       members: [
-        { name: 'Grace', relation: 'child', dob: '2015-05-05', citizenship: 'DE' },
+        {
+          name: 'Grace',
+          relation: 'Child',
+          dob: '2015-05-05',
+          citizenship: 'DE',
+          gender: 'Female',
+        },
       ],
     });
-    expect(tooYoung.complete).toBe(false);
-    expect(tooYoung.blockers).toContain(HOUSEHOLD_ADULT_MESSAGE);
+    expect(status.complete).toBe(true);
+  });
+
+  it('still rejects a future household date of birth', () => {
+    const future = addDays(latestDobForAge(0), 1);
+    const memberDob = householdMemberDob.safeParse(future);
+    expect(memberDob.success).toBe(false);
+    if (!memberDob.success) {
+      expect(memberDob.error.issues[0]?.message).toBe(FUTURE_DOB_MESSAGE);
+    }
+
+    const status = stepTwoComplete({
+      mode: 'demo',
+      tier: 0,
+      members: [
+        {
+          name: 'Grace',
+          relation: 'Child',
+          dob: future,
+          citizenship: 'DE',
+          gender: 'Female',
+        },
+      ],
+    });
+    expect(status.complete).toBe(false);
+    expect(status.blockers).toContain(FUTURE_DOB_MESSAGE);
   });
 });

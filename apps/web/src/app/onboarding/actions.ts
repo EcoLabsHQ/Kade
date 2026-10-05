@@ -1,7 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { tierDatabaseValue } from '@kade/shared';
+import {
+  applicantProfile,
+  householdMemberList,
+  tierDatabaseValue,
+} from '@kade/shared';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isAuthConfigured, readAuthEnv, readFeeMode } from '@/lib/env';
 import {
@@ -42,12 +46,30 @@ export async function saveOnboardingStep2(
     throw new Error('Saving Step 2 requires a signed-in session.');
   }
 
+  // Validate server-side with the same frozen rules the client uses. The
+  // browser shapes the snapshot, but the server never trusts it: a required
+  // gender, an out-of-enum relation or an impossible date is rejected here too,
+  // so a tampered or stale payload cannot be persisted.
+  const profile = applicantProfile.safeParse(snapshot.profile);
+  if (!profile.success) {
+    throw new Error(
+      `Saving Step 2 requires a valid profile: ${profile.error.issues[0]?.message ?? 'invalid input'}`,
+    );
+  }
+  const members = householdMemberList.safeParse(snapshot.members);
+  if (!members.success) {
+    throw new Error(
+      `Saving Step 2 requires valid household members: ${members.error.issues[0]?.message ?? 'invalid input'}`,
+    );
+  }
+
   const { data: applicationId, error } = await client.rpc(
     'save_onboarding_step2',
     {
-      p_first_name: snapshot.profile.firstName,
-      p_last_name: snapshot.profile.lastName,
-      p_dob: snapshot.profile.dob,
+      p_first_name: profile.data.firstName,
+      p_last_name: profile.data.lastName,
+      p_dob: profile.data.dob,
+      p_gender: profile.data.gender,
       p_citizenships: [...snapshot.citizenships],
       p_residences: snapshot.residences.map((residence) => ({
         countryCode: residence.countryCode,
@@ -55,11 +77,12 @@ export async function saveOnboardingStep2(
         toYear: residence.toYear,
       })),
       p_tier: tierDatabaseValue(snapshot.tier),
-      p_members: snapshot.members.map((member) => ({
+      p_members: members.data.map((member) => ({
         name: member.name,
-        relation: member.relation ?? '',
-        dob: member.dob ?? '',
-        citizenship: member.citizenship ?? '',
+        relation: member.relation,
+        dob: member.dob,
+        citizenship: member.citizenship,
+        gender: member.gender,
       })),
     },
   );
