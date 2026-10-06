@@ -96,7 +96,7 @@ describe('ColosseumResidency — states', () => {
     expect(screen.getByTestId('colosseum-qualified')).not.toHaveTextContent(/\$/);
   });
 
-  it('State B: funds met but other checks pending shows the steps pop-up pointer', () => {
+  it('State B: funds met but other checks pending shows the four real checks inline, with no detour dialog', () => {
     render(
       <ColosseumResidency
         tier="colosseum"
@@ -105,10 +105,37 @@ describe('ColosseumResidency — states', () => {
     );
 
     expect(screen.getByTestId('colosseum-state-b')).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: /complete your residency steps/i }),
+
+    // The four real checks are listed inline, each with its real derived state.
+    const checklist = screen.getByTestId('colosseum-checklist');
+    expect(checklist).toBeInTheDocument();
+    expect(within(checklist).getAllByRole('listitem')).toHaveLength(4);
+    expect(screen.getByTestId('colosseum-check-identity')).toHaveAttribute(
+      'data-state',
+      'pending',
     );
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-check-funds')).toHaveAttribute(
+      'data-state',
+      'met',
+    );
+    expect(screen.getByTestId('colosseum-check-review')).toHaveAttribute(
+      'data-state',
+      'met',
+    );
+    expect(screen.getByTestId('colosseum-check-service-fee')).toHaveAttribute(
+      'data-state',
+      'met',
+    );
+    // The real detail for the pending check is shown, not a fabricated one.
+    expect(screen.getByTestId('colosseum-check-identity')).toHaveTextContent(
+      /identity verification has not started/i,
+    );
+
+    // The detour is gone: no dialog and no "Complete your residency steps".
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /complete your residency steps/i }),
+    ).toBeNull();
   });
 
   it('State C: all four checks green shows the congrats and the exact sentence', () => {
@@ -122,6 +149,153 @@ describe('ColosseumResidency — states', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+  });
+
+  it('keeps the compliance counter discreet: a thin progressbar with the real remaining time', () => {
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
+
+    // Not a large metric row: a progressbar carrying the real remaining time.
+    const progress = screen.getByTestId('colosseum-compliance-progress');
+    expect(progress).toHaveAttribute('role', 'progressbar');
+    expect(progress).toHaveAttribute('aria-valuemin', '0');
+    expect(progress).toHaveAttribute('aria-valuemax', '120');
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    expect(progress).toHaveAttribute('aria-valuetext', '2:00 remaining');
+
+    // The real remaining time is still shown, and still discoverable as text.
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+    expect(
+      screen.getByText(/remaining in the compliance window/i),
+    ).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('1:30');
+    expect(
+      screen.getByTestId('colosseum-compliance-progress'),
+    ).toHaveAttribute('aria-valuetext', '1:30 remaining');
+  });
+
+  it('reads as one progression: the milestone rail advances with the state', () => {
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts({ qualified: { status: 'known', usd: 4 } }))}
+      />,
+    );
+
+    // A — below threshold.
+    expect(screen.getByTestId('colosseum-phases')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+
+    // B — threshold met, checks pending.
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts({ identity: null }))}
+      />,
+    );
+    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+
+    // C — all checks green, window running.
+    rerender(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
+    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+
+    // D — window elapsed, eligible.
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+
+    // E — citizen.
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
+      'data-state',
+      'done',
+    );
+  });
+
+  it('State D: "Become a Citizen" is the only primary action; the claimed pass is a quiet text affordance', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-flow-d"
+      />,
+    );
+
+    // Claim the pass in state C so it exists in state D, then close the reveal.
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
+
+    // Exactly one primary action in the state, and it is citizenship.
+    const primaries = screen
+      .getAllByRole('button')
+      .filter((button) => button.getAttribute('data-variant') === 'primary');
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0]).toHaveTextContent(/become a citizen/i);
+
+    // The residency pass is present but quiet: a real button, not a filled one.
+    const pass = screen.getByRole('button', { name: /view residency pass/i });
+    expect(pass.tagName).toBe('BUTTON');
+    expect(pass).toHaveAttribute('data-variant', 'quiet');
+  });
+
+  it('State D: still lets an unclaimed pass be claimed, but only as a quiet affordance', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-flow-d2"
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
+
+    const claim = screen.getByRole('button', {
+      name: /claim colosseum residency/i,
+    });
+    expect(claim).toHaveAttribute('data-variant', 'quiet');
+    // Claiming from state D still opens the full-screen pass.
+    fireEvent.click(claim);
+    expect(
+      screen.getByTestId('colosseum-residency-pass-overlay'),
+    ).toBeInTheDocument();
   });
 
   it('keeps "Become a Citizen" locked until the 2 minutes elapse', () => {
