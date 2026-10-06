@@ -1,0 +1,38 @@
+iteration: demo-feedback-12
+profile: NORMAL
+known_good: 67ecd4b
+candidate: 8b50a30
+mode: recheck
+reviewed_scopes:
+  never-send-discipline: complete
+  membership-calldata-and-gate: complete
+  membership-store-and-migration: complete
+  membership-indexer: complete
+  deployment-plan-tooling: complete
+  vote-eligibility-and-mocked-adapter: complete
+  honesty-and-contract-tension: complete
+active_findings: [F2]
+resolved_findings: [F1, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 1
+  F3: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 8b50a30
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc. No on-chain validation performed or possible."
+notes:
+  - "NEVER-SEND BOUNDARY CLEAN: nothing in the candidate signs, sends or broadcasts. plan.ts only encodes a SafeCall (the Safe engine import is type-only); server.ts uses a read-only public client and returns sent:false on every branch; repo-wide grep for writeContract/sendTransaction/sendRawTransaction/signTypedData/privateKey/broadcast/execTransaction/bundler finds no match in the new modules. The gate is server-only and fails closed. The deployment planner refuses all argv, fails closed without inputs, and labels its CREATE prediction as a prediction, never a deployment."
+  - "Calldata selectors independently recomputed by the reviewer with viem and all matched: setCollections=0x7f743bc6, issueResident=0xdc8970be, promoteToCitizen=0xb2197c3e, revokeMembership=0xc5ae086a. Deploy order and constructor args match the contracts."
+  - "F1 RESOLVED (8b50a30): the on-screen 'Snapshot source: mock' notice was removed, restoring the frozen Week-3 contract section 3 property ('carry no on-screen demo banner, dialog notice or demo-labelled control'). No other demo notice remains on the Vote surface. adapter.mocked is not dead — it is part of the SnapshotAdapter interface and a real adapter reports mocked:false. The orchestrator removed it because a frozen contract is not changed without explicit human approval; the human has been offered an amendment if they prefer the notice."
+  - "F3 RESOLVED (8b50a30): packages/contracts/membership/deployment-inputs.json is now git-ignored at the exact path the loader resolves; the example file stays committable; the generated plan records only rpcHost, never the endpoint key."
+  - "F2 OPEN (WARN): store.ts:134-136 returns recorded:true unconditionally, so the indexer cannot report a replay (indexer.ts:196-199). Diagnostic-counter inaccuracy in an UNWIRED primitive; no data duplication is possible (unique(chain_id,event_key) plus an on-conflict writer). Queued."
+  - "The migration 20261006000001_membership_transitions.sql is NOT applied. Its static conventions are correct (RLS, scoped grants, SECURITY DEFINER with pinned search_path, matching partial-index/ON CONFLICT predicate), but live-Postgres validity cannot be established without executing it."
+  - "Two observations: the wired Vote page loads only RESIDENT_SPACE_ID and proposals[0], so the citizen-only refusal is reachable only through an injected adapter (tests), not the running page. And membership_transitions is not cleared by the demo-reset functions (rows survive with profile_id nulled)."
+  - "The demo 'Become a Citizen' milestone is NOT auto-wired to an issuance; only the residency permit seam is wired, prepare-only. Five product decisions were left open rather than invented."
+  - "NO ON-CHAIN VALIDATION WAS PERFORMED OR POSSIBLE."
+human_note: "The human asked to deploy to Arbitrum and implement the full on-chain flow with Snapshot mocked. Deployment remains blocked: no deployer key (Vercel masks it, no keystore), Arbitrum is active:false in the frozen registry, ARBITRUM_SEPOLIA_RPC_URL is unset, and no Arbitrum Safe address is known."

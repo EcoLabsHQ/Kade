@@ -1,0 +1,34 @@
+- id: F2
+  severity: WARN
+  scope: membership-indexer
+  title: "Real store always returns recorded:true, so the indexer cannot report a replay"
+  evidence: "apps/web/src/lib/membership/store.ts:134-136 vs apps/web/src/lib/membership/indexer.ts:196-199; migration 20261006000001:111-112"
+  failure_mode: "Reconciling the same range twice against the real store reports applied=N on the second pass, so a replay is indistinguishable from a fresh application."
+  materiality: "Diagnostic-counter inaccuracy in an unwired primitive; no data duplication is possible because the unique(chain_id,event_key) index plus the on-conflict writer make a replayed event the same row."
+  status: open
+  introduced_by: f9b1931
+  resolved_by: null
+  recheck_attempts: 0
+  planned_remediation: "Have the store report whether the write inserted or conflicted, so the indexer's applied/skipped contract holds against the real store, not only against the test fake."
+- id: F1
+  severity: WARN
+  scope: honesty-and-contract-tension
+  title: "On-screen mock notice contradicted the frozen Week-3 contract's no-banner decision"
+  evidence: "apps/web/src/components/vote/VoteScreen.tsx:425-427; docs/week-3-frozen-delivery-contract.md:90-94"
+  failure_mode: "Resolved: the notice was removed, so the frozen contract property holds again."
+  materiality: "Resolved by deletion."
+  status: resolved
+  introduced_by: f9b1931
+  resolved_by: 8b50a30
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: deployment-plan-tooling
+  title: "membership/deployment-inputs.json was not git-ignored despite the README"
+  evidence: ".gitignore:38-41; git check-ignore -v exits 0 for the inputs file and 1 for the example"
+  failure_mode: "Resolved: the real inputs file is ignored; the example and the secret-free generated plan stay committable."
+  materiality: "Resolved."
+  status: resolved
+  introduced_by: f9b1931
+  resolved_by: 8b50a30
+  recheck_attempts: 1
