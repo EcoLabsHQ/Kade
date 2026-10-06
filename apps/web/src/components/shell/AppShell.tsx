@@ -45,6 +45,27 @@ export interface AppShellProps {
   readonly reviewReference?: string | null;
   /** Whether the user has a reviewers row, so the shell can offer /admin. */
   readonly isReviewer?: boolean;
+  /**
+   * Streamed slot: the sidebar Safe card. When present it replaces the
+   * `SafeAddressCard` built from the value props, so a caller can resolve the
+   * deployment record behind `<Suspense>` and keep the frame immediate.
+   */
+  readonly safeCard?: ReactNode;
+  /**
+   * Streamed slot: the sidebar review notice. When present it replaces the
+   * `ReviewStatusChip` built from `reviewBar`.
+   */
+  readonly reviewNotice?: ReactNode;
+  /**
+   * Streamed slot: the top pre-approved banner. When present it replaces the
+   * `PreApprovedBanner` built from `reviewBar`.
+   */
+  readonly reviewBanner?: ReactNode;
+  /**
+   * Streamed slot: the footer's Admin affordance. When present it replaces the
+   * control built from `isReviewer`.
+   */
+  readonly footerAdmin?: ReactNode;
 }
 
 /**
@@ -77,6 +98,10 @@ export function AppShell({
   showReviewBar = false,
   reviewReference = null,
   isReviewer = false,
+  safeCard,
+  reviewNotice,
+  reviewBanner,
+  footerAdmin,
 }: AppShellProps) {
   // One resolved review value for the whole shell. The banner and the sidebar
   // notice are two renderings of this single object, never two computations.
@@ -104,6 +129,9 @@ export function AppShell({
         explorerUrl={explorerUrl}
         isReviewer={isReviewer}
         review={review}
+        safeCard={safeCard}
+        reviewNotice={reviewNotice}
+        footerAdmin={footerAdmin}
       />
       <main
         style={{
@@ -113,7 +141,10 @@ export function AppShell({
           flexDirection: 'column',
         }}
       >
-        {review.show ? <PreApprovedBanner reference={review.reference} /> : null}
+        {reviewBanner ??
+          (review.show ? (
+            <PreApprovedBanner reference={review.reference} />
+          ) : null)}
         {children}
         {/*
           The global footer lives here, in the one shell every authenticated
