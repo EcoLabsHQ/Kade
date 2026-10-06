@@ -1,0 +1,35 @@
+- id: F1
+  severity: WARN
+  scope: reveal-sound
+  title: "Mute control's displayed state is stale across the two reveal shells"
+  evidence: "apps/web/src/components/residency/FullScreenReveal.tsx:288-290, apps/web/src/components/residency/ColosseumResidency.tsx:368-383, apps/web/src/components/residency/reveal-sound.ts:145"
+  failure_mode: "Muting in one reveal leaves the other reveal's button showing the opposite state while the actual cue follows localStorage."
+  materiality: "UX inconsistency; sound behaviour is correct."
+  status: superseded
+  introduced_by: 49ddc35
+  resolved_by: null
+  recheck_attempts: 0
+  note: "Superseded by human direction: the mute control is being removed entirely in task reveal2 (item 3)."
+- id: F2
+  severity: WARN
+  scope: no-scroll-certificate
+  title: "No-scroll fix retains a scroll path and can miss a mount-with-open"
+  evidence: "apps/web/src/components/residency/FullScreenReveal.tsx:280,566,588-591,264-265,285,214-216"
+  failure_mode: "On very short viewports the 0.6 scale floor leaves the artifact taller than the viewport so the overlay scrolls; a reveal that mounts already-open never computes the scale."
+  materiality: "The stated requirement is not fully guaranteed; needs browser verification."
+  status: open
+  introduced_by: 49ddc35
+  resolved_by: null
+  recheck_attempts: 0
+  note: "Steered into task reveal2."
+- id: F3
+  severity: WARN
+  scope: docs
+  title: "Comments still describe removed sweeps and the old layer structure"
+  evidence: "apps/web/src/app/globals.css:379, apps/web/src/components/residency/FullScreenReveal.tsx:175, apps/web/src/components/residency/ResidencyPass.tsx:17-20"
+  failure_mode: "A maintainer reasons about layers/passes that no longer exist."
+  materiality: "Documentation drift only."
+  status: open
+  introduced_by: 49ddc35
+  resolved_by: null
+  recheck_attempts: 0

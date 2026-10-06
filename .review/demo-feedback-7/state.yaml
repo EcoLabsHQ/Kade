@@ -1,0 +1,35 @@
+iteration: demo-feedback-7
+profile: NORMAL
+known_good: 097e3125e823bcfd5ce9c12f5d782e9c2cec03af
+candidate: 49ddc35
+review_scope: "ea42d71...49ddc35 (the reveal task only)"
+mode: discovery
+reviewed_scopes:
+  circular-security-grid: complete
+  fused-reveal-motion: complete
+  single-light-pass: complete
+  no-scroll-certificate: complete
+  clipped-celebration-bloom: complete
+  reveal-sound: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts:
+  F1: 0
+  F2: 0
+  F3: 0
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 49ddc35
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "F1 (WARN): the mute control's displayed label can go stale across the two simultaneously-mounted reveal shells. SUPERSEDED by human direction — the human asked for the mute control to be REMOVED entirely (task reveal2, item 3)."
+  - "F2 (WARN): the no-scroll fix keeps overflowY:auto on the backdrop and floors the fit scale at 0.6, so on very short viewports the overlay can still scroll; a mount-with-open never computes the scale (latent — both reveals currently mount closed). Steered into task reveal2."
+  - "F3 (WARN): comments in globals.css:379, FullScreenReveal.tsx:175 and ResidencyPass.tsx:17-20 still describe sweeps/layers that no longer exist."
+  - "Verified by hand before promotion: the unpushed commit 00efe6b removes @keyframes kade-reveal-card-celebration, but the class .kade-reveal-card-celebration was repointed to kade-reveal-fade (globals.css:483-485, defined at :514), so nothing is left referencing the deleted keyframes. The other unpushed commit 94841d2 only ADDS tests."
+  - "The unpushed local commits (94841d2 tests, 00efe6b dead keyframe, f7b7ff9 merge, c1da3ae review state) ride along in the base of task/reveal2, so the reveal2 review covers them; they were not pushed separately."
+human_note: "The human reviewed the deployed reveal with screenshots and asked for a polish round (badge collision, embedded-vs-popup sizing, remove the mute button, the sweeps, sound scoping/quality, and a localStorage key bump). That is task reveal2."
