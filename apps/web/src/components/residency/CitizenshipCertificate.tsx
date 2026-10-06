@@ -2,114 +2,205 @@
 
 import type { CSSProperties } from 'react';
 import { FullScreenReveal } from './FullScreenReveal';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 import { formatIssueDate } from './artifact-format';
 
 /**
- * The virtual Colosseum citizenship passport, revealed full-screen when the
+ * The virtual Colosseum citizenship certificate, revealed full-screen when the
  * resident becomes a citizen (and re-openable from the inline artifact).
  *
- * It is the same declared demo as the inline passport: it confers no real
- * travel or identity document and carries a "Demo" chip and an explicit
- * disclaimer. The full-screen shell is shared with the residency pass
+ * It is the same declared demo as the inline certificate: it confers no real
+ * citizenship, status or identity document and carries a "Demo" chip and an
+ * explicit disclaimer. The full-screen shell is shared with the residency pass
  * (`FullScreenReveal`), so the dialog contract lives in one place.
+ *
+ * Reveal 2 — a three-layer 3D stack. Two decorative document layers rise out of
+ * depth and consolidate behind the credential; the credential's fields then
+ * stagger in and a single security-light pass crosses it once.
  */
-export interface CitizenshipPassportProps {
+
+/**
+ * The shared certificate visual. Both the embedded artifact on the Residency
+ * screen and the full-screen popup render this same component so they cannot
+ * drift apart: the header, texture, field structure and typography are one
+ * source of truth, and the only difference is `variant` (scale) and the motion
+ * the full-screen shell wraps it in.
+ */
+export interface CertificateArtifactProps {
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  /** `embedded` is the compact inline rendering; `full` is the popup. */
+  readonly variant?: 'embedded' | 'full';
+  /** Render the one-shot security-light pass (full-screen only). */
+  readonly showSweep?: boolean;
+}
+
+export function CertificateArtifact({
+  serial,
+  issuedAt,
+  variant = 'full',
+  showSweep = false,
+}: CertificateArtifactProps) {
+  const full = variant === 'full';
+  const idBase = full ? 'colosseum-certificate-overlay' : 'colosseum-certificate';
+
+  return (
+    <div
+      data-testid={full ? 'colosseum-certificate-overlay' : 'colosseum-certificate'}
+      className={
+        full
+          ? 'kade-certificate-artifact kade-artifact-card'
+          : 'kade-certificate-artifact'
+      }
+      style={full ? fullCard : embeddedCard}
+    >
+      <div aria-hidden="true" className="kade-passport-guilloche" style={texture} />
+      <div aria-hidden="true" style={full ? fullEmblem : embeddedEmblem}>
+        ✦
+      </div>
+      {showSweep ? (
+        <span aria-hidden="true" className="kade-passport-sweep" />
+      ) : null}
+
+      <div style={header}>
+        <div style={org}>Colosseum · Demo Certificate</div>
+        <div style={type}>Citizen</div>
+      </div>
+
+      <div style={titleRow}>
+        <span style={full ? fullTitle : embeddedTitle}>
+          Colosseum Citizenship Certificate
+        </span>
+        <span style={docChip}>Demo</span>
+      </div>
+
+      <p style={note}>Not a real citizenship, status or identity document.</p>
+
+      <dl style={fields}>
+        <div className="kade-artifact-field" style={field}>
+          <dt style={label}>Document</dt>
+          <dd style={value}>Colosseum Citizen</dd>
+        </div>
+        <div className="kade-artifact-field" style={field}>
+          <dt style={label}>Issued</dt>
+          <dd data-testid={`${idBase}-issued`} style={value}>
+            {formatIssueDate(issuedAt)}
+          </dd>
+        </div>
+        <div className="kade-artifact-field" style={field}>
+          <dt style={label}>Serial</dt>
+          <dd data-testid={`${idBase}-serial`} style={valueMono}>
+            {serial ?? '—'}
+          </dd>
+        </div>
+        <div className="kade-artifact-field" style={field}>
+          <dt style={label}>Status</dt>
+          <dd style={value}>Colosseum Citizen · demo</dd>
+        </div>
+      </dl>
+
+      <div aria-hidden="true" style={mrz}>
+        <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
+        <span data-testid={`${idBase}-mrz`}>{serial ?? '—'}</span>
+      </div>
+
+      <p style={disclaimer}>
+        Demo artifact only · confers no status, onchain or otherwise.
+      </p>
+    </div>
+  );
+}
+
+export interface CitizenshipCertificateProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly serial: string | null;
   readonly issuedAt: string | null;
+  /**
+   * The one-time celebratory tier, used only for the first, live transition to
+   * citizen. Every later open (e.g. clicking the inline certificate) uses the
+   * standard tier.
+   */
+  readonly celebration?: boolean;
 }
 
-export function CitizenshipPassport({
+export function CitizenshipCertificate({
   open,
   onClose,
   serial,
   issuedAt,
-}: CitizenshipPassportProps) {
+  celebration = false,
+}: CitizenshipCertificateProps) {
+  const reducedMotion = usePrefersReducedMotion();
+
   return (
     <FullScreenReveal
       open={open}
       onClose={onClose}
-      title="Virtual citizenship passport"
-      announcement="Your demo Colosseum citizenship passport is ready. This is a demo and is not a real travel or identity document."
+      title="Colosseum Citizenship Certificate"
+      announcement="Your demo Colosseum citizenship certificate is ready. This is a demo and is not a real identity document."
       revealClassName="kade-passport-reveal"
       flipClassName="kade-passport-flip"
+      celebration={celebration}
     >
-      <div data-testid="colosseum-passport-overlay" className="kade-artifact-card" style={passportCard}>
-        <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
-        <div aria-hidden style={passportEmblem}>
-          ✦
+      <div className="kade-passport-stack" data-testid="colosseum-certificate-overlay-stack">
+        <div aria-hidden="true" className="kade-stack-layer kade-stack-back" style={stackBack} />
+        <div aria-hidden="true" className="kade-stack-layer kade-stack-mid" style={stackMid} />
+        <div className="kade-stack-layer kade-stack-front">
+          <CertificateArtifact
+            variant="full"
+            serial={serial}
+            issuedAt={issuedAt}
+            showSweep={!reducedMotion}
+          />
         </div>
-
-        <div style={passportHeader}>
-          <div style={passportOrg}>Colosseum · Demo Passport</div>
-          <div style={passportType}>Citizen</div>
-        </div>
-
-        <div style={passportTitleRow}>
-          <span style={passportTitle}>Virtual passport</span>
-          <span style={passportDocChip}>Demo</span>
-        </div>
-
-        <p style={passportNote}>Not a real travel or identity document.</p>
-
-        <dl style={passportFields}>
-          <div className="kade-artifact-field" style={passportField}>
-            <dt style={passportLabel}>Document</dt>
-            <dd style={passportValue}>Colosseum Citizen</dd>
-          </div>
-          <div className="kade-artifact-field" style={passportField}>
-            <dt style={passportLabel}>Issued</dt>
-            <dd data-testid="colosseum-passport-overlay-issued" style={passportValue}>
-              {formatIssueDate(issuedAt)}
-            </dd>
-          </div>
-          <div className="kade-artifact-field" style={passportField}>
-            <dt style={passportLabel}>Serial</dt>
-            <dd
-              data-testid="colosseum-passport-overlay-serial"
-              style={passportValueMono}
-            >
-              {serial ?? '—'}
-            </dd>
-          </div>
-          <div className="kade-artifact-field" style={passportField}>
-            <dt style={passportLabel}>Status</dt>
-            <dd style={passportValue}>Colosseum Citizen · demo</dd>
-          </div>
-        </dl>
-
-        <div aria-hidden style={passportMrz}>
-          <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
-          <span>{serial ?? '—'}</span>
-        </div>
-
-        <p style={passportDisclaimer}>
-          Demo artifact only · confers no status, onchain or otherwise.
-        </p>
       </div>
     </FullScreenReveal>
   );
 }
 
-const passportCard: CSSProperties = {
+const baseCard: CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
-  // Never exceed the reveal shell, so the passport cannot spill horizontally.
+  // Never exceed the reveal shell, so the certificate cannot spill horizontally.
   maxInlineSize: '100%',
   boxSizing: 'border-box',
   background:
     'radial-gradient(120% 140% at 18% 0%, #12415f 0%, #0a2a43 45%, #071d30 100%)',
-  borderRadius: '20px',
-  padding: '28px 28px 20px',
   color: '#f4f8ff',
   border: '1px solid rgba(255,255,255,.18)',
-  boxShadow:
-    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 34px 80px -30px rgba(7,29,48,.9)',
   transformStyle: 'preserve-3d',
 };
 
-const passportTexture: CSSProperties = {
+const fullCard: CSSProperties = {
+  ...baseCard,
+  borderRadius: '20px',
+  padding: '28px 28px 20px',
+  boxShadow:
+    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 34px 80px -30px rgba(7,29,48,.9)',
+};
+
+const embeddedCard: CSSProperties = {
+  ...baseCard,
+  borderRadius: '18px',
+  padding: '22px 22px 16px',
+  boxShadow:
+    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 26px 60px -26px rgba(7,29,48,.8)',
+};
+
+const stackBack: CSSProperties = {
+  borderRadius: '20px',
+  background: 'radial-gradient(120% 140% at 18% 0%, #0d2f47 0%, #071d30 100%)',
+  border: '1px solid rgba(255,255,255,.12)',
+};
+
+const stackMid: CSSProperties = {
+  borderRadius: '20px',
+  background: 'radial-gradient(120% 140% at 18% 0%, #10344f 0%, #08202f 100%)',
+  border: '1px solid rgba(255,255,255,.14)',
+};
+
+const texture: CSSProperties = {
   position: 'absolute',
   inset: 0,
   opacity: 0.5,
@@ -118,7 +209,7 @@ const passportTexture: CSSProperties = {
   pointerEvents: 'none',
 };
 
-const passportEmblem: CSSProperties = {
+const fullEmblem: CSSProperties = {
   position: 'absolute',
   top: '50%',
   right: '-6px',
@@ -129,7 +220,12 @@ const passportEmblem: CSSProperties = {
   pointerEvents: 'none',
 };
 
-const passportHeader: CSSProperties = {
+const embeddedEmblem: CSSProperties = {
+  ...fullEmblem,
+  fontSize: '150px',
+};
+
+const header: CSSProperties = {
   position: 'relative',
   display: 'flex',
   justifyContent: 'space-between',
@@ -139,7 +235,7 @@ const passportHeader: CSSProperties = {
   paddingBottom: '12px',
 };
 
-const passportOrg: CSSProperties = {
+const org: CSSProperties = {
   fontSize: '10.5px',
   fontWeight: 700,
   letterSpacing: '.16em',
@@ -147,7 +243,7 @@ const passportOrg: CSSProperties = {
   opacity: 0.85,
 };
 
-const passportType: CSSProperties = {
+const type: CSSProperties = {
   fontSize: '10px',
   fontWeight: 700,
   letterSpacing: '.14em',
@@ -158,7 +254,7 @@ const passportType: CSSProperties = {
   border: '1px solid rgba(255,255,255,.25)',
 };
 
-const passportTitleRow: CSSProperties = {
+const titleRow: CSSProperties = {
   position: 'relative',
   display: 'flex',
   alignItems: 'baseline',
@@ -167,13 +263,19 @@ const passportTitleRow: CSSProperties = {
   marginTop: '18px',
 };
 
-const passportTitle: CSSProperties = {
-  fontSize: '26px',
+const fullTitle: CSSProperties = {
+  fontSize: '24px',
   fontWeight: 700,
   letterSpacing: '.01em',
 };
 
-const passportDocChip: CSSProperties = {
+const embeddedTitle: CSSProperties = {
+  fontSize: '19px',
+  fontWeight: 700,
+  letterSpacing: '.01em',
+};
+
+const docChip: CSSProperties = {
   fontSize: '10px',
   fontWeight: 700,
   letterSpacing: '.1em',
@@ -184,7 +286,7 @@ const passportDocChip: CSSProperties = {
   padding: '2px 7px',
 };
 
-const passportNote: CSSProperties = {
+const note: CSSProperties = {
   position: 'relative',
   margin: '6px 0 20px',
   fontSize: '12.5px',
@@ -192,7 +294,7 @@ const passportNote: CSSProperties = {
   opacity: 0.82,
 };
 
-const passportFields: CSSProperties = {
+const fields: CSSProperties = {
   position: 'relative',
   margin: 0,
   display: 'grid',
@@ -200,25 +302,25 @@ const passportFields: CSSProperties = {
   gap: '16px 18px',
 };
 
-const passportField: CSSProperties = {
+const field: CSSProperties = {
   borderTop: '1px solid rgba(255,255,255,.22)',
   paddingTop: '10px',
 };
 
-const passportLabel: CSSProperties = {
+const label: CSSProperties = {
   fontSize: '10px',
   letterSpacing: '.08em',
   textTransform: 'uppercase',
   opacity: 0.7,
 };
 
-const passportValue: CSSProperties = {
+const value: CSSProperties = {
   margin: '5px 0 0',
   fontSize: '15.5px',
   fontWeight: 700,
 };
 
-const passportValueMono: CSSProperties = {
+const valueMono: CSSProperties = {
   margin: '5px 0 0',
   fontSize: '14px',
   fontWeight: 700,
@@ -226,7 +328,7 @@ const passportValueMono: CSSProperties = {
   letterSpacing: '.04em',
 };
 
-const passportMrz: CSSProperties = {
+const mrz: CSSProperties = {
   position: 'relative',
   marginTop: '20px',
   display: 'flex',
@@ -240,7 +342,7 @@ const passportMrz: CSSProperties = {
   paddingTop: '10px',
 };
 
-const passportDisclaimer: CSSProperties = {
+const disclaimer: CSSProperties = {
   position: 'relative',
   margin: '12px 0 0',
   fontSize: '10.5px',

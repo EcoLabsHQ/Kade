@@ -13,6 +13,11 @@ import { formatIssueDate } from './artifact-format';
  * disclaimer. The resident's name is not available to this component (the real
  * residency snapshot carries no holder name), so it shows a neutral placeholder
  * unless a caller supplies one.
+ *
+ * Reveal 1 — a five-layer security print. The substrate, guilloche, seal and
+ * portrait layers wipe up behind the credential, which settles last. Every
+ * layer is decorative and `aria-hidden`; the readable credential is the only
+ * thing exposed to assistive tech.
  */
 export interface ResidencyPassProps {
   readonly open: boolean;
@@ -43,58 +48,116 @@ export function ResidencyPass({
       revealClassName="kade-residency-pass-reveal"
       flipClassName="kade-residency-pass-flip"
     >
-      <div data-testid="colosseum-residency-pass-overlay" className="kade-artifact-card" style={passCard}>
-        <div aria-hidden className="kade-residency-pass-guilloche" style={guilloche} />
-        <div aria-hidden style={emblem}>
-          ✦
+      <div
+        data-testid="colosseum-residency-pass-overlay"
+        className="kade-security-print kade-artifact-card"
+      >
+        <div aria-hidden="true" className="kade-security-layer kade-layer-substrate" />
+        <div aria-hidden="true" className="kade-security-layer kade-layer-guilloche">
+          <div className="kade-residency-pass-guilloche" style={guilloche} />
+        </div>
+        <div aria-hidden="true" className="kade-security-layer kade-layer-seal">
+          <svg
+            viewBox="0 0 120 120"
+            width="132"
+            height="132"
+            style={sealSvg}
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle
+              className="kade-seal-stroke"
+              cx="60"
+              cy="60"
+              r="46"
+              pathLength={100}
+              fill="none"
+              stroke="rgba(255,255,255,.45)"
+              strokeWidth="2"
+            />
+            <path
+              className="kade-seal-stroke"
+              d="M38 62 L54 78 L84 44"
+              pathLength={100}
+              fill="none"
+              stroke="rgba(255,255,255,.7)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+        <div aria-hidden="true" className="kade-security-layer kade-layer-portrait">
+          <svg
+            viewBox="0 0 120 120"
+            width="150"
+            height="150"
+            style={portraitSvg}
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="60" cy="44" r="22" fill="rgba(255,255,255,.16)" />
+            <path
+              d="M20 110 C24 80 40 70 60 70 C80 70 96 80 100 110 Z"
+              fill="rgba(255,255,255,.12)"
+            />
+          </svg>
         </div>
 
-        <div style={header}>
-          <div style={org}>Colosseum · Demo Residency Pass</div>
-          <div style={typeChip}>Resident</div>
+        <div className="kade-security-layer kade-layer-credential">
+          <div className="kade-security-credential" style={passCard}>
+            <div aria-hidden="true" style={emblem}>
+              ✦
+            </div>
+
+            <div style={header}>
+              <div style={org}>Colosseum · Demo Residency Pass</div>
+              <div style={typeChip}>Resident</div>
+            </div>
+
+            <div style={titleRow}>
+              <span style={title}>Virtual residency pass</span>
+              <span style={demoChip}>Demo</span>
+            </div>
+
+            <p style={note}>Not a real residency, status or document.</p>
+
+            <dl style={fields}>
+              <div className="kade-artifact-field" style={field}>
+                <dt style={label}>Holder</dt>
+                <dd data-testid="colosseum-residency-pass-holder" style={value}>
+                  {holder}
+                </dd>
+              </div>
+              <div className="kade-artifact-field" style={field}>
+                <dt style={label}>Issued</dt>
+                <dd data-testid="colosseum-residency-pass-issued" style={value}>
+                  {formatIssueDate(issuedAt)}
+                </dd>
+              </div>
+              <div className="kade-artifact-field" style={field}>
+                <dt style={label}>Serial</dt>
+                <dd data-testid="colosseum-residency-pass-serial" style={valueMono}>
+                  {serial ?? '—'}
+                </dd>
+              </div>
+              <div className="kade-artifact-field" style={field}>
+                <dt style={label}>Status</dt>
+                <dd style={value}>Colosseum Resident · demo</dd>
+              </div>
+            </dl>
+
+            <div aria-hidden="true" style={mrz}>
+              <span>P&lt;KADECOLOSSEUM&lt;RESIDENT</span>
+              <span>{serial ?? '—'}</span>
+            </div>
+
+            <p style={disclaimer}>
+              Demo artifact only · confers no residency, status, onchain or
+              otherwise.
+            </p>
+          </div>
         </div>
-
-        <div style={titleRow}>
-          <span style={title}>Virtual residency pass</span>
-          <span style={demoChip}>Demo</span>
-        </div>
-
-        <p style={note}>Not a real residency, status or document.</p>
-
-        <dl style={fields}>
-          <div className="kade-artifact-field" style={field}>
-            <dt style={label}>Holder</dt>
-            <dd data-testid="colosseum-residency-pass-holder" style={value}>
-              {holder}
-            </dd>
-          </div>
-          <div className="kade-artifact-field" style={field}>
-            <dt style={label}>Issued</dt>
-            <dd data-testid="colosseum-residency-pass-issued" style={value}>
-              {formatIssueDate(issuedAt)}
-            </dd>
-          </div>
-          <div className="kade-artifact-field" style={field}>
-            <dt style={label}>Serial</dt>
-            <dd data-testid="colosseum-residency-pass-serial" style={valueMono}>
-              {serial ?? '—'}
-            </dd>
-          </div>
-          <div className="kade-artifact-field" style={field}>
-            <dt style={label}>Status</dt>
-            <dd style={value}>Colosseum Resident · demo</dd>
-          </div>
-        </dl>
-
-        <div aria-hidden style={mrz}>
-          <span>P&lt;KADECOLOSSEUM&lt;RESIDENT</span>
-          <span>{serial ?? '—'}</span>
-        </div>
-
-        <p style={disclaimer}>
-          Demo artifact only · confers no residency, status, onchain or
-          otherwise.
-        </p>
       </div>
     </FullScreenReveal>
   );
@@ -115,6 +178,21 @@ const passCard: CSSProperties = {
   boxShadow:
     '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 34px 80px -30px rgba(4,24,22,.9)',
   transformStyle: 'preserve-3d',
+};
+
+const sealSvg: CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+  opacity: 0.55,
+};
+
+const portraitSvg: CSSProperties = {
+  position: 'absolute',
+  right: '18px',
+  bottom: '12px',
+  opacity: 0.6,
 };
 
 const guilloche: CSSProperties = {
