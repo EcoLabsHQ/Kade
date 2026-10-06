@@ -309,7 +309,7 @@ export default async function OverviewPage() {
               <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 600 }}>
                 Getting ready for residency
               </h2>
-              <Link href="/onboarding" style={{ fontSize: '13px', fontWeight: 600 }}>
+              <Link href="/residency" style={{ fontSize: '13px', fontWeight: 600 }}>
                 Open →
               </Link>
             </div>
@@ -339,7 +339,7 @@ export default async function OverviewPage() {
                 <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 600 }}>
                   Qualified holdings
                 </h2>
-                <Link href="/onboarding" style={{ fontSize: '13px', fontWeight: 600 }}>
+                <Link href="/residency" style={{ fontSize: '13px', fontWeight: 600 }}>
                   Open →
                 </Link>
               </div>

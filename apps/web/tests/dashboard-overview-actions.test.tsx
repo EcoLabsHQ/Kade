@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 /**
- * The Overview dashboard's header actions.
+ * The Overview dashboard's header and card actions.
  *
  * The dashboard used to render its own "Start Residency" link because the nav
  * entry did not exist yet. It does now (`@/components/shell/nav`), so the
- * redundant link was removed — but only the link: the sibling "Replay setup"
- * link must survive, or the removal would have been a blind deletion of the
- * whole action row.
+ * redundant *header* link was removed — but only the link: the sibling "Replay
+ * setup" link must survive, or the removal would have been a blind deletion of
+ * the whole action row.
+ *
+ * The two tracker cards keep their own `Open →` affordances. Those point at the
+ * Residency step (`/residency`), not at `/onboarding`: they open the step the
+ * card is about. "Replay setup" is the only header action that deliberately
+ * returns to onboarding.
  *
  * Offline: the session, the review bar and the shell's Safe read are mocked, so
  * no network is touched.
@@ -106,22 +111,49 @@ beforeEach(() => {
 });
 
 describe('Overview dashboard header actions', () => {
-  it('no longer links to Residency but keeps the Replay setup link', async () => {
+  it('removed the redundant header Start Residency link but keeps the Replay setup link', async () => {
     render(await OverviewPage());
 
-    // The redundant "Start Residency" link is gone...
+    // The redundant "Start Residency" header link is gone…
     expect(
       screen.queryByRole('link', { name: 'Start Residency' }),
     ).toBeNull();
-    expect(
-      screen
-        .queryAllByRole('link')
-        .some((link) => link.getAttribute('href') === '/residency'),
-    ).toBe(false);
 
-    // ...but the sibling action survives, so the row was not deleted wholesale.
+    // …but the sibling action survives, so the row was not deleted wholesale.
     const replay = screen.getByRole('link', { name: 'Replay setup' });
     expect(replay).toHaveAttribute('href', '/onboarding');
+
+    cleanup();
+  });
+
+  it('points both tracker card Open → affordances at /residency, not /onboarding', async () => {
+    render(await OverviewPage());
+
+    // The "Getting ready for residency" card contains the OverviewTracker; its
+    // `Open →` must open the Residency step, where the tracker rows are actioned.
+    const residencyHeading = screen.getByRole('heading', {
+      name: /getting ready for residency/i,
+    });
+    const trackerLink = within(
+      residencyHeading.parentElement as HTMLElement,
+    ).getByRole('link', { name: /open/i });
+    expect(trackerLink).toHaveAttribute('href', '/residency');
+
+    // The "Qualified holdings" card opens the same step.
+    const holdingsHeading = screen.getByRole('heading', {
+      name: /qualified holdings/i,
+    });
+    const holdingsLink = within(
+      holdingsHeading.parentElement as HTMLElement,
+    ).getByRole('link', { name: /open/i });
+    expect(holdingsLink).toHaveAttribute('href', '/residency');
+
+    // Exactly the two card affordances leave for /residency; nothing else does.
+    expect(
+      screen
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('href') === '/residency'),
+    ).toHaveLength(2);
 
     cleanup();
   });
