@@ -113,6 +113,24 @@ contract MembershipManagerTest is Test {
         assertEq(manager.pendingOwner(), address(0));
     }
 
+    function test_RenounceOwnershipIsDisabled() public {
+        // The Safe is the only account that can administer membership, so
+        // renouncing ownership would brick the contract permanently. The
+        // override reverts and leaves the owner untouched.
+        vm.prank(SAFE);
+        vm.expectRevert(MembershipManager.OwnershipRenounceDisabled.selector);
+        manager.renounceOwnership();
+        assertEq(manager.owner(), SAFE);
+
+        // Ownership can still move, but only through the two-step transfer.
+        vm.prank(SAFE);
+        manager.transferOwnership(BOB);
+        vm.prank(BOB);
+        manager.acceptOwnership();
+        assertEq(manager.owner(), BOB);
+        assertEq(manager.pendingOwner(), address(0));
+    }
+
     // ---------------------------------------------------------------------
     // Wiring
     // ---------------------------------------------------------------------
@@ -147,6 +165,18 @@ contract MembershipManagerTest is Test {
         vm.prank(SAFE);
         vm.expectRevert(MembershipManager.WrongManager.selector);
         fresh.setCollections(resident, citizen);
+    }
+
+    function test_SetCollectionsRejectsTheSameCollectionTwice() public {
+        MembershipManager fresh = new MembershipManager(SAFE);
+        ColosseumResident freshResident = new ColosseumResident(address(fresh));
+
+        // Wiring one collection as both resident and citizen would make
+        // promoteToCitizen burn and re-mint inside a single collection,
+        // silently conflating the two credential types.
+        vm.prank(SAFE);
+        vm.expectRevert(MembershipManager.CollectionsMustDiffer.selector);
+        fresh.setCollections(freshResident, ColosseumCitizen(address(freshResident)));
     }
 
     // ---------------------------------------------------------------------

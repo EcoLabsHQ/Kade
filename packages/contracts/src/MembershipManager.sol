@@ -55,8 +55,22 @@ contract MembershipManager is Ownable2Step, ReentrancyGuard {
     error CollectionsNotSet();
     error ZeroCollection();
     error WrongManager();
+    error CollectionsMustDiffer();
+    error OwnershipRenounceDisabled();
 
     constructor(address initialOwner) Ownable(initialOwner) {}
+
+    // ---------------------------------------------------------------------
+    // Ownership — transfer only
+    // ---------------------------------------------------------------------
+
+    /// @notice Ownership cannot be renounced. The Safe is the only account that
+    ///         can administer membership, so losing the owner would brick the
+    ///         contract permanently. Ownership can only move through the
+    ///         two-step transfer (`transferOwnership` + `acceptOwnership`).
+    function renounceOwnership() public view override onlyOwner {
+        revert OwnershipRenounceDisabled();
+    }
 
     // ---------------------------------------------------------------------
     // Wiring — one-time, restricted to the Safe
@@ -74,6 +88,9 @@ contract MembershipManager is Ownable2Step, ReentrancyGuard {
         }
         if (address(resident_) == address(0) || address(citizen_) == address(0)) {
             revert ZeroCollection();
+        }
+        if (address(resident_) == address(citizen_)) {
+            revert CollectionsMustDiffer();
         }
         if (resident_.manager() != address(this) || citizen_.manager() != address(this)) {
             revert WrongManager();

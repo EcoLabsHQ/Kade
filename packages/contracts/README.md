@@ -130,11 +130,29 @@ decide who is issued a credential. Wiring is a one-time `setCollections` call by
 the Safe, after the two collections are deployed with the manager address as
 their only minter/burner.
 
-> **Note:** adding the pinned OpenZeppelin dependency changes each artifact's
-> metadata (Foundry compiles every source in one solc input), so the pinned
-> `SafeProxy` creation-code hash in `test/SafeAddress.t.sol` was re-derived with
-> `npm run safe:vector --workspace @kade/contracts`. The vector arithmetic is
-> unchanged.
+> **Note:** adding the pinned OpenZeppelin dependency changed the pinned
+> `SafeProxy` creation-code hash in `test/SafeAddress.t.sol`. The cause is
+> **not** that "Foundry compiles every source in one solc input": `SafeProxy`'s
+> metadata `sources` is dependency-scoped and lists only `SafeProxy.sol`. solc
+> embeds `settings.remappings` in the metadata, and the new
+> `openzeppelin-contracts/` remapping (plus Foundry's auto-discovered nested
+> remappings `erc4626-tests/` and `halmos-cheatcodes/`) changed every artifact's
+> metadata, hence its creation code. The vector arithmetic is unchanged.
+>
+> Re-derive with a **clean** build: `forge build` is incremental and does not
+> recompile `SafeProxy` when only the remapping set changed, so a stale
+> `out/SafeProxy.sol/SafeProxy.json` prints the old constants.
+>
+> ```bash
+> cd packages/contracts
+> forge clean && forge build
+> npm run safe:vector --workspace @kade/contracts
+> ```
+>
+> `scripts/safe-address-vector.mjs` also refuses to run when the artifact's
+> embedded remappings do not match `forge remappings`. The test reads the freshly
+> compiled `type(SafeProxy).creationCode`, never the artifact, so a stale pin
+> fails the suite.
 
 ## EAS schema tooling
 
