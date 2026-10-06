@@ -1141,6 +1141,23 @@ describe('FullScreenReveal — the page lock', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it('keeps the overlay as the single scroll port and bounds the card', () => {
+    renderReveal();
+
+    const dialog = screen.getByRole('dialog');
+    const backdrop = dialog.parentElement!;
+    // The overlay is the one and only scroll port, on both axes pinned.
+    expect(backdrop.style.position).toBe('fixed');
+    expect(backdrop.style.blockSize).toBe('100dvh');
+    expect(backdrop.style.overflowY).toBe('auto');
+    expect(backdrop.style.overflowX).toBe('hidden');
+    // The card is bounded so the artifact cannot push the overlay to scroll.
+    expect(dialog.style.maxBlockSize).toContain('dvh');
+    // jsdom reports zero heights, so the fit scale stays neutral and the card
+    // carries no transform of its own.
+    expect(dialog.style.transform).toBe('');
+  });
+
   it('restores the exact previous inline styles and scroll position on close', () => {
     setPriorBodyStyles();
     const previous = priorBodyStyles();

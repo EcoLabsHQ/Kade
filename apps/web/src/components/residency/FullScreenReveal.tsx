@@ -195,6 +195,10 @@ export function FullScreenReveal({
   const [mounted, setMounted] = useState(false);
   // Pointer control begins only once the automatic foil pass has completed.
   const [foilReady, setFoilReady] = useState(false);
+  // The overlay is the single scroll port, but it must not actually scroll: if
+  // the artifact genuinely cannot fit on a short viewport we scale it down
+  // rather than let the overlay grow a scrollbar. 1 means "no scaling".
+  const [fitScale, setFitScale] = useState(1);
 
   useEffect(() => {
     setMounted(true);
@@ -234,6 +238,39 @@ export function FullScreenReveal({
     if (!open) return;
     lockBody();
     return unlockBody;
+  }, [open]);
+
+  // Keep the artifact inside the overlay's visible area. The overlay stays the
+  // single scroll port (see `backdrop`), but a short viewport must scale the
+  // artifact down rather than grow a scrollbar. The card's own layout height is
+  // measured; if it exceeds the visible area we scale it. jsdom reports zero
+  // heights, so the guard leaves the scale at 1 there.
+  useEffect(() => {
+    if (!open) {
+      setFitScale(1);
+      return;
+    }
+    const card = cardRef.current;
+    if (!card || typeof window === 'undefined') return;
+    const compute = () => {
+      const natural = card.scrollHeight;
+      const backdropEl = card.parentElement;
+      const viewport =
+        backdropEl?.clientHeight && backdropEl.clientHeight > 0
+          ? backdropEl.clientHeight
+          : window.innerHeight;
+      // The overlay's vertical padding is up to 40px each side; keep a little
+      // headroom so the card never touches the edge.
+      const available = viewport - 96;
+      if (natural <= 0 || available <= 0 || natural <= available) {
+        setFitScale(1);
+        return;
+      }
+      setFitScale(Math.max(0.6, Number((available / natural).toFixed(3))));
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
   }, [open]);
 
   // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under
@@ -389,7 +426,11 @@ export function FullScreenReveal({
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
         className={cardClassName}
-        style={card}
+        style={
+          fitScale === 1
+            ? card
+            : { ...card, transform: `scale(${fitScale})` }
+        }
       >
         <h2 id={titleId} style={srOnly}>
           {title}
