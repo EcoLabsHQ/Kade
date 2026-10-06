@@ -956,11 +956,10 @@ textarea {
 .kade-passport-trigger {
   position: relative;
   display: block;
-  /* Bound the inline card to a card-like width so it reads as the same object
-     as the popup (bounded to `min(92vw, 560px)`) rather than stretching to the
-     full Colosseum section. The overlay button matches this box exactly. */
-  width: min(100%, 420px);
-  margin: 0 auto;
+  /* The inline artifact fills the Colosseum section, as it did before the
+     bounded-width experiment the human rejected. The overlay button matches
+     this box exactly. */
+  width: 100%;
   border-radius: 18px;
 }
 

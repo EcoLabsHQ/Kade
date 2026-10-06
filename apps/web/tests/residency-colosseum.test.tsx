@@ -1035,13 +1035,12 @@ describe('ColosseumResidency — the inline certificate control', () => {
     ).toBeInTheDocument();
   });
 
-  it('composes the embedded card as the same artifact as the popup, inside the bounded trigger wrapper', () => {
+  it('composes the embedded card as the same artifact as the popup, inside the trigger wrapper', () => {
     renderStoredCitizen();
 
     const embedded = screen.getByTestId('colosseum-certificate');
-    // The embedded card fills the trigger wrapper, which carries the
-    // `min(100%, 420px)` bound (see `.kade-passport-trigger`), so it no longer
-    // stretches to the section width.
+    // The embedded card fills the trigger wrapper, which spans the Colosseum
+    // section width (see `.kade-passport-trigger`).
     expect(embedded.style.width).toBe('100%');
     expect(embedded.closest('.kade-passport-trigger')).not.toBeNull();
 
