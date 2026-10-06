@@ -1,7 +1,11 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
@@ -85,9 +89,48 @@ function unlockBody(): void {
   window.scrollTo({ top: savedScrollY, left: 0, behavior: 'instant' });
 }
 
+/** The pointer light is armed only after the automatic foil pass has finished. */
+const FOIL_POINTER_ARM_MS = 1080;
+/** The celebratory tier runs longer; interaction is enabled at ~1.6s. */
+const CELEBRATION_POINTER_ARM_MS = 1600;
+/** How quickly the light and tilt chase the pointer (Reveal 3: 0.14). */
+const FOIL_LERP = 0.14;
+/** Reveal 3 caps the tilt at ±2deg. */
+const FOIL_MAX_TILT_DEG = 2;
+/** The celebratory burst: 8–12 accent rays, 36° apart. */
+const CELEBRATION_RAYS = 10;
+
+interface FoilState {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  tiltX: number;
+  tiltY: number;
+  targetTiltX: number;
+  targetTiltY: number;
+  raf: number;
+  active: boolean;
+}
+
+function freshFoilState(): FoilState {
+  return {
+    x: 0,
+    y: 0,
+    targetX: 0,
+    targetY: 0,
+    tiltX: 0,
+    tiltY: 0,
+    targetTiltX: 0,
+    targetTiltY: 0,
+    raf: 0,
+    active: false,
+  };
+}
+
 /**
  * The shared full-screen shell for the Colosseum demo artifacts (the virtual
- * residency pass and the citizenship passport).
+ * residency pass and the citizenship certificate).
  *
  * It is deliberately a *celebration*, not a gate: everything it shows is
  * declared demo state, and it never writes anywhere real. The shell owns the
@@ -99,12 +142,13 @@ function unlockBody(): void {
  *   - the page behind is scroll-locked only while open, and restored on close,
  *     so dismissing never leaves the page blocked;
  *   - a polite live region announces the reveal;
- *   - under `prefers-reduced-motion: reduce` the reveal class is not applied at
- *     all (the CSS also disables the keyframes), so the artifact is simply
- *     readable.
+ *   - the backdrop and card carry the shared Reveal 3 motion (a fast settle),
+ *     and a pointer-tracked foil light, unless `prefers-reduced-motion: reduce`
+ *     is set, in which case only a short fade is used.
  *
  * The reveal is intentionally non-blocking in spirit: there is no focus trap
- * and nothing to complete. The user can always get out.
+ * and nothing to complete. The user can always get out, at any moment of the
+ * animation; the whole subtree unmounts on close, so nothing is left stuck.
  */
 export interface FullScreenRevealProps {
   readonly open: boolean;
@@ -113,10 +157,19 @@ export interface FullScreenRevealProps {
   readonly title: string;
   /** A polite announcement made to assistive tech when the reveal opens. */
   readonly announcement: string;
-  /** The card's rise/scale keyframe class. */
+  /**
+   * The artifact-specific reveal class (Reveal 1 for the residency pass,
+   * Reveal 2 for the certificate) applied to the document wrapper.
+   */
   readonly revealClassName?: string;
-  /** The card's 3D tilt/flip keyframe class. */
+  /** The artifact wrapper's class hook (kept for the reduced-motion tests). */
   readonly flipClassName?: string;
+  /**
+   * The one-time celebratory tier (the first, live citizenship reveal): a
+   * deeper, slower rise with a controlled overshoot, bloom, rays, a wide foil
+   * pass and a slow sheen. Every subsequent open uses the standard tier.
+   */
+  readonly celebration?: boolean;
   readonly children: ReactNode;
 }
 
@@ -127,15 +180,21 @@ export function FullScreenReveal({
   announcement,
   revealClassName,
   flipClassName,
+  celebration = false,
   children,
 }: FullScreenRevealProps) {
   const titleId = useId();
   const cardRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
+  const foilLightRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const foil = useRef<FoilState>(freshFoilState());
   const reducedMotion = usePrefersReducedMotion();
   // Portals need a document. Client components are still server-rendered, so
   // wait until after mount before creating one.
   const [mounted, setMounted] = useState(false);
+  // Pointer control begins only once the automatic foil pass has completed.
+  const [foilReady, setFoilReady] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -177,14 +236,145 @@ export function FullScreenReveal({
     return unlockBody;
   }, [open]);
 
+  // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under
+  // reduced motion the light is static and the pointer never drives it.
+  useEffect(() => {
+    setFoilReady(false);
+    if (!open || reducedMotion) return;
+    const armDelay = celebration ? CELEBRATION_POINTER_ARM_MS : FOIL_POINTER_ARM_MS;
+    const timer = window.setTimeout(() => setFoilReady(true), armDelay);
+    return () => window.clearTimeout(timer);
+  }, [open, reducedMotion, celebration]);
+
+  // Stop the smoothing loop and reset the pointer when the reveal closes.
+  useEffect(() => {
+    if (open) return;
+    const state = foil.current;
+    state.active = false;
+    state.targetX = 0;
+    state.targetY = 0;
+    state.targetTiltX = 0;
+    state.targetTiltY = 0;
+    if (state.raf && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(state.raf);
+    }
+    state.raf = 0;
+  }, [open]);
+
+  useEffect(() => {
+    const state = foil.current;
+    return () => {
+      if (state.raf && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(state.raf);
+      }
+      state.raf = 0;
+    };
+  }, []);
+
+  const applyFoil = useCallback(() => {
+    const state = foil.current;
+    const tilt = tiltRef.current;
+    if (!tilt) return;
+    tilt.style.setProperty('--kade-foil-x', `${state.x}px`);
+    tilt.style.setProperty('--kade-foil-y', `${state.y}px`);
+    tilt.style.setProperty('--kade-tilt-x', `${state.tiltX}deg`);
+    tilt.style.setProperty('--kade-tilt-y', `${state.tiltY}deg`);
+  }, []);
+
+  const startFoilLoop = useCallback(() => {
+    const step = () => {
+      const state = foil.current;
+      state.x += (state.targetX - state.x) * FOIL_LERP;
+      state.y += (state.targetY - state.y) * FOIL_LERP;
+      state.tiltX += (state.targetTiltX - state.tiltX) * FOIL_LERP;
+      state.tiltY += (state.targetTiltY - state.tiltY) * FOIL_LERP;
+      applyFoil();
+      const settled =
+        Math.abs(state.x - state.targetX) < 0.3 &&
+        Math.abs(state.y - state.targetY) < 0.3 &&
+        Math.abs(state.tiltX - state.targetTiltX) < 0.02 &&
+        Math.abs(state.tiltY - state.targetTiltY) < 0.02;
+      if (state.active || !settled) {
+        state.raf =
+          typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame(step)
+            : 0;
+      } else {
+        state.raf = 0;
+      }
+    };
+    const state = foil.current;
+    if (state.raf) return;
+    if (typeof requestAnimationFrame === 'function') {
+      state.raf = requestAnimationFrame(step);
+    } else {
+      step();
+    }
+  }, [applyFoil]);
+
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (reducedMotion || !foilReady) return;
+      const el = event.currentTarget;
+      const rect = el.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      const state = foil.current;
+      state.targetX = event.clientX - rect.left;
+      state.targetY = event.clientY - rect.top;
+      const nx = state.targetX / width - 0.5;
+      const ny = state.targetY / height - 0.5;
+      state.targetTiltX = Math.max(
+        -FOIL_MAX_TILT_DEG,
+        Math.min(FOIL_MAX_TILT_DEG, -ny * 4),
+      );
+      state.targetTiltY = Math.max(
+        -FOIL_MAX_TILT_DEG,
+        Math.min(FOIL_MAX_TILT_DEG, nx * 4),
+      );
+      state.active = true;
+      foilLightRef.current?.setAttribute('data-active', 'true');
+      startFoilLoop();
+    },
+    [foilReady, reducedMotion, startFoilLoop],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    if (reducedMotion) return;
+    const state = foil.current;
+    state.active = false;
+    state.targetTiltX = 0;
+    state.targetTiltY = 0;
+    foilLightRef.current?.setAttribute('data-active', 'false');
+    startFoilLoop();
+  }, [reducedMotion, startFoilLoop]);
+
   if (!open || !mounted) return null;
 
+  const showCelebration = celebration && !reducedMotion;
+
+  const backdropClassName = reducedMotion
+    ? 'kade-reveal-backdrop-static'
+    : celebration
+      ? 'kade-reveal-backdrop-celebration'
+      : 'kade-reveal-backdrop';
+
+  const cardClassName = reducedMotion
+    ? celebration
+      ? 'kade-reveal-card-celebration-static'
+      : 'kade-reveal-card-static'
+    : celebration
+      ? 'kade-reveal-card-celebration kade-celebration'
+      : 'kade-reveal-card';
+
+  const tiltClassName = reducedMotion ? undefined : 'kade-foil-tilt';
+
+  const documentClassName = reducedMotion
+    ? undefined
+    : [revealClassName, flipClassName].filter(Boolean).join(' ');
+
   return createPortal(
-    <div
-      className={reducedMotion ? undefined : 'kade-reveal-backdrop'}
-      onClick={onClose}
-      style={backdrop}
-    >
+    <div className={backdropClassName} onClick={onClose} style={backdrop}>
       <div
         ref={cardRef}
         role="dialog"
@@ -192,7 +382,7 @@ export function FullScreenReveal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className={reducedMotion ? undefined : revealClassName ?? 'kade-reveal-card'}
+        className={cardClassName}
         style={card}
       >
         <h2 id={titleId} style={srOnly}>
@@ -216,10 +406,46 @@ export function FullScreenReveal({
 
         <div style={scene}>
           <div
-            className={reducedMotion ? undefined : flipClassName}
+            ref={tiltRef}
+            className={tiltClassName}
             style={tilt}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
           >
-            {children}
+            {showCelebration ? (
+              <div aria-hidden="true" className="kade-celebration-stage">
+                <div className="kade-celebration-bloom" />
+                {Array.from({ length: CELEBRATION_RAYS }, (_, index) => (
+                  <span
+                    key={index}
+                    className="kade-celebration-ray"
+                    style={{ '--kade-ray': index } as CSSProperties}
+                  />
+                ))}
+              </div>
+            ) : null}
+            <div className={documentClassName} style={documentWrap}>
+              {children}
+            </div>
+            {reducedMotion ? (
+              <div
+                aria-hidden="true"
+                className="kade-foil-light kade-foil-light-static"
+              />
+            ) : (
+              <>
+                <div
+                  ref={foilLightRef}
+                  aria-hidden="true"
+                  className="kade-foil-light"
+                />
+                {showCelebration ? (
+                  <div aria-hidden="true" className="kade-celebration-sweep" />
+                ) : (
+                  <div aria-hidden="true" className="kade-foil-pass" />
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -248,6 +474,8 @@ const backdrop: CSSProperties = {
   overscrollBehavior: 'contain',
   WebkitOverflowScrolling: 'touch',
   boxSizing: 'border-box',
+  // Gives the card's Reveal 3 `rotateX` a perspective to read against.
+  perspective: '1400px',
   paddingTop: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-top))',
   paddingRight: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-right))',
   paddingBottom: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-bottom))',
@@ -307,8 +535,14 @@ const scene: CSSProperties = {
 };
 
 const tilt: CSSProperties = {
+  position: 'relative',
   transformStyle: 'preserve-3d',
   width: '100%',
+};
+
+const documentWrap: CSSProperties = {
+  width: '100%',
+  transformStyle: 'preserve-3d',
 };
 
 const srOnly: CSSProperties = {

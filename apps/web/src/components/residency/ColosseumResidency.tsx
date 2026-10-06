@@ -18,15 +18,19 @@ import {
   type ColosseumProgress,
 } from './colosseum-progress';
 import { ResidencyPass } from './ResidencyPass';
-import { CitizenshipPassport } from './CitizenshipPassport';
+import {
+  CertificateArtifact,
+  CitizenshipCertificate,
+} from './CitizenshipCertificate';
 
 /**
  * The Colosseum flow, rendered as a mocked sub-section INSIDE the Residency step.
  *
  * This is a declared demo layer: "Colosseum Resident" / "Colosseum Citizen" and
- * the virtual passport confer no real residency, citizenship, legal status or
- * on-chain record. Nothing here writes a table or calls an RPC. The 2-minute
- * clock and the passport are demo state, persisted per profile through the
+ * the citizenship certificate confer no real residency, citizenship, legal
+ * status or on-chain record. Nothing here writes a table or calls an RPC. The
+ * 2-minute clock and the certificate are demo state, persisted per profile
+ * through the
  * `localStorage`-backed `./colosseum-progress` store (the same pattern as the
  * nav highlight), so navigating away or reloading does not restart the clock or
  * re-lock "Become a Citizen".
@@ -92,8 +96,9 @@ export interface ColosseumResidencyProps {
    */
   readonly tier: string | null;
   /**
-   * The stable key the demo clock and passport are stored under (the recorded
-   * `applications.id`). Null/absent scopes the demo state under a constant.
+   * The stable key the demo clock and certificate are stored under (the
+   * recorded `applications.id`). Null/absent scopes the demo state under a
+   * constant.
    */
   readonly profileKey?: string | null;
 }
@@ -139,11 +144,12 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   // satisfies it.
   const onColosseumTier = (tier ?? '').trim().toLowerCase() === 'colosseum';
 
-  // The demo clock and passport, persisted per profile (see ./colosseum-progress).
-  // The state is seeded from storage on the client so a citizen load shows the
-  // passport immediately and a resident load resumes the window rather than
-  // restarting it. On the server (and the first client render) the returned
-  // snapshot is hidden until hydration, so there is no mismatch.
+  // The demo clock and certificate, persisted per profile (see
+  // ./colosseum-progress). The state is seeded from storage on the client so a
+  // citizen load shows the certificate immediately and a resident load resumes
+  // the window rather than restarting it. On the server (and the first client
+  // render) the returned snapshot is hidden until hydration, so there is no
+  // mismatch.
   const [mounted, setMounted] = useState(false);
   const [progress, setProgress] = useState<ColosseumProgress>({
     residentSince: null,
@@ -157,8 +163,11 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   // The two full-screen demo reveals. They are pure presentation: opening or
   // closing them changes no persisted state and blocks nothing once dismissed.
   const [residencyPassOpen, setResidencyPassOpen] = useState(false);
-  const [passportOpen, setPassportOpen] = useState(false);
-  // The passport reveal must fire exactly once, on the *live* transition to
+  const [certificateOpen, setCertificateOpen] = useState(false);
+  // The first, live citizenship reveal uses the celebratory tier; every later
+  // open uses the standard one.
+  const [certificateCelebration, setCertificateCelebration] = useState(false);
+  // The certificate reveal must fire exactly once, on the *live* transition to
   // citizen — not on a restored citizen load and not again after a dismissal.
   // `restoredCitizenRef` records whether the progress read at mount/profile
   // change was already a citizen (so it never celebrates a restored state);
@@ -225,16 +234,18 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
     setColosseumAttention(false);
   }, [profileKey]);
 
-  // Celebrate the milestone with the full-screen passport reveal, exactly once,
-  // on the live transition to citizen. A restored citizen (already recorded when
-  // the progress was read) never auto-opens, and once dismissed the reveal is not
-  // re-opened by a later render: `celebratedCitizenRef` latches it for this
-  // mount. Opening it again stays available through State E's control.
+  // Celebrate the milestone with the full-screen certificate reveal, exactly
+  // once, on the live transition to citizen. A restored citizen (already
+  // recorded when the progress was read) never auto-opens, and once dismissed
+  // the reveal is not re-opened by a later render: `celebratedCitizenRef`
+  // latches it for this mount. Opening it again stays available by clicking the
+  // inline certificate.
   useEffect(() => {
     if (!mounted || !citizen) return;
     if (restoredCitizenRef.current || celebratedCitizenRef.current) return;
     celebratedCitizenRef.current = true;
-    setPassportOpen(true);
+    setCertificateCelebration(true);
+    setCertificateOpen(true);
   }, [mounted, citizen]);
 
   // Claiming the residency pass records a demo serial/instant once, then reveals
@@ -250,7 +261,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
     setResidencyPassOpen(true);
   }, [profileKey]);
 
-  const showPassport = mounted && citizen;
+  const showCertificate = mounted && citizen;
   const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
   const showStateC = mounted && allChecksMet && !citizen && !windowElapsed;
   const residencyPassClaimed = progress.residencyPassSerial !== null;
@@ -318,12 +329,17 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
         </div>
       ) : null}
 
-      {/* State E — already a citizen (persisted): the inline passport artifact,
-          re-rendered on reload, with a control for the full-screen reveal. */}
-      {showPassport ? (
+      {/* State E — already a citizen (persisted): the inline certificate
+          artifact, re-rendered on reload. The artifact itself is the control
+          that opens the full-screen reveal on demand. */}
+      {showCertificate ? (
         <StateE
           serial={progress.passportSerial}
-          onOpenFullScreen={() => setPassportOpen(true)}
+          issuedAt={progress.citizenAt}
+          onOpenFullScreen={() => {
+            setCertificateCelebration(false);
+            setCertificateOpen(true);
+          }}
         />
       ) : null}
 
@@ -334,11 +350,15 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
         serial={progress.residencyPassSerial}
         issuedAt={progress.residencyPassAt}
       />
-      <CitizenshipPassport
-        open={passportOpen}
-        onClose={() => setPassportOpen(false)}
+      <CitizenshipCertificate
+        open={certificateOpen}
+        onClose={() => {
+          setCertificateOpen(false);
+          setCertificateCelebration(false);
+        }}
         serial={progress.passportSerial}
         issuedAt={progress.citizenAt}
+        celebration={certificateCelebration}
       />
     </section>
   );
@@ -436,7 +456,7 @@ function StateC({ countdown }: { readonly countdown: string }) {
       <ul style={perks}>
         <li>A Colosseum Resident status on this demo surface.</li>
         <li>The Colosseum residency demo walkthrough.</li>
-        <li>A virtual passport after 2 compliant minutes.</li>
+        <li>A citizenship certificate after 2 compliant minutes.</li>
       </ul>
       <p style={{ ...body, fontWeight: 600 }}>
         Remain a compliant resident for 2 minutes to be eligible to become a
@@ -465,7 +485,7 @@ function StateD({
       <h3 style={stateTitle}>You&rsquo;re eligible to become a citizen</h3>
       <p style={body}>
         You have remained a compliant resident for 2 minutes. Become a
-        Colosseum Citizen to receive your virtual passport.
+        Colosseum Citizen to receive your citizenship certificate.
       </p>
       <div style={metricRow}>
         <span style={metricLabel}>Compliance window</span>
@@ -485,66 +505,47 @@ function StateD({
 }
 
 /**
- * State E — already a Colosseum Citizen: the inline virtual passport artifact.
+ * State E — already a Colosseum Citizen: the inline citizenship certificate.
  *
- * The artifact stays readable in the page (so a stored citizen always sees it),
- * and the button opens the full-screen reveal on demand. The full-screen
- * celebration is what plays automatically on the moment of citizenship.
+ * The certificate stays readable in the page (so a stored citizen always sees
+ * it), and is itself the control that opens the full-screen reveal on demand.
+ * It is a real `<button>` so keyboard and assistive-tech users can reach it; it
+ * contains no interactive children. The full-screen celebration is what plays
+ * automatically on the moment of citizenship.
  */
 function StateE({
   serial,
+  issuedAt,
   onOpenFullScreen,
 }: {
   readonly serial: string | null;
+  readonly issuedAt: string | null;
   readonly onOpenFullScreen: () => void;
 }) {
   return (
-    <div data-testid="colosseum-state-e" style={passportStage}>
-      <div style={passportCard}>
-        <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
-        <div aria-hidden style={passportEmblem}>✦</div>
-
-        <div style={passportHeader}>
-          <div style={passportOrg}>Colosseum · Demo Passport</div>
-          <div style={passportType}>Citizen</div>
-        </div>
-
-        <div style={passportTitleRow}>
-          <span style={passportTitle}>Virtual passport</span>
-          <span style={passportDocChip}>Demo</span>
-        </div>
-
-        <p style={passportNote}>Not a real travel or identity document.</p>
-
-        <dl style={passportFields}>
-          <div style={passportField}>
-            <dt style={passportLabel}>Document</dt>
-            <dd style={passportValue}>Colosseum Citizen</dd>
-          </div>
-          <div style={passportField}>
-            <dt style={passportLabel}>Serial</dt>
-            <dd data-testid="colosseum-passport-serial" style={passportValueMono}>
-              {serial ?? '—'}
-            </dd>
-          </div>
-        </dl>
-
-        <div aria-hidden style={passportMrz}>
-          <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
-          <span data-testid="colosseum-passport-mrz">{serial ?? '—'}</span>
-        </div>
-
-        <p style={passportDisclaimer}>
-          Demo artifact only · confers no status, onchain or otherwise.
-        </p>
+    <div data-testid="colosseum-state-e" style={certificateStage}>
+      {/*
+        The artifact is a non-interactive container; a real <button> overlays it
+        as a sibling, so the button carries the accessible name while the card's
+        text stays in the accessibility tree. A <button> wrapping the block
+        content would be invalid (phrasing-content content model).
+      */}
+      <div className="kade-passport-trigger">
+        <CertificateArtifact
+          variant="embedded"
+          serial={serial}
+          issuedAt={issuedAt}
+        />
+        <span aria-hidden="true" className="kade-passport-trigger-badge">
+          Open
+        </span>
+        <button
+          type="button"
+          onClick={onOpenFullScreen}
+          aria-label="Open the citizenship certificate full-screen"
+          className="kade-passport-trigger-button"
+        />
       </div>
-      <button
-        type="button"
-        onClick={onOpenFullScreen}
-        style={{ ...secondaryButton, width: '100%', marginTop: '12px' }}
-      >
-        Open full-screen passport
-      </button>
     </div>
   );
 }
@@ -647,9 +648,17 @@ const perks = {
   color: tokens.chipFg,
 };
 
+// The pill button hugs its label, so it needs real horizontal padding: without
+// it the `border-radius: 999px` end-caps have no room and the glyphs render
+// over the curved ends. `minHeight` (not a fixed `height`) lets the label wrap
+// on a narrow viewport instead of being clipped.
 const primaryButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   marginTop: '12px',
-  height: '42px',
+  minHeight: '42px',
+  padding: '10px 22px',
   border: 0,
   borderRadius: '999px',
   background: tokens.brandPrimary,
@@ -657,7 +666,11 @@ const primaryButton = {
   fontFamily: 'inherit',
   fontSize: '14px',
   fontWeight: 600,
+  lineHeight: 1.2,
+  textAlign: 'center' as const,
   cursor: 'pointer',
+  maxWidth: '100%',
+  boxSizing: 'border-box' as const,
 };
 
 const secondaryButton = {
@@ -678,159 +691,6 @@ const passAction = {
   marginTop: '14px',
 };
 
-const passportStage = {
+const certificateStage = {
   marginTop: '14px',
-};
-
-const passportCard: React.CSSProperties = {
-  position: 'relative',
-  overflow: 'hidden',
-  background:
-    'radial-gradient(120% 140% at 18% 0%, #12415f 0%, #0a2a43 45%, #071d30 100%)',
-  borderRadius: '18px',
-  padding: '22px 22px 16px',
-  color: '#f4f8ff',
-  border: '1px solid rgba(255,255,255,.18)',
-  boxShadow:
-    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 26px 60px -26px rgba(7,29,48,.8)',
-  transformStyle: 'preserve-3d',
-};
-
-const passportTexture: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  opacity: 0.5,
-  background:
-    'repeating-radial-gradient(circle at 12% 8%, rgba(255,255,255,.10) 0 1px, transparent 1px 12px), repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 1px, transparent 1px 9px)',
-  pointerEvents: 'none',
-};
-
-const passportEmblem: React.CSSProperties = {
-  position: 'absolute',
-  top: '50%',
-  right: '-6px',
-  transform: 'translateY(-50%)',
-  fontSize: '150px',
-  lineHeight: 1,
-  color: 'rgba(255,255,255,.05)',
-  pointerEvents: 'none',
-};
-
-const passportHeader: React.CSSProperties = {
-  position: 'relative',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: '10px',
-  borderBottom: '1px solid rgba(255,255,255,.2)',
-  paddingBottom: '10px',
-};
-
-const passportOrg: React.CSSProperties = {
-  fontSize: '10.5px',
-  fontWeight: 700,
-  letterSpacing: '.16em',
-  textTransform: 'uppercase',
-  opacity: 0.85,
-};
-
-const passportType: React.CSSProperties = {
-  fontSize: '10px',
-  fontWeight: 700,
-  letterSpacing: '.14em',
-  textTransform: 'uppercase',
-  padding: '3px 8px',
-  borderRadius: '999px',
-  background: 'rgba(255,255,255,.12)',
-  border: '1px solid rgba(255,255,255,.25)',
-};
-
-const passportTitleRow: React.CSSProperties = {
-  position: 'relative',
-  display: 'flex',
-  alignItems: 'baseline',
-  justifyContent: 'space-between',
-  gap: '10px',
-  marginTop: '14px',
-};
-
-const passportTitle: React.CSSProperties = {
-  fontSize: '21px',
-  fontWeight: 700,
-  letterSpacing: '.01em',
-};
-
-const passportDocChip: React.CSSProperties = {
-  fontSize: '10px',
-  fontWeight: 700,
-  letterSpacing: '.1em',
-  textTransform: 'uppercase',
-  color: '#ffd479',
-  border: '1px solid rgba(255,212,121,.5)',
-  borderRadius: '6px',
-  padding: '2px 7px',
-};
-
-const passportNote: React.CSSProperties = {
-  position: 'relative',
-  margin: '4px 0 16px',
-  fontSize: '12px',
-  lineHeight: 1.6,
-  opacity: 0.8,
-};
-
-const passportFields: React.CSSProperties = {
-  position: 'relative',
-  margin: 0,
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: '12px',
-};
-
-const passportField: React.CSSProperties = {
-  borderTop: '1px solid rgba(255,255,255,.22)',
-  paddingTop: '9px',
-};
-
-const passportLabel: React.CSSProperties = {
-  fontSize: '10px',
-  letterSpacing: '.08em',
-  textTransform: 'uppercase',
-  opacity: 0.7,
-};
-
-const passportValue: React.CSSProperties = {
-  margin: '4px 0 0',
-  fontSize: '14.5px',
-  fontWeight: 700,
-};
-
-const passportValueMono: React.CSSProperties = {
-  margin: '4px 0 0',
-  fontSize: '13.5px',
-  fontWeight: 700,
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  letterSpacing: '.04em',
-};
-
-const passportMrz: React.CSSProperties = {
-  position: 'relative',
-  marginTop: '16px',
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: '10px',
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: '10.5px',
-  letterSpacing: '.18em',
-  color: 'rgba(244,248,255,.72)',
-  borderTop: '1px dashed rgba(255,255,255,.28)',
-  paddingTop: '9px',
-};
-
-const passportDisclaimer: React.CSSProperties = {
-  position: 'relative',
-  margin: '10px 0 0',
-  fontSize: '10.5px',
-  letterSpacing: '.02em',
-  opacity: 0.62,
 };

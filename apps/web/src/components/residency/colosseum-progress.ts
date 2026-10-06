@@ -1,8 +1,8 @@
 /**
- * The Colosseum demo clock and passport — a tiny localStorage-backed store.
+ * The Colosseum demo clock and certificate — a tiny localStorage-backed store.
  *
  * The Colosseum layer is a declared demo: the 2-minute compliance window and the
- * virtual passport are client-side only and persist nothing anywhere real (no
+ * virtual certificate are client-side only and persist nothing anywhere real (no
  * table, no RPC, no on-chain record). They used to be component state, so
  * navigating away from /residency or reloading the page reset the countdown to
  * 2:00 and re-locked "Become a Citizen". This module keeps the demo state across
@@ -15,11 +15,13 @@
  *     survives a navigation or reload. It is cleared when the checks stop being
  *     `met` before citizenship (the clock resets), matching the existing decay.
  *   - `citizenAt` — the ISO instant the resident became a Colosseum Citizen.
- *   - `passportSerial` — the demo serial, generated client-side (`KADE-CL-…`).
+ *   - `passportSerial` — the demo citizenship-certificate serial, generated
+ *     client-side (`KADE-CL-…`). The field name is kept for stored-data
+ *     compatibility; it is the certificate's serial, not an identity passport.
  *   - `residencyPassAt` / `residencyPassSerial` — the ISO instant the resident
  *     claimed their virtual residency pass and its client-generated demo serial
  *     (`KADE-RES-…`). They are stored so re-opening the pass shows the same
- *     artifact rather than minting a new one, exactly like the passport.
+ *     artifact rather than minting a new one, exactly like the certificate.
  *
  * A profile id is passed in rather than read here, so the store is a pure,
  * testable mapping and the caller owns the identity (the same id the rest of the
@@ -31,7 +33,7 @@ export interface ColosseumProgress {
   readonly residentSince: string | null;
   /** ISO timestamp when the resident became a citizen, or null. */
   readonly citizenAt: string | null;
-  /** Client-generated demo passport serial, or null before citizenship. */
+  /** Client-generated demo citizenship-certificate serial, or null before citizenship. */
   readonly passportSerial: string | null;
   /** ISO timestamp when the virtual residency pass was claimed, or null. */
   readonly residencyPassAt: string | null;
@@ -64,8 +66,10 @@ function normalizeProfileKey(profileKey: string | null | undefined): string {
 }
 
 /**
- * The demo passport serial. Client-generated, non-sensitive, and clearly a demo
- * value: Kade never issues a real passport, so it is not read from anywhere.
+ * The demo citizenship-certificate serial. Client-generated, non-sensitive, and
+ * clearly a demo value: Kade never issues a real document, so it is not read
+ * from anywhere. The `passportSerial` field name is kept for stored-data
+ * compatibility.
  */
 export function generatePassportSerial(random: () => number = Math.random): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -81,7 +85,7 @@ export function generatePassportSerial(random: () => number = Math.random): stri
 }
 
 /**
- * The demo residency-pass serial. Same shape and rationale as the passport
+ * The demo residency-pass serial. Same shape and rationale as the certificate
  * serial: client-generated, non-sensitive, and clearly a demo value.
  */
 export function generateResidencyPassSerial(
@@ -183,7 +187,7 @@ export function clearResidentSince(profileKey: string | null | undefined): Colos
 
 /**
  * Record citizenship with a demo serial. Idempotent: an existing citizenship
- * keeps its original instant and serial rather than minting a second passport.
+ * keeps its original instant and serial rather than minting a second certificate.
  */
 export function markCitizen(
   profileKey: string | null | undefined,

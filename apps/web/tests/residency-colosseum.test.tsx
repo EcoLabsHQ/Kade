@@ -8,7 +8,7 @@ import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
  * The mocked Colosseum sub-section inside Residency.
  *
  * States A–E are driven by the real derived checks; the 2-minute clock and the
- * passport are component state. The clock is advanced with fake timers so the
+ * certificate are component state. The clock is advanced with fake timers so the
  * "Become a Citizen" gate and the nav highlight can be exercised without a real
  * two-minute wait.
  */
@@ -143,7 +143,7 @@ describe('ColosseumResidency — states', () => {
     ).toBeEnabled();
   });
 
-  it('State D → E: becoming a citizen celebrates with the full-screen passport and clears the highlight', () => {
+  it('State D → E: becoming a citizen celebrates with the full-screen certificate and clears the highlight', () => {
     render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     act(() => {
@@ -156,25 +156,25 @@ describe('ColosseumResidency — states', () => {
 
     // The inline artifact stays on the page…
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-passport-serial')).toHaveTextContent(
+    expect(screen.getByTestId('colosseum-certificate-serial')).toHaveTextContent(
       /^KADE-CL-/,
     );
-    // …and the milestone plays the full-screen passport reveal.
-    const overlay = screen.getByTestId('colosseum-passport-overlay');
+    // …and the milestone plays the full-screen certificate reveal.
+    const overlay = screen.getByTestId('colosseum-certificate-overlay');
     expect(overlay).toBeInTheDocument();
-    expect(within(overlay).getByText(/virtual passport/i)).toBeInTheDocument();
+    expect(within(overlay).getByText(/colosseum citizenship certificate/i)).toBeInTheDocument();
     expect(
-      within(overlay).getByText(/not a real travel or identity document/i),
+      within(overlay).getByText(/not a real citizenship, status or identity document/i),
     ).toBeInTheDocument();
     expect(
       within(overlay).getByText(/demo artifact only/i),
     ).toBeInTheDocument();
     expect(
-      within(overlay).getByTestId('colosseum-passport-overlay-serial'),
+      within(overlay).getByTestId('colosseum-certificate-overlay-serial'),
     ).toHaveTextContent(/^KADE-CL-/);
     // The overlay is a labelled, modal dialog.
     expect(
-      screen.getByRole('dialog', { name: /virtual citizenship passport/i }),
+      screen.getByRole('dialog', { name: /colosseum citizenship certificate/i }),
     ).toHaveAttribute('aria-modal', 'true');
     // Becoming a citizen clears the nav highlight.
     expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
@@ -236,7 +236,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('1:00');
   });
 
-  it('shows the passport immediately from a stored citizenship, without re-animating', () => {
+  it('shows the certificate immediately from a stored citizenship, without re-animating', () => {
     window.localStorage.setItem(
       'kade.colosseum.progress.app-42',
       JSON.stringify({
@@ -255,7 +255,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
     );
 
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-passport-serial')).toHaveTextContent(
+    expect(screen.getByTestId('colosseum-certificate-serial')).toHaveTextContent(
       'KADE-CL-ABCD2345',
     );
     // A stored citizen load is not re-animated.
@@ -340,7 +340,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* Full-screen reveals: the virtual residency pass, the passport, reduced motion */
+/* Full-screen reveals: the virtual residency pass, the certificate, reduced motion */
 /* -------------------------------------------------------------------------- */
 
 function mockMatchMedia(matches: boolean): void {
@@ -495,7 +495,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     expect(stored.residencyPassAt).toBe(claimed.residencyPassAt);
   });
 
-  it('offers the full-screen passport from the inline artifact after a stored citizenship', () => {
+  it('opens the full-screen certificate from the inline artifact after a stored citizenship', () => {
     window.localStorage.setItem(
       `kade.colosseum.progress.${KEY}`,
       JSON.stringify({
@@ -516,29 +516,93 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     );
 
     // A stored citizen does not auto-open the reveal…
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
     fireEvent.click(
-      screen.getByRole('button', { name: /open full-screen passport/i }),
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
     );
-    const overlay = screen.getByTestId('colosseum-passport-overlay');
+    const overlay = screen.getByTestId('colosseum-certificate-overlay');
     expect(
-      within(overlay).getByTestId('colosseum-passport-overlay-serial'),
+      within(overlay).getByTestId('colosseum-certificate-overlay-serial'),
     ).toHaveTextContent('KADE-CL-ABCD2345');
     // The issue date comes from the recorded citizenship instant.
     expect(
-      within(overlay).getByTestId('colosseum-passport-overlay-issued'),
+      within(overlay).getByTestId('colosseum-certificate-overlay-issued'),
     ).toHaveTextContent('02 Jan 2026');
   });
 });
 
 /* -------------------------------------------------------------------------- */
-/* The citizenship passport reveal fires on the transition, exactly once       */
+/* The inline certificate is the full-screen trigger                           */
 /* -------------------------------------------------------------------------- */
 
-describe('ColosseumResidency — the citizenship passport reveal timing', () => {
+describe('ColosseumResidency — the inline certificate control', () => {
+  const KEY = 'app-trigger';
+
+  function renderStoredCitizen() {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    return render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+  }
+
+  it('makes the artifact a keyboard-reachable control that opens the reveal', () => {
+    renderStoredCitizen();
+
+    const trigger = screen.getByRole('button', {
+      name: /open the citizenship certificate full-screen/i,
+    });
+    // A real button, not a bare clickable div: focusable and named.
+    expect(trigger.tagName).toBe('BUTTON');
+    expect(trigger).toHaveAttribute('type', 'button');
+    expect(trigger).not.toBeDisabled();
+    // The artifact is a *sibling* of the overlay button, not a child, so the
+    // card's text stays in the accessibility tree and the nesting is valid.
+    const artifact = screen.getByTestId('colosseum-certificate');
+    expect(artifact.parentElement).toBe(trigger.parentElement);
+    expect(
+      within(artifact).getByTestId('colosseum-certificate-serial'),
+    ).toHaveTextContent('KADE-CL-ABCD2345');
+
+    fireEvent.click(trigger);
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+  });
+
+  it('no longer renders the separate "Open full-screen passport" button', () => {
+    renderStoredCitizen();
+
+    expect(
+      screen.queryByRole('button', { name: /open full-screen passport/i }),
+    ).toBeNull();
+    // Exactly one control opens the certificate.
+    expect(
+      screen.getAllByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    ).toHaveLength(1);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The citizenship certificate reveal fires on the transition, exactly once    */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the citizenship certificate reveal timing', () => {
   const KEY = 'app-reveal-timing';
 
-  it('opens the full-screen passport on the live transition to citizen, not before', () => {
+  it('opens the full-screen certificate on the live transition to citizen, not before', () => {
     render(
       <ColosseumResidency
         tier="colosseum"
@@ -548,20 +612,20 @@ describe('ColosseumResidency — the citizenship passport reveal timing', () => 
     );
 
     // Counting down: no reveal yet.
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
     // Eligible but not yet a citizen: still no reveal.
     expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
     // The milestone opens the reveal at the moment of citizenship.
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
   });
 
   it('does not re-open after dismissal, even when the component re-renders', () => {
@@ -576,10 +640,10 @@ describe('ColosseumResidency — the citizenship passport reveal timing', () => 
       vi.advanceTimersByTime(120_000);
     });
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
-    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
 
     // A later render (e.g. the parent re-fetching the real checks) must not
     // replay the celebration.
@@ -590,13 +654,47 @@ describe('ColosseumResidency — the citizenship passport reveal timing', () => 
         profileKey={KEY}
       />,
     );
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
 
     // The inline artifact still offers the reveal on demand.
     fireEvent.click(
-      screen.getByRole('button', { name: /open full-screen passport/i }),
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
     );
-    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+  });
+
+  it('dismissing mid-reveal leaves no stuck state and can be re-opened', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+
+    // Dismiss immediately, long before the ~1340ms timeline could settle.
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    // Nothing from the reveal is left mounted, and the page is not left locked.
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
+    expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
+    expect(document.querySelector('.kade-reveal-card')).toBeNull();
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.querySelector('.kade-foil-pass')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
+
+    // The one-shot celebration does not replay, but the inline control re-opens.
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
   });
 
   it('does not auto-open for an already-citizen restored state', () => {
@@ -621,7 +719,98 @@ describe('ColosseumResidency — the citizenship passport reveal timing', () => 
 
     // The inline artifact is present, but the reveal does not replay on load.
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
-    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
+  });
+});
+
+describe('ColosseumResidency — the celebratory citizenship tier', () => {
+  const KEY = 'app-celebration';
+
+  function renderResident() {
+    return render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+  }
+
+  function becomeCitizen() {
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+  }
+
+  it('applies the celebratory tier to the first, live transition only', () => {
+    renderResident();
+    becomeCitizen();
+
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(document.querySelector('.kade-celebration')).not.toBeNull();
+    expect(document.querySelector('.kade-reveal-card-celebration')).not.toBeNull();
+    expect(document.querySelector('.kade-celebration-bloom')).not.toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).not.toBeNull();
+    expect(
+      document.querySelectorAll('.kade-celebration-ray').length,
+    ).toBeGreaterThanOrEqual(8);
+  });
+
+  it('does not use the celebratory tier for a stored-citizen open', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    renderResident();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(document.querySelector('.kade-celebration')).toBeNull();
+    expect(document.querySelector('.kade-celebration-ray')).toBeNull();
+    // The standard tier's foil pass is used instead.
+    expect(document.querySelector('.kade-foil-pass')).not.toBeNull();
+  });
+
+  it('falls back to the standard tier when re-opened after dismissal', () => {
+    renderResident();
+    becomeCitizen();
+    expect(document.querySelector('.kade-celebration')).not.toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(document.querySelector('.kade-celebration')).toBeNull();
+    expect(document.querySelector('.kade-celebration-ray')).toBeNull();
+    expect(document.querySelector('.kade-foil-pass')).not.toBeNull();
+  });
+
+  it('dismissing mid-celebration leaves no stuck element', () => {
+    renderResident();
+    becomeCitizen();
+    expect(document.querySelector('.kade-celebration-ray')).not.toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
+    expect(document.querySelector('.kade-celebration')).toBeNull();
+    expect(document.querySelector('.kade-celebration-ray')).toBeNull();
+    expect(document.querySelector('.kade-celebration-bloom')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
   });
 });
 
@@ -654,7 +843,7 @@ describe('ColosseumResidency — reduced motion', () => {
     expect(document.querySelector('.kade-residency-pass-flip')).toBeNull();
   });
 
-  it('skips the passport reveal animation but still renders a readable passport', () => {
+  it('skips the certificate reveal animation but still renders a readable certificate', () => {
     mockMatchMedia(true);
     render(
       <ColosseumResidency
@@ -668,11 +857,41 @@ describe('ColosseumResidency — reduced motion', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
-    expect(screen.getByTestId('colosseum-passport-overlay-serial')).toHaveTextContent(
+    expect(screen.getByTestId('colosseum-certificate-overlay-serial')).toHaveTextContent(
       /^KADE-CL-/,
     );
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-passport-flip')).toBeNull();
+    // The reduced-motion path renders no moving sweep or foil element at all.
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+    expect(document.querySelector('.kade-foil-pass')).toBeNull();
+    // It uses the static highlight instead, so the card is never left blank.
+    expect(document.querySelector('.kade-foil-light-static')).not.toBeNull();
+  });
+
+  it('renders no celebratory overlays under reduced motion', () => {
+    mockMatchMedia(true);
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(document.querySelector('.kade-celebration-stage')).toBeNull();
+    expect(document.querySelector('.kade-celebration-ray')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-reveal-card-celebration')).toBeNull();
+    // The static celebration fade is used instead.
+    expect(
+      document.querySelector('.kade-reveal-card-celebration-static'),
+    ).not.toBeNull();
   });
 
   it('applies the reveal animation when reduced motion is not requested', () => {
