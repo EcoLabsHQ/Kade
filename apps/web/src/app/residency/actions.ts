@@ -6,6 +6,12 @@ import { recordResidencyServiceFeePayment } from '@/lib/residency/service-fee-se
 import { createSelfSession, type SelfSessionResult } from '@/lib/residency/self';
 import { issuePermit, type PermitIssuanceResult } from '@/lib/residency/permit';
 import type { RecordFeeResult } from '@/lib/payments/preapproval-fee';
+import type { Membership } from '@/lib/membership/abi';
+import {
+  prepareMembershipTransitionFromEnv,
+  type MembershipTransitionOutcome,
+} from '@/lib/membership/server';
+import { membershipTransitionStore } from '@/lib/membership/store';
 
 /**
  * The Residency step's server actions.
@@ -72,6 +78,46 @@ export async function issueResidencyPermitAction(): Promise<PermitIssuanceResult
   const result = issuePermit();
   if (result.status === 'issued') {
     revalidatePath('/residency');
+    // The residency milestone is the seam that prepares the Colosseum Resident
+    // credential. It is best-effort and prepare-only: the membership issuance
+    // gate is not configured in this build, so this reports `not-configured`
+    // and writes nothing. Nothing is signed or broadcast here.
+    //
+    // OPEN QUESTION (product): is an issued residency permit the trigger for the
+    // Colosseum Resident credential, or is the Colosseum milestone itself? This
+    // wiring follows the real state change (the permit); the Colosseum demo
+    // milestone is deliberately not wired, because it is a declared demo and
+    // issuing a real credential from it is a policy decision.
+    await prepareMembershipTransitionFromEnv(
+      session.userId,
+      'resident',
+      membershipTransitionStore(),
+    );
   }
   return result;
+}
+
+/**
+ * Prepare a membership transition for the signed-in resident, or report the gate
+ * that blocks it.
+ *
+ * Prepare-only: it returns a reviewable plan with `sent: false`. There is no
+ * sign or broadcast path. The Colosseum citizenship milestone has no real Kade
+ * state change yet, so this action is the seam for it and is not auto-wired; the
+ * open question is recorded on the residency flow point above.
+ */
+export type MembershipTransitionActionOutcome =
+  | MembershipTransitionOutcome
+  | { readonly status: 'unauthenticated'; readonly sent: false };
+
+export async function prepareMembershipTransitionAction(
+  target: Membership,
+): Promise<MembershipTransitionActionOutcome> {
+  const session = await getSessionUser();
+  if (!session) return { status: 'unauthenticated', sent: false };
+  return prepareMembershipTransitionFromEnv(
+    session.userId,
+    target,
+    membershipTransitionStore(),
+  );
 }
