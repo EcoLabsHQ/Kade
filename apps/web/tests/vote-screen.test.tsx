@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The Vote screen — a presentational divergence declared in
- * `docs/week-3-frozen-delivery-contract.md` (VOTE-1).
+ * The Vote screen's reference layout and local ballot behaviour.
  *
- * These tests pin the reference layout and the local-only ballot behaviour: the
- * header, the proposal and its three seeded choices with their percentages,
- * selection enabling the cast button, and casting updating the ballot label,
- * the turnout and the recomputed tallies while locking further selection.
+ * The screen now loads its proposal and voting power through the Snapshot
+ * adapter (`@/lib/vote/adapter`), so these tests pass a connected wallet and the
+ * mock adapter, then wait for the eligible state before interacting. Every
+ * assertion from the previous presentational-mock test is preserved; the change
+ * is that eligibility is now real code over a mocked source.
  *
  * `next/navigation` is mocked as the other tests do, because the resident shell
  * imports it.
@@ -20,15 +20,29 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { VoteScreen } from '@/components/vote/VoteScreen';
+import { mockSnapshotAdapter } from '@/lib/vote/adapter';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
 const HOUSING = 'Housing supply — co-finance 120 affordable units';
 const SME = 'SME credit — first-loss capital for local lenders';
 const SPLIT = 'Split 50 / 50';
 
+/** The demo wallet the connected state is exercised with. */
+const WALLET = '0x1111111111111111111111111111111111111111';
+
+/** Render the screen in its loaded, eligible state and wait for it. */
+async function renderLoaded() {
+  render(
+    <VoteScreen wallet={WALLET} membership="resident" adapter={mockSnapshotAdapter} />,
+  );
+  await screen.findByText('53%');
+}
+
 describe('VoteScreen reference layout', () => {
-  it('renders the header and subhead', () => {
-    render(<VoteScreen />);
+  it('renders the header and subhead', async () => {
+    render(
+      <VoteScreen wallet={WALLET} membership="resident" adapter={mockSnapshotAdapter} />,
+    );
     expect(screen.getByRole('heading', { name: 'Vote' })).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -38,8 +52,8 @@ describe('VoteScreen reference layout', () => {
     cleanup();
   });
 
-  it('renders the consultation and its three seeded choices with percentages', () => {
-    render(<VoteScreen />);
+  it('renders the consultation and its three seeded choices with percentages', async () => {
+    await renderLoaded();
     expect(
       screen.getByRole('heading', { name: 'Programme consultation' }),
     ).toBeInTheDocument();
@@ -64,8 +78,8 @@ describe('VoteScreen reference layout', () => {
     cleanup();
   });
 
-  it('starts with no choice selected and the cast button disabled', () => {
-    render(<VoteScreen />);
+  it('starts with no choice selected and the cast button disabled', async () => {
+    await renderLoaded();
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent(
       'Select an option',
     );
@@ -77,8 +91,8 @@ describe('VoteScreen reference layout', () => {
 });
 
 describe('VoteScreen local ballot behaviour', () => {
-  it('enables the cast button when a choice is selected', () => {
-    render(<VoteScreen />);
+  it('enables the cast button when a choice is selected', async () => {
+    await renderLoaded();
     const cast = screen.getByRole('button', { name: 'Sign & cast vote' });
     expect(cast).toBeDisabled();
 
@@ -89,8 +103,8 @@ describe('VoteScreen local ballot behaviour', () => {
     cleanup();
   });
 
-  it('casting updates the ballot label, the turnout and the tallies', () => {
-    render(<VoteScreen />);
+  it('casting updates the ballot label, the turnout and the tallies', async () => {
+    await renderLoaded();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(SME) }));
     fireEvent.click(screen.getByRole('button', { name: 'Sign & cast vote' }));
 
@@ -111,8 +125,8 @@ describe('VoteScreen local ballot behaviour', () => {
     cleanup();
   });
 
-  it('locks further selection once the vote is recorded', () => {
-    render(<VoteScreen />);
+  it('locks further selection once the vote is recorded', async () => {
+    await renderLoaded();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(SME) }));
     fireEvent.click(screen.getByRole('button', { name: 'Sign & cast vote' }));
 
