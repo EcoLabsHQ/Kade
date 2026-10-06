@@ -3,10 +3,16 @@
 Onchain core for the Kade Week 1 build: the **KadeLock** Safe Guard and the
 **EAS schema manifest** tooling.
 
-> **Status:** KadeLock is not deployed; the five EAS schemas are registered.
+> **Status:** KadeLock and Colosseum Membership are not deployed; the five EAS
+> schemas are registered.
 >
 > - KadeLock is compiled and Foundry-tested only. It is **not** deployed in
 >   Week 1 (`docs/week-1-frozen-delivery-contract.md` sections 6.2 and 9).
+> - **Colosseum Membership v1** (`ColosseumResident`, `ColosseumCitizen`,
+>   `MembershipManager`) is compiled and Foundry-tested only. It is **not**
+>   deployed on any network. The human approved the *contracts* as a
+>   change-control item (`docs/week-3-frozen-delivery-contract.md` section 6);
+>   that approval does **not** cover a deployment.
 > - The five EAS schemas **are registered** on Ethereum Sepolia. The Onchain
 >   gate (section 7, checkpoint 3) approved the encodings on 2026-09-18 and the
 >   project owner executed the registration outside this repository. The
@@ -30,10 +36,19 @@ forge test
 |---|---|
 | `src/KadeLock.sol` | The minimum Safe Guard (frozen model A). |
 | `src/SafeAddress.sol` | Pure CREATE2 Safe proxy address derivation (D4). |
+| `src/ColosseumMembership.sol` | Abstract soulbound ERC-721 + ERC-5192 credential base. |
+| `src/ColosseumResident.sol` | Resident credential collection. |
+| `src/ColosseumCitizen.sol` | Citizen credential collection. |
+| `src/MembershipManager.sol` | Issues, promotes and revokes credentials. |
+| `src/interfaces/IERC5192.sol` | In-repo minimal ERC-5192 interface. |
 | `test/KadeLock.t.sol` | Guard policy tests (D7). |
 | `test/KadeLockSafeIntegration.t.sol` | Value actually moves through the guard. |
 | `test/SafeAddress.t.sol` | Deterministic-address vector and sensitivity tests (D4). |
+| `test/ColosseumMembership.t.sol` | Token rules for the soulbound collections. |
+| `test/MembershipManager.t.sol` | Manager access control, state machine, atomicity, reentrancy. |
 | `test/mocks/MockGuardHost.sol` | Minimal Safe-like host; test-only, never deployed. |
+| `test/mocks/RejectingReceiver.sol` | ERC-721 receiver that rejects one collection; test-only. |
+| `test/mocks/ReentrantReceiver.sol` | ERC-721 receiver that re-enters the manager; test-only. |
 | `scripts/` | EAS manifest generation, registration planner, read-only verifier, Safe address/manifest tooling. |
 | `eas/` | Approval record, committed manifest, review pack, registered-UID record. |
 | `safe/` | `SafeDeploymentManifest` JSON Schema and placeholder example. |
@@ -69,6 +84,57 @@ KadeLock inherits the canonical `Guard` interface from
 `safe-smart-account` v1.5.0 (`contracts/base/GuardManager.sol`,
 `BaseTransactionGuard`). It also
 implements `IERC165` via `supportsInterface`.
+
+## Colosseum Membership v1
+
+Two soulbound credential collections plus a manager, all compiled and
+Foundry-tested only. **Nothing is deployed.**
+
+| Contract | Responsibility |
+|---|---|
+| `ColosseumResident` | ERC-721 + ERC-5192 collection for Residents. |
+| `ColosseumCitizen` | ERC-721 + ERC-5192 collection for Citizens. |
+| `MembershipManager` | Coordinates issue, promote and revoke. |
+
+Both collections share `ColosseumMembership` and follow the same token rules:
+
+- `balanceOf(wallet)` is `0` or `1` — one active credential per address;
+- `locked(tokenId)` returns `true` for an existing token and **reverts** when the
+  token does not exist or was burned;
+- every mint emits both `Transfer` and `Locked`;
+- every transfer between two non-zero addresses reverts (`Soulbound`);
+- there is **no** unlock function; revocation **burns** the token;
+- burned ids are never reused;
+- only the `MembershipManager` may mint or burn (`ERC721Burnable` is
+  deliberately not inherited);
+- metadata carries the name, image and membership type only — **no personal
+  data**.
+
+`MembershipManager` is `Ownable2Step` with the Safe as owner. All
+membership-changing functions are restricted to the Safe; no administrative
+permission remains with the deployer wallet. It is `ReentrancyGuard`-protected
+and updates state before `_safeMint` callbacks.
+
+```text
+None --issueResident--> Resident --promoteToCitizen--> Citizen
+Resident | Citizen --revokeMembership--> None
+```
+
+Promotion is atomic: the Resident credential is burned and the Citizen
+credential minted in one transaction, so a rejected Citizen mint reverts the
+whole promotion and leaves the Resident credential intact.
+
+**Deployment inputs still required** (none is set here): the target network, the
+Safe address that owns the manager, and the wallet ↔ account mapping used to
+decide who is issued a credential. Wiring is a one-time `setCollections` call by
+the Safe, after the two collections are deployed with the manager address as
+their only minter/burner.
+
+> **Note:** adding the pinned OpenZeppelin dependency changes each artifact's
+> metadata (Foundry compiles every source in one solc input), so the pinned
+> `SafeProxy` creation-code hash in `test/SafeAddress.t.sol` was re-derived with
+> `npm run safe:vector --workspace @kade/contracts`. The vector arithmetic is
+> unchanged.
 
 ## EAS schema tooling
 
@@ -158,7 +224,9 @@ placeholder example is `safe/safe-deployment-manifest.example.json`.
 - **Solidity:** `0.8.24` (pinned in `foundry.toml`).
 - **forge-std:** v1.16.2 (MIT / Apache-2.0).
 - **safe-smart-account:** v1.5.0 (**LGPL-3.0**).
-- Both are installed into `lib/` by `scripts/setup.sh` and are **not committed**.
+- **openzeppelin-contracts:** v5.7.0 (MIT). Used by the Colosseum Membership
+  contracts (`ERC721`, `Ownable2Step`, `ReentrancyGuard`, `Base64`, `Strings`).
+- All are installed into `lib/` by `scripts/setup.sh` and are **not committed**.
   `safe-smart-account` is LGPL-3.0 and is deliberately kept out of this
   MIT-licensed repository rather than vendored into it. A clean checkout runs
   the setup script once; after that, `forge build` needs no network access.
@@ -171,3 +239,7 @@ placeholder example is `safe/safe-deployment-manifest.example.json`.
 Deployment scripts, EAS broadcast tooling, compliance co-signing, cure-event
 evaluation and bypass tests are out of the Week 1 minimum model. See the threat
 model for the full exclusion list.
+
+There is also no deployment path for the Colosseum Membership contracts: no
+script, no broadcast, no network or Safe address configured. They are contracts
+and tests only.
