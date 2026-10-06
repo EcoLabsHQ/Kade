@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokens } from '@/components/ui/tokens';
-import { Modal } from '@/components/ui/Modal';
 import { tierMinimumUsdc, type ResidencyCheckId } from '@/lib/residency/checks';
 import {
   setColosseumAttention,
@@ -73,6 +72,18 @@ const REQUIRED_CHECKS: readonly ResidencyCheckId[] = [
 ];
 
 /**
+ * Display labels for the four real checks, used only as a fallback when the
+ * snapshot does not carry the derived check's own `label`. The state, the
+ * detail and the figure always come from the snapshot, never from here.
+ */
+const CHECK_LABELS: Record<ResidencyCheckId, string> = {
+  identity: 'Identity (Self)',
+  funds: 'Qualified holdings',
+  review: 'Intake review',
+  'service-fee': 'Residency service fee',
+};
+
+/**
  * The mocked compliance window. It is demo state, not a persisted record: a
  * reload restarts it.
  */
@@ -85,6 +96,12 @@ export interface ColosseumResidencyProps {
    */
   readonly checks: readonly {
     readonly id: ResidencyCheckId;
+    /**
+     * The derived check's own display label, when the caller passes the full
+     * derived check (the Residency step does). It is only a display string; the
+     * state and detail below are what this section actually reads.
+     */
+    readonly label?: string;
     readonly state: 'met' | 'pending' | 'blocked';
     readonly detail: string;
   }[];
@@ -159,7 +176,6 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
     residencyPassSerial: null,
   });
   const [now, setNow] = useState(() => Date.now());
-  const [stepsModalOpen, setStepsModalOpen] = useState(false);
   // The two full-screen demo reveals. They are pure presentation: opening or
   // closing them changes no persisted state and blocks nothing once dismissed.
   const [residencyPassOpen, setResidencyPassOpen] = useState(false);
@@ -284,6 +300,17 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
         qualifies at a demo-scale {COLOSSEUM_THRESHOLD}.
       </p>
 
+      {/* One progression, always visible: the four milestones the resident moves
+          through, with the current one highlighted. It is what makes the
+          mutually-exclusive states below read as one story rather than five
+          unrelated boxes. */}
+      <PhaseRail
+        fundsMet={fundsMet}
+        allChecksMet={allChecksMet}
+        windowElapsed={windowElapsed}
+        citizen={citizen}
+      />
+
       {/* State A — not eligible yet: the real funds check is below the 10 USDC
           threshold. The figure is the resident's real qualified amount. When the
           resident is on a production tier the real funds check is gated on that
@@ -296,37 +323,31 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
         />
       ) : null}
 
-      {/* State B — threshold met, but the four real checks are not all green. */}
-      {fundsMet && !allChecksMet ? (
-        <StateB
-          open={stepsModalOpen}
-          onOpen={() => setStepsModalOpen(true)}
-          onClose={() => setStepsModalOpen(false)}
+      {/* State B — threshold met, but the four real checks are not all green.
+          The four real checks are shown inline, read from the same snapshot the
+          section already receives; there is no detour dialog. */}
+      {fundsMet && !allChecksMet ? <StateB checks={checks} /> : null}
+
+      {/* State C — all four checks green; the persisted countdown is running.
+          "Claim Colosseum Residency" is the single primary action. */}
+      {showStateC ? (
+        <StateC
+          remainingSeconds={secondsRemaining}
+          residencyPassClaimed={residencyPassClaimed}
+          onClaimResidency={claimResidency}
         />
       ) : null}
 
-      {/* State D — the 2-minute window has elapsed: "Become a Citizen" unlocks. */}
+      {/* State D — the 2-minute window has elapsed. "Become a Citizen" is the
+          single primary action; the residency pass drops to a quiet text
+          affordance so the two claims never compete. */}
       {showStateD ? (
-        <StateD countdown="0:00" onBecomeCitizen={becomeCitizen} />
-      ) : null}
-
-      {/* State C — all four checks green; the persisted countdown is running. */}
-      {showStateC ? <StateC countdown={formatCountdown(secondsRemaining)} /> : null}
-
-      {/* The residency pass action, available while the resident is a resident
-          (states C and D). Claiming reveals the full-screen pass. */}
-      {mounted && allChecksMet && !citizen ? (
-        <div style={passAction}>
-          <button
-            type="button"
-            onClick={claimResidency}
-            style={residencyPassClaimed ? secondaryButton : primaryButton}
-          >
-            {residencyPassClaimed
-              ? 'View residency pass'
-              : 'Claim Colosseum Residency'}
-          </button>
-        </div>
+        <StateD
+          remainingSeconds={secondsRemaining}
+          residencyPassClaimed={residencyPassClaimed}
+          onClaimResidency={claimResidency}
+          onBecomeCitizen={becomeCitizen}
+        />
       ) : null}
 
       {/* State E — already a citizen (persisted): the inline certificate
@@ -406,50 +427,212 @@ function StateA({
   );
 }
 
-/** State B — funds met, but the real residency checks are not all green. */
-function StateB({
-  open,
-  onOpen,
-  onClose,
+/**
+ * The four-milestone progression rail. It is rendered for every state so the
+ * mutually-exclusive boxes below read as one advancing story. Each phase's
+ * `done` flag comes from the same derived state the section already computes;
+ * nothing here is a fixture.
+ */
+function PhaseRail({
+  fundsMet,
+  allChecksMet,
+  windowElapsed,
+  citizen,
 }: {
-  readonly open: boolean;
-  readonly onOpen: () => void;
-  readonly onClose: () => void;
+  readonly fundsMet: boolean;
+  readonly allChecksMet: boolean;
+  readonly windowElapsed: boolean;
+  readonly citizen: boolean;
+}) {
+  const phases = [
+    { id: 'threshold', label: 'Threshold', done: fundsMet },
+    { id: 'checks', label: 'Checks', done: allChecksMet },
+    { id: 'compliance', label: 'Compliance', done: windowElapsed || citizen },
+    { id: 'citizen', label: 'Citizen', done: citizen },
+  ];
+  const activeIndex = phases.findIndex((phase) => !phase.done);
+
+  return (
+    <ol
+      data-testid="colosseum-phases"
+      aria-label="Colosseum residency progress"
+      style={phaseRail}
+    >
+      {phases.map((phase, index) => {
+        const state = phase.done
+          ? 'done'
+          : index === activeIndex
+            ? 'active'
+            : 'todo';
+        return (
+          <li
+            key={phase.id}
+            data-testid={`colosseum-phase-${phase.id}`}
+            data-state={state}
+            style={phaseItem}
+          >
+            <span
+              aria-hidden
+              style={{
+                ...phaseDot,
+                ...(phase.done
+                  ? phaseDotDone
+                  : state === 'active'
+                    ? phaseDotActive
+                    : phaseDotTodo),
+              }}
+            >
+              {phase.done ? '✓' : ''}
+            </span>
+            <span
+              style={{
+                ...phaseLabel,
+                ...(state === 'active' ? phaseLabelActive : {}),
+              }}
+            >
+              {phase.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/**
+ * State B — funds met, but the real residency checks are not all green.
+ *
+ * The four real checks are listed inline with their real state and detail, read
+ * from the same snapshot the section already receives. There is no detour
+ * dialog: the checklist is the whole state.
+ */
+function StateB({
+  checks,
+}: {
+  readonly checks: ColosseumResidencyProps['checks'];
 }) {
   return (
     <div data-testid="colosseum-state-b" style={stateBox}>
       <h3 style={stateTitle}>You meet the {COLOSSEUM_THRESHOLD} threshold</h3>
       <p style={body}>
-        Your qualified position is above the Colosseum minimum. Complete your
-        four residency checks above to become a Colosseum Resident.
+        Your qualified position is above the Colosseum minimum. Clear the same
+        four residency checks the Residency step uses to become a Colosseum
+        Resident.
       </p>
-      <button type="button" onClick={onOpen} style={secondaryButton}>
-        Complete your residency steps
-      </button>
-
-      <Modal
-        open={open}
-        onClose={onClose}
-        eyebrow="Colosseum Resident"
-        title="Complete your residency steps"
-      >
-        <div style={{ padding: '18px 22px 22px' }}>
-          <p style={body}>
-            Clear the same four checks the Residency step uses — identity via
-            Self, qualified holdings, intake review and the residency service
-            fee. When all four are met, the Colosseum Resident step unlocks here.
-          </p>
-          <button type="button" onClick={onClose} style={secondaryButton}>
-            Got it
-          </button>
-        </div>
-      </Modal>
+      <ul data-testid="colosseum-checklist" style={checklist}>
+        {REQUIRED_CHECKS.map((id) => {
+          const check = checks.find((candidate) => candidate.id === id);
+          const state = check?.state ?? 'pending';
+          const label = check?.label ?? CHECK_LABELS[id];
+          return (
+            <li
+              key={id}
+              data-testid={`colosseum-check-${id}`}
+              data-state={state}
+              style={checkRow}
+            >
+              <span
+                aria-hidden
+                style={{
+                  ...checkDot,
+                  ...(state === 'met'
+                    ? checkDotMet
+                    : state === 'blocked'
+                      ? checkDotBlocked
+                      : checkDotPending),
+                }}
+              >
+                {state === 'met' ? '✓' : state === 'blocked' ? '!' : ''}
+              </span>
+              <span style={checkBody}>
+                <span style={checkLabel}>{label}</span>
+                <span style={checkDetail}>
+                  {check?.detail ?? 'Awaiting this check.'}
+                </span>
+              </span>
+              <span
+                style={{
+                  ...checkState,
+                  color:
+                    state === 'met'
+                      ? tokens.success
+                      : state === 'blocked'
+                        ? tokens.danger
+                        : tokens.muted,
+                }}
+              >
+                {state === 'met'
+                  ? 'Met'
+                  : state === 'blocked'
+                    ? 'Blocked'
+                    : 'Pending'}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
-/** State C — all four checks green: congrats and the running demo countdown. */
-function StateC({ countdown }: { readonly countdown: string }) {
+/**
+ * The compliance window, kept discreet: a thin progress line plus small, muted
+ * text carrying the real remaining time. The time is in the accessibility tree
+ * (the visible text, and the progressbar's `aria-valuetext`), but it is no
+ * longer the headline of the card.
+ */
+function ComplianceProgress({
+  remainingSeconds,
+}: {
+  readonly remainingSeconds: number;
+}) {
+  const total = COLOSSEUM_COMPLIANCE_WINDOW_SECONDS;
+  const elapsed = Math.min(total, Math.max(0, total - remainingSeconds));
+  const fraction = total > 0 ? elapsed / total : 1;
+  return (
+    <div style={complianceWrap}>
+      <div
+        data-testid="colosseum-compliance-progress"
+        role="progressbar"
+        aria-label="Compliance window"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={elapsed}
+        aria-valuetext={`${formatCountdown(remainingSeconds)} remaining`}
+        style={progressTrack}
+      >
+        <div style={{ ...progressFill, transform: `scaleX(${fraction})` }} />
+      </div>
+      <p style={complianceText}>
+        <span data-testid="colosseum-countdown" style={complianceTime}>
+          {formatCountdown(remainingSeconds)}
+        </span>{' '}
+        remaining in the compliance window
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The residency-pass affordance. It is a real button in both states (the human
+ * confirmed the residency is claimed with a button), but in state D, where
+ * "Become a Citizen" is the primary action, it renders as a quiet text
+ * affordance so the two claims never compete.
+ */
+function residencyPassLabel(claimed: boolean): string {
+  return claimed ? 'View residency pass' : 'Claim Colosseum Residency';
+}
+
+/** State C — all four checks green: congrats, the running window and the pass. */
+function StateC({
+  remainingSeconds,
+  residencyPassClaimed,
+  onClaimResidency,
+}: {
+  readonly remainingSeconds: number;
+  readonly residencyPassClaimed: boolean;
+  readonly onClaimResidency: () => void;
+}) {
   return (
     <div data-testid="colosseum-state-c" style={stateBox}>
       <h3 style={stateTitle}>You&rsquo;re a Colosseum Resident</h3>
@@ -462,22 +645,29 @@ function StateC({ countdown }: { readonly countdown: string }) {
         Remain a compliant resident for 2 minutes to be eligible to become a
         Colosseum Citizen.
       </p>
-      <div style={metricRow}>
-        <span style={metricLabel}>Compliance window</span>
-        <span data-testid="colosseum-countdown" style={metricValue}>
-          {countdown}
-        </span>
-      </div>
+      <ComplianceProgress remainingSeconds={remainingSeconds} />
+      <button
+        type="button"
+        data-variant={residencyPassClaimed ? 'secondary' : 'primary'}
+        onClick={onClaimResidency}
+        style={residencyPassClaimed ? secondaryButton : primaryButton}
+      >
+        {residencyPassLabel(residencyPassClaimed)}
+      </button>
     </div>
   );
 }
 
-/** State D — the 2-minute window elapsed; "Become a Citizen" is available. */
+/** State D — the 2-minute window elapsed; "Become a Citizen" is the action. */
 function StateD({
-  countdown,
+  remainingSeconds,
+  residencyPassClaimed,
+  onClaimResidency,
   onBecomeCitizen,
 }: {
-  readonly countdown: string;
+  readonly remainingSeconds: number;
+  readonly residencyPassClaimed: boolean;
+  readonly onClaimResidency: () => void;
   readonly onBecomeCitizen: () => void;
 }) {
   return (
@@ -487,18 +677,22 @@ function StateD({
         You have remained a compliant resident for 2 minutes. Become a
         Colosseum Citizen to receive your citizenship certificate.
       </p>
-      <div style={metricRow}>
-        <span style={metricLabel}>Compliance window</span>
-        <span data-testid="colosseum-countdown" style={metricValue}>
-          {countdown}
-        </span>
-      </div>
+      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
+        data-variant="primary"
         onClick={onBecomeCitizen}
         style={{ ...primaryButton, width: '100%' }}
       >
         Become a Citizen
+      </button>
+      <button
+        type="button"
+        data-variant="quiet"
+        onClick={onClaimResidency}
+        style={quietAction}
+      >
+        {residencyPassLabel(residencyPassClaimed)}
       </button>
     </div>
   );
@@ -687,8 +881,175 @@ const secondaryButton = {
   cursor: 'pointer',
 };
 
-const passAction = {
+/* The four-milestone progression rail. Small dots and labels only: it is a
+   wayfinding device, not a headline. */
+const phaseRail = {
+  display: 'flex',
+  flexWrap: 'wrap' as const,
+  alignItems: 'center',
+  gap: '6px 16px',
+  margin: '14px 0 0',
+  padding: 0,
+  listStyle: 'none' as const,
+};
+
+const phaseItem = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+};
+
+const phaseDot = {
+  width: '16px',
+  height: '16px',
+  borderRadius: '50%',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: '0 0 auto',
+  fontSize: '9px',
+  fontWeight: 700,
+  lineHeight: 1,
+};
+
+const phaseDotDone = {
+  background: tokens.brandPrimary,
+  color: '#fff',
+};
+
+const phaseDotActive = {
+  background: tokens.activeNavBg,
+  color: tokens.brandPrimary,
+};
+
+const phaseDotTodo = {
+  background: tokens.chipBg,
+  color: tokens.muted,
+};
+
+const phaseLabel = {
+  fontSize: '11.5px',
+  fontWeight: 600,
+  color: tokens.muted,
+};
+
+const phaseLabelActive = {
+  color: tokens.brandPrimary,
+};
+
+/* State B's inline checklist of the four real checks. */
+const checklist = {
+  margin: '4px 0 0',
+  padding: 0,
+  listStyle: 'none' as const,
+};
+
+const checkRow = {
+  display: 'grid',
+  gridTemplateColumns: '20px 1fr auto',
+  gap: '10px',
+  alignItems: 'center',
+  padding: '10px 0',
+  borderTop: `1px solid ${tokens.border}`,
+};
+
+const checkDot = {
+  width: '18px',
+  height: '18px',
+  borderRadius: '50%',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '10px',
+  fontWeight: 700,
+  lineHeight: 1,
+};
+
+const checkDotMet = {
+  background: tokens.brandPrimary,
+  color: '#fff',
+};
+
+const checkDotPending = {
+  background: tokens.chipBg,
+  color: tokens.muted,
+};
+
+const checkDotBlocked = {
+  background: '#FDECEA',
+  color: tokens.danger,
+};
+
+const checkBody = {
+  display: 'flex',
+  flexDirection: 'column' as const,
+  minWidth: 0,
+};
+
+const checkLabel = {
+  fontSize: '13px',
+  fontWeight: 600,
+  color: tokens.ink,
+};
+
+const checkDetail = {
+  fontSize: '11.5px',
+  color: tokens.muted,
+};
+
+const checkState = {
+  fontSize: '11.5px',
+  fontWeight: 600,
+  whiteSpace: 'nowrap' as const,
+};
+
+/* The discreet compliance window: a thin line plus small, muted text. */
+const complianceWrap = {
   marginTop: '14px',
+};
+
+const progressTrack = {
+  height: '4px',
+  borderRadius: '999px',
+  background: tokens.border,
+  overflow: 'hidden',
+};
+
+const progressFill = {
+  height: '100%',
+  borderRadius: '999px',
+  background: tokens.brandPrimary,
+  transformOrigin: 'left center',
+};
+
+const complianceText = {
+  margin: '6px 0 0',
+  fontSize: '11.5px',
+  color: tokens.muted,
+};
+
+const complianceTime = {
+  fontWeight: 600,
+  fontVariantNumeric: 'tabular-nums',
+  color: tokens.chipFg,
+};
+
+/* The quiet, text-only residency-pass affordance used in state D so it never
+   competes with "Become a Citizen". It is still a real button. */
+const quietAction = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  marginTop: '12px',
+  padding: '2px 0',
+  border: 0,
+  background: 'transparent',
+  color: tokens.brandPrimary,
+  fontFamily: 'inherit',
+  fontSize: '12.5px',
+  fontWeight: 600,
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  textUnderlineOffset: '3px',
 };
 
 const certificateStage = {
