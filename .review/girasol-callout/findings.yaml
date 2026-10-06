@@ -1,0 +1,22 @@
+- id: F1
+  severity: WARN
+  scope: bank-girasol-callout
+  title: "External link opens a new tab without an announced indication"
+  evidence: "apps/web/src/components/finance/bank/BankScreen.tsx:781-784"
+  failure_mode: "A screen-reader user is moved to a new browser tab without prior warning; no functional or data consequence."
+  materiality: "Accessibility nit; WCAG 3.2.5 is AAA. Non-blocking."
+  status: open
+  introduced_by: 5d7c933
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: bank-girasol-callout
+  title: "Frozen Week 3 contract still describes the removed 'powered by GOS' chip"
+  evidence: "docs/week-3-frozen-delivery-contract.md:26"
+  failure_mode: "A contract reader believes /bank still renders the GOS chip; it now renders 'Powered by' plus the Girasol wordmark link."
+  materiality: "Documentation staleness from a human-directed branding change; wording, not a behavioral regression. Non-blocking."
+  status: open
+  introduced_by: 5d7c933
+  resolved_by: null
+  recheck_attempts: 0

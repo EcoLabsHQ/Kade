@@ -1,0 +1,29 @@
+iteration: girasol-callout
+profile: NORMAL
+known_good: 0674a696bc70e474d0febe597104ed8be940bda4
+candidate: 5d7c933
+mode: discovery
+reviewed_scopes:
+  bank-girasol-callout: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F3
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 5d7c933
+  recorded_at: 2026-10-06
+  note: "Run with Node v22.17.0 per .nvmrc."
+requirements:
+  - "Replace the Bank 'powered by GOS' chip with 'Powered by' + the Girasol logo, linked to https://www.girasolpayments.com/."
+  - "Serve the logo from the app's own public/ directory; no runtime dependency on Downloads or reference/."
+  - "Remain purely presentational: no new capability, no data read."
+  - "Keep the Bank description sentence and the footer 'Safe · EAS · GOS · Snapshot' references unchanged."
+notes:
+  - "F1 (WARN): the external link opens a new tab with no announced indication. Non-blocking a11y nit (WCAG 3.2.5 is AAA)."
+  - "F2 (WARN): docs/week-3-frozen-delivery-contract.md:26 still describes the removed 'powered by GOS' chip. Stale documentation wording from a human-directed branding change; not changed without human approval."
+  - "Live-site confusion resolved: the change was correct in the repo but unpushed, so mvp.kade.global still served the old chip."
