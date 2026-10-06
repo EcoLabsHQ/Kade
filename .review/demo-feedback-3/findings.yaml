@@ -1,0 +1,33 @@
+- id: F1
+  severity: WARN
+  scope: girasol-chip-alignment
+  title: "Cropped Girasol asset drops one near-transparent edge column"
+  evidence: "apps/web/public/girasol-logo.png (300x100 -> 263x84); apps/web/src/components/finance/bank/BankScreen.tsx:810"
+  failure_mode: "No observable failure; the excluded old column x=274 has alpha 2-4 and is invisible. Retained ink pixels are byte-identical (no resampling)."
+  materiality: "Microscopic deviation from 'lossless'; visually indistinguishable."
+  status: open
+  introduced_by: aa0a97e
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: colosseum-animations
+  title: "aria-modal dialog has no focus trap / background inert"
+  evidence: "apps/web/src/components/residency/FullScreenReveal.tsx:112-121"
+  failure_mode: "Focus can move behind a dialog presented as modal."
+  materiality: "A11y best-practice gap; dialog remains dismissible and announced."
+  status: open
+  introduced_by: aa0a97e
+  resolved_by: null
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: query-dedupe-and-caching
+  title: "review-bar comment misstates the withdraw route sharing the cached read"
+  evidence: "apps/web/src/lib/review/review-bar.ts:14-19; apps/web/src/app/vault/withdraw/page.tsx:45"
+  failure_mode: "Maintainer relies on a dedupe that cannot occur (withdraw route is outside the (resident) group)."
+  materiality: "Documentation-only; no runtime effect."
+  status: open
+  introduced_by: aa0a97e
+  resolved_by: null
+  recheck_attempts: 0

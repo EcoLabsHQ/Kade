@@ -1,0 +1,36 @@
+iteration: demo-feedback-3
+profile: NORMAL
+known_good: 22cae2ff1cb8405b3e9a77fb83aa41c703f7f2c1
+candidate: aa0a97e
+mode: discovery
+reviewed_scopes:
+  girasol-chip-alignment: complete
+  resident-shell-layout: complete
+  content-only-loading: complete
+  colosseum-animations: complete
+  overview-tracker-reads: complete
+  query-dedupe-and-caching: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: aa0a97e
+  recorded_at: 2026-10-06
+  note: "Run with Node v22.17.0 per .nvmrc, with no workers active. An earlier run during the block failed only on the known flaky onboarding-flow.test.tsx timeouts under load; environmental, not a regression."
+requirements:
+  - "Girasol call-out must look optically centred; the asset's transparent padding must be symmetric and lossless."
+  - "The resident shell must persist across client-side navigation so the loading state covers CONTENT ONLY."
+  - "Colosseum: replace the ugly nav halo; add a full-screen virtual residency pass and a full-screen citizenship passport. All DEMO, reduced-motion aware, dismissible, accessible."
+  - "Overview tracker: KEEP all rows but READ identity and the service-fee prerequisites for real so rows can legitimately go green; unknown stays unknown."
+  - "Queries: conservative caching ONLY (ETH price ~60s), per-request dedupe of the duplicated shell read, bounded-concurrency parallel chain reads. Balances, payments, permissions and identity are NEVER cached."
+notes:
+  - "F1 (WARN): the crop excludes one old column with alpha 2-4 (invisible); retained ink is byte-identical. 'Lossless' is very slightly overstated."
+  - "F2 (WARN): FullScreenReveal declares aria-modal without a focus trap / background inert. Dismissible and announced, but keyboard focus can leave the dialog."
+  - "F3 (WARN): a review-bar.ts comment claims the withdraw route shares the cached read; it is outside the (resident) group, so it cannot. Documentation-only."
+  - "Delegated subreviewer could not be used (subagent depth limit); the caching/data-isolation boundary was reviewed directly by the review lead."
