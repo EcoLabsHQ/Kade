@@ -532,6 +532,39 @@ describe('ColosseumResidency — the virtual residency pass', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* The residency pass security print                                           */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the residency pass security print', () => {
+  const KEY = 'app-security-print';
+
+  it('renders the circular guilloche inside the opaque credential card', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const grid = document.querySelector('.kade-residency-pass-guilloche');
+    const card = document.querySelector('.kade-security-credential');
+    expect(grid).not.toBeNull();
+    expect(card).not.toBeNull();
+    // The grid must be a descendant of the opaque credential card: as a sibling
+    // security layer it sat *behind* the card's opaque background and was
+    // invisible regardless of its opacity.
+    expect(card!.contains(grid!)).toBe(true);
+    expect(grid!.parentElement?.classList.contains('kade-layer-guilloche')).toBe(
+      true,
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* The inline certificate is the full-screen trigger                           */
 /* -------------------------------------------------------------------------- */
 

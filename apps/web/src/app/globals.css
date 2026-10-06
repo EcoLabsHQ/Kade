@@ -521,8 +521,9 @@ textarea {
 
 /* Reveal 1 — the residency pass security print. Five layers share the origin
    `50% 70%`, wipe up from an over-tall/slightly-narrow state, and settle. The
-   four decorative layers stay faintly present (0.12–0.20) behind the opaque
-   credential rather than snapping away. */
+   substrate/seal/portrait decorative layers stay faintly present (0.16–0.20)
+   behind the opaque credential; the guilloche lives inside the credential so
+   its circular grid is actually visible in the settled card. */
 @keyframes kade-security-layer-in {
   from {
     opacity: 0;
@@ -574,7 +575,11 @@ textarea {
 }
 
 .kade-layer-guilloche {
-  --kade-layer-end: 0.14;
+  /* The grid sits inside the opaque credential, so this layer settles fully
+     visible and the texture's own 0.55 opacity is the composed value — the
+     baseline the human approved. As a sibling layer it was both hidden behind
+     the opaque credential and multiplied down to 0.14 × 0.55 ≈ 0.077. */
+  --kade-layer-end: 1;
   animation-delay: 55ms;
   border-radius: 20px;
   overflow: hidden;

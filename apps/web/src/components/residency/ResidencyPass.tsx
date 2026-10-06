@@ -53,9 +53,6 @@ export function ResidencyPass({
         className="kade-security-print kade-artifact-card"
       >
         <div aria-hidden="true" className="kade-security-layer kade-layer-substrate" />
-        <div aria-hidden="true" className="kade-security-layer kade-layer-guilloche">
-          <div className="kade-residency-pass-guilloche" style={guilloche} />
-        </div>
         <div aria-hidden="true" className="kade-security-layer kade-layer-seal">
           <svg
             viewBox="0 0 120 120"
@@ -106,6 +103,16 @@ export function ResidencyPass({
 
         <div className="kade-security-layer kade-layer-credential">
           <div className="kade-security-credential" style={passCard}>
+            {/*
+              The circular security grid lives INSIDE the opaque credential, not
+              behind it. As a sibling security layer it sat under the credential
+              card's opaque background, so it was invisible no matter how opaque
+              the layer was. Inside the card it paints above the card background
+              and below the positioned text, exactly as the approved baseline.
+            */}
+            <div aria-hidden="true" className="kade-security-layer kade-layer-guilloche">
+              <div className="kade-residency-pass-guilloche" style={guilloche} />
+            </div>
             <div aria-hidden="true" style={emblem}>
               ✦
             </div>
