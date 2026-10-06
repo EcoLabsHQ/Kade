@@ -35,7 +35,7 @@ export function CitizenshipPassport({
       revealClassName="kade-passport-reveal"
       flipClassName="kade-passport-flip"
     >
-      <div data-testid="colosseum-passport-overlay" style={passportCard}>
+      <div data-testid="colosseum-passport-overlay" className="kade-artifact-card" style={passportCard}>
         <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
         <div aria-hidden style={passportEmblem}>
           ✦
@@ -54,17 +54,17 @@ export function CitizenshipPassport({
         <p style={passportNote}>Not a real travel or identity document.</p>
 
         <dl style={passportFields}>
-          <div style={passportField}>
+          <div className="kade-artifact-field" style={passportField}>
             <dt style={passportLabel}>Document</dt>
             <dd style={passportValue}>Colosseum Citizen</dd>
           </div>
-          <div style={passportField}>
+          <div className="kade-artifact-field" style={passportField}>
             <dt style={passportLabel}>Issued</dt>
             <dd data-testid="colosseum-passport-overlay-issued" style={passportValue}>
               {formatIssueDate(issuedAt)}
             </dd>
           </div>
-          <div style={passportField}>
+          <div className="kade-artifact-field" style={passportField}>
             <dt style={passportLabel}>Serial</dt>
             <dd
               data-testid="colosseum-passport-overlay-serial"
@@ -73,7 +73,7 @@ export function CitizenshipPassport({
               {serial ?? '—'}
             </dd>
           </div>
-          <div style={passportField}>
+          <div className="kade-artifact-field" style={passportField}>
             <dt style={passportLabel}>Status</dt>
             <dd style={passportValue}>Colosseum Citizen · demo</dd>
           </div>
