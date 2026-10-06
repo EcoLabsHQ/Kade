@@ -1,0 +1,11 @@
+- id: F1
+  severity: WARN
+  scope: premium-reveal-motion
+  title: "Reduced-motion leaves the light-sweep pseudo-element statically visible"
+  evidence: "apps/web/src/app/globals.css:471-489, apps/web/src/app/globals.css:520-521"
+  failure_mode: "The reduced-motion block sets only `animation: none` on the guilloche ::after; the base rule has no opacity:0, so cancelling the `both`-fill sweep leaves a static white gradient band on the artifact instead of a swept-away highlight."
+  materiality: "Cosmetic regression for reduced-motion users; the new keyframes are disabled and the fields are forced opacity:1, so content stays readable and the stated contract holds. Non-blocking."
+  status: open
+  introduced_by: 6af26e9
+  resolved_by: null
+  recheck_attempts: 0

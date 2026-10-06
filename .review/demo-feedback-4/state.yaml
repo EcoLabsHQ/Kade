@@ -1,0 +1,34 @@
+iteration: demo-feedback-4
+profile: NORMAL
+known_good: bf8925ef79c635b5da006cb8a4f31ddc8cd2b208
+candidate: 6af26e9
+mode: discovery
+reviewed_scopes:
+  tracker-links: complete
+  passport-reveal-timing: complete
+  premium-reveal-motion: complete
+  overlay-scroll-lock: complete
+  artifact-fit: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 6af26e9
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+requirements:
+  - "The Overview tracker card 'Open ->' affordances must resolve to /residency; 'Replay setup' stays on /onboarding."
+  - "The full-screen citizenship passport must open on the live transition to citizen, exactly once; not on restored state; dismissal must survive a re-render."
+  - "Premium reveal motion must be CSS-only, transform/opacity only, reduced-motion honoured."
+  - "The full-screen overlay must not show a scrollbar and must lock the background robustly (iOS-safe fixed-body technique, gutter reserved, no double compensation)."
+  - "The artifact cards must fit the viewport (dvh-bounded) instead of overflowing."
+notes:
+  - "F1 (WARN): under prefers-reduced-motion the guilloche sweep ::after keeps rendering because animation:none cancels its `both` fill and the base rule has no opacity:0, so a static white band shows. Keyframes are disabled and fields are forced opacity:1, so content stays readable. To be fixed with the card-animation work, which touches the same file."
+  - "Observation: lockBody measures the scrollbar width after pinning the body; in the no-scrollbar-gutter branch this can read 0 and skip compensation. Baseline compensated nothing either, and any shift sits behind the overlay. Recorded, not blocking."
+  - "The narrowed dashboard-overview-actions assertion was verified honest: the removed header link is still asserted absent by name, and exactly two /residency links are asserted."
