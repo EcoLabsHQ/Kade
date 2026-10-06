@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokens } from '@/components/ui/tokens';
 import { Modal } from '@/components/ui/Modal';
 import { tierMinimumUsdc, type ResidencyCheckId } from '@/lib/residency/checks';
@@ -158,10 +158,21 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   // closing them changes no persisted state and blocks nothing once dismissed.
   const [residencyPassOpen, setResidencyPassOpen] = useState(false);
   const [passportOpen, setPassportOpen] = useState(false);
+  // The passport reveal must fire exactly once, on the *live* transition to
+  // citizen — not on a restored citizen load and not again after a dismissal.
+  // `restoredCitizenRef` records whether the progress read at mount/profile
+  // change was already a citizen (so it never celebrates a restored state);
+  // `celebratedCitizenRef` latches the one live celebration per mount.
+  const restoredCitizenRef = useRef(false);
+  const celebratedCitizenRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
-    setProgress(readColosseumProgress(profileKey ?? null));
+    const restored = readColosseumProgress(profileKey ?? null);
+    setProgress(restored);
+    // Seed from the restored record so only a *new* citizenship celebrates.
+    restoredCitizenRef.current = restored.citizenAt !== null;
+    celebratedCitizenRef.current = false;
     setNow(Date.now());
   }, [profileKey]);
 
@@ -212,9 +223,19 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
     setColosseumAttention(false);
-    // Celebrate the milestone with the full-screen passport reveal.
-    setPassportOpen(true);
   }, [profileKey]);
+
+  // Celebrate the milestone with the full-screen passport reveal, exactly once,
+  // on the live transition to citizen. A restored citizen (already recorded when
+  // the progress was read) never auto-opens, and once dismissed the reveal is not
+  // re-opened by a later render: `celebratedCitizenRef` latches it for this
+  // mount. Opening it again stays available through State E's control.
+  useEffect(() => {
+    if (!mounted || !citizen) return;
+    if (restoredCitizenRef.current || celebratedCitizenRef.current) return;
+    celebratedCitizenRef.current = true;
+    setPassportOpen(true);
+  }, [mounted, citizen]);
 
   // Claiming the residency pass records a demo serial/instant once, then reveals
   // it full-screen. Claiming again (re-opening) shows the same artifact.

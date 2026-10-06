@@ -355,9 +355,10 @@ textarea {
 }
 
 /* The Colosseum full-screen artifact reveals. The backdrop fades, the card rises
-   and settles, then tips through a subtle 3D flip (the scene provides
-   `perspective`). The passport keeps its original keyframe names; the residency
-   pass mirrors them. All are skipped under `prefers-reduced-motion`. */
+   and settles through a gentle scale, then tips through a subtle 3D flip (the
+   scene provides `perspective`). Inside the card a soft light sweep crosses the
+   guilloche while the fields enter in a short stagger. Transform/opacity only,
+   so nothing thrashes layout. All are skipped under `prefers-reduced-motion`. */
 @keyframes kade-reveal-backdrop {
   from {
     opacity: 0;
@@ -370,56 +371,123 @@ textarea {
 @keyframes kade-reveal-card {
   from {
     opacity: 0;
-    transform: translateY(18px) scale(0.97);
+    transform: translateY(26px) scale(0.955);
   }
   to {
     opacity: 1;
-    transform: none;
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes kade-passport-flip {
   from {
-    transform: rotateY(-24deg) rotateX(6deg);
+    transform: rotateY(-22deg) rotateX(7deg) translateY(10px) scale(0.975);
   }
-  60% {
-    transform: rotateY(6deg) rotateX(2deg);
+  55% {
+    transform: rotateY(6deg) rotateX(-1.5deg) translateY(-3px) scale(1.006);
   }
   to {
-    transform: rotateY(0deg) rotateX(0deg);
+    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
   }
 }
 
 @keyframes kade-residency-pass-flip {
   from {
-    transform: rotateY(26deg) rotateX(-6deg);
+    transform: rotateY(24deg) rotateX(-7deg) translateY(10px) scale(0.975);
   }
-  60% {
-    transform: rotateY(-6deg) rotateX(-2deg);
+  55% {
+    transform: rotateY(-6deg) rotateX(1.5deg) translateY(-3px) scale(1.006);
   }
   to {
-    transform: rotateY(0deg) rotateX(0deg);
+    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
+  }
+}
+
+/* A soft light sweep across the guilloche, once, as the artifact settles. */
+@keyframes kade-artifact-sweep {
+  from {
+    opacity: 0;
+    transform: translateX(-65%) rotate(6deg);
+  }
+  18% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(65%) rotate(6deg);
+  }
+}
+
+/* A gentle staggered entrance for the artifact's fields. */
+@keyframes kade-artifact-field-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 .kade-reveal-backdrop {
-  animation: kade-reveal-backdrop 0.3s ease-out both;
+  animation: kade-reveal-backdrop 0.36s ease-out both;
 }
 
 .kade-reveal-card,
 .kade-passport-reveal,
 .kade-residency-pass-reveal {
-  animation: kade-reveal-card 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: kade-reveal-card 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .kade-passport-flip {
-  animation: kade-passport-flip 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: kade-passport-flip 1.05s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform;
 }
 
 .kade-residency-pass-flip {
-  animation: kade-residency-pass-flip 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: kade-residency-pass-flip 1.05s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform;
+}
+
+.kade-artifact-card .kade-passport-guilloche::after,
+.kade-artifact-card .kade-residency-pass-guilloche::after {
+  content: '';
+  position: absolute;
+  top: -60%;
+  bottom: -60%;
+  left: -30%;
+  width: 40%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 35%,
+    rgba(255, 255, 255, 0.34) 50%,
+    rgba(255, 255, 255, 0.04) 65%,
+    transparent 100%
+  );
+  pointer-events: none;
+  animation: kade-artifact-sweep 1.5s 0.18s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.kade-artifact-card .kade-artifact-field {
+  opacity: 0;
+  animation: kade-artifact-field-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.kade-artifact-card .kade-artifact-field:nth-child(1) {
+  animation-delay: 0.2s;
+}
+.kade-artifact-card .kade-artifact-field:nth-child(2) {
+  animation-delay: 0.28s;
+}
+.kade-artifact-card .kade-artifact-field:nth-child(3) {
+  animation-delay: 0.36s;
+}
+.kade-artifact-card .kade-artifact-field:nth-child(4) {
+  animation-delay: 0.44s;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -430,8 +498,16 @@ textarea {
   .kade-passport-reveal,
   .kade-passport-flip,
   .kade-residency-pass-reveal,
-  .kade-residency-pass-flip {
+  .kade-residency-pass-flip,
+  .kade-artifact-card .kade-passport-guilloche::after,
+  .kade-artifact-card .kade-residency-pass-guilloche::after,
+  .kade-artifact-card .kade-artifact-field {
     animation: none;
+  }
+
+  /* The fields must stay readable when their entrance is skipped. */
+  .kade-artifact-card .kade-artifact-field {
+    opacity: 1;
   }
 }
 

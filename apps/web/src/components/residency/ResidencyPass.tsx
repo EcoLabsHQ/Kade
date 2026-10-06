@@ -43,7 +43,7 @@ export function ResidencyPass({
       revealClassName="kade-residency-pass-reveal"
       flipClassName="kade-residency-pass-flip"
     >
-      <div data-testid="colosseum-residency-pass-overlay" style={passCard}>
+      <div data-testid="colosseum-residency-pass-overlay" className="kade-artifact-card" style={passCard}>
         <div aria-hidden className="kade-residency-pass-guilloche" style={guilloche} />
         <div aria-hidden style={emblem}>
           ✦
@@ -62,25 +62,25 @@ export function ResidencyPass({
         <p style={note}>Not a real residency, status or document.</p>
 
         <dl style={fields}>
-          <div style={field}>
+          <div className="kade-artifact-field" style={field}>
             <dt style={label}>Holder</dt>
             <dd data-testid="colosseum-residency-pass-holder" style={value}>
               {holder}
             </dd>
           </div>
-          <div style={field}>
+          <div className="kade-artifact-field" style={field}>
             <dt style={label}>Issued</dt>
             <dd data-testid="colosseum-residency-pass-issued" style={value}>
               {formatIssueDate(issuedAt)}
             </dd>
           </div>
-          <div style={field}>
+          <div className="kade-artifact-field" style={field}>
             <dt style={label}>Serial</dt>
             <dd data-testid="colosseum-residency-pass-serial" style={valueMono}>
               {serial ?? '—'}
             </dd>
           </div>
-          <div style={field}>
+          <div className="kade-artifact-field" style={field}>
             <dt style={label}>Status</dt>
             <dd style={value}>Colosseum Resident · demo</dd>
           </div>
