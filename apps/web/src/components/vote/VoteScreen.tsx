@@ -425,14 +425,6 @@ export function VoteScreen({
               <strong style={{ color: tokens.ink }}>{total}</strong> votes of{' '}
               {ELIGIBLE_RESIDENTS} eligible residents
             </div>
-            {adapter.mocked ? (
-              <div
-                data-testid="vote-source"
-                style={{ marginTop: '10px', fontSize: '11px', color: tokens.muted }}
-              >
-                Snapshot source: mock — this consultation is not a live space.
-              </div>
-            ) : null}
           </Card>
         </div>
       </Card>

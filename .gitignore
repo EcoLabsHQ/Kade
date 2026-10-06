@@ -34,3 +34,8 @@ supabase/.temp/
 # editor / os
 .DS_Store
 *.log
+
+# The membership deployment inputs may carry a provider RPC endpoint
+# (possibly with a key). Never commit a real one — see
+# packages/contracts/membership/README.md.
+packages/contracts/membership/deployment-inputs.json
