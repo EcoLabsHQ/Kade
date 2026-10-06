@@ -289,7 +289,7 @@ begin
         block_number      = p_block_number,
         membership_before = coalesce(membership_transitions.membership_before, v_before),
         membership_after  = v_after,
-        profile_id        = coalesce(public.membership_transitions.profile_id, p_profile_id),
+        profile_id        = coalesce(membership_transitions.profile_id, p_profile_id),
         updated_at        = now()
     where chain_id = p_chain_id
       and account = v_account
