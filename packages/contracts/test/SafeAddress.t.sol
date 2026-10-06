@@ -52,10 +52,32 @@ contract SafeAddressTest is Test {
     // `node scripts/safe-address-vector.mjs`.
     //
     // These values were re-derived when the pinned OpenZeppelin dependency
-    // (v5.7.0) was added for the Colosseum Membership contracts. Foundry
-    // compiles every source in one solc input, so adding sources changes each
-    // artifact's metadata (and therefore its creation code). The change is
-    // loud on purpose; the vector arithmetic itself is unchanged.
+    // (v5.7.0) was added for the Colosseum Membership contracts. The cause was
+    // NOT "Foundry compiles every source in one solc input": `SafeProxy`'s
+    // metadata `sources` is dependency-scoped (it lists only `SafeProxy.sol`).
+    // solc embeds `settings.remappings` in the metadata, and adding the
+    // `openzeppelin-contracts/` remapping (plus Foundry's auto-discovered nested
+    // remappings `erc4626-tests/` and `halmos-cheatcodes/`) changed every
+    // artifact's metadata, hence its creation code. The change is loud on
+    // purpose; the vector arithmetic itself is unchanged.
+    //
+    // Re-derivation MUST start from a clean build:
+    //
+    //     forge clean && forge build
+    //     node scripts/safe-address-vector.mjs
+    //
+    // `forge build` is incremental and does not treat a changed remapping set as
+    // a reason to recompile `SafeProxy`, so a stale
+    // `out/SafeProxy.sol/SafeProxy.json` can feed the script the OLD constants.
+    // The script now refuses an artifact whose embedded remappings differ from
+    // the live `forge remappings`.
+    //
+    // The test itself never reads the artifact: `setUp` takes
+    // `type(SafeProxy).creationCode` from the current compilation, so
+    // `test_PinsProxyCreationCodeAssumption` fails loudly on a stale pin. The
+    // two constants below are kept as the independent, external known answer;
+    // recomputing the expectation from the compiled code would make the pin
+    // vacuous.
     //
     // NOTE: this hash pins our own build. It is deliberately NOT the code the
     // deployed factory uses (438 bytes, 0x941b3e88…), so it must not be used to
