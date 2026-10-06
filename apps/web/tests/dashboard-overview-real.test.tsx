@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
+import { documentsFlagKey } from '@/components/residency/colosseum-progress';
 
 /**
  * The Overview dashboard over the resident's **real** state (T43).
@@ -26,12 +27,25 @@ const hoisted = vi.hoisted(() => ({
   loadResidentReviewState: vi.fn(),
   loadVaultHoldings: vi.fn(),
   loadFeePayment: vi.fn(),
+  loadIdentityFact: vi.fn(),
+  loadResidencyServiceFeePayment: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
   createSupabaseServerClient: vi.fn(),
+}));
+// The route reads the resident's real identity and the residency service-fee
+// rail; both are injected so the derivation runs offline. `residencyFactsFrom`
+// is kept real, so the route is exercised through the real reduction.
+vi.mock('@/lib/residency/server', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/residency/server')>();
+  return { ...actual, loadIdentityFact: hoisted.loadIdentityFact };
+});
+vi.mock('@/lib/residency/service-fee-server', () => ({
+  loadResidencyServiceFeePayment: hoisted.loadResidencyServiceFeePayment,
 }));
 vi.mock('@/lib/onboarding/state', () => ({
   hasCompletedOnboarding: hoisted.hasCompletedOnboarding,
@@ -43,6 +57,7 @@ vi.mock('@/lib/review/review-bar', () => ({
 vi.mock('@/lib/review/queue', () => ({
   loadResidentReviewState: hoisted.loadResidentReviewState,
   NO_RESIDENT_REVIEW_STATE: {
+    applicationId: null,
     status: null,
     tier: null,
     preapprovalUsdc: null,
@@ -104,6 +119,7 @@ function unreadRow(reason: string): VaultHoldingRow {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   hoisted.getSessionUser.mockResolvedValue({
     userId: 'user-1',
     email: 'resident@example.com',
@@ -123,6 +139,7 @@ beforeEach(() => {
     isReviewer: false,
   });
   hoisted.loadResidentReviewState.mockResolvedValue({
+    applicationId: 'app-1',
     status: 'pre_approved',
     tier: '3-year',
     preapprovalUsdc: 1.75,
@@ -132,6 +149,8 @@ beforeEach(() => {
   });
   hoisted.loadVaultHoldings.mockResolvedValue([]);
   hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
+  hoisted.loadIdentityFact.mockResolvedValue(null);
+  hoisted.loadResidencyServiceFeePayment.mockResolvedValue({ status: 'none' });
 });
 
 describe('Overview dashboard real state', () => {
@@ -201,15 +220,93 @@ describe('Overview dashboard real state', () => {
     cleanup();
   });
 
-  it('says the identity stage has no source here instead of inventing a status', async () => {
+  it('reports the identity row as not verified when no valid Self outcome is recorded', async () => {
+    // The route reads the same `self_verifications` record the Residency step
+    // reads; an absent outcome is "not verified", never a fabricated green.
+    render(await OverviewPage());
+
+    expect(screen.getAllByText('Not verified').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Verified with Self')).toBeNull();
+    expect(screen.queryByText('Verified')).toBeNull();
+
+    cleanup();
+  });
+
+  it('marks the identity row verified when the resident has a valid Self outcome', async () => {
+    hoisted.loadIdentityFact.mockResolvedValue({
+      provider: 'self',
+      status: 'valid',
+      verifiedAt: '2026-09-20T00:00:00Z',
+      selfNullifier: 'n',
+    });
+
+    render(await OverviewPage());
+
+    expect(screen.getAllByText('Verified with Self').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Not verified')).toBeNull();
+
+    cleanup();
+  });
+
+  it('marks the service fee done only when the rail verifies the payment', async () => {
+    hoisted.loadResidencyServiceFeePayment.mockResolvedValue({
+      status: 'paid',
+      txHash: '0x00',
+    });
+
+    render(await OverviewPage());
+
+    expect(screen.getByText(/Paid — verified from the receipt/i)).toBeInTheDocument();
+
+    cleanup();
+  });
+
+  it('reads the Residency documents flag written under the same application id', async () => {
+    // The Residency Upload action persists under `applications.id`; the route
+    // must hand the OverviewTracker that same key, or the row never turns green
+    // in the same browser.
+    window.localStorage.setItem(documentsFlagKey('app-1'), '1');
+
+    render(await OverviewPage());
+
+    expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
+    // The documents row is demo state, so the honesty chip must appear with it.
+    expect(screen.getByTestId('overview-tracker-demo')).toHaveTextContent(
+      /Demo data/,
+    );
+
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it('marks the service fee actionable when the real prerequisites are green', async () => {
+    // Identity valid, funds funded and review cleared: the same four checks the
+    // Residency step derives, so the row reads as reachable rather than queued.
+    hoisted.loadIdentityFact.mockResolvedValue({
+      provider: 'self',
+      status: 'valid',
+      verifiedAt: '2026-09-20T00:00:00Z',
+      selfNullifier: 'n',
+    });
+    hoisted.loadResidentReviewState.mockResolvedValue({
+      applicationId: 'app-1',
+      status: 'approved',
+      tier: '3-year',
+      preapprovalUsdc: 1.75,
+      reviewUid: null,
+      serviceUid: null,
+      latestReview: null,
+    });
+    hoisted.loadVaultHoldings.mockResolvedValue([usdcRow(403216)]);
+    hoisted.loadFeePayment.mockResolvedValue({ status: 'paid', txHash: '0x00' });
+
     render(await OverviewPage());
 
     expect(
-      screen.getAllByText(/Not read on this screen/i).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/open Residency for the live check/i),
+      screen.getByText(/Prerequisites green — pay on the Residency step/i),
     ).toBeInTheDocument();
+    // Start Residency is live too, not a fixed queued row.
+    expect(screen.getByText(/pay the service fee to submit/i)).toBeInTheDocument();
 
     cleanup();
   });

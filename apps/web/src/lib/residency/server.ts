@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { readFeeMode } from '@/lib/env';
+import type { FeePaymentState } from '@/lib/payments/preapproval-fee';
 import { loadFeePayment } from '@/lib/payments/server';
 import { loadShellSafe, type ShellSafe } from '@/lib/safe/shell';
 import {
@@ -110,7 +111,15 @@ export async function loadApplicationResidencyRow(
   return (data as ApplicationResidencyRow | null) ?? null;
 }
 
-async function loadIdentityFact(profileId: string): Promise<IdentityFact | null> {
+/**
+ * The resident's Self identity outcome, or null when none is recorded.
+ *
+ * Exported so the Overview tracker can read the **same** `self_verifications`
+ * record the Residency step reads, rather than inventing an identity state. A
+ * failed read degrades to null (the same "not started" the Residency step
+ * shows), so absence is never presented as a verification.
+ */
+export async function loadIdentityFact(profileId: string): Promise<IdentityFact | null> {
   try {
     const client = await createSupabaseServerClient();
     const { data, error } = await client
@@ -177,6 +186,55 @@ async function loadQualifiedPosition(
 }
 
 /**
+ * The already-read values a {@link ResidencyFacts} is assembled from.
+ *
+ * `servicePayment` accepts the explicit `unread` sentinel in addition to the
+ * rail's own states, so a failed service-fee read is mapped to "not recorded /
+ * not verified" rather than throwing or pretending a payment exists.
+ */
+export interface ResidencyFactInputs {
+  readonly tier: string | null;
+  readonly status: string | null;
+  readonly identity: IdentityFact | null;
+  readonly qualified: QualifiedPosition;
+  readonly servicePayment: FeePaymentState | { readonly status: 'unread' };
+  readonly serviceFeeAmountUsdc: number | null;
+  readonly serviceUid: string | null;
+}
+
+/**
+ * Assemble the residency facts from values that have already been read.
+ *
+ * Pure and exported so a second surface (the Overview tracker) can reduce the
+ * **same** records with the same `deriveResidencyView` without a duplicate
+ * database or chain read. This is the single mapping `loadResidencyFacts` uses,
+ * so the two surfaces cannot drift.
+ */
+export function residencyFactsFrom(input: ResidencyFactInputs): ResidencyFacts {
+  const serviceFee: ServiceFeeFact = {
+    recorded:
+      input.servicePayment.status === 'paid' ||
+      input.servicePayment.status === 'unverified',
+    verified: input.servicePayment.status === 'paid',
+    amountUsdc: input.serviceFeeAmountUsdc,
+  };
+
+  const permit: PermitFact = {
+    issued: input.serviceUid !== null,
+    uid: input.serviceUid,
+  };
+
+  return {
+    tier: input.tier,
+    identity: input.identity,
+    qualified: input.qualified,
+    review: reviewFromStatus(input.status),
+    serviceFee,
+    permit,
+  };
+}
+
+/**
  * Build the residency facts for a resident from their records.
  *
  * Exported so a test can drive `deriveResidencyView` with the same facts the
@@ -194,26 +252,15 @@ export async function loadResidencyFacts(
     loadResidencyServiceFeePayment(profileId),
   ]);
 
-  const serviceFee: ServiceFeeFact = {
-    recorded:
-      servicePayment.status === 'paid' || servicePayment.status === 'unverified',
-    verified: servicePayment.status === 'paid',
-    amountUsdc: serviceFeeAmountUsdc,
-  };
-
-  const permit: PermitFact = {
-    issued: row.service_uid !== null,
-    uid: row.service_uid,
-  };
-
-  return {
+  return residencyFactsFrom({
     tier: row.tier,
+    status: row.status,
     identity,
     qualified,
-    review: reviewFromStatus(row.status),
-    serviceFee,
-    permit,
-  };
+    servicePayment,
+    serviceFeeAmountUsdc,
+    serviceUid: row.service_uid,
+  });
 }
 
 /**

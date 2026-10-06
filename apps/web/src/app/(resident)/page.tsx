@@ -23,12 +23,19 @@ import {
   buildOverview,
   demoBadgeLabel,
   type OverviewFee,
+  type OverviewServiceFee,
   type OverviewTone,
 } from '@/lib/review/overview';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadFeePayment } from '@/lib/payments/server';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
+import {
+  loadIdentityFact,
+  residencyFactsFrom,
+} from '@/lib/residency/server';
+import { loadResidencyServiceFeePayment } from '@/lib/residency/service-fee-server';
+import { deriveResidencyView } from '@/lib/residency/checks';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +80,32 @@ async function loadFeeOrUnread(userId: string): Promise<OverviewFee> {
 }
 
 /**
+ * The residency service-fee payment state, or an explicit unread state when the
+ * read throws. The same rail the Residency step pays into; `paid` is a verified
+ * receipt, never a stored hash.
+ */
+async function loadServiceFeeOrUnread(
+  userId: string,
+): Promise<OverviewServiceFee> {
+  try {
+    return await loadResidencyServiceFeePayment(userId);
+  } catch (cause) {
+    const reason =
+      cause instanceof Error
+        ? cause.message
+        : 'the service-fee state could not be read.';
+    console.warn(
+      '[kade] Could not read the residency service fee state:',
+      reason,
+    );
+    return {
+      status: 'unread',
+      reason: `The service-fee state could not be read: ${reason}`,
+    };
+  }
+}
+
+/**
  * The application row the reviewer's action flips. A failed read degrades to
  * the all-unknown state rather than claiming a status or a figure.
  *
@@ -103,13 +136,19 @@ export default async function OverviewPage() {
     redirect('/login');
   }
 
-  // The shell Safe, the onboarding gate and the review row depend only on the
-  // session, so they are issued in one stage rather than one after another.
-  const [shellSafe, onboarded, reviewState] = await Promise.all([
-    loadShellSafe(session.userId),
-    hasCompletedOnboarding(session.userId),
-    loadReviewStateOrUnknown(session.userId),
-  ]);
+  // The shell Safe, the onboarding gate, the review row, the Self identity
+  // record and the residency service-fee state all depend only on the session,
+  // so they are issued in one stage rather than one after another. The identity
+  // and service-fee reads are the **same** sources the Residency step uses, so
+  // the tracker's rows cannot disagree with that screen.
+  const [shellSafe, onboarded, reviewState, identityFact, servicePayment] =
+    await Promise.all([
+      loadShellSafe(session.userId),
+      hasCompletedOnboarding(session.userId),
+      loadReviewStateOrUnknown(session.userId),
+      loadIdentityFact(session.userId),
+      loadServiceFeeOrUnread(session.userId),
+    ]);
 
   // Spec section 8: an authenticated session is not enough to see the account
   // screens. Until the onboarding steps are complete there is no account state
@@ -137,6 +176,26 @@ export default async function OverviewPage() {
     rows: vaultHoldings,
   });
 
+  // Reduce the same records with the same derivation the Residency step uses, so
+  // the service-fee and start-residency rows track that screen rather than a
+  // guess. `residencyFactsFrom` is the pure mapping `loadResidencyFacts` uses.
+  const preapprovalPaid = fee.status === 'paid';
+  const residencyView = deriveResidencyView(
+    residencyFactsFrom({
+      tier: reviewState.tier,
+      status: reviewState.status,
+      identity: identityFact,
+      qualified,
+      servicePayment,
+      // The service-fee amount is not quoted on the Overview; the derivation's
+      // `serviceFeeUnlocked` does not depend on it (the fee is not its own
+      // prerequisite), so it is not read a second time here.
+      serviceFeeAmountUsdc: null,
+      serviceUid: reviewState.serviceUid,
+    }),
+    preapprovalPaid,
+  );
+
   const overviewInput = {
     gate: reviewGate,
     tier: reviewState.tier,
@@ -149,10 +208,16 @@ export default async function OverviewPage() {
     qualified,
     // The pre-approval fee is "paid" only when the receipt re-verifies; the
     // attestation stat uses this to say whether the fee attestation is recorded.
-    preapprovalPaid: fee.status === 'paid',
-    // The Overview does not read Self or the residency gate, so a kyc UID is not
-    // available here and the tracker says so rather than claiming a proof.
+    preapprovalPaid,
+    // No `kade.kyc.v1` attestation UID exists (issuance is gate-blocked); the
+    // identity row reads the real Self outcome instead of inventing one.
     kycUid: null,
+    identity: identityFact,
+    // The service fee is the same rail the Residency step pays into; `unlocked`
+    // is the same derivation, additionally gated on the pre-approval fee exactly
+    // as the Residency step gates it.
+    serviceFee: servicePayment,
+    serviceFeeUnlocked: preapprovalPaid && residencyView.serviceFeeUnlocked,
     // The persisted documents flag and Colosseum demo progress live only in the
     // browser; the client `OverviewTracker` reads them and re-derives the rows.
   };
@@ -249,9 +314,15 @@ export default async function OverviewPage() {
               </Link>
             </div>
 
+            {/*
+              The Residency "Upload" action writes under `applications.id`
+              (`ResidencyStep`), so the Overview reads the same key — never the
+              auth user id, which differs. Both normalize an absent id the same
+              way inside the persisted store.
+            */}
             <OverviewTracker
               input={overviewInput}
-              profileKey={reviewState.applicationId ?? session.userId}
+              profileKey={reviewState.applicationId}
             />
           </Card>
 

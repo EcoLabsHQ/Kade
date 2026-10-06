@@ -23,12 +23,22 @@ const hoisted = vi.hoisted(() => ({
   loadReviewBar: vi.fn(),
   loadVaultHoldings: vi.fn(),
   loadFeePayment: vi.fn(),
+  loadIdentityFact: vi.fn(),
+  loadResidencyServiceFeePayment: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
   createSupabaseServerClient: vi.fn(),
+}));
+vi.mock('@/lib/residency/server', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/residency/server')>();
+  return { ...actual, loadIdentityFact: hoisted.loadIdentityFact };
+});
+vi.mock('@/lib/residency/service-fee-server', () => ({
+  loadResidencyServiceFeePayment: hoisted.loadResidencyServiceFeePayment,
 }));
 vi.mock('@/lib/onboarding/state', () => ({
   hasCompletedOnboarding: hoisted.hasCompletedOnboarding,
@@ -42,6 +52,7 @@ vi.mock('@/lib/review/review-bar', () => ({
 vi.mock('@/lib/review/queue', () => ({
   loadResidentReviewState: vi.fn(),
   NO_RESIDENT_REVIEW_STATE: {
+    applicationId: null,
     status: null,
     tier: null,
     preapprovalUsdc: null,
@@ -90,6 +101,8 @@ beforeEach(() => {
   });
   hoisted.loadVaultHoldings.mockResolvedValue([]);
   hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
+  hoisted.loadIdentityFact.mockResolvedValue(null);
+  hoisted.loadResidencyServiceFeePayment.mockResolvedValue({ status: 'none' });
 });
 
 describe('Overview dashboard header actions', () => {

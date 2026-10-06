@@ -1,5 +1,5 @@
 import type { FeePaymentState } from '@/lib/payments/preapproval-fee';
-import { tierMinimumUsdc } from '@/lib/residency/checks';
+import { tierMinimumUsdc, type IdentityFact } from '@/lib/residency/checks';
 import { usd } from '@/lib/wealth/format';
 import type { QualifiedPosition } from '@/lib/wealth/qualified-position';
 import { residentGateLabel, type ResidentGate } from './gate';
@@ -67,6 +67,15 @@ export type OverviewFee =
   | FeePaymentState
   | { readonly status: 'unread'; readonly reason: string };
 
+/**
+ * The residency service fee's payment state, plus the same explicit unread
+ * variant as {@link OverviewFee}. The Overview reads the residency rail the
+ * Residency step pays into, so "paid" is a verified receipt, not a stored hash.
+ */
+export type OverviewServiceFee =
+  | FeePaymentState
+  | { readonly status: 'unread'; readonly reason: string };
+
 export interface OverviewInput {
   readonly gate: ResidentGate;
   readonly tier: string | null;
@@ -91,12 +100,25 @@ export interface OverviewInput {
    */
   readonly kycUid?: string | null;
   /**
-   * The residency service fee is payable on the Residency step, but the
-   * prerequisite state that unlocks it is read there. The Overview can only say
-   * whether the fee is reachable (its prerequisites are green) without quoting
-   * the amount, so this is a coarse "unlocked / not" the route may pass.
+   * The resident's Self identity outcome, read from the same
+   * `self_verifications` source the Residency step reads (`loadIdentityFact`).
+   * A valid outcome is the real "verified"; `null` is "not verified". Absent
+   * means the caller did not read it, and the row says so rather than guessing.
+   */
+  readonly identity?: IdentityFact | null;
+  /**
+   * The residency service fee is payable on the Residency step. The Overview now
+   * reads the same residency prerequisites the step does, so this is the real
+   * derived "unlocked / not" (its three prerequisite checks are green). Absent
+   * means the caller did not read it.
    */
   readonly serviceFeeUnlocked?: boolean;
+  /**
+   * The residency service fee's payment state, read from the same rail the
+   * Residency step uses. `paid` means a verified receipt; `unverified` is a
+   * recorded hash that did not confirm; `unread` is a failed read.
+   */
+  readonly serviceFee?: OverviewServiceFee | null;
   /**
    * Whether the persisted "Documents complete" demo flag is set. Read on the
    * client from the same store the Residency step writes; absence means the flag
@@ -452,9 +474,30 @@ function fundsStage(input: OverviewInput): OverviewStage {
   };
 }
 
-/** The identity row: a real read when a kyc UID exists, else an honest pointer. */
+/**
+ * The identity row: the resident's real Self outcome, read from the same record
+ * the Residency step reads, with the attestation UID as the other real signal.
+ */
 function identityStage(input: OverviewInput): OverviewStage {
   const title = 'Identity verified';
+  if (input.identity?.status === 'valid') {
+    return {
+      title,
+      meta: 'Verified with Self',
+      status: 'Verified',
+      state: 'done',
+      provenance: 'record',
+    };
+  }
+  if (input.identity?.status === 'invalid') {
+    return {
+      title,
+      meta: 'The identity proof did not satisfy the programme checks',
+      status: 'Blocked',
+      state: 'blocked',
+      provenance: 'record',
+    };
+  }
   if (input.kycUid) {
     return {
       title,
@@ -464,12 +507,22 @@ function identityStage(input: OverviewInput): OverviewStage {
       provenance: 'record',
     };
   }
-  // The Overview does not read Self, so it cannot claim a verification. It says
-  // so instead of inventing one.
+  if (input.identity === undefined) {
+    // No caller-supplied identity read at all: say so rather than guessing.
+    return {
+      title,
+      meta: 'Not read on this screen — open Residency for the live check',
+      status: 'See Residency',
+      state: 'queued',
+      provenance: 'unknown',
+    };
+  }
+  // The identity record was read and holds no valid outcome. A failed read
+  // degrades to the same null, so this is "not verified", never a green.
   return {
     title,
-    meta: 'Not read on this screen — open Residency for the live check',
-    status: 'See Residency',
+    meta: 'Not verified — open Residency for the Self check',
+    status: 'Not verified',
     state: 'queued',
     provenance: 'unknown',
   };
@@ -496,9 +549,46 @@ function documentsStage(input: OverviewInput): OverviewStage {
   };
 }
 
-/** The residency service fee: only reachable after the prerequisites are green. */
+/** The residency service fee: done when paid, actionable once reachable. */
 function serviceFeeStage(input: OverviewInput): OverviewStage {
   const title = 'Residency service fee';
+  const serviceFee = input.serviceFee;
+  if (serviceFee?.status === 'paid') {
+    return {
+      title,
+      meta: 'Paid — verified from the receipt',
+      status: 'Completed',
+      state: 'done',
+      provenance: 'record',
+    };
+  }
+  if (serviceFee?.status === 'unverified') {
+    return {
+      title,
+      meta: 'Recorded on chain — awaiting verification',
+      status: 'In progress',
+      state: 'active',
+      provenance: 'unknown',
+    };
+  }
+  if (serviceFee?.status === 'unread') {
+    return {
+      title,
+      meta: serviceFee.reason,
+      status: 'Unread',
+      state: 'active',
+      provenance: 'unknown',
+    };
+  }
+  if (serviceFee?.status === 'not-configured') {
+    return {
+      title,
+      meta: 'The service-fee rail is not configured on this server',
+      status: 'Unavailable',
+      state: 'queued',
+      provenance: 'unknown',
+    };
+  }
   if (input.serviceFeeUnlocked === true) {
     return {
       title,
@@ -509,7 +599,7 @@ function serviceFeeStage(input: OverviewInput): OverviewStage {
     };
   }
   if (input.serviceFeeUnlocked === undefined) {
-    // The Overview does not read the residency prerequisites, so it cannot say
+    // The caller did not read the residency prerequisites, so it cannot say
     // whether the fee is reachable; it says so rather than guessing.
     return {
       title,
@@ -544,10 +634,21 @@ function startResidencyStage(input: OverviewInput): OverviewStage {
       provenance: 'record',
     };
   }
-  if (input.fee.status === 'paid' && input.serviceFeeUnlocked) {
+  if (input.serviceFee?.status === 'paid') {
     return {
       title,
       meta: 'Service fee paid — permit issuance is pending approval',
+      status: 'In progress',
+      state: 'active',
+      provenance: 'record',
+    };
+  }
+  // The prerequisites are genuinely met, so the step is live even before the fee
+  // is paid; it is not a fixed "Queued".
+  if (input.serviceFeeUnlocked === true) {
+    return {
+      title,
+      meta: 'Prerequisites green — pay the service fee to submit',
       status: 'In progress',
       state: 'active',
       provenance: 'record',
