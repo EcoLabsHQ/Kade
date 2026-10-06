@@ -1,0 +1,31 @@
+iteration: demo-feedback-11
+profile: NORMAL
+known_good: f03ec7c
+candidate: f2c8e6f
+mode: targeted
+review_scope: "f03ec7c...f2c8e6f — the three WARNs from demo-feedback-10"
+reviewed_scopes:
+  f1-mechanism-and-script-guard: complete
+  f2-renounce-disabled: complete
+  f3-collections-must-differ: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: f2c8e6f
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "F1 (WARN, open): the SafeAddress staleness guard fails OPEN when `forge` cannot be spawned (scripts/safe-address-vector.mjs:80-86) — it warns and prints constants from a stale artifact with exit 0, which is the case the guard exists to catch. Reproduced by the reviewer with forge absent from PATH. The README (:152-155) also states the refusal unconditionally. Non-blocking: it is a non-product developer aid, and the independent test pin recompiles SafeProxy fresh and FAILS against stale constants (reproduced: 0xf8a2bf... vs the stale pin), so the failure cannot go unnoticed. Strictly an improvement over the previous no-guard state."
+  - "F1(a) verified accurate: SafeProxy's metadata `sources` is dependency-scoped (one entry) while `settings.remappings` carries five entries, so the corrected remappings explanation is right and the old 'compiles every source in one input' claim was wrong."
+  - "F1(c) verified sound: the pinned constants are unchanged by this diff and remain a non-vacuous external known answer — setUp uses type(SafeProxy).creationCode, not the JSON artifact, so the pin is not self-fulfilling."
+  - "F2 verified: `renounceOwnership() public view override onlyOwner` is a legal mutability narrowing; it reverts for everyone. No residual escape — Ownable2Step.transferOwnership(0) only sets/clears the pending owner and never calls _transferOwnership, and the internal _transferOwnership(0) is unreachable. Two-step transfer still works, pinned by test."
+  - "F3 verified: the identity check sits after the zero-address check and before both the WrongManager check and any state write."
+  - "No deployment, broadcast, RPC call or Snapshot artifact in the diff. src/SafeAddress.sol, packages/shared/src/safe-deployments.ts and docs/week-*.md are untouched. No test removed or weakened (only four comment lines were removed)."
+  - "NO ON-CHAIN VALIDATION WAS PERFORMED OR POSSIBLE."
+human_note: "The human asked to deploy to Arbitrum and implement the full on-chain flow with Snapshot mocked. Deployment is blocked: no deployer key (Vercel masks it and no keystore exists), Arbitrum is marked active:false in the frozen registry, ARBITRUM_SEPOLIA_RPC_URL is unset, and no Arbitrum Safe address is known."

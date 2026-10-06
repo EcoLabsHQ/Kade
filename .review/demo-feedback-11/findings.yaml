@@ -1,0 +1,12 @@
+- id: F1
+  severity: WARN
+  scope: f1-mechanism-and-script-guard
+  title: "SafeAddress staleness guard fails open when forge cannot be executed"
+  evidence: "packages/contracts/scripts/safe-address-vector.mjs:80-86, :65-69; packages/contracts/README.md:152-155; packages/contracts/test/SafeAddress.t.sol:72-73"
+  failure_mode: "With forge unavailable the script warns and prints constants from a stale artifact with exit 0, instead of aborting; the README states the refusal unconditionally."
+  materiality: "Residual gap in a non-product developer tool, mitigated by the independent test pin which recompiles SafeProxy fresh and fails against stale constants. Strictly better than the previous no-guard state."
+  status: open
+  introduced_by: f2c8e6f
+  resolved_by: null
+  recheck_attempts: 0
+  planned_remediation: "Make the guard fail closed (abort when the live remapping set cannot be established) and correct the README's unconditional wording. Queue with the next contracts change."
