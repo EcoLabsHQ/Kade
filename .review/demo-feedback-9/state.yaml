@@ -1,0 +1,30 @@
+iteration: demo-feedback-9
+profile: NORMAL
+known_good: 6a3509f
+candidate: 60b1e52
+mode: targeted
+review_scope: "6a3509f...60b1e52 — a narrow human-directed revert"
+reviewed_scopes:
+  embedded-certificate-width-revert: complete
+  comment-and-test-accuracy: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 60b1e52
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "No findings. The revert is the exact behavioural inverse of ff95d58; a repo-wide grep finds no residual min(100%, 420px) outside gitignored build caches."
+  - "Keeping embeddedCard.width: '100%' is provably equivalent to the pre-reveal2 absent value here: baseCard is boxSizing:border-box with maxInlineSize:100%, and the parent .kade-passport-trigger is display:block width:100% inside a block (not flex/grid) parent, so width:auto and width:100% resolve to the same used width."
+  - "Rewritten comments verified accurate; no stale claim of a bound remains (a stale comment was a WARN in an earlier iteration)."
+  - "No assertion weakened: the test hunk changes only the title and a comment; every expect() is byte-identical."
+  - "Nothing the human asked to keep was touched: the hover/focus affordance, the single full-card sweep, the citizenship-only sound, the bumped v2 storage keys and the no-scroll hardening all live outside this diff."
+  - "The overlay trigger button still matches the full-width wrapper box (inset:0)."
+  - "Browser-only: the rendered visual width itself."
+human_note: "The human will confirm visually that the inline certificate now reads as filling the section."
