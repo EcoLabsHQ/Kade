@@ -8,13 +8,17 @@ import {
   setColosseumAttention,
 } from '@/components/shell/colosseum-attention';
 import {
+  claimResidencyPass,
   clearResidentSince,
   generatePassportSerial,
+  generateResidencyPassSerial,
   markCitizen,
   markResidentSince,
   readColosseumProgress,
   type ColosseumProgress,
 } from './colosseum-progress';
+import { ResidencyPass } from './ResidencyPass';
+import { CitizenshipPassport } from './CitizenshipPassport';
 
 /**
  * The Colosseum flow, rendered as a mocked sub-section INSIDE the Residency step.
@@ -145,10 +149,15 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
     residentSince: null,
     citizenAt: null,
     passportSerial: null,
+    residencyPassAt: null,
+    residencyPassSerial: null,
   });
-  const [justBecameCitizen, setJustBecameCitizen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [stepsModalOpen, setStepsModalOpen] = useState(false);
+  // The two full-screen demo reveals. They are pure presentation: opening or
+  // closing them changes no persisted state and blocks nothing once dismissed.
+  const [residencyPassOpen, setResidencyPassOpen] = useState(false);
+  const [passportOpen, setPassportOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -202,13 +211,28 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
 
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
-    setJustBecameCitizen(true);
     setColosseumAttention(false);
+    // Celebrate the milestone with the full-screen passport reveal.
+    setPassportOpen(true);
+  }, [profileKey]);
+
+  // Claiming the residency pass records a demo serial/instant once, then reveals
+  // it full-screen. Claiming again (re-opening) shows the same artifact.
+  const claimResidency = useCallback(() => {
+    setProgress(
+      claimResidencyPass(
+        profileKey ?? null,
+        new Date().toISOString(),
+        generateResidencyPassSerial(),
+      ),
+    );
+    setResidencyPassOpen(true);
   }, [profileKey]);
 
   const showPassport = mounted && citizen;
   const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
   const showStateC = mounted && allChecksMet && !citizen && !windowElapsed;
+  const residencyPassClaimed = progress.residencyPassSerial !== null;
 
   return (
     <section data-testid="colosseum-section" style={card}>
@@ -257,13 +281,44 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
       {/* State C — all four checks green; the persisted countdown is running. */}
       {showStateC ? <StateC countdown={formatCountdown(secondsRemaining)} /> : null}
 
-      {/* State E — already a citizen (persisted): passport, re-rendered on reload. */}
+      {/* The residency pass action, available while the resident is a resident
+          (states C and D). Claiming reveals the full-screen pass. */}
+      {mounted && allChecksMet && !citizen ? (
+        <div style={passAction}>
+          <button
+            type="button"
+            onClick={claimResidency}
+            style={residencyPassClaimed ? secondaryButton : primaryButton}
+          >
+            {residencyPassClaimed
+              ? 'View residency pass'
+              : 'Claim Colosseum Residency'}
+          </button>
+        </div>
+      ) : null}
+
+      {/* State E — already a citizen (persisted): the inline passport artifact,
+          re-rendered on reload, with a control for the full-screen reveal. */}
       {showPassport ? (
         <StateE
-          animate={justBecameCitizen}
           serial={progress.passportSerial}
+          onOpenFullScreen={() => setPassportOpen(true)}
         />
       ) : null}
+
+      {/* Full-screen demo reveals. Both are dismissible and block nothing. */}
+      <ResidencyPass
+        open={residencyPassOpen}
+        onClose={() => setResidencyPassOpen(false)}
+        serial={progress.residencyPassSerial}
+        issuedAt={progress.residencyPassAt}
+      />
+      <CitizenshipPassport
+        open={passportOpen}
+        onClose={() => setPassportOpen(false)}
+        serial={progress.passportSerial}
+        issuedAt={progress.citizenAt}
+      />
     </section>
   );
 }
@@ -408,62 +463,67 @@ function StateD({
   );
 }
 
-/** State E — already a Colosseum Citizen: the virtual passport artifact. */
+/**
+ * State E — already a Colosseum Citizen: the inline virtual passport artifact.
+ *
+ * The artifact stays readable in the page (so a stored citizen always sees it),
+ * and the button opens the full-screen reveal on demand. The full-screen
+ * celebration is what plays automatically on the moment of citizenship.
+ */
 function StateE({
-  animate,
   serial,
+  onOpenFullScreen,
 }: {
-  readonly animate: boolean;
   readonly serial: string | null;
+  readonly onOpenFullScreen: () => void;
 }) {
   return (
     <div data-testid="colosseum-state-e" style={passportStage}>
-      <div
-        className={animate ? 'kade-passport-reveal' : undefined}
-        style={passportSceneStyle}
-      >
-        <div
-          className={animate ? 'kade-passport-flip' : undefined}
-          style={passportCard}
-        >
-          <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
-          <div aria-hidden style={passportEmblem}>✦</div>
+      <div style={passportCard}>
+        <div aria-hidden className="kade-passport-guilloche" style={passportTexture} />
+        <div aria-hidden style={passportEmblem}>✦</div>
 
-          <div style={passportHeader}>
-            <div style={passportOrg}>Colosseum · Demo Passport</div>
-            <div style={passportType}>Citizen</div>
-          </div>
-
-          <div style={passportTitleRow}>
-            <span style={passportTitle}>Virtual passport</span>
-            <span style={passportDocChip}>Demo</span>
-          </div>
-
-          <p style={passportNote}>Not a real travel or identity document.</p>
-
-          <dl style={passportFields}>
-            <div style={passportField}>
-              <dt style={passportLabel}>Document</dt>
-              <dd style={passportValue}>Colosseum Citizen</dd>
-            </div>
-            <div style={passportField}>
-              <dt style={passportLabel}>Serial</dt>
-              <dd data-testid="colosseum-passport-serial" style={passportValueMono}>
-                {serial ?? '—'}
-              </dd>
-            </div>
-          </dl>
-
-          <div aria-hidden style={passportMrz}>
-            <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
-            <span data-testid="colosseum-passport-mrz">{serial ?? '—'}</span>
-          </div>
-
-          <p style={passportDisclaimer}>
-            Demo artifact only · confers no status, onchain or otherwise.
-          </p>
+        <div style={passportHeader}>
+          <div style={passportOrg}>Colosseum · Demo Passport</div>
+          <div style={passportType}>Citizen</div>
         </div>
+
+        <div style={passportTitleRow}>
+          <span style={passportTitle}>Virtual passport</span>
+          <span style={passportDocChip}>Demo</span>
+        </div>
+
+        <p style={passportNote}>Not a real travel or identity document.</p>
+
+        <dl style={passportFields}>
+          <div style={passportField}>
+            <dt style={passportLabel}>Document</dt>
+            <dd style={passportValue}>Colosseum Citizen</dd>
+          </div>
+          <div style={passportField}>
+            <dt style={passportLabel}>Serial</dt>
+            <dd data-testid="colosseum-passport-serial" style={passportValueMono}>
+              {serial ?? '—'}
+            </dd>
+          </div>
+        </dl>
+
+        <div aria-hidden style={passportMrz}>
+          <span>P&lt;KADECOLOSSEUM&lt;CITIZEN</span>
+          <span data-testid="colosseum-passport-mrz">{serial ?? '—'}</span>
+        </div>
+
+        <p style={passportDisclaimer}>
+          Demo artifact only · confers no status, onchain or otherwise.
+        </p>
       </div>
+      <button
+        type="button"
+        onClick={onOpenFullScreen}
+        style={{ ...secondaryButton, width: '100%', marginTop: '12px' }}
+      >
+        Open full-screen passport
+      </button>
     </div>
   );
 }
@@ -593,14 +653,12 @@ const secondaryButton = {
   cursor: 'pointer',
 };
 
-const passportStage = {
+const passAction = {
   marginTop: '14px',
-  perspective: '1000px',
 };
 
-const passportSceneStyle: React.CSSProperties = {
-  position: 'relative',
-  transformStyle: 'preserve-3d',
+const passportStage = {
+  marginTop: '14px',
 };
 
 const passportCard: React.CSSProperties = {

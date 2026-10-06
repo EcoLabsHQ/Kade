@@ -336,13 +336,23 @@ textarea {
   animation: kade-nav-pulse 1.6s ease-in-out infinite;
 }
 
-/* The Colosseum virtual-passport reveal. The demo layer adds two keyframes: the
-   card rises and settles, then tips through a subtle 3D flip (the scene provides
-   `perspective`). Both are skipped under `prefers-reduced-motion`. */
-@keyframes kade-passport-reveal {
+/* The Colosseum full-screen artifact reveals. The backdrop fades, the card rises
+   and settles, then tips through a subtle 3D flip (the scene provides
+   `perspective`). The passport keeps its original keyframe names; the residency
+   pass mirrors them. All are skipped under `prefers-reduced-motion`. */
+@keyframes kade-reveal-backdrop {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes kade-reveal-card {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -362,8 +372,26 @@ textarea {
   }
 }
 
-.kade-passport-reveal {
-  animation: kade-passport-reveal 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+@keyframes kade-residency-pass-flip {
+  from {
+    transform: rotateY(26deg) rotateX(-6deg);
+  }
+  60% {
+    transform: rotateY(-6deg) rotateX(-2deg);
+  }
+  to {
+    transform: rotateY(0deg) rotateX(0deg);
+  }
+}
+
+.kade-reveal-backdrop {
+  animation: kade-reveal-backdrop 0.3s ease-out both;
+}
+
+.kade-reveal-card,
+.kade-passport-reveal,
+.kade-residency-pass-reveal {
+  animation: kade-reveal-card 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 .kade-passport-flip {
@@ -371,9 +399,18 @@ textarea {
   will-change: transform;
 }
 
+.kade-residency-pass-flip {
+  animation: kade-residency-pass-flip 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .kade-reveal-backdrop,
+  .kade-reveal-card,
   .kade-passport-reveal,
-  .kade-passport-flip {
+  .kade-passport-flip,
+  .kade-residency-pass-reveal,
+  .kade-residency-pass-flip {
     animation: none;
   }
 }

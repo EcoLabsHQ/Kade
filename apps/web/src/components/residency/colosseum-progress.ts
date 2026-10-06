@@ -16,6 +16,10 @@
  *     `met` before citizenship (the clock resets), matching the existing decay.
  *   - `citizenAt` — the ISO instant the resident became a Colosseum Citizen.
  *   - `passportSerial` — the demo serial, generated client-side (`KADE-CL-…`).
+ *   - `residencyPassAt` / `residencyPassSerial` — the ISO instant the resident
+ *     claimed their virtual residency pass and its client-generated demo serial
+ *     (`KADE-RES-…`). They are stored so re-opening the pass shows the same
+ *     artifact rather than minting a new one, exactly like the passport.
  *
  * A profile id is passed in rather than read here, so the store is a pure,
  * testable mapping and the caller owns the identity (the same id the rest of the
@@ -29,6 +33,10 @@ export interface ColosseumProgress {
   readonly citizenAt: string | null;
   /** Client-generated demo passport serial, or null before citizenship. */
   readonly passportSerial: string | null;
+  /** ISO timestamp when the virtual residency pass was claimed, or null. */
+  readonly residencyPassAt: string | null;
+  /** Client-generated demo residency-pass serial, or null before a claim. */
+  readonly residencyPassSerial: string | null;
 }
 
 const STORAGE_PREFIX = 'kade.colosseum.progress.';
@@ -37,6 +45,8 @@ export const EMPTY_COLOSSEUM_PROGRESS: ColosseumProgress = {
   residentSince: null,
   citizenAt: null,
   passportSerial: null,
+  residencyPassAt: null,
+  residencyPassSerial: null,
 };
 
 function storageKey(profileKey: string): string {
@@ -70,6 +80,25 @@ export function generatePassportSerial(random: () => number = Math.random): stri
   return `KADE-CL-${tail}`;
 }
 
+/**
+ * The demo residency-pass serial. Same shape and rationale as the passport
+ * serial: client-generated, non-sensitive, and clearly a demo value.
+ */
+export function generateResidencyPassSerial(
+  random: () => number = Math.random,
+): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let tail = '';
+  for (let i = 0; i < 8; i += 1) {
+    const index = Math.min(
+      alphabet.length - 1,
+      Math.max(0, Math.floor(random() * alphabet.length)),
+    );
+    tail += alphabet[index];
+  }
+  return `KADE-RES-${tail}`;
+}
+
 function parse(raw: string | null): ColosseumProgress {
   if (!raw) return EMPTY_COLOSSEUM_PROGRESS;
   try {
@@ -79,6 +108,12 @@ function parse(raw: string | null): ColosseumProgress {
       citizenAt: typeof value.citizenAt === 'string' ? value.citizenAt : null,
       passportSerial:
         typeof value.passportSerial === 'string' ? value.passportSerial : null,
+      residencyPassAt:
+        typeof value.residencyPassAt === 'string' ? value.residencyPassAt : null,
+      residencyPassSerial:
+        typeof value.residencyPassSerial === 'string'
+          ? value.residencyPassSerial
+          : null,
     };
   } catch {
     // A corrupt value is treated as no progress rather than throwing.
@@ -104,7 +139,9 @@ function write(profileKey: string | null | undefined, progress: ColosseumProgres
     const empty =
       progress.residentSince === null &&
       progress.citizenAt === null &&
-      progress.passportSerial === null;
+      progress.passportSerial === null &&
+      progress.residencyPassAt === null &&
+      progress.residencyPassSerial === null;
     if (empty) window.localStorage.removeItem(storageKey(normalizeProfileKey(profileKey)));
     else
       window.localStorage.setItem(
@@ -155,10 +192,33 @@ export function markCitizen(
 ): ColosseumProgress {
   const current = readColosseumProgress(profileKey);
   if (current.citizenAt !== null) return current;
+  // Spread `current` so the residency-pass fields are preserved rather than
+  // dropped when citizenship is recorded.
   const next: ColosseumProgress = {
-    residentSince: current.residentSince,
+    ...current,
     citizenAt: iso,
     passportSerial: current.passportSerial ?? serial,
+  };
+  write(profileKey, next);
+  return next;
+}
+
+/**
+ * Claim the virtual residency pass with a demo serial and issue instant.
+ * Idempotent: a pass that already exists keeps its original instant and serial,
+ * so re-opening it never mints a second one.
+ */
+export function claimResidencyPass(
+  profileKey: string | null | undefined,
+  iso: string,
+  serial: string,
+): ColosseumProgress {
+  const current = readColosseumProgress(profileKey);
+  if (current.residencyPassAt !== null) return current;
+  const next: ColosseumProgress = {
+    ...current,
+    residencyPassAt: iso,
+    residencyPassSerial: current.residencyPassSerial ?? serial,
   };
   write(profileKey, next);
   return next;

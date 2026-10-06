@@ -1,0 +1,254 @@
+'use client';
+
+import type { CSSProperties } from 'react';
+import { FullScreenReveal } from './FullScreenReveal';
+import { formatIssueDate } from './artifact-format';
+
+/**
+ * The virtual Colosseum residency pass, revealed full-screen when the resident
+ * claims residency.
+ *
+ * Like the rest of the Colosseum layer this is a declared demo: it confers no
+ * real residency, status or document, and carries a "Demo" chip and an explicit
+ * disclaimer. The resident's name is not available to this component (the real
+ * residency snapshot carries no holder name), so it shows a neutral placeholder
+ * unless a caller supplies one.
+ */
+export interface ResidencyPassProps {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  /** The holder's display name; omitted for a neutral placeholder. */
+  readonly holderName?: string | null;
+}
+
+const PLACEHOLDER_HOLDER = 'Kade Resident';
+
+export function ResidencyPass({
+  open,
+  onClose,
+  serial,
+  issuedAt,
+  holderName,
+}: ResidencyPassProps) {
+  const holder = (holderName ?? '').trim() || PLACEHOLDER_HOLDER;
+
+  return (
+    <FullScreenReveal
+      open={open}
+      onClose={onClose}
+      title="Colosseum residency pass"
+      announcement="Your demo Colosseum residency pass is ready. This is a demo and confers no real status."
+      revealClassName="kade-residency-pass-reveal"
+      flipClassName="kade-residency-pass-flip"
+    >
+      <div data-testid="colosseum-residency-pass-overlay" style={passCard}>
+        <div aria-hidden className="kade-residency-pass-guilloche" style={guilloche} />
+        <div aria-hidden style={emblem}>
+          ✦
+        </div>
+
+        <div style={header}>
+          <div style={org}>Colosseum · Demo Residency Pass</div>
+          <div style={typeChip}>Resident</div>
+        </div>
+
+        <div style={titleRow}>
+          <span style={title}>Virtual residency pass</span>
+          <span style={demoChip}>Demo</span>
+        </div>
+
+        <p style={note}>Not a real residency, status or document.</p>
+
+        <dl style={fields}>
+          <div style={field}>
+            <dt style={label}>Holder</dt>
+            <dd data-testid="colosseum-residency-pass-holder" style={value}>
+              {holder}
+            </dd>
+          </div>
+          <div style={field}>
+            <dt style={label}>Issued</dt>
+            <dd data-testid="colosseum-residency-pass-issued" style={value}>
+              {formatIssueDate(issuedAt)}
+            </dd>
+          </div>
+          <div style={field}>
+            <dt style={label}>Serial</dt>
+            <dd data-testid="colosseum-residency-pass-serial" style={valueMono}>
+              {serial ?? '—'}
+            </dd>
+          </div>
+          <div style={field}>
+            <dt style={label}>Status</dt>
+            <dd style={value}>Colosseum Resident · demo</dd>
+          </div>
+        </dl>
+
+        <div aria-hidden style={mrz}>
+          <span>P&lt;KADECOLOSSEUM&lt;RESIDENT</span>
+          <span>{serial ?? '—'}</span>
+        </div>
+
+        <p style={disclaimer}>
+          Demo artifact only · confers no residency, status, onchain or
+          otherwise.
+        </p>
+      </div>
+    </FullScreenReveal>
+  );
+}
+
+const passCard: CSSProperties = {
+  position: 'relative',
+  overflow: 'hidden',
+  background:
+    'radial-gradient(120% 140% at 18% 0%, #12514a 0%, #0a3a38 45%, #062322 100%)',
+  borderRadius: '20px',
+  padding: '26px 26px 18px',
+  color: '#f2fbf8',
+  border: '1px solid rgba(255,255,255,.18)',
+  boxShadow:
+    '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 34px 80px -30px rgba(4,24,22,.9)',
+  transformStyle: 'preserve-3d',
+};
+
+const guilloche: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  opacity: 0.55,
+  background:
+    'repeating-radial-gradient(circle at 12% 8%, rgba(255,255,255,.10) 0 1px, transparent 1px 13px), repeating-radial-gradient(circle at 88% 92%, rgba(255,255,255,.08) 0 1px, transparent 1px 17px), repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 1px, transparent 1px 9px)',
+  pointerEvents: 'none',
+};
+
+const emblem: CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  right: '-10px',
+  transform: 'translateY(-50%)',
+  fontSize: '190px',
+  lineHeight: 1,
+  color: 'rgba(255,255,255,.05)',
+  pointerEvents: 'none',
+};
+
+const header: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '10px',
+  borderBottom: '1px solid rgba(255,255,255,.2)',
+  paddingBottom: '12px',
+};
+
+const org: CSSProperties = {
+  fontSize: '10.5px',
+  fontWeight: 700,
+  letterSpacing: '.16em',
+  textTransform: 'uppercase',
+  opacity: 0.85,
+};
+
+const typeChip: CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '.14em',
+  textTransform: 'uppercase',
+  padding: '3px 8px',
+  borderRadius: '999px',
+  background: 'rgba(255,255,255,.12)',
+  border: '1px solid rgba(255,255,255,.25)',
+};
+
+const titleRow: CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '10px',
+  marginTop: '18px',
+};
+
+const title: CSSProperties = {
+  fontSize: '26px',
+  fontWeight: 700,
+  letterSpacing: '.01em',
+};
+
+const demoChip: CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  letterSpacing: '.1em',
+  textTransform: 'uppercase',
+  color: '#ffd479',
+  border: '1px solid rgba(255,212,121,.5)',
+  borderRadius: '6px',
+  padding: '2px 7px',
+};
+
+const note: CSSProperties = {
+  position: 'relative',
+  margin: '6px 0 20px',
+  fontSize: '12.5px',
+  lineHeight: 1.6,
+  opacity: 0.82,
+};
+
+const fields: CSSProperties = {
+  position: 'relative',
+  margin: 0,
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: '16px 18px',
+};
+
+const field: CSSProperties = {
+  borderTop: '1px solid rgba(255,255,255,.22)',
+  paddingTop: '10px',
+};
+
+const label: CSSProperties = {
+  fontSize: '10px',
+  letterSpacing: '.08em',
+  textTransform: 'uppercase',
+  opacity: 0.7,
+};
+
+const value: CSSProperties = {
+  margin: '5px 0 0',
+  fontSize: '15.5px',
+  fontWeight: 700,
+};
+
+const valueMono: CSSProperties = {
+  margin: '5px 0 0',
+  fontSize: '14px',
+  fontWeight: 700,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  letterSpacing: '.04em',
+};
+
+const mrz: CSSProperties = {
+  position: 'relative',
+  marginTop: '20px',
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: '10px',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10.5px',
+  letterSpacing: '.18em',
+  color: 'rgba(242,251,248,.72)',
+  borderTop: '1px dashed rgba(255,255,255,.28)',
+  paddingTop: '10px',
+};
+
+const disclaimer: CSSProperties = {
+  position: 'relative',
+  margin: '12px 0 0',
+  fontSize: '10.5px',
+  letterSpacing: '.02em',
+  opacity: 0.62,
+};
