@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { OverviewTracker } from '@/components/review/OverviewTracker';
-import { documentsFlagKey } from '@/components/residency/colosseum-progress';
+import {
+  documentsFlagKey,
+  writeDocumentsComplete,
+} from '@/components/residency/colosseum-progress';
 import type { OverviewInput } from '@/lib/review/overview';
 
 /**
@@ -97,7 +100,9 @@ describe('OverviewTracker key agreement with the Residency step', () => {
   const APPLICATION_ID = 'app-9f3c2b1a-0000-4000-8000-000000000001';
 
   it('reads documents + Colosseum state persisted under the application id', () => {
-    window.localStorage.setItem(documentsFlagKey(APPLICATION_ID), '1');
+    // Write through the **same helper** `ResidencyStep`'s Upload action uses,
+    // under the same key, so a key drift between the two surfaces is caught.
+    writeDocumentsComplete(documentsFlagKey(APPLICATION_ID), true);
     window.localStorage.setItem(
       `kade.colosseum.progress.${APPLICATION_ID}`,
       JSON.stringify({

@@ -267,6 +267,52 @@ describe('the Overview residency tracker reflects the real flow', () => {
     expect(read.provenance).toBe('record');
   });
 
+  it('reads the real Self identity outcome instead of inventing one', () => {
+    // A read that found no valid outcome is "not verified", never a green.
+    const none = stage(
+      buildOverview(input({ identity: null })),
+      'Identity verified',
+    );
+    expect(none.state).toBe('queued');
+    expect(none.status).toBe('Not verified');
+    expect(none.provenance).toBe('unknown');
+
+    const valid = stage(
+      buildOverview(
+        input({
+          identity: {
+            provider: 'self',
+            status: 'valid',
+            verifiedAt: '2026-09-20T00:00:00Z',
+            selfNullifier: 'n',
+          },
+        }),
+      ),
+      'Identity verified',
+    );
+    expect(valid.state).toBe('done');
+    expect(valid.status).toBe('Verified');
+    expect(valid.meta).toBe('Verified with Self');
+    expect(valid.provenance).toBe('record');
+
+    // An explicit failed proof blocks rather than passing.
+    const invalid = stage(
+      buildOverview(
+        input({
+          identity: {
+            provider: 'self',
+            status: 'invalid',
+            verifiedAt: null,
+            selfNullifier: null,
+          },
+        }),
+      ),
+      'Identity verified',
+    );
+    expect(invalid.state).toBe('blocked');
+    expect(invalid.provenance).toBe('record');
+  });
+
   it('carries the documents flag as a declared demo done, never a false done', () => {
     expect(stage(buildOverview(input()), 'Documents complete').state).toBe(
       'queued',
@@ -306,6 +352,51 @@ describe('the Overview residency tracker reflects the real flow', () => {
     );
     expect(submitted.state).toBe('done');
     expect(submitted.status).toBe('Submitted');
+  });
+
+  it('reads the real service-fee payment: done when paid, actionable when reachable', () => {
+    const paid = stage(
+      buildOverview(
+        input({ serviceFee: { status: 'paid', txHash: '0x00' } }),
+      ),
+      'Residency service fee',
+    );
+    expect(paid.state).toBe('done');
+    expect(paid.status).toBe('Completed');
+    expect(paid.provenance).toBe('record');
+
+    const unlocked = stage(
+      buildOverview(
+        input({ serviceFee: { status: 'none' }, serviceFeeUnlocked: true }),
+      ),
+      'Residency service fee',
+    );
+    expect(unlocked.state).toBe('active');
+    expect(unlocked.status).toBe('Action needed');
+
+    const unread = stage(
+      buildOverview(
+        input({ serviceFee: { status: 'unread', reason: 'read failed' } }),
+      ),
+      'Residency service fee',
+    );
+    expect(unread.state).toBe('active');
+    expect(unread.provenance).toBe('unknown');
+    expect(unread.meta).toContain('read failed');
+  });
+
+  it('makes Start Residency live once the service fee is paid', () => {
+    const active = stage(
+      buildOverview(
+        input({
+          serviceUid: null,
+          serviceFee: { status: 'paid', txHash: '0x00' },
+        }),
+      ),
+      'Start Residency',
+    );
+    expect(active.state).toBe('active');
+    expect(active.meta).toContain('Service fee paid');
   });
 
   it('says the service-fee reachability is not read here rather than guessing', () => {
