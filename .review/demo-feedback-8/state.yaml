@@ -1,0 +1,36 @@
+iteration: demo-feedback-8
+profile: NORMAL
+known_good: 49ddc35
+candidate: c75f426
+mode: discovery
+reviewed_scopes:
+  trigger-affordance: complete
+  embedded-vs-popup-proportions: complete
+  mute-removal: complete
+  single-full-card-sweep: complete
+  no-scroll-hardening: complete
+  citizenship-only-sound: complete
+  storage-key-bump: complete
+  carryover-commits: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: c75f426
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "No blocking or WARN findings. All 8 scopes complete."
+  - "No-scroll hardening reasoned through by hand: the overlay is now a clipped region (overflow hidden both axes) with no scale floor. Max overlay padding is clamp(12,4vw,40)x2 = 80px and the headroom is 96px; layout.tsx does not set viewportFit, so env(safe-area-inset-*) resolves to 0. 80 <= 96, so the whole card including the close row stays inside the clipped region. Guards cover zero/negative height, a missing ref, and NaN. Close remains reachable via Escape and backdrop tap."
+  - "Storage key bump verified consistent: both prefixes bumped together, and no reader uses the old literal outside the intentional 'never the abandoned one' test."
+  - "Sound gate verified: celebration-only, latched, reset on close, no dead mute code."
+  - "Single sweep verified geometrically: band left:0/width:50% with translateX(-110%)->210% spans -55%..-5% (before the leading edge) to 105%..155% (past the trailing edge)."
+  - "Carryover commits verified: 00efe6b removes only the dead @keyframes kade-reveal-card-celebration (class repointed to kade-reveal-fade); 94841d2 is test-only."
+  - "demo-feedback-7 F2 and F3 both resolved. Only the two mute-control tests were removed, justified by the control's removal."
+  - "Browser-only properties not provable in jsdom: fit geometry, env() safe-area resolution, CSS animation rendering, and Web Audio content/timing. The human's visual check is the final confirmation."
+human_note: "The human will verify visually: the hover/focus affordance, the embedded vs popup proportions, exactly one full-card sweep, the citizenship-only sound gesture, the fresh first-time flow from the bumped keys, and that a very short viewport never scrolls."
