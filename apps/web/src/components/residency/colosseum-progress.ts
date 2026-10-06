@@ -41,7 +41,13 @@ export interface ColosseumProgress {
   readonly residencyPassSerial: string | null;
 }
 
-const STORAGE_PREFIX = 'kade.colosseum.progress.';
+/**
+ * The demo progress key namespace. The `.v2` bump deliberately abandons any
+ * progress written by an earlier build, so an existing tester (including a
+ * reviewer's boss) gets a genuine first-time flow without clearing storage.
+ * The old `kade.colosseum.progress.` data is simply never read again.
+ */
+const STORAGE_PREFIX = 'kade.colosseum.progress.v2.';
 
 export const EMPTY_COLOSSEUM_PROGRESS: ColosseumProgress = {
   residentSince: null,
@@ -243,7 +249,11 @@ export function resetColosseumProgress(profileKey: string | null | undefined): v
  * persisted here so the Overview tracker can read the same fact, without the
  * Overview needing the count or the Residency step's session state.
  */
-const DOCUMENTS_PREFIX = 'kade.documents.complete.';
+/**
+ * The documents flag namespace. Bumped alongside the Colosseum progress key
+ * (`.v2`) so a fresh tester starts from an empty demo state.
+ */
+const DOCUMENTS_PREFIX = 'kade.documents.complete.v2.';
 
 export function documentsFlagKey(profileKey: string | null | undefined): string {
   return `${DOCUMENTS_PREFIX}${normalizeProfileKey(profileKey)}`;
