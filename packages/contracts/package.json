@@ -11,6 +11,7 @@
     "eas:calldata": "node --experimental-strip-types --import ./scripts/ts-module-loader.mjs ./scripts/generate-eas-registration-calldata.mjs",
     "eas:verify": "node --experimental-strip-types --import ./scripts/ts-module-loader.mjs ./scripts/verify-eas-schemas.mjs",
     "safe:manifest": "node ./scripts/safe-manifest.mjs",
-    "safe:vector": "node ./scripts/safe-address-vector.mjs"
+    "safe:vector": "node ./scripts/safe-address-vector.mjs",
+    "membership:plan": "node ./scripts/generate-membership-deployment-plan.mjs"
   }
 }
