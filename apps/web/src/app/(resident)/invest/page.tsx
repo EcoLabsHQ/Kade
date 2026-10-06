@@ -1,11 +1,9 @@
 import { redirect } from 'next/navigation';
 import { MORPHO_VAULT_CHAIN_IDS } from '@kade/shared';
-import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { InvestScreen } from '@/components/invest/InvestScreen';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
-import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
 import {
@@ -30,6 +28,9 @@ export const dynamic = 'force-dynamic';
  * the **named** chain's vault and that chain's own RPC and verifies the Safe's
  * state there. The page passes only what the screen needs to render; `configured`
  * is a UI hint (vault + RPC present) and adds no execution gate of its own.
+ *
+ * The authenticated frame (session gate, Safe, review bar) now comes from the
+ * shared `(resident)/layout.tsx`; this page keeps its own content reads.
  */
 export default async function InvestPage() {
   const session = await getSessionUser();
@@ -58,10 +59,9 @@ export default async function InvestPage() {
   // persists a vault position, so the chain is the only truthful source; a
   // failed read travels as rows carrying their own reasons rather than as a
   // fabricated zero.
-  // The Safe's position, the review bar and each configured rail's yield are
-  // independent reads — none depends on another's result — so they are issued
-  // in one stage. Previously the yields waited for the chain read to finish;
-  // now they run alongside it.
+  //
+  // The Safe's position and each configured rail's yield are independent reads
+  // — neither depends on the other's result — so they are issued in one stage.
   //
   // Each pinned rail's yield is read from Morpho's public API for the **same
   // vault the rail deposits into**, so the allocate modal can estimate income.
@@ -69,9 +69,8 @@ export default async function InvestPage() {
   // call Morpho on every render, and a rail whose read fails travels as an
   // `unknown` carrying its reason — the modal then says `Not quoted` rather
   // than inventing a figure. Only configured rails are read.
-  const [vaultHoldings, reviewBar, yieldReads] = await Promise.all([
+  const [vaultHoldings, yieldReads] = await Promise.all([
     loadVaultHoldings(shellSafe.address),
-    loadReviewBar(session.userId),
     Promise.all(
       vaults
         .filter((rail) => rail.configured)
@@ -94,25 +93,14 @@ export default async function InvestPage() {
   });
 
   return (
-    <AppShell
-      email={session.email}
-      safeAddress={shellSafe.address}
-      safeDeployed={shellSafe.deployed}
-      safeStatus={shellSafe.status}
-      explorerUrl={shellSafe.explorerUrl}
-      showReviewBar={reviewBar.show}
-      reviewReference={reviewBar.reference}
-        isReviewer={reviewBar.isReviewer}
-    >
-      <ContentContainer>
-        <InvestScreen
-          vaults={vaults}
-          safeAddress={shellSafe.address}
-          holdings={vaultHoldings}
-          qualified={qualified}
-          yields={yields}
-        />
-      </ContentContainer>
-    </AppShell>
+    <ContentContainer>
+      <InvestScreen
+        vaults={vaults}
+        safeAddress={shellSafe.address}
+        holdings={vaultHoldings}
+        qualified={qualified}
+        yields={yields}
+      />
+    </ContentContainer>
   );
 }
