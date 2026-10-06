@@ -5,20 +5,27 @@ import { cleanup, render, screen } from '@testing-library/react';
 /**
  * Route-level loading shells.
  *
- * The resident routes now share `(resident)/layout.tsx`, which keeps the
- * sidebar, the top banner and the footer mounted across client-side navigation.
- * The loading state therefore covers **only the content area**: these tests pin
- * that the resident fallback draws the content skeleton and nothing else — no
- * shell frame, no sidebar, no footer — while still rendering no data, so no
- * balance, name, address, status or figure can be mistaken for real data.
+ * The resident routes share `(resident)/layout.tsx`, which keeps the sidebar,
+ * the top banner and the footer mounted across client-side navigation. In
+ * Next.js 15.5.25 a segment's `loading.tsx` wraps that segment's **children**
+ * (its pages), not the `layout.tsx` in the same folder: the boundary that covers
+ * `(resident)/layout.tsx` is the parent segment's boundary, `app/loading.tsx`.
+ * Evidence is in `create-component-tree.js` (a segment's `loadingData` is
+ * returned to its parent) and `layout-router.js` (the parent's
+ * `parentCacheNode.loading` wraps the child slot).
  *
- * `/login` and `/onboarding` are outside the group and render their own setup
- * flow, never the resident shell, so their fallbacks (and the root fallback that
- * also covers `/admin` and `/vault/withdraw`) must stay shell-free.
+ * These tests therefore pin three separate contracts:
  *
- * It also pins the navigation prefetch contract: the resident nav destinations
- * are Next `<Link>`s with the default (hover/viewport) prefetch, never
- * `prefetch={false}`.
+ *   1. the root boundary — the one that covers the resident layout — renders
+ *      the resident **shell** skeleton, never the setup placeholder;
+ *   2. the group's own `(resident)/loading.tsx` renders the **content-only**
+ *      skeleton, with no duplicated chrome; and
+ *   3. `/login` and `/onboarding` render the **setup-flow** placeholder
+ *      (setup sidebar + main column), not the resident shell.
+ *
+ * Every fallback renders no data: no balance, name, address, status or figure
+ * can be mistaken for real content, and the only text is the honest
+ * visually-hidden `role="status"` "Loading".
  */
 
 const linkSpy = vi.hoisted(() => ({
@@ -45,37 +52,33 @@ vi.mock('next/link', () => ({
 }));
 
 import ResidentLoading from '@/app/(resident)/loading';
-import RootLoading from '@/app/loading';
+import RootLoading, { PlainLoading, ResidentShellLoading } from '@/app/loading';
 import LoginLoading from '@/app/login/loading';
 import OnboardingLoading from '@/app/onboarding/loading';
 import { NavItem } from '@/components/shell/NavItem';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
-/**
- * The shell-free fallbacks: the root segment (which also covers `/admin` and
- * `/vault/withdraw`) and the two non-resident routes.
- */
-const PLAIN_LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
-  ['/ (root fallback)', RootLoading],
+/** The setup-flow fallbacks: the two non-resident routes and the shared export. */
+const SETUP_LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
   ['/login', LoginLoading],
   ['/onboarding', OnboardingLoading],
+  ['PlainLoading', PlainLoading],
 ];
 
-/** The text the fallback's decorative placeholder region contains. */
-function placeholderText(container: HTMLElement): string {
-  const content = container.querySelector('[data-testid="route-loading"]');
-  return (content?.textContent ?? '').trim();
-}
-
 /**
- * The fallback's text with the real global footer removed. The footer's
- * copyright year is real data, so it is excluded before asserting that nothing
- * on the loading screen is a fabricated figure.
+ * Assert that nothing on the fallback is a fabricated figure. The only text any
+ * fallback may render is the honest status, so this is the same check for every
+ * shell.
  */
-function textWithoutFooter(container: HTMLElement): string {
-  const clone = container.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('footer').forEach((footer) => footer.remove());
-  return clone.textContent ?? '';
+function expectNoFabricatedData(container: HTMLElement): void {
+  const text = container.textContent ?? '';
+  expect(text).not.toMatch(/[0-9]/);
+  expect(text).not.toMatch(/[$€£%]/);
+  expect(text).not.toMatch(/0x/i);
+  expect(text.toLowerCase()).not.toContain('no account yet');
+  expect(text.toLowerCase()).not.toContain('created');
+  expect(text.toLowerCase()).not.toContain('deployed');
+  expect(text.toLowerCase()).not.toContain('pre-approved');
 }
 
 describe('resident content loading shell', () => {
@@ -96,17 +99,11 @@ describe('resident content loading shell', () => {
     expect(container.querySelectorAll('footer')).toHaveLength(0);
 
     // No data: every placeholder is an empty shape.
-    expect(placeholderText(container)).toBe('');
+    const content = container.querySelector('[data-testid="route-loading"]');
+    expect((content?.textContent ?? '').trim()).toBe('');
 
     // No fabricated or misleading content anywhere.
-    const text = textWithoutFooter(container);
-    expect(text).not.toMatch(/[0-9]/);
-    expect(text).not.toMatch(/[$€£%]/);
-    expect(text).not.toMatch(/0x/i);
-    expect(text.toLowerCase()).not.toContain('no account yet');
-    expect(text.toLowerCase()).not.toContain('created');
-    expect(text.toLowerCase()).not.toContain('deployed');
-    expect(text.toLowerCase()).not.toContain('pre-approved');
+    expectNoFabricatedData(container);
     expect(screen.queryByTestId('safe-address-card')).toBeNull();
     expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
 
@@ -117,31 +114,67 @@ describe('resident content loading shell', () => {
   });
 });
 
-describe('plain loading shells for non-resident routes', () => {
-  for (const [route, Loading] of PLAIN_LOADERS) {
-    it(`renders a neutral, shell-free placeholder for ${route}`, () => {
+describe('the root boundary that covers the resident layout', () => {
+  it('renders the resident shell skeleton, never the setup placeholder', () => {
+    const { container } = render(<RootLoading />);
+
+    // It is the shell skeleton: the shell frame and sidebar are drawn so the
+    // column matches the real resident screen...
+    expect(container.querySelector('.kade-shell')).not.toBeNull();
+    expect(container.querySelector('.kade-sidebar')).not.toBeNull();
+    expect(screen.getByTestId('route-loading-shell')).toBeInTheDocument();
+    // ...with the content skeleton the group boundary also uses, so the column
+    // does not jump when the layout resolves.
+    expect(screen.getByTestId('route-loading')).toBeInTheDocument();
+
+    // It is NOT the setup placeholder that `/login` and `/onboarding` use, and
+    // it fabricates none of the resident chrome's real content.
+    expect(screen.queryByTestId('route-loading-plain')).toBeNull();
+    expect(screen.queryByTestId('safe-address-card')).toBeNull();
+    expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
+    // No nav links are invented: the rail is empty shapes only.
+    expect(container.querySelectorAll('a')).toHaveLength(0);
+    expect(container.querySelectorAll('footer')).toHaveLength(0);
+
+    expectNoFabricatedData(container);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+
+    cleanup();
+  });
+
+  it('is the same shell skeleton the named export renders', () => {
+    const { container } = render(<ResidentShellLoading />);
+    expect(screen.getByTestId('route-loading-shell')).toBeInTheDocument();
+    expect(container.querySelector('.kade-shell')).not.toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    cleanup();
+  });
+});
+
+describe('setup loading shells for the non-resident routes', () => {
+  for (const [route, Loading] of SETUP_LOADERS) {
+    it(`renders the setup-flow placeholder, not the resident shell, for ${route}`, () => {
       const { container } = render(<Loading />);
 
-      // The minimal placeholder is present...
+      // It mirrors the real setup screen's two-column structure: the setup
+      // sidebar plus the main content column, inside the same shell class.
       expect(screen.getByTestId('route-loading-plain')).toBeInTheDocument();
+      expect(container.querySelector('.kade-shell')).not.toBeNull();
+      expect(container.querySelector('.kade-sidebar')).not.toBeNull();
+      expect(container.querySelector('.kade-content')).not.toBeNull();
 
-      // ...and the resident shell frame is entirely absent: no sidebar, no
-      // shell wrapper, no resident skeleton, no Safe card, no footer.
-      expect(container.querySelector('.kade-shell')).toBeNull();
-      expect(container.querySelector('.kade-sidebar')).toBeNull();
+      // It is NOT the resident shell: no resident content skeleton, no Safe
+      // card, no review notice, no nav links, no footer.
+      expect(screen.queryByTestId('route-loading-shell')).toBeNull();
       expect(screen.queryByTestId('route-loading')).toBeNull();
       expect(screen.queryByTestId('route-loading-sidebar')).toBeNull();
       expect(screen.queryByTestId('safe-address-card')).toBeNull();
+      expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
+      expect(container.querySelectorAll('a')).toHaveLength(0);
       expect(container.querySelectorAll('footer')).toHaveLength(0);
 
       // No fabricated text or data anywhere (only the honest status).
-      const text = container.textContent ?? '';
-      expect(text).not.toMatch(/[0-9]/);
-      expect(text).not.toMatch(/[$€£%]/);
-      expect(text).not.toMatch(/0x/i);
-      expect(text.toLowerCase()).not.toContain('no account yet');
-      expect(text.toLowerCase()).not.toContain('created');
-      expect(text.toLowerCase()).not.toContain('deployed');
+      expectNoFabricatedData(container);
 
       // An honest status is exposed to assistive tech.
       expect(screen.getByRole('status')).toHaveTextContent('Loading');
