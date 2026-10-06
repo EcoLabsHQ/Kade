@@ -406,45 +406,48 @@ textarea {
   animation: kade-reveal-backdrop 0.36s ease-out both;
 }
 
-/* The approved card entrance: a gentle rise and scale to rest. */
+/* The card element only fades. The rise and tilt are fused into the single
+   document timeline below (`kade-passport-flip` / `kade-residency-pass-flip`),
+   so the credential has exactly ONE transform animation instead of a stack of
+   nested transforms (card rise ∘ document flip ∘ stack/credential settle) that
+   fought each other and flattened the settle. */
 @keyframes kade-reveal-card {
   from {
     opacity: 0;
-    transform: translateY(26px) scale(0.955);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 .kade-reveal-card {
-  animation: kade-reveal-card 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: kade-reveal-card 0.5s ease-out both;
 }
 
-/* The approved gentle document tilt (a 22° lean, never a full flip). Kept for
-   both artifacts; the new layer reveals play inside it. */
+/* The approved gentle document tilt (a 22° lean, never a full flip), now fused
+   with the card rise/scale into one fluid timeline. The 55% overshoot waypoint
+   is what made the approved baseline settle feel fluid; it is preserved. */
 @keyframes kade-passport-flip {
-  from {
-    transform: rotateY(-22deg) rotateX(7deg) translateY(10px) scale(0.975);
+  0% {
+    transform: translateY(30px) rotateY(-22deg) rotateX(7deg) scale(0.955);
   }
   55% {
-    transform: rotateY(6deg) rotateX(-1.5deg) translateY(-3px) scale(1.006);
+    transform: translateY(-3px) rotateY(6deg) rotateX(-1.5deg) scale(1.006);
   }
-  to {
-    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
+  100% {
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
   }
 }
 
 @keyframes kade-residency-pass-flip {
-  from {
-    transform: rotateY(24deg) rotateX(-7deg) translateY(10px) scale(0.975);
+  0% {
+    transform: translateY(30px) rotateY(24deg) rotateX(-7deg) scale(0.955);
   }
   55% {
-    transform: rotateY(-6deg) rotateX(1.5deg) translateY(-3px) scale(1.006);
+    transform: translateY(-3px) rotateY(-6deg) rotateX(1.5deg) scale(1.006);
   }
-  to {
-    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
+  100% {
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
   }
 }
 
@@ -478,23 +481,42 @@ textarea {
 }
 
 @keyframes kade-reveal-card-celebration {
-  0% {
+  from {
     opacity: 0;
-    transform: translateY(64px) translateZ(-160px) rotateX(18deg) rotateZ(-5deg)
-      scale(0.86);
   }
-  72% {
+  to {
     opacity: 1;
-    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1.035);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
 }
 
 .kade-reveal-card-celebration {
-  animation: kade-reveal-card-celebration 0.9s cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  animation: kade-reveal-fade 0.5s ease-out 80ms both;
+}
+
+/* The celebratory tier's single fused timeline, carried by the same document
+   wrapper as the standard flip. The big rise/depth/tilt lives here instead of
+   on the card, so the credential still has exactly one transform animation. */
+@keyframes kade-reveal-flip-celebration {
+  0% {
+    opacity: 0;
+    transform: translateY(64px) translateZ(-160px) rotateY(-14deg)
+      rotateX(16deg) rotateZ(-5deg) scale(0.86);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0) translateZ(0) rotateY(4deg) rotateX(-2deg)
+      rotateZ(0deg) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateZ(0) rotateY(0deg) rotateX(0deg)
+      rotateZ(0deg) scale(1);
+  }
+}
+
+.kade-reveal-flip-celebration {
+  animation: kade-reveal-flip-celebration 0.9s cubic-bezier(0.16, 1, 0.3, 1)
+    80ms both;
 }
 
 /* A plain opacity fade, used for the reduced-motion entrances. */
@@ -521,8 +543,9 @@ textarea {
 
 /* Reveal 1 — the residency pass security print. Five layers share the origin
    `50% 70%`, wipe up from an over-tall/slightly-narrow state, and settle. The
-   four decorative layers stay faintly present (0.12–0.20) behind the opaque
-   credential rather than snapping away. */
+   substrate/seal/portrait decorative layers stay faintly present (0.16–0.20)
+   behind the opaque credential; the guilloche lives inside the credential so
+   its circular grid is actually visible in the settled card. */
 @keyframes kade-security-layer-in {
   from {
     opacity: 0;
@@ -574,7 +597,11 @@ textarea {
 }
 
 .kade-layer-guilloche {
-  --kade-layer-end: 0.14;
+  /* The grid sits inside the opaque credential, so this layer settles fully
+     visible and the texture's own 0.55 opacity is the composed value — the
+     baseline the human approved. As a sibling layer it was both hidden behind
+     the opaque credential and multiplied down to 0.14 × 0.55 ≈ 0.077. */
+  --kade-layer-end: 1;
   animation-delay: 55ms;
   border-radius: 20px;
   overflow: hidden;
@@ -590,24 +617,38 @@ textarea {
   animation-delay: 165ms;
 }
 
-.kade-layer-credential {
-  --kade-layer-end: 1;
-  animation-delay: 220ms;
-  position: relative;
-  z-index: 1;
+/* The credential layer holds the pass card, so it must not transform: the
+   fused document timeline carries the whole card's motion. It only wipes in. */
+@keyframes kade-credential-layer-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0);
+  }
 }
 
-/* The credential settles: a hair of scale and a deepening outer shadow. */
+.kade-layer-credential {
+  --kade-layer-end: 1;
+  position: relative;
+  z-index: 1;
+  animation: kade-credential-layer-in 0.46s cubic-bezier(0.45, 0, 0.2, 1)
+    220ms both;
+  will-change: opacity, clip-path;
+}
+
+/* The credential settles: only the outer shadow deepens. The scale that used to
+   live here was a third competing transform on the credential. */
 @keyframes kade-credential-settle {
   from {
-    transform: scale(0.985);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.35) inset,
       0 -2px 6px rgba(0, 0, 0, 0.4) inset,
       0 34px 16px -30px rgba(4, 24, 22, 0.9);
   }
   to {
-    transform: scale(1);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.35) inset,
       0 -2px 6px rgba(0, 0, 0, 0.4) inset,
@@ -616,8 +657,9 @@ textarea {
 }
 
 .kade-security-credential {
-  animation: kade-credential-settle 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) 0.34s both;
-  will-change: transform, box-shadow;
+  animation: kade-credential-settle 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) 0.34s
+    both;
+  will-change: box-shadow;
 }
 
 /* The seal's stroke draws itself on. */
@@ -634,43 +676,6 @@ textarea {
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
   animation: kade-seal-draw 0.36s cubic-bezier(0.45, 0, 0.2, 1) 0.5s both;
-}
-
-/* A one-shot light sweep across the guilloche. The reduced-motion path pins it
-   to opacity 0 so `animation: none` cannot leave it statically visible. */
-@keyframes kade-artifact-sweep {
-  from {
-    opacity: 0;
-    transform: translateX(-65%) rotate(6deg);
-  }
-  18% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(65%) rotate(6deg);
-  }
-}
-
-.kade-artifact-card .kade-passport-guilloche::after,
-.kade-artifact-card .kade-residency-pass-guilloche::after {
-  content: '';
-  position: absolute;
-  top: -60%;
-  bottom: -60%;
-  left: -30%;
-  width: 40%;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 35%,
-    rgba(255, 255, 255, 0.34) 50%,
-    rgba(255, 255, 255, 0.04) 65%,
-    transparent 100%
-  );
-  pointer-events: none;
-  animation: kade-artifact-sweep 1.5s 0.18s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-  will-change: transform, opacity;
 }
 
 /* The artifact fields enter in a short stagger. Reveal 1 uses a 220ms step at
@@ -719,24 +724,18 @@ textarea {
 }
 
 @keyframes kade-stack-in {
-  from {
+  0% {
     opacity: 0;
     transform: translateY(36px) translateZ(-80px) rotateX(12deg) rotateZ(-3deg)
       scale(0.94);
   }
-  to {
+  72% {
     opacity: 1;
-    transform: translateY(0) translateZ(var(--kade-stack-z, 0px))
-      rotateX(0deg) rotateZ(var(--kade-stack-rz, 0deg)) scale(1);
+    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-}
-
-@keyframes kade-stack-settle {
-  from {
-    transform: translateZ(var(--kade-stack-z, 0px)) rotateZ(var(--kade-stack-rz, 0deg));
-  }
-  to {
-    transform: translateZ(0px) rotateZ(0deg);
+  100% {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -745,31 +744,28 @@ textarea {
   inset: 0;
   transform-style: preserve-3d;
   opacity: 0;
-  animation:
-    kade-stack-in 0.72s cubic-bezier(0.16, 1, 0.3, 1) var(--kade-stack-delay, 100ms) both,
-    kade-stack-settle 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) 0.62s forwards;
+  animation: kade-stack-in 0.72s cubic-bezier(0.16, 1, 0.3, 1)
+    var(--kade-stack-delay, 100ms) both;
   will-change: transform, opacity;
   pointer-events: none;
 }
 
 .kade-stack-layer.kade-stack-back {
-  --kade-stack-z: -12px;
-  --kade-stack-rz: -1deg;
   --kade-stack-delay: 100ms;
 }
 
 .kade-stack-layer.kade-stack-mid {
-  --kade-stack-z: -6px;
-  --kade-stack-rz: 0.6deg;
   --kade-stack-delay: 170ms;
 }
 
+/* The front layer holds the credential, so it must NOT add its own transform
+   on top of the document timeline: it only fades in, and the fused
+   `kade-passport-flip` carries the whole card's motion. */
 .kade-stack-layer.kade-stack-front {
-  --kade-stack-z: 0px;
-  --kade-stack-rz: 0deg;
-  --kade-stack-delay: 240ms;
   position: relative;
   z-index: 1;
+  animation: kade-reveal-fade 0.45s ease-out 120ms both;
+  will-change: opacity;
 }
 
 .kade-passport-reveal .kade-artifact-field {
@@ -787,38 +783,6 @@ textarea {
 }
 .kade-passport-reveal .kade-artifact-field:nth-child(4) {
   animation-delay: 0.835s;
-}
-
-/* The passport's single security-light pass: one shot, never a loop. */
-@keyframes kade-passport-glare {
-  from {
-    opacity: 0;
-    transform: translateX(-35%) skewX(-14deg);
-  }
-  12% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(135%) skewX(-14deg);
-  }
-}
-
-.kade-passport-sweep {
-  position: absolute;
-  top: -40%;
-  bottom: -40%;
-  left: -20%;
-  width: 70%;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent,
-    rgba(255, 255, 255, 0.16) 50%,
-    transparent
-  );
-  animation: kade-passport-glare 0.52s cubic-bezier(0.22, 0.61, 0.36, 1) 0.82s both;
-  will-change: transform, opacity;
 }
 
 /* Reveal 3 — the shared foil. The card tilts at most ±2deg and carries a
@@ -893,11 +857,30 @@ textarea {
   }
 }
 
-/* Celebration tier — bloom, rays, a wide foil pass and a slow guilloche sheen.
-   All one-shot, bounded to the reveal stage, and unmounted with the reveal. */
+/* The celebration tier does not add a second pass: it makes this same single
+   pass wider, brighter and a touch later, so the flourish reads as one
+   continuous gesture. */
+.kade-celebration .kade-foil-pass::after {
+  width: 90%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 30%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.06) 70%,
+    transparent 100%
+  );
+  animation-duration: 0.7s;
+  animation-delay: 1s;
+}
+
+/* Celebration tier — bloom and rays, bounded and clipped to the card so the
+   glow can never spill outside it. All one-shot and unmounted with the reveal. */
 .kade-celebration-stage {
   position: absolute;
-  inset: -22% -10%;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 20px;
   z-index: 0;
   pointer-events: none;
 }
@@ -928,8 +911,11 @@ textarea {
   40% {
     opacity: 0.55;
   }
+  70% {
+    opacity: 0.3;
+  }
   100% {
-    opacity: 0.25;
+    opacity: 0;
     transform: translate(-50%, -50%) scale(1.35);
   }
 }
@@ -966,66 +952,6 @@ textarea {
     opacity: 0;
     transform: translate(-50%, -100%) rotate(calc(var(--kade-ray, 0) * 36deg))
       scaleY(1.3);
-  }
-}
-
-.kade-celebration-sweep {
-  position: absolute;
-  top: -30%;
-  bottom: -30%;
-  left: -60%;
-  width: 80%;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent,
-    rgba(255, 255, 255, 0.22) 50%,
-    transparent
-  );
-  transform: translateX(-35%) skewX(-12deg);
-  animation: kade-celebration-sweep 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) 1.1s both;
-}
-
-@keyframes kade-celebration-sweep {
-  from {
-    opacity: 0;
-    transform: translateX(-35%) skewX(-12deg);
-  }
-  12% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(135%) skewX(-12deg);
-  }
-}
-
-.kade-celebration .kade-passport-guilloche::before {
-  content: '';
-  position: absolute;
-  inset: -20% -30%;
-  pointer-events: none;
-  background: linear-gradient(
-    115deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.18) 50%,
-    transparent 60%
-  );
-  transform: translateX(-60%);
-  animation: kade-celebration-sheen 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) 1.3s both;
-}
-
-@keyframes kade-celebration-sheen {
-  from {
-    opacity: 0;
-    transform: translateX(-60%);
-  }
-  20% {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(60%);
   }
 }
 
@@ -1108,17 +1034,13 @@ textarea {
   .kade-security-credential,
   .kade-seal-stroke,
   .kade-stack-layer,
-  .kade-passport-sweep,
   .kade-foil-tilt,
   .kade-foil-pass,
   .kade-reveal-backdrop-celebration,
   .kade-reveal-card-celebration,
+  .kade-reveal-flip-celebration,
   .kade-celebration-bloom,
   .kade-celebration-ray,
-  .kade-celebration-sweep,
-  .kade-celebration .kade-passport-guilloche::before,
-  .kade-artifact-card .kade-passport-guilloche::after,
-  .kade-artifact-card .kade-residency-pass-guilloche::after,
   .kade-artifact-card .kade-artifact-field {
     animation: none;
   }
@@ -1166,10 +1088,6 @@ textarea {
 
   /* FIX 0: nothing may be left statically rendered when the animation is
      cancelled, because `animation: none` drops the `both` fill. */
-  .kade-artifact-card .kade-passport-guilloche::after,
-  .kade-artifact-card .kade-residency-pass-guilloche::after,
-  .kade-passport-sweep,
-  .kade-celebration-sweep,
   .kade-foil-pass {
     opacity: 0;
   }

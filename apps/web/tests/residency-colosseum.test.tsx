@@ -3,6 +3,15 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
 import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
+import { playRevealSound } from '@/components/residency/reveal-sound';
+
+// Wrap the real cue in a spy so the tests can assert how often the reveal asks
+// for sound without needing a real AudioContext.
+vi.mock('@/components/residency/reveal-sound', async (importActual) => {
+  const actual =
+    await importActual<typeof import('@/components/residency/reveal-sound')>();
+  return { ...actual, playRevealSound: vi.fn(actual.playRevealSound) };
+});
 
 /**
  * The mocked Colosseum sub-section inside Residency.
@@ -712,6 +721,158 @@ describe('ColosseumResidency — the virtual residency pass', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* The residency pass security print                                           */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the residency pass security print', () => {
+  const KEY = 'app-security-print';
+
+  it('renders the circular guilloche inside the opaque credential card', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const grid = document.querySelector('.kade-residency-pass-guilloche');
+    const card = document.querySelector('.kade-security-credential');
+    expect(grid).not.toBeNull();
+    expect(card).not.toBeNull();
+    // The grid must be a descendant of the opaque credential card: as a sibling
+    // security layer it sat *behind* the card's opaque background and was
+    // invisible regardless of its opacity.
+    expect(card!.contains(grid!)).toBe(true);
+    expect(grid!.parentElement?.classList.contains('kade-layer-guilloche')).toBe(
+      true,
+    );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reveal motion is one fused timeline                                     */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the reveal motion is one fused timeline', () => {
+  const KEY = 'app-fused-motion';
+
+  it('applies exactly one flip transform to the residency pass reveal', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const flips = document.querySelectorAll(
+      '.kade-residency-pass-flip, .kade-passport-flip, .kade-reveal-flip-celebration',
+    );
+    expect(flips).toHaveLength(1);
+    // The credential card itself no longer carries its own rise animation.
+    const credential = document.querySelector('.kade-security-credential');
+    expect(credential).not.toBeNull();
+    expect(credential!.className).not.toMatch(/kade-reveal-card|flip/);
+  });
+
+  it('uses the single fused celebration timeline for the live transition', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    const flips = document.querySelectorAll(
+      '.kade-passport-flip, .kade-reveal-flip-celebration',
+    );
+    expect(flips).toHaveLength(1);
+    expect(document.querySelector('.kade-reveal-flip-celebration')).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reveal has exactly one light pass                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — exactly one reveal light pass', () => {
+  const KEY = 'app-one-sweep';
+
+  it('renders exactly one sweep element for the residency pass', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+  });
+
+  it('renders exactly one sweep element for the standard certificate', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+  });
+
+  it('renders exactly one sweep element for the celebration tier', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* The inline certificate is the full-screen trigger                           */
 /* -------------------------------------------------------------------------- */
 
@@ -864,7 +1025,10 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
     expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-reveal-card')).toBeNull();
+    // No sweep element of any kind is left behind.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     expect(document.querySelector('.kade-foil-light')).toBeNull();
     expect(document.querySelector('.kade-foil-pass')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
@@ -931,7 +1095,9 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
     expect(document.querySelector('.kade-celebration')).not.toBeNull();
     expect(document.querySelector('.kade-reveal-card-celebration')).not.toBeNull();
     expect(document.querySelector('.kade-celebration-bloom')).not.toBeNull();
-    expect(document.querySelector('.kade-celebration-sweep')).not.toBeNull();
+    // The celebration tier reuses the same single foil pass, not a second one.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     expect(
       document.querySelectorAll('.kade-celebration-ray').length,
     ).toBeGreaterThanOrEqual(8);
@@ -1042,9 +1208,10 @@ describe('ColosseumResidency — reduced motion', () => {
     );
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-passport-flip')).toBeNull();
-    // The reduced-motion path renders no moving sweep or foil element at all.
+    // The reduced-motion path renders no sweep element at all.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-pass')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     // It uses the static highlight instead, so the card is never left blank.
     expect(document.querySelector('.kade-foil-light-static')).not.toBeNull();
   });
@@ -1163,6 +1330,23 @@ describe('FullScreenReveal — the page lock', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it('keeps the overlay as the single scroll port and bounds the card', () => {
+    renderReveal();
+
+    const dialog = screen.getByRole('dialog');
+    const backdrop = dialog.parentElement!;
+    // The overlay is the one and only scroll port, on both axes pinned.
+    expect(backdrop.style.position).toBe('fixed');
+    expect(backdrop.style.blockSize).toBe('100dvh');
+    expect(backdrop.style.overflowY).toBe('auto');
+    expect(backdrop.style.overflowX).toBe('hidden');
+    // The card is bounded so the artifact cannot push the overlay to scroll.
+    expect(dialog.style.maxBlockSize).toContain('dvh');
+    // jsdom reports zero heights, so the fit scale stays neutral and the card
+    // carries no transform of its own.
+    expect(dialog.style.transform).toBe('');
+  });
+
   it('restores the exact previous inline styles and scroll position on close', () => {
     setPriorBodyStyles();
     const previous = priorBodyStyles();
@@ -1217,5 +1401,127 @@ describe('FullScreenReveal — the page lock', () => {
     outer.unmount();
     expect(priorBodyStyles()).toEqual(previous);
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reveal sound                                                            */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the reveal sound', () => {
+  const KEY = 'app-sound';
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'AudioContext');
+  });
+
+  function openPass() {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+  }
+
+  it('renders a labelled, persisted mute control that toggles', () => {
+    openPass();
+
+    const mute = screen.getByRole('button', { name: /mute reveal sound/i });
+    expect(mute.tagName).toBe('BUTTON');
+    expect(mute).toHaveAttribute('aria-pressed', 'false');
+    expect(mute).toHaveTextContent(/sound/i);
+
+    fireEvent.click(mute);
+    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBe('1');
+    const unmute = screen.getByRole('button', { name: /unmute reveal sound/i });
+    expect(unmute).toHaveAttribute('aria-pressed', 'true');
+    expect(unmute).toHaveTextContent(/muted/i);
+
+    fireEvent.click(unmute);
+    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /mute reveal sound/i }),
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('restores the persisted mute preference on the next open', () => {
+    window.localStorage.setItem('kade.reveal.sound.muted', '1');
+    openPass();
+
+    expect(
+      screen.getByRole('button', { name: /unmute reveal sound/i }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('asks for the cue exactly once per open and not on a re-render', () => {
+    const cue = vi.mocked(playRevealSound);
+    cue.mockClear();
+
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(cue).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    expect(cue).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the richer celebration cue for the live transition', () => {
+    const cue = vi.mocked(playRevealSound);
+    cue.mockClear();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(cue).toHaveBeenCalledWith('celebration');
+  });
+
+  it('degrades silently when AudioContext is unavailable', async () => {
+    Reflect.deleteProperty(window, 'AudioContext');
+    vi.resetModules();
+    const { playRevealSound: freshPlay } = await import(
+      '@/components/residency/reveal-sound'
+    );
+    expect(() => freshPlay('standard')).not.toThrow();
+    expect(() => freshPlay('celebration')).not.toThrow();
+  });
+
+  it('degrades silently when the AudioContext constructor throws', async () => {
+    (window as unknown as { AudioContext: unknown }).AudioContext = function () {
+      throw new Error('autoplay blocked');
+    };
+    vi.resetModules();
+    const { playRevealSound: freshPlay } = await import(
+      '@/components/residency/reveal-sound'
+    );
+    expect(() => freshPlay('standard')).not.toThrow();
+    expect(() => freshPlay('celebration')).not.toThrow();
   });
 });
