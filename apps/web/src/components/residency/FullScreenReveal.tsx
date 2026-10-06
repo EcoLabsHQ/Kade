@@ -9,9 +9,7 @@ import type {
 import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
-import {
-  playRevealSound,
-} from './reveal-sound';
+import { playCitizenshipCue } from './reveal-sound';
 
 /**
  * The page-behind scroll lock.
@@ -286,17 +284,18 @@ export function FullScreenReveal({
     return () => window.removeEventListener('resize', compute);
   }, [open, mounted]);
 
-  // Play the cue exactly once per open, on the live open. A restored citizen
-  // load never opens the reveal, so it never replays. Deliberately independent
-  // of `prefers-reduced-motion`: sound is not motion.
+  // Play the one-time citizenship cue only on the live celebration open. The
+  // standard reveal, a re-open and the residency pass are all silent. A
+  // restored citizen load never opens the reveal, so it never replays.
+  // Deliberately independent of `prefers-reduced-motion`: sound is not motion.
   useEffect(() => {
     if (!open) {
       soundPlayedRef.current = false;
       return;
     }
-    if (soundPlayedRef.current) return;
+    if (!celebration || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
-    playRevealSound(celebration ? 'celebration' : 'standard');
+    playCitizenshipCue();
   }, [open, celebration]);
 
   // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under

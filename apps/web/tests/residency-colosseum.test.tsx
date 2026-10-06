@@ -3,14 +3,14 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
 import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
-import { playRevealSound } from '@/components/residency/reveal-sound';
+import { playCitizenshipCue } from '@/components/residency/reveal-sound';
 
 // Wrap the real cue in a spy so the tests can assert how often the reveal asks
 // for sound without needing a real AudioContext.
 vi.mock('@/components/residency/reveal-sound', async (importActual) => {
   const actual =
     await importActual<typeof import('@/components/residency/reveal-sound')>();
-  return { ...actual, playRevealSound: vi.fn(actual.playRevealSound) };
+  return { ...actual, playCitizenshipCue: vi.fn(actual.playCitizenshipCue) };
 });
 
 /**
@@ -1578,8 +1578,59 @@ describe('ColosseumResidency — the reveal sound', () => {
     Reflect.deleteProperty(window, 'AudioContext');
   });
 
-  it('asks for the cue exactly once per open and not on a re-render', () => {
-    const cue = vi.mocked(playRevealSound);
+  it('stays silent for the standard reveal and the residency pass', () => {
+    const cue = vi.mocked(playCitizenshipCue);
+    cue.mockClear();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    // Claiming the residency pass opens the standard reveal: no sound.
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(
+      screen.getByTestId('colosseum-residency-pass-overlay'),
+    ).toBeInTheDocument();
+    expect(cue).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when the certificate is re-opened from the inline artifact', () => {
+    const cue = vi.mocked(playCitizenshipCue);
+    cue.mockClear();
+
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    );
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(cue).not.toHaveBeenCalled();
+  });
+
+  it('plays the citizenship cue exactly once on the live celebration, not on a re-render', () => {
+    const cue = vi.mocked(playCitizenshipCue);
     cue.mockClear();
 
     const { rerender } = render(
@@ -1589,9 +1640,11 @@ describe('ColosseumResidency — the reveal sound', () => {
         profileKey={KEY}
       />,
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: /claim colosseum residency/i }),
-    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
     expect(cue).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -1604,8 +1657,8 @@ describe('ColosseumResidency — the reveal sound', () => {
     expect(cue).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the richer celebration cue for the live transition', () => {
-    const cue = vi.mocked(playRevealSound);
+  it('does not replay the cue after dismissal and re-open', () => {
+    const cue = vi.mocked(playCitizenshipCue);
     cue.mockClear();
 
     render(
@@ -1619,18 +1672,25 @@ describe('ColosseumResidency — the reveal sound', () => {
       vi.advanceTimersByTime(120_000);
     });
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+    expect(cue).toHaveBeenCalledTimes(1);
 
-    expect(cue).toHaveBeenCalledWith('celebration');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    );
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(cue).toHaveBeenCalledTimes(1);
   });
 
   it('degrades silently when AudioContext is unavailable', async () => {
     Reflect.deleteProperty(window, 'AudioContext');
     vi.resetModules();
-    const { playRevealSound: freshPlay } = await import(
+    const { playCitizenshipCue: freshPlay } = await import(
       '@/components/residency/reveal-sound'
     );
-    expect(() => freshPlay('standard')).not.toThrow();
-    expect(() => freshPlay('celebration')).not.toThrow();
+    expect(() => freshPlay()).not.toThrow();
   });
 
   it('degrades silently when the AudioContext constructor throws', async () => {
@@ -1638,10 +1698,9 @@ describe('ColosseumResidency — the reveal sound', () => {
       throw new Error('autoplay blocked');
     };
     vi.resetModules();
-    const { playRevealSound: freshPlay } = await import(
+    const { playCitizenshipCue: freshPlay } = await import(
       '@/components/residency/reveal-sound'
     );
-    expect(() => freshPlay('standard')).not.toThrow();
-    expect(() => freshPlay('celebration')).not.toThrow();
+    expect(() => freshPlay()).not.toThrow();
   });
 });
