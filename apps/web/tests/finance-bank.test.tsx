@@ -23,7 +23,7 @@ import { BankScreen } from '@/components/finance/bank/BankScreen';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
 describe('BankScreen reference layout', () => {
-  it('renders the header, subhead and the powered-by-GOS chip', () => {
+  it('renders the header, subhead and the Powered by Girasol call-out', () => {
     render(<BankScreen />);
     expect(
       screen.getByRole('heading', { name: 'Bank ↔ Crypto' }),
@@ -35,7 +35,18 @@ describe('BankScreen reference layout', () => {
         'Fund your vault from a bank account, or offramp into your bank.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('powered by GOS')).toBeInTheDocument();
+    // The human-directed branding (demo-feedback-2): the old GOS chip becomes
+    // "Powered by" plus the Girasol logo, wrapped in a link out to Girasol's
+    // site. The accessible name joins the text and the logo's alt.
+    expect(screen.getByText('Powered by')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Girasol' })).toBeInTheDocument();
+    const callout = screen.getByRole('link', { name: 'Powered by Girasol' });
+    expect(callout).toHaveAttribute(
+      'href',
+      'https://www.girasolpayments.com/',
+    );
+    expect(callout).toHaveAttribute('target', '_blank');
+    expect(callout).toHaveAttribute('rel', 'noopener noreferrer');
     cleanup();
   });
 
