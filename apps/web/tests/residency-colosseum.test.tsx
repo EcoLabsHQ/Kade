@@ -615,6 +615,75 @@ describe('ColosseumResidency — the reveal motion is one fused timeline', () =>
 });
 
 /* -------------------------------------------------------------------------- */
+/* The reveal has exactly one light pass                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — exactly one reveal light pass', () => {
+  const KEY = 'app-one-sweep';
+
+  it('renders exactly one sweep element for the residency pass', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+  });
+
+  it('renders exactly one sweep element for the standard certificate', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+    expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+  });
+
+  it('renders exactly one sweep element for the celebration tier', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* The inline certificate is the full-screen trigger                           */
 /* -------------------------------------------------------------------------- */
 
@@ -767,7 +836,10 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
     expect(screen.queryByTestId('colosseum-certificate-overlay')).toBeNull();
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-reveal-card')).toBeNull();
+    // No sweep element of any kind is left behind.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     expect(document.querySelector('.kade-foil-light')).toBeNull();
     expect(document.querySelector('.kade-foil-pass')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
@@ -834,7 +906,9 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
     expect(document.querySelector('.kade-celebration')).not.toBeNull();
     expect(document.querySelector('.kade-reveal-card-celebration')).not.toBeNull();
     expect(document.querySelector('.kade-celebration-bloom')).not.toBeNull();
-    expect(document.querySelector('.kade-celebration-sweep')).not.toBeNull();
+    // The celebration tier reuses the same single foil pass, not a second one.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(1);
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     expect(
       document.querySelectorAll('.kade-celebration-ray').length,
     ).toBeGreaterThanOrEqual(8);
@@ -945,9 +1019,10 @@ describe('ColosseumResidency — reduced motion', () => {
     );
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-passport-flip')).toBeNull();
-    // The reduced-motion path renders no moving sweep or foil element at all.
+    // The reduced-motion path renders no sweep element at all.
+    expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-pass')).toBeNull();
+    expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
     // It uses the static highlight instead, so the card is never left blank.
     expect(document.querySelector('.kade-foil-light-static')).not.toBeNull();
   });

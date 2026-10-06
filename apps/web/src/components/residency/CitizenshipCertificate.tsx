@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from 'react';
 import { FullScreenReveal } from './FullScreenReveal';
-import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 import { formatIssueDate } from './artifact-format';
 
 /**
@@ -31,15 +30,12 @@ export interface CertificateArtifactProps {
   readonly issuedAt: string | null;
   /** `embedded` is the compact inline rendering; `full` is the popup. */
   readonly variant?: 'embedded' | 'full';
-  /** Render the one-shot security-light pass (full-screen only). */
-  readonly showSweep?: boolean;
 }
 
 export function CertificateArtifact({
   serial,
   issuedAt,
   variant = 'full',
-  showSweep = false,
 }: CertificateArtifactProps) {
   const full = variant === 'full';
   const idBase = full ? 'colosseum-certificate-overlay' : 'colosseum-certificate';
@@ -58,9 +54,6 @@ export function CertificateArtifact({
       <div aria-hidden="true" style={full ? fullEmblem : embeddedEmblem}>
         ✦
       </div>
-      {showSweep ? (
-        <span aria-hidden="true" className="kade-passport-sweep" />
-      ) : null}
 
       <div style={header}>
         <div style={org}>Colosseum · Demo Certificate</div>
@@ -131,8 +124,6 @@ export function CitizenshipCertificate({
   issuedAt,
   celebration = false,
 }: CitizenshipCertificateProps) {
-  const reducedMotion = usePrefersReducedMotion();
-
   return (
     <FullScreenReveal
       open={open}
@@ -151,7 +142,6 @@ export function CitizenshipCertificate({
             variant="full"
             serial={serial}
             issuedAt={issuedAt}
-            showSweep={!reducedMotion}
           />
         </div>
       </div>

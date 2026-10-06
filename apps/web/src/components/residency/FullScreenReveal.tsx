@@ -445,11 +445,10 @@ export function FullScreenReveal({
                   aria-hidden="true"
                   className="kade-foil-light"
                 />
-                {showCelebration ? (
-                  <div aria-hidden="true" className="kade-celebration-sweep" />
-                ) : (
-                  <div aria-hidden="true" className="kade-foil-pass" />
-                )}
+                {/* Exactly ONE light pass per reveal. The celebration tier
+                    styles this same single element richer, so its flourish
+                    reads as one continuous gesture rather than a second pass. */}
+                <div aria-hidden="true" className="kade-foil-pass" />
               </>
             )}
           </div>
