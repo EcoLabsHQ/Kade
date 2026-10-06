@@ -526,6 +526,100 @@ describe('ColosseumResidency — the virtual residency pass', () => {
   });
 });
 
+/* -------------------------------------------------------------------------- */
+/* The citizenship passport reveal fires on the transition, exactly once       */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the citizenship passport reveal timing', () => {
+  const KEY = 'app-reveal-timing';
+
+  it('opens the full-screen passport on the live transition to citizen, not before', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    // Counting down: no reveal yet.
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    // Eligible but not yet a citizen: still no reveal.
+    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    // The milestone opens the reveal at the moment of citizenship.
+    expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+  });
+
+  it('does not re-open after dismissal, even when the component re-renders', () => {
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+
+    // A later render (e.g. the parent re-fetching the real checks) must not
+    // replay the celebration.
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+
+    // The inline artifact still offers the reveal on demand.
+    fireEvent.click(
+      screen.getByRole('button', { name: /open full-screen passport/i }),
+    );
+    expect(screen.getByTestId('colosseum-passport-overlay')).toBeInTheDocument();
+  });
+
+  it('does not auto-open for an already-citizen restored state', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    // The inline artifact is present, but the reveal does not replay on load.
+    expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+  });
+});
+
 describe('ColosseumResidency — reduced motion', () => {
   const KEY = 'app-reduced';
 
