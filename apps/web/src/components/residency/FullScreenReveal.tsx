@@ -10,9 +10,7 @@ import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 import {
-  isRevealSoundMuted,
   playRevealSound,
-  setRevealSoundMuted,
 } from './reveal-sound';
 
 /**
@@ -204,9 +202,8 @@ export function FullScreenReveal({
   // the artifact genuinely cannot fit on a short viewport we scale it down
   // rather than let the overlay grow a scrollbar. 1 means "no scaling".
   const [fitScale, setFitScale] = useState(1);
-  // The reveal sound is opt-out: on by default, persisted mute preference, and
-  // a missing or blocked AudioContext degrades silently to no sound.
-  const [soundMuted, setSoundMuted] = useState(false);
+  // The reveal sound plays automatically; there is no mute control. A missing
+  // or blocked AudioContext degrades silently to no sound.
   // Guards against a re-render (or a React StrictMode double-invoke) replaying
   // the cue. Reset when the reveal closes.
   const soundPlayedRef = useRef(false);
@@ -284,14 +281,9 @@ export function FullScreenReveal({
     return () => window.removeEventListener('resize', compute);
   }, [open]);
 
-  // Read the persisted mute preference once the reveal mounts (client only).
-  useEffect(() => {
-    setSoundMuted(isRevealSoundMuted());
-  }, []);
-
   // Play the cue exactly once per open, on the live open. A restored citizen
   // load never opens the reveal, so it never replays. Deliberately independent
-  // of `prefers-reduced-motion`: sound is not motion, the mute control is.
+  // of `prefers-reduced-motion`: sound is not motion.
   useEffect(() => {
     if (!open) {
       soundPlayedRef.current = false;
@@ -301,14 +293,6 @@ export function FullScreenReveal({
     soundPlayedRef.current = true;
     playRevealSound(celebration ? 'celebration' : 'standard');
   }, [open, celebration]);
-
-  const toggleSound = useCallback(() => {
-    setSoundMuted((previous) => {
-      const next = !previous;
-      setRevealSoundMuted(next);
-      return next;
-    });
-  }, []);
 
   // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under
   // reduced motion the light is static and the pointer never drives it.
@@ -479,16 +463,6 @@ export function FullScreenReveal({
         <div style={closeRow}>
           <button
             type="button"
-            aria-pressed={soundMuted}
-            aria-label={soundMuted ? 'Unmute reveal sound' : 'Mute reveal sound'}
-            onClick={toggleSound}
-            style={soundButton}
-          >
-            <span aria-hidden="true">{soundMuted ? '🔇' : '🔊'}</span>
-            <span style={closeLabel}>{soundMuted ? 'Muted' : 'Sound'}</span>
-          </button>
-          <button
-            type="button"
             aria-label="Close"
             onClick={onClose}
             style={closeButton}
@@ -609,24 +583,6 @@ const closeButton: CSSProperties = {
   border: '1px solid rgba(255,255,255,.35)',
   borderRadius: '999px',
   background: 'rgba(255,255,255,.08)',
-  color: '#f4f8ff',
-  fontFamily: 'inherit',
-  fontSize: '13px',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-// The persisted mute control. It sits beside Close, is a real button, and is
-// labelled both visibly ("Sound" / "Muted") and for assistive tech.
-const soundButton: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  height: '34px',
-  padding: '0 12px',
-  border: '1px solid rgba(255,255,255,.28)',
-  borderRadius: '999px',
-  background: 'rgba(255,255,255,.06)',
   color: '#f4f8ff',
   fontFamily: 'inherit',
   fontSize: '13px',

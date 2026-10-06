@@ -1524,49 +1524,6 @@ describe('ColosseumResidency — the reveal sound', () => {
     Reflect.deleteProperty(window, 'AudioContext');
   });
 
-  function openPass() {
-    render(
-      <ColosseumResidency
-        tier="colosseum"
-        checks={checks(facts())}
-        profileKey={KEY}
-      />,
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: /claim colosseum residency/i }),
-    );
-  }
-
-  it('renders a labelled, persisted mute control that toggles', () => {
-    openPass();
-
-    const mute = screen.getByRole('button', { name: /mute reveal sound/i });
-    expect(mute.tagName).toBe('BUTTON');
-    expect(mute).toHaveAttribute('aria-pressed', 'false');
-    expect(mute).toHaveTextContent(/sound/i);
-
-    fireEvent.click(mute);
-    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBe('1');
-    const unmute = screen.getByRole('button', { name: /unmute reveal sound/i });
-    expect(unmute).toHaveAttribute('aria-pressed', 'true');
-    expect(unmute).toHaveTextContent(/muted/i);
-
-    fireEvent.click(unmute);
-    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: /mute reveal sound/i }),
-    ).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('restores the persisted mute preference on the next open', () => {
-    window.localStorage.setItem('kade.reveal.sound.muted', '1');
-    openPass();
-
-    expect(
-      screen.getByRole('button', { name: /unmute reveal sound/i }),
-    ).toHaveAttribute('aria-pressed', 'true');
-  });
-
   it('asks for the cue exactly once per open and not on a re-render', () => {
     const cue = vi.mocked(playRevealSound);
     cue.mockClear();

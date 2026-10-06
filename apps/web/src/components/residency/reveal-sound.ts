@@ -1,22 +1,17 @@
 'use client';
 
 /**
- * The reveal sound cues, synthesized with the Web Audio API.
+ * The reveal sound cue, synthesized with the Web Audio API.
  *
  * There is no audio asset, no dependency and no licensing question: a short,
- * soft two-note cue for the standard reveal and a slightly richer arpeggio for
- * the one-time celebration. Both are low-gain (per-note peak 0.10–0.14), with a
- * soft attack and an exponential release, so the cue is a gentle punctuation
- * rather than a fanfare.
+ * soft cue synthesized from oscillators. It is low-gain (per-note peak
+ * 0.10–0.14), with a soft attack and an exponential release, so the cue is a
+ * gentle punctuation rather than a fanfare.
  *
  * Failure is always silent. If Web Audio is missing, the context is blocked by
  * the browser's autoplay policy, or any node throws, the reveal is completely
- * unaffected: every path is wrapped and a missing context is a no-op. The mute
- * preference is persisted in `localStorage` (default: sound on, since the human
- * asked for sound).
+ * unaffected: every path is wrapped and a missing context is a no-op.
  */
-
-const MUTED_KEY = 'kade.reveal.sound.muted';
 
 export type RevealSoundTier = 'standard' | 'celebration';
 
@@ -45,28 +40,6 @@ function getAudioContext(): AudioContext | null {
     return audioContext;
   } catch {
     return null;
-  }
-}
-
-/** Whether the resident has muted the reveal sound. Defaults to `false`. */
-export function isRevealSoundMuted(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(MUTED_KEY) === '1';
-  } catch {
-    // Storage can be unavailable (private mode); treat that as unmuted.
-    return false;
-  }
-}
-
-/** Persist the mute preference. */
-export function setRevealSoundMuted(muted: boolean): void {
-  if (typeof window === 'undefined') return;
-  try {
-    if (muted) window.localStorage.setItem(MUTED_KEY, '1');
-    else window.localStorage.removeItem(MUTED_KEY);
-  } catch {
-    // The in-memory control still works; the preference just will not persist.
   }
 }
 
@@ -132,8 +105,8 @@ function scheduleNotes(context: AudioContext, notes: readonly Note[]): void {
 }
 
 /**
- * Play the reveal cue. Safe to call unconditionally: it is a no-op when muted,
- * when Web Audio is unavailable, or when anything throws.
+ * Play the reveal cue. Safe to call unconditionally: it is a no-op when Web
+ * Audio is unavailable or when anything throws.
  *
  * Autoplay policy: the context may start suspended until the page has received
  * a user gesture. Every reveal open follows a click (a claim click or a card
@@ -144,7 +117,6 @@ function scheduleNotes(context: AudioContext, notes: readonly Note[]): void {
  */
 export function playRevealSound(tier: RevealSoundTier): void {
   try {
-    if (isRevealSoundMuted()) return;
     const context = getAudioContext();
     if (!context) return;
     if (context.state === 'suspended') {
