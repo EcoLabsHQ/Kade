@@ -687,7 +687,7 @@ function colosseumStages(
     {
       title: 'Colosseum Citizen',
       meta: citizen
-        ? `Demo passport${progress.passportSerial ? ` · ${progress.passportSerial}` : ''}`
+        ? `Demo certificate${progress.passportSerial ? ` · ${progress.passportSerial}` : ''}`
         : 'Unlocks after 2 compliant demo minutes — open Residency',
       status: citizen ? 'Demo · citizen' : since ? 'In progress' : 'Queued',
       state: citizen ? 'done' : 'queued',

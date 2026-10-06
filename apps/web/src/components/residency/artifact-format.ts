@@ -1,7 +1,7 @@
 /**
  * Deterministic formatting for the Colosseum demo artifacts.
  *
- * The pass and passport show an issue date. It is formatted in UTC from the
+ * The pass and certificate show an issue date. It is formatted in UTC from the
  * stored ISO instant so the same record renders identically regardless of the
  * viewer's timezone (and so tests are stable).
  */
