@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
@@ -31,6 +32,22 @@ export interface SidebarProps {
   readonly isReviewer?: boolean;
   /** The review state shared with the top banner; drives the footer notice. */
   readonly review?: ShellReviewState | null;
+  /**
+   * Streamed slot: the Safe card. When present it replaces the card built from
+   * the value props above, so the shell can resolve the deployment record
+   * behind `<Suspense>`.
+   */
+  readonly safeCard?: ReactNode;
+  /**
+   * Streamed slot: the review notice. When present it replaces the notice built
+   * from `review`.
+   */
+  readonly reviewNotice?: ReactNode;
+  /**
+   * Streamed slot: the Admin affordance in the footer. When present it replaces
+   * the control built from `isReviewer`.
+   */
+  readonly footerAdmin?: ReactNode;
 }
 
 /**
@@ -47,6 +64,9 @@ export function Sidebar({
   explorerUrl = null,
   isReviewer = false,
   review = null,
+  safeCard,
+  reviewNotice,
+  footerAdmin,
 }: SidebarProps) {
   const pathname = usePathname();
 
@@ -109,22 +129,25 @@ export function Sidebar({
           `review` value the shell already shares with the top banner, so the two
           remain renderings of a single state and cannot disagree.
         */}
-        <ReviewStatusChip review={review} />
+        {reviewNotice ?? <ReviewStatusChip review={review} />}
 
         <div>
-          <SafeAddressCard
-            address={safeAddress}
-            network={network}
-            deployed={safeDeployed}
-            status={safeStatus}
-            explorerUrl={explorerUrl}
-            isReviewer={isReviewer}
-          />
+          {safeCard ?? (
+            <SafeAddressCard
+              address={safeAddress}
+              network={network}
+              deployed={safeDeployed}
+              status={safeStatus}
+              explorerUrl={explorerUrl}
+              isReviewer={isReviewer}
+            />
+          )}
         </div>
 
         <SidebarFooter
           isReviewer={isReviewer}
           adminActive={pathname.startsWith('/admin')}
+          admin={footerAdmin}
         />
       </aside>
     </>

@@ -1,5 +1,6 @@
-import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { tokens } from '@/components/ui/tokens';
+import { AdminSwitchControl } from './AdminSwitchControl';
 
 export interface SidebarFooterProps {
   readonly isReviewer?: boolean;
@@ -10,6 +11,12 @@ export interface SidebarFooterProps {
    * on a client-side navigation.
    */
   readonly adminActive?: boolean;
+  /**
+   * A streamed Admin affordance. When present it replaces the control built
+   * from `isReviewer`, so the shell can resolve the reviewers row behind
+   * `<Suspense>` without blocking the frame.
+   */
+  readonly admin?: ReactNode;
 }
 
 /**
@@ -27,6 +34,7 @@ export interface SidebarFooterProps {
 export function SidebarFooter({
   isReviewer = false,
   adminActive = false,
+  admin,
 }: SidebarFooterProps) {
   return (
     <>
@@ -55,41 +63,11 @@ export function SidebarFooter({
         >
           Resident
         </span>
-        {isReviewer ? (
-          <Link
-            href='/admin'
-            title='Open the review queue.'
-            style={{
-              flex: 1,
-              padding: '8px 6px',
-              borderRadius: '9px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              textAlign: 'center',
-              background: adminActive ? tokens.activeNavBg : 'transparent',
-              color: tokens.brandPrimary,
-              textDecoration: 'none',
-            }}
-          >
-            Admin
-          </Link>
-        ) : (
-          <span
-            aria-disabled='true'
-            title='Admin access requires a reviewers row.'
-            style={{
-              flex: 1,
-              padding: '8px 6px',
-              borderRadius: '9px',
-              fontSize: '12.5px',
-              fontWeight: 600,
-              textAlign: 'center',
-              color: tokens.locked,
-              cursor: 'not-allowed',
-            }}
-          >
-            Admin
-          </span>
+        {admin ?? (
+          <AdminSwitchControl
+            isReviewer={isReviewer}
+            adminActive={adminActive}
+          />
         )}
       </div>
       <div

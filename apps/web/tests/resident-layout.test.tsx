@@ -7,12 +7,14 @@ import { cleanup, render, screen } from '@testing-library/react';
  * The layout is the one place the resident shell is resolved and rendered now.
  * These tests pin that:
  *
- *   1. it renders the shell exactly once around the page content, with the
- *      session, Safe and review state it resolved;
+ *   1. it renders the shell frame immediately after the session check, without
+ *      waiting for the Safe or review reads — the frame must not be blocked by
+ *      the per-resident data;
  *   2. it still redirects an unauthenticated request to `/login` before
- *      rendering anything; and
- *   3. its two shell reads (the Safe and the review bar) are issued together,
- *      not staged one after the other.
+ *      rendering anything;
+ *   3. its two shell reads are issued together, not staged one after the other;
+ *   4. the streamed fallbacks fabricate no Safe, balance, status or name; and
+ *   5. the resolved slot components do reach the shell with the resolved state.
  */
 
 const hoisted = vi.hoisted(() => ({
@@ -60,8 +62,19 @@ vi.mock('@/lib/review/review-bar', () => ({
 vi.mock('@/lib/env', () => ({ readChainEnv: () => 'testnet' }));
 
 import ResidentLayout from '@/app/(resident)/layout';
+import { ShellAdminSwitch } from '@/components/shell/ShellAdminSwitch';
+import { ShellSafeCard } from '@/components/shell/ShellSafeCard';
+import { ShellReviewBanner } from '@/components/shell/ShellReviewBanner';
+import { ShellReviewNotice } from '@/components/shell/ShellReviewNotice';
 
 const SAFE = '0x5Af1000000000000000000000000000000000c09D';
+
+const REVIEW = {
+  show: false,
+  reference: null,
+  reviewed: false,
+  isReviewer: false,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -78,16 +91,17 @@ beforeEach(() => {
     status: 'deployed',
     explorerUrl: null,
   });
-  hoisted.loadReviewBar.mockResolvedValue({
-    show: false,
-    reference: null,
-    reviewed: false,
-    isReviewer: false,
-  });
+  hoisted.loadReviewBar.mockResolvedValue(REVIEW);
 });
 
 describe('resident layout', () => {
-  it('renders the shell once around the page content with the resolved state', async () => {
+  it('renders the shell frame immediately, without waiting for the shell reads', async () => {
+    // The reads never settle. The old layout awaited both before rendering
+    // anything, so it could not resolve at all; the new one returns the frame
+    // first and lets the slots stream in.
+    hoisted.loadShellSafe.mockImplementation(() => new Promise(() => {}));
+    hoisted.loadReviewBar.mockImplementation(() => new Promise(() => {}));
+
     const { container } = render(
       await ResidentLayout({ children: <div>page content</div> }),
     );
@@ -100,15 +114,11 @@ describe('resident layout', () => {
     // The global footer lives in the shell, so it renders exactly once.
     expect(container.querySelectorAll('footer')).toHaveLength(1);
 
-    // The resolved Safe reaches the sidebar; the active chain is named.
-    expect(screen.getByText(SAFE)).toBeInTheDocument();
+    // The active chain is named from configuration, with no database read.
     expect(screen.getByText('Ethereum Sepolia')).toBeInTheDocument();
 
-    // Each shell source is read exactly once, for this session.
-    expect(hoisted.loadShellSafe).toHaveBeenCalledTimes(1);
-    expect(hoisted.loadShellSafe).toHaveBeenCalledWith('user-1');
-    expect(hoisted.loadReviewBar).toHaveBeenCalledTimes(1);
-    expect(hoisted.loadReviewBar).toHaveBeenCalledWith('user-1');
+    // The Safe card is still streaming, so the resolved address is absent.
+    expect(screen.queryByText(SAFE)).toBeNull();
 
     cleanup();
   });
@@ -143,21 +153,86 @@ describe('resident layout', () => {
     );
     hoisted.loadReviewBar.mockReset();
     hoisted.loadReviewBar.mockImplementation(() =>
-      tracked('review', {
-        show: false,
-        reference: null,
-        reviewed: false,
-        isReviewer: false,
-      }),
+      tracked('review', REVIEW),
     );
 
     render(await ResidentLayout({ children: <div>page content</div> }));
 
-    // The old per-page shell staged these serially; the layout starts both
-    // before awaiting either, so a moment contains both tags.
+    // The old per-page shell staged these serially; the Safe card slot starts
+    // both before awaiting either, so a moment contains both tags.
     expect(
       hoisted.moments.some((m) => m.includes('safe') && m.includes('review')),
     ).toBe(true);
+
+    cleanup();
+  });
+
+  it('streams the resolved Safe into the sidebar card', async () => {
+    render(await ShellSafeCard({ userId: 'user-1', network: 'Ethereum Sepolia' }));
+
+    expect(screen.getByText(SAFE)).toBeInTheDocument();
+    expect(hoisted.loadShellSafe).toHaveBeenCalledWith('user-1');
+    expect(hoisted.loadReviewBar).toHaveBeenCalledWith('user-1');
+
+    cleanup();
+  });
+
+  it('streams the resolved review state into the notice and the banner', async () => {
+    hoisted.loadReviewBar.mockResolvedValue({
+      show: true,
+      reference: 'CW-2026-0409',
+      reviewed: false,
+      isReviewer: false,
+    });
+
+    render(await ShellReviewNotice({ userId: 'user-1' }));
+    expect(screen.getByTestId('sidebar-review-notice')).toHaveTextContent(
+      'Pre-approved · in review',
+    );
+    cleanup();
+
+    render(await ShellReviewBanner({ userId: 'user-1' }));
+    expect(screen.getByText(/Use the platform now/)).toBeInTheDocument();
+    cleanup();
+  });
+
+  it('streams the resolved reviewer state into the Admin affordance', async () => {
+    hoisted.loadReviewBar.mockResolvedValue({
+      show: false,
+      reference: null,
+      reviewed: false,
+      isReviewer: true,
+    });
+
+    render(await ShellAdminSwitch({ userId: 'user-1' }));
+    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute(
+      'href',
+      '/admin',
+    );
+
+    cleanup();
+  });
+
+  it('renders no fabricated Safe, balance or account state in the fallbacks', async () => {
+    const { container } = render(
+      await ResidentLayout({ children: <div>page content</div> }),
+    );
+
+    // The Safe card is an empty, decorative shape while it streams.
+    const safeFallback = screen.getByTestId('shell-safe-card-fallback');
+    expect((safeFallback.textContent ?? '').trim()).toBe('');
+    expect(safeFallback).toHaveAttribute('aria-hidden');
+
+    // The Admin affordance is an empty shape too — never the disabled
+    // "not a reviewer" state, which would be a fabricated claim.
+    const adminFallback = screen.getByTestId('shell-admin-fallback');
+    expect((adminFallback.textContent ?? '').trim()).toBe('');
+    expect(adminFallback).toHaveAttribute('aria-hidden');
+
+    // The conditional regions announce nothing until they know they apply.
+    expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
+    expect(container.textContent ?? '').not.toContain('no account yet');
+    expect(container.textContent ?? '').not.toMatch(/0x/i);
 
     cleanup();
   });
