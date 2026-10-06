@@ -172,6 +172,13 @@ const fullCard: CSSProperties = {
 
 const embeddedCard: CSSProperties = {
   ...baseCard,
+  // The embedded rendering is the SAME object at a smaller scale: the trigger
+  // wrapper bounds it to `min(100%, 420px)` (see `.kade-passport-trigger`), so
+  // it no longer stretches to the Colosseum section width and reads as a wide
+  // letterbox. It fills that bounded wrapper, so the popup (bounded by the
+  // reveal shell to `min(92vw, 560px)`) and the inline card keep the same
+  // proportions.
+  width: '100%',
   borderRadius: '18px',
   padding: '22px 22px 16px',
   boxShadow:

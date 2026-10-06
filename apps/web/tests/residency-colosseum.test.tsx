@@ -1010,6 +1010,39 @@ describe('ColosseumResidency — the inline certificate control', () => {
       }),
     ).toBeInTheDocument();
   });
+
+  it('composes the embedded card as the same artifact as the popup, inside the bounded trigger wrapper', () => {
+    renderStoredCitizen();
+
+    const embedded = screen.getByTestId('colosseum-certificate');
+    // The embedded card fills the trigger wrapper, which carries the
+    // `min(100%, 420px)` bound (see `.kade-passport-trigger`), so it no longer
+    // stretches to the section width.
+    expect(embedded.style.width).toBe('100%');
+    expect(embedded.closest('.kade-passport-trigger')).not.toBeNull();
+
+    // Same composition as the popup: four fields, the guilloche texture, the
+    // MRZ and the emblem.
+    expect(embedded.querySelectorAll('.kade-artifact-field')).toHaveLength(4);
+    expect(embedded.querySelector('.kade-passport-guilloche')).not.toBeNull();
+    expect(
+      within(embedded).getByTestId('colosseum-certificate-mrz'),
+    ).toBeInTheDocument();
+    expect(embedded.textContent).toContain('✦');
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    );
+    const overlay = screen.getByTestId('colosseum-certificate-overlay');
+    expect(overlay.querySelectorAll('.kade-artifact-field')).toHaveLength(4);
+    expect(overlay.querySelector('.kade-passport-guilloche')).not.toBeNull();
+    expect(
+      within(overlay).getByTestId('colosseum-certificate-overlay-mrz'),
+    ).toBeInTheDocument();
+    expect(overlay.textContent).toContain('✦');
+  });
 });
 
 /* -------------------------------------------------------------------------- */
