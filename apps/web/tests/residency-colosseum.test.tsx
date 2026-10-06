@@ -571,6 +571,36 @@ describe('ColosseumResidency — the residency pass security print', () => {
       true,
     );
   });
+
+  it('renders the certificate texture inside its opaque card', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
+    );
+
+    // The certificate texture is a direct child of the opaque card (the same
+    // baseline as before), so it paints above the card background.
+    const card = screen.getByTestId('colosseum-certificate-overlay');
+    const texture = card.querySelector('.kade-passport-guilloche');
+    expect(texture).not.toBeNull();
+    expect(card.contains(texture!)).toBe(true);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -620,6 +650,38 @@ describe('ColosseumResidency — the reveal motion is one fused timeline', () =>
     );
     expect(flips).toHaveLength(1);
     expect(document.querySelector('.kade-reveal-flip-celebration')).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The celebration bloom is clipped to the card                                */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the celebration bloom is clipped to the card', () => {
+  const KEY = 'app-bloom-clip';
+
+  it('renders the bloom inside a card-bounded stage', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    const stage = document.querySelector('.kade-celebration-stage');
+    const tilt = document.querySelector('.kade-foil-tilt');
+    expect(stage).not.toBeNull();
+    expect(tilt).not.toBeNull();
+    // The stage lives inside the card-sized tilt wrapper and carries no inline
+    // inset, so the CSS bounds and clips it to the card.
+    expect(tilt!.contains(stage!)).toBe(true);
+    expect(stage!.getAttribute('style')).toBeNull();
+    expect(stage!.querySelector('.kade-celebration-bloom')).not.toBeNull();
   });
 });
 
