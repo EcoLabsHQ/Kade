@@ -874,11 +874,13 @@ textarea {
   animation-delay: 1s;
 }
 
-/* Celebration tier — bloom, rays, a wide foil pass and a slow guilloche sheen.
-   All one-shot, bounded to the reveal stage, and unmounted with the reveal. */
+/* Celebration tier — bloom and rays, bounded and clipped to the card so the
+   glow can never spill outside it. All one-shot and unmounted with the reveal. */
 .kade-celebration-stage {
   position: absolute;
-  inset: -22% -10%;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 20px;
   z-index: 0;
   pointer-events: none;
 }
@@ -909,8 +911,11 @@ textarea {
   40% {
     opacity: 0.55;
   }
+  70% {
+    opacity: 0.3;
+  }
   100% {
-    opacity: 0.25;
+    opacity: 0;
     transform: translate(-50%, -50%) scale(1.35);
   }
 }
