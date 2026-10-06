@@ -36,7 +36,7 @@ vi.mock('@/components/passkey/PasskeyEnrolmentPanel', () => ({
   PasskeyEnrolmentPanel: () => null,
 }));
 
-import AccountPage from '@/app/account/page';
+import AccountPage from '@/app/(resident)/account/page';
 
 beforeEach(() => {
   vi.clearAllMocks();

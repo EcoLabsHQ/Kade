@@ -69,9 +69,6 @@ vi.mock('@/lib/invest/morpho-config', () => ({
 vi.mock('@/lib/invest/morpho-yield', () => ({
   readMorphoVaultYield: hoisted.readMorphoVaultYield,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -79,7 +76,7 @@ vi.mock('@/components/invest/InvestScreen', () => ({
   InvestScreen: () => null,
 }));
 
-import InvestPage from '@/app/invest/page';
+import InvestPage from '@/app/(resident)/invest/page';
 
 beforeEach(() => {
   hoisted.moments.length = 0;

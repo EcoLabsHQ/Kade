@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
@@ -20,7 +19,6 @@ import {
   type ResidentReviewState,
 } from '@/lib/review/queue';
 import { residentGate, type ResidentGate } from '@/lib/review/gate';
-import { loadReviewBar } from '@/lib/review/review-bar';
 import {
   buildOverview,
   demoBadgeLabel,
@@ -122,8 +120,7 @@ export default async function OverviewPage() {
 
   const reviewGate: ResidentGate = residentGate(reviewState.status);
 
-  const [reviewBar, vaultHoldings, fee] = await Promise.all([
-    loadReviewBar(session.userId),
+  const [vaultHoldings, fee] = await Promise.all([
     // The Safe's qualified position: the one reader, pointed at the Safe.
     loadVaultHoldings(shellSafe.address),
     loadFeeOrUnread(session.userId),
@@ -163,16 +160,7 @@ export default async function OverviewPage() {
   const badge = demoBadgeLabel(overview);
 
   return (
-    <AppShell
-      email={session.email}
-      safeAddress={shellSafe.address}
-      safeDeployed={shellSafe.deployed}
-      safeStatus={shellSafe.status}
-      explorerUrl={shellSafe.explorerUrl}
-      showReviewBar={reviewBar.show}
-      reviewReference={reviewBar.reference}
-        isReviewer={reviewBar.isReviewer}
-    >
+    <>
       <ReviewGateWatcher userId={session.userId} />
       <ContentContainer>
         <div
@@ -339,6 +327,6 @@ export default async function OverviewPage() {
           </div>
         ) : null}
       </ContentContainer>
-    </AppShell>
+    </>
   );
 }

@@ -1,18 +1,16 @@
 import { redirect } from 'next/navigation';
-import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { HoldingsView } from '@/components/holdings/HoldingsView';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { addConnectedWallet } from '@/app/onboarding/wallet-actions';
 import { readWalletConnectProjectId } from '@/lib/env';
-import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadApplicationResidencyRow } from '@/lib/residency/server';
 import { loadVaultHoldings } from '@/lib/wealth/vault-holdings';
 import { summarizeQualifiedPosition } from '@/lib/wealth/qualified-position';
-import { loadVerifiedHoldings } from './data';
-import { beginWalletLink, completeWalletLink } from './link-actions';
+import { loadVerifiedHoldings } from '@/app/holdings/data';
+import { beginWalletLink, completeWalletLink } from '@/app/holdings/link-actions';
 
 /**
  * D17 / EXE-013 — Holdings over every wallet, signed and unsigned.
@@ -30,10 +28,12 @@ import { beginWalletLink, completeWalletLink } from './link-actions';
  * read-only from onboarding), and disconnects; the row then appears unsigned
  * until the resident signs it, which is what unlocks the vault action.
  *
- * The wallet context is required: the actions use AppKit/wagmi hooks, so the
- * page wraps the shell in `WalletProvider` exactly as the onboarding and
- * residency steps do. `HoldingsView` is the client half that binds those hooks
- * to the presentational `HoldingsScreen`.
+ * The authenticated frame (session gate, Safe, review bar) now comes from the
+ * shared `(resident)/layout.tsx`; this page keeps its own content reads. The
+ * wallet context is required: the actions use AppKit/wagmi hooks, so the page
+ * wraps its content in `WalletProvider` exactly as the onboarding and residency
+ * steps do. `HoldingsView` is the client half that binds those hooks to the
+ * presentational `HoldingsScreen`.
  */
 export const dynamic = 'force-dynamic';
 
@@ -77,15 +77,7 @@ export default async function HoldingsPage() {
   // The Safe's qualified holdings are a fresh on-chain read pointed at the Safe
   // address. No deposit flow persists a vault position, so the chain is the only
   // truthful source; a failed read stays visible rather than becoming a zero.
-  //
-  // The review bar is an independent record read that depends only on the
-  // session, so it is issued in the same stage as the chain read rather than
-  // serially after it. Both start as soon as the Safe address is known; neither
-  // waits on the other.
-  const [vaultHoldings, reviewBar] = await Promise.all([
-    loadVaultHoldings(shellSafe.address),
-    loadReviewBar(session.userId),
-  ]);
+  const vaultHoldings = await loadVaultHoldings(shellSafe.address);
 
   // The one qualified total, reduced once from the rows above. The residency
   // tier check reduces the same Safe's rows with the same function, so the
@@ -99,30 +91,19 @@ export default async function HoldingsPage() {
 
   return (
     <WalletProvider>
-      <AppShell
-        email={session.email}
-        safeAddress={shellSafe.address}
-        safeDeployed={shellSafe.deployed}
-        safeStatus={shellSafe.status}
-        explorerUrl={shellSafe.explorerUrl}
-        showReviewBar={reviewBar.show}
-        reviewReference={reviewBar.reference}
-        isReviewer={reviewBar.isReviewer}
-      >
-        <ContentContainer>
-          <HoldingsView
-            aggregate={aggregate}
-            safeAddress={shellSafe.address}
-            vaultHoldings={vaultHoldings}
-            qualified={qualified}
-            tier={tier}
-            configured={walletConfigured}
-            onBegin={beginWalletLink}
-            onComplete={completeWalletLink}
-            onAddConnectedWallet={addConnectedWallet}
-          />
-        </ContentContainer>
-      </AppShell>
+      <ContentContainer>
+        <HoldingsView
+          aggregate={aggregate}
+          safeAddress={shellSafe.address}
+          vaultHoldings={vaultHoldings}
+          qualified={qualified}
+          tier={tier}
+          configured={walletConfigured}
+          onBegin={beginWalletLink}
+          onComplete={completeWalletLink}
+          onAddConnectedWallet={addConnectedWallet}
+        />
+      </ContentContainer>
     </WalletProvider>
   );
 }

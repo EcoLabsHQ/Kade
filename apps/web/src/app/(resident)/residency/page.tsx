@@ -1,12 +1,10 @@
 import { redirect } from 'next/navigation';
 import { chainsForEnv } from '@kade/shared';
-import { AppShell } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
 import { ResidencyStep } from '@/components/residency/ResidencyStep';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
 import { getSessionUser } from '@/lib/supabase/server';
 import { readChainEnv, readWalletConnectProjectId } from '@/lib/env';
-import { loadReviewBar } from '@/lib/review/review-bar';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadResidencySnapshot } from '@/lib/residency/server';
 import {
@@ -29,6 +27,9 @@ function activeSettlementChain() {
  * resident with no application is sent back to onboarding; the step itself is
  * rendered from records by `loadResidencySnapshot`, so nothing on screen is a
  * fixture.
+ *
+ * The authenticated frame (session gate, Safe, review bar) now comes from the
+ * shared `(resident)/layout.tsx`; this page keeps its own content reads.
  */
 export default async function ResidencyPage() {
   const session = await getSessionUser();
@@ -41,13 +42,7 @@ export default async function ResidencyPage() {
   // deployment record a second time.
   const shellSafe = await loadShellSafe(session.userId);
 
-  // The snapshot (application, fee rail and chain reads) and the review bar are
-  // independent, so they are issued together rather than the review bar waiting
-  // for every snapshot read to finish.
-  const [snapshot, reviewBar] = await Promise.all([
-    loadResidencySnapshot(session.userId, shellSafe),
-    loadReviewBar(session.userId),
-  ]);
+  const snapshot = await loadResidencySnapshot(session.userId, shellSafe);
   if (!snapshot) {
     // No application means pre-registration is not finished; send the resident
     // to the step that is actually pending rather than rendering empty state.
@@ -63,28 +58,17 @@ export default async function ResidencyPage() {
 
   return (
     <WalletProvider>
-      <AppShell
-        email={session.email}
-        safeAddress={shellSafe.address}
-        safeDeployed={shellSafe.deployed}
-        safeStatus={shellSafe.status}
-        explorerUrl={shellSafe.explorerUrl}
-        network={network}
-        reviewBar={reviewBar}
-        isReviewer={reviewBar.isReviewer}
-      >
-        <ContentContainer>
-          <ResidencyStep
-            snapshot={snapshot}
-            network={network}
-            paymentConfigured={walletConfigured && isResidencyServiceFeeConfigured()}
-            treasuryAddress={feeConfig?.treasury ?? null}
-            chainId={feeConfig?.chainId ?? 0}
-            usdcAddress={usdcAddress}
-            explorerUrl={explorerUrl}
-          />
-        </ContentContainer>
-      </AppShell>
+      <ContentContainer>
+        <ResidencyStep
+          snapshot={snapshot}
+          network={network}
+          paymentConfigured={walletConfigured && isResidencyServiceFeeConfigured()}
+          treasuryAddress={feeConfig?.treasury ?? null}
+          chainId={feeConfig?.chainId ?? 0}
+          usdcAddress={usdcAddress}
+          explorerUrl={explorerUrl}
+        />
+      </ContentContainer>
     </WalletProvider>
   );
 }

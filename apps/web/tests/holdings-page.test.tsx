@@ -51,9 +51,6 @@ vi.mock('@/components/wallet/WalletProvider', () => ({
     <div data-testid="wallet-provider">{children}</div>
   ),
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
@@ -79,7 +76,7 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
   addConnectedWallet: vi.fn(),
 }));
 
-import HoldingsPage from '@/app/holdings/page';
+import HoldingsPage from '@/app/(resident)/holdings/page';
 
 describe('HoldingsPage', () => {
   it('provides the wallet context to the holdings view', async () => {

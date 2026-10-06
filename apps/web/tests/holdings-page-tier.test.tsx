@@ -94,9 +94,6 @@ vi.mock('@/lib/residency/server', () => ({
 vi.mock('@/components/wallet/WalletProvider', () => ({
   WalletProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -119,7 +116,7 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
   addConnectedWallet: vi.fn(),
 }));
 
-import HoldingsPage from '@/app/holdings/page';
+import HoldingsPage from '@/app/(resident)/holdings/page';
 
 /** A known, readable qualified position above the 5-year minimum ($425k). */
 const KNOWN_ROWS: readonly VaultHoldingRow[] = [
@@ -246,7 +243,7 @@ describe('HoldingsPage — the card reads the resident’s recorded tier', () =>
  */
 describe('HoldingsPage — one source for the tier', () => {
   const page = readFileSync(
-    resolve(process.cwd(), 'src/app/holdings/page.tsx'),
+    resolve(process.cwd(), 'src/app/(resident)/holdings/page.tsx'),
     'utf8',
   );
   const residencyServer = readFileSync(

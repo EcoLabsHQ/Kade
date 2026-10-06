@@ -48,16 +48,13 @@ vi.mock('@/lib/env', () => ({
 vi.mock('@/components/passkey/PasskeyEnrolmentPanel', () => ({
   PasskeyEnrolmentPanel: () => null,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 import { safeAppUrl } from '@/app/account/safe-overview';
 import { SafeOverviewCard } from '@/app/account/SafeOverviewCard';
-import AccountPage from '@/app/account/page';
+import AccountPage from '@/app/(resident)/account/page';
 
 const SAFE = '0x3e8cD8C29a32912f7E6e659c6f8645e4f178A9bb';
 const SEPOLIA = 'https://sepolia.etherscan.io';

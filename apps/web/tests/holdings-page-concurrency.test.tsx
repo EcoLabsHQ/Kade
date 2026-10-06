@@ -3,22 +3,25 @@ import { render } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 
 /**
- * The Holdings route issues the Safe's on-chain read and the review-bar read
- * concurrently.
+ * The Holdings route issues its session-only reads in one stage.
  *
- * Both reads depend only on the first stage (the session and the Safe address),
- * not on each other. They used to be staged serially — `await loadVaultHoldings`
- * then `await loadReviewBar` — which added a whole read's latency to every
- * navigation. This test pins the concurrency: each loader records when it is in
- * flight, and the assertion fails if the two are never in flight together (the
- * old serial staging could only ever have one in flight at a time).
+ * The shell Safe, the signature-verified wallet aggregate and the resident's
+ * recorded tier depend only on the session, not on one another. They are issued
+ * with `Promise.all` rather than one after another, so a navigation does not pay
+ * each read's latency in sequence. This test records when each loader is in
+ * flight and fails unless all three overlap.
+ *
+ * The review-bar read used to be part of the page's second stage; it now lives
+ * in the shared `(resident)/layout.tsx`, so it is not read here.
  */
 
 const hoisted = vi.hoisted(() => ({
   moments: [] as string[][],
   inFlight: new Set<string>(),
+  loadShellSafe: vi.fn(),
+  loadVerifiedHoldings: vi.fn(),
+  loadResidentTier: vi.fn(),
   loadVaultHoldings: vi.fn(),
-  loadReviewBar: vi.fn(),
 }));
 
 function enter(tag: string) {
@@ -32,8 +35,8 @@ function leave(tag: string) {
 /**
  * Resolve after a macrotask so a concurrent caller can enter while this read is
  * still in flight. The `enter` runs synchronously when the loader is invoked, so
- * a stage that invokes both loaders before awaiting either records a moment with
- * both tags; a serial stage cannot.
+ * a stage that invokes every loader before awaiting any records a moment with
+ * all tags; a serial stage cannot.
  */
 function tracked<T>(tag: string, value: T): Promise<T> {
   enter(tag);
@@ -50,30 +53,19 @@ vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: vi.fn(async () => ({ userId: 'resident-1', email: 'r@example.com' })),
 }));
 vi.mock('@/lib/residency/server', () => ({
-  loadApplicationResidencyRow: vi.fn(async () => null),
+  loadApplicationResidencyRow: hoisted.loadResidentTier,
 }));
 vi.mock('@/lib/safe/shell', () => ({
-  loadShellSafe: vi.fn(async () => ({
-    address: '0x5Af1000000000000000000000000000000000c09D',
-    deployed: true,
-    status: 'deployed',
-    explorerUrl: null,
-  })),
+  loadShellSafe: hoisted.loadShellSafe,
 }));
 vi.mock('@/lib/wealth/vault-holdings', () => ({
   loadVaultHoldings: hoisted.loadVaultHoldings,
-}));
-vi.mock('@/lib/review/review-bar', () => ({
-  loadReviewBar: hoisted.loadReviewBar,
 }));
 vi.mock('@/lib/env', () => ({
   readWalletConnectProjectId: () => 'project-id',
 }));
 vi.mock('@/components/wallet/WalletProvider', () => ({
   WalletProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -82,11 +74,7 @@ vi.mock('@/components/holdings/HoldingsView', () => ({
   HoldingsView: () => null,
 }));
 vi.mock('@/app/holdings/data', () => ({
-  loadVerifiedHoldings: vi.fn(async () => ({
-    totalUsd: 0,
-    wallets: [],
-    readErrors: 0,
-  })),
+  loadVerifiedHoldings: hoisted.loadVerifiedHoldings,
 }));
 vi.mock('@/app/holdings/link-actions', () => ({
   beginWalletLink: vi.fn(),
@@ -96,34 +84,47 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
   addConnectedWallet: vi.fn(),
 }));
 
-import HoldingsPage from '@/app/holdings/page';
+import HoldingsPage from '@/app/(resident)/holdings/page';
 
 beforeEach(() => {
   hoisted.moments.length = 0;
   hoisted.inFlight.clear();
+  hoisted.loadShellSafe.mockReset();
+  hoisted.loadShellSafe.mockImplementation(() =>
+    tracked('safe', {
+      address: '0x5Af1000000000000000000000000000000000c09D',
+      deployed: true,
+      status: 'deployed',
+      explorerUrl: null,
+    }),
+  );
+  hoisted.loadVerifiedHoldings.mockReset();
+  hoisted.loadVerifiedHoldings.mockImplementation(() =>
+    tracked('wallets', { totalUsd: 0, wallets: [], readErrors: 0 }),
+  );
+  hoisted.loadResidentTier.mockReset();
+  hoisted.loadResidentTier.mockImplementation(() => tracked('tier', null));
   hoisted.loadVaultHoldings.mockReset();
   hoisted.loadVaultHoldings.mockImplementation(() => tracked('vault', []));
-  hoisted.loadReviewBar.mockReset();
-  hoisted.loadReviewBar.mockImplementation(() =>
-    tracked('review', { show: false, reference: null, isReviewer: false }),
-  );
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('HoldingsPage — independent reads are concurrent', () => {
-  it('has the vault read and the review-bar read in flight at the same time', async () => {
+describe('HoldingsPage — independent session reads are concurrent', () => {
+  it('has the Safe, wallet aggregate and tier reads in flight at the same time', async () => {
     render((await HoldingsPage()) as ReactElement);
 
-    // The old staging awaited the vault read before starting the review bar, so
-    // no recorded moment could ever contain both tags.
+    // A serial staging could only ever have one tag in flight at a time.
     expect(
-      hoisted.moments.some((m) => m.includes('vault') && m.includes('review')),
+      hoisted.moments.some(
+        (m) => m.includes('safe') && m.includes('wallets') && m.includes('tier'),
+      ),
     ).toBe(true);
-    // Both reads were still issued exactly once.
-    expect(hoisted.loadVaultHoldings).toHaveBeenCalledTimes(1);
-    expect(hoisted.loadReviewBar).toHaveBeenCalledTimes(1);
+    // Each read is still issued exactly once.
+    expect(hoisted.loadShellSafe).toHaveBeenCalledTimes(1);
+    expect(hoisted.loadVerifiedHoldings).toHaveBeenCalledTimes(1);
+    expect(hoisted.loadResidentTier).toHaveBeenCalledTimes(1);
   });
 });

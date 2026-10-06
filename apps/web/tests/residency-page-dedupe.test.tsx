@@ -1,47 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 
 /**
- * The Residency route resolves the shell Safe **once** and issues its
- * independent reads concurrently.
+ * The Residency route resolves the shell Safe **once**.
  *
  * `loadResidencySnapshot` used to resolve the Safe internally for the qualified
  * position while the page resolved it *again* for the shell chrome — two reads
  * of the same deployment record. The page now resolves it once and hands it to
  * the snapshot. This test drives the **real** snapshot (not a stub) through the
  * page, so the call count on `loadShellSafe` is the end-to-end proof of the
- * dedupe, and it records the in-flight chain and review-bar reads to prove they
- * overlap rather than being staged one after the other.
+ * dedupe.
+ *
+ * The shell itself (and its review-bar read) now comes from the shared
+ * `(resident)/layout.tsx`, so this page test only covers the page's own reads.
  */
 
 const hoisted = vi.hoisted(() => ({
   redirect: vi.fn(),
   getSessionUser: vi.fn(),
   loadShellSafe: vi.fn(),
-  loadReviewBar: vi.fn(),
   loadVaultHoldings: vi.fn(),
   stepProps: null as Record<string, unknown> | null,
-  moments: [] as string[][],
-  inFlight: new Set<string>(),
 }));
-
-function enter(tag: string) {
-  hoisted.inFlight.add(tag);
-  hoisted.moments.push([...hoisted.inFlight]);
-}
-function leave(tag: string) {
-  hoisted.inFlight.delete(tag);
-}
-function tracked<T>(tag: string, value: T): Promise<T> {
-  enter(tag);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      leave(tag);
-      resolve(value);
-    }, 0);
-  });
-}
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
 vi.mock('@/lib/supabase/server', () => ({
@@ -75,9 +56,6 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }));
 vi.mock('@/lib/safe/shell', () => ({ loadShellSafe: hoisted.loadShellSafe }));
-vi.mock('@/lib/review/review-bar', () => ({
-  loadReviewBar: hoisted.loadReviewBar,
-}));
 vi.mock('@/lib/wealth/vault-holdings', () => ({
   loadVaultHoldings: hoisted.loadVaultHoldings,
 }));
@@ -107,14 +85,11 @@ vi.mock('@/lib/residency/permit', () => ({
   issuePermit: () => ({ status: 'not-configured', reason: 'no gate' }),
   readPermitIssuanceGate: () => null,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
-  ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ContentContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/components/wallet/WalletProvider', () => ({
-  WalletProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  WalletProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/components/residency/ResidencyStep', () => ({
   ResidencyStep: (props: Record<string, unknown>) => {
@@ -123,7 +98,7 @@ vi.mock('@/components/residency/ResidencyStep', () => ({
   },
 }));
 
-import ResidencyPage from '@/app/residency/page';
+import ResidencyPage from '@/app/(resident)/residency/page';
 
 const SAFE = {
   address: '0x5Af1000000000000000000000000000000000c09D',
@@ -133,8 +108,6 @@ const SAFE = {
 };
 
 beforeEach(() => {
-  hoisted.moments.length = 0;
-  hoisted.inFlight.clear();
   hoisted.stepProps = null;
   hoisted.getSessionUser.mockResolvedValue({
     userId: 'user-1',
@@ -143,20 +116,16 @@ beforeEach(() => {
   });
   hoisted.loadShellSafe.mockReset();
   hoisted.loadShellSafe.mockResolvedValue(SAFE);
-  hoisted.loadReviewBar.mockReset();
-  hoisted.loadReviewBar.mockImplementation(() =>
-    tracked('review', { show: false, reference: null, reviewed: false, isReviewer: false }),
-  );
   hoisted.loadVaultHoldings.mockReset();
-  hoisted.loadVaultHoldings.mockImplementation(() => tracked('chain', []));
+  hoisted.loadVaultHoldings.mockResolvedValue([]);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('ResidencyPage — one Safe read, concurrent snapshot reads', () => {
-  it('resolves the shell Safe once and overlaps the snapshot chain read with the review bar', async () => {
+describe('ResidencyPage — one Safe read', () => {
+  it('resolves the shell Safe once and hands it to the snapshot', async () => {
     render((await ResidencyPage()) as ReactElement);
 
     // The page resolves the Safe once; the real snapshot reuses that value
@@ -166,13 +135,6 @@ describe('ResidencyPage — one Safe read, concurrent snapshot reads', () => {
     expect(hoisted.loadShellSafe).toHaveBeenCalledWith('user-1');
     // The reused Safe is the one the qualified read points at.
     expect(hoisted.loadVaultHoldings).toHaveBeenCalledWith(SAFE.address);
-
-    // The chain read (inside the real snapshot) and the review bar overlap. The
-    // old page awaited the whole snapshot before starting the review bar, so no
-    // moment could contain both tags.
-    expect(
-      hoisted.moments.some((m) => m.includes('chain') && m.includes('review')),
-    ).toBe(true);
 
     // The snapshot still reaches the step, with its returned shape intact.
     expect(hoisted.stepProps?.snapshot).toMatchObject({
