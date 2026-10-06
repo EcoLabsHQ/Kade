@@ -226,6 +226,42 @@ export function readRpcUrlFor(env: ChainEnv): string | null {
 }
 
 /**
+ * The deployed `MembershipManager` address.
+ *
+ * Server-only and deliberately **not** `NEXT_PUBLIC_`: the manager address is a
+ * change-control input, and the browser must not be able to substitute a
+ * different manager. Returns null (never a placeholder) when absent or
+ * malformed, so the membership flow degrades to `not-configured` instead of
+ * targeting an address nobody controls. The contracts are not deployed, so this
+ * is unset in this build.
+ */
+export function readMembershipManagerAddress(): string | null {
+  return readAddressEnv('KADE_MEMBERSHIP_MANAGER_ADDRESS');
+}
+
+/**
+ * The chain the `MembershipManager` is deployed on.
+ *
+ * Server-only. Returns null when absent or not a positive integer, so an
+ * unconfigured environment reports `not-configured` rather than assuming a
+ * chain. The contracts are not deployed, so this is unset in this build.
+ */
+export function readMembershipChainId(): number | null {
+  const raw = process.env.KADE_MEMBERSHIP_CHAIN_ID?.trim();
+  if (!raw) return null;
+  if (!/^\d+$/.test(raw)) {
+    console.warn('[kade] KADE_MEMBERSHIP_CHAIN_ID is not an integer; ignoring it.');
+    return null;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    console.warn('[kade] KADE_MEMBERSHIP_CHAIN_ID is not a positive chain id; ignoring it.');
+    return null;
+  }
+  return value;
+}
+
+/**
  * The Reown/WalletConnect project id used by the browser wallet modal.
  *
  * Public by nature (it ships in the browser bundle and is not a secret), but it
