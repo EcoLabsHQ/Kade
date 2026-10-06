@@ -524,21 +524,28 @@ function StateE({
 }) {
   return (
     <div data-testid="colosseum-state-e" style={certificateStage}>
-      <button
-        type="button"
-        onClick={onOpenFullScreen}
-        aria-label="Open the citizenship certificate full-screen"
-        className="kade-passport-trigger"
-      >
-        <span aria-hidden="true" className="kade-passport-trigger-badge">
-          Open
-        </span>
+      {/*
+        The artifact is a non-interactive container; a real <button> overlays it
+        as a sibling, so the button carries the accessible name while the card's
+        text stays in the accessibility tree. A <button> wrapping the block
+        content would be invalid (phrasing-content content model).
+      */}
+      <div className="kade-passport-trigger">
         <CertificateArtifact
           variant="embedded"
           serial={serial}
           issuedAt={issuedAt}
         />
-      </button>
+        <span aria-hidden="true" className="kade-passport-trigger-badge">
+          Open
+        </span>
+        <button
+          type="button"
+          onClick={onOpenFullScreen}
+          aria-label="Open the citizenship certificate full-screen"
+          className="kade-passport-trigger-button"
+        />
+      </div>
     </div>
   );
 }

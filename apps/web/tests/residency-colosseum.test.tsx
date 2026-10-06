@@ -8,7 +8,7 @@ import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
  * The mocked Colosseum sub-section inside Residency.
  *
  * States A–E are driven by the real derived checks; the 2-minute clock and the
- * passport are component state. The clock is advanced with fake timers so the
+ * certificate are component state. The clock is advanced with fake timers so the
  * "Become a Citizen" gate and the nav highlight can be exercised without a real
  * two-minute wait.
  */
@@ -143,7 +143,7 @@ describe('ColosseumResidency — states', () => {
     ).toBeEnabled();
   });
 
-  it('State D → E: becoming a citizen celebrates with the full-screen passport and clears the highlight', () => {
+  it('State D → E: becoming a citizen celebrates with the full-screen certificate and clears the highlight', () => {
     render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     act(() => {
@@ -159,7 +159,7 @@ describe('ColosseumResidency — states', () => {
     expect(screen.getByTestId('colosseum-certificate-serial')).toHaveTextContent(
       /^KADE-CL-/,
     );
-    // …and the milestone plays the full-screen passport reveal.
+    // …and the milestone plays the full-screen certificate reveal.
     const overlay = screen.getByTestId('colosseum-certificate-overlay');
     expect(overlay).toBeInTheDocument();
     expect(within(overlay).getByText(/colosseum citizenship certificate/i)).toBeInTheDocument();
@@ -236,7 +236,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('1:00');
   });
 
-  it('shows the passport immediately from a stored citizenship, without re-animating', () => {
+  it('shows the certificate immediately from a stored citizenship, without re-animating', () => {
     window.localStorage.setItem(
       'kade.colosseum.progress.app-42',
       JSON.stringify({
@@ -340,7 +340,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* Full-screen reveals: the virtual residency pass, the passport, reduced motion */
+/* Full-screen reveals: the virtual residency pass, the certificate, reduced motion */
 /* -------------------------------------------------------------------------- */
 
 function mockMatchMedia(matches: boolean): void {
@@ -568,10 +568,12 @@ describe('ColosseumResidency — the inline certificate control', () => {
     expect(trigger.tagName).toBe('BUTTON');
     expect(trigger).toHaveAttribute('type', 'button');
     expect(trigger).not.toBeDisabled();
-    // The embedded artifact lives inside the control.
-    expect(within(trigger).getByTestId('colosseum-certificate')).toBeInTheDocument();
+    // The artifact is a *sibling* of the overlay button, not a child, so the
+    // card's text stays in the accessibility tree and the nesting is valid.
+    const artifact = screen.getByTestId('colosseum-certificate');
+    expect(artifact.parentElement).toBe(trigger.parentElement);
     expect(
-      within(trigger).getByTestId('colosseum-certificate-serial'),
+      within(artifact).getByTestId('colosseum-certificate-serial'),
     ).toHaveTextContent('KADE-CL-ABCD2345');
 
     fireEvent.click(trigger);
