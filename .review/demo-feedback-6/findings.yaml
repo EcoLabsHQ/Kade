@@ -1,0 +1,22 @@
+- id: F1
+  severity: WARN
+  scope: shell-streaming
+  title: "Dedupe test does not cover the new four-call-site slot structure"
+  evidence: "apps/web/tests/per-request-dedupe.test.ts; apps/web/src/app/(resident)/layout.tsx:88-108; ShellSafeCard/ShellReviewNotice/ShellReviewBanner/ShellAdminSwitch"
+  failure_mode: "A future change that breaks request-scoped caching at the new call sites would issue up to four review-bar reads per request with no test failing."
+  materiality: "Coverage gap; the cache() collapse is sound today."
+  status: open
+  introduced_by: ea42d71
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: colosseum-flow-redesign
+  title: "State C can briefly render '0:00' and a full compliance bar before the window starts"
+  evidence: "apps/web/src/components/residency/ColosseumResidency.tsx (showStateC with residentSince===null; secondsRemainingFrom returns 0; ComplianceProgress fraction=1)"
+  failure_mode: "One painted frame after hydration presents the compliance window as complete before the clock effect sets it to 2:00."
+  materiality: "Pre-existing (known-good showed the same '0:00' text); the new progress bar amplifies it. Not candidate-introduced."
+  status: open
+  introduced_by: 097e3125e823bcfd5ce9c12f5d782e9c2cec03af
+  resolved_by: null
+  recheck_attempts: 0

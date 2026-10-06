@@ -1,0 +1,29 @@
+iteration: demo-feedback-6
+profile: NORMAL
+known_good: 097e3125e823bcfd5ce9c12f5d782e9c2cec03af
+candidate: ea42d71
+mode: discovery
+reviewed_scopes:
+  shell-streaming: complete
+  colosseum-flow-redesign: complete
+active_findings: [F1, F2]
+resolved_findings: []
+next_finding_id: F3
+recheck_attempts:
+  F1: 0
+  F2: 0
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: ea42d71
+  recorded_at: 2026-10-06
+  note: "First run on the same commit FAILED on 3 timeouts in onboarding-flow.test.tsx at load average 27-31; classified environmental, confirmed independently (the file passes 41/41 in 14.8s isolated and no changed file is in its import chain). Re-run PASSED."
+notes:
+  - "The reviewer noted HEAD advanced to 49ddc35 mid-review and pinned every read to ea42d71, so this verdict covers ea42d71 only; the reveal task is reviewed separately (demo-feedback-7)."
+  - "F1 (WARN, open): per-request-dedupe.test.ts exercises the loaders directly, not through the layout's four new loadReviewBar call sites. The cache() collapse is sound today (verified by reading the loaders and the call graph); the gap is that a future regression would not fail a test."
+  - "F2 (WARN, open): State C can render '0:00' and a full compliance bar for one painted frame before the clock effect starts the window. Pre-existing (known-good showed the same '0:00' text); the new thin progress bar amplifies it visually. Not candidate-introduced."
+  - "Scope extension accepted: the chrome task's additive edits to Sidebar.tsx and SidebarFooter.tsx were verified behaviour-equivalent when no slot is passed (AdminSwitchControl.tsx is a byte-for-byte extraction; admin and vault/withdraw callers unchanged)."
+  - "The chrome worker's client-navigation finding was verified accurate: Next 15.5.25 preserves layouts across in-group soft navigation, so the change benefits hard loads, cross-boundary entry and router.refresh(), and the docstring scopes the benefit honestly."
+human_note: "The human pushed ea42d71 themselves before the gates finished, to see the deploy."
