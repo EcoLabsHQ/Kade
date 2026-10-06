@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /**
@@ -10,6 +11,12 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
  *
  * `isReviewer` lets the shell offer the Admin surface to a user with a
  * `public.reviewers` row. It is a display flag only: RLS is the real gate.
+ *
+ * Wrapped in React's per-request `cache()`, so the shared `(resident)/layout.tsx`
+ * and any page that also needs the review state (the withdraw route) share a
+ * single read per request instead of repeating the applications/reviewers
+ * queries. The cache is request-scoped: it never carries a resident's review
+ * state into another request.
  */
 export interface ReviewBarState {
   readonly show: boolean;
@@ -26,36 +33,38 @@ export interface ReviewBarState {
   readonly isReviewer: boolean;
 }
 
-export async function loadReviewBar(profileId: string): Promise<ReviewBarState> {
-  try {
-    const client = await createSupabaseServerClient();
-    const [application, reviewer] = await Promise.all([
-      client
-        .from('applications')
-        .select('ref, status')
-        .eq('profile_id', profileId)
-        .maybeSingle(),
-      client
-        .from('reviewers')
-        .select('id')
-        .eq('id', profileId)
-        .maybeSingle(),
-    ]);
-    if (application.error) throw new Error(application.error.message);
-    const row = application.data as
-      | { ref: string | null; status: string | null }
-      | null;
-    return {
-      show: row !== null && row.status !== 'approved',
-      reference: row?.ref ?? null,
-      reviewed: row !== null && row.status === 'approved',
-      isReviewer: reviewer.error === null && reviewer.data !== null,
-    };
-  } catch (cause) {
-    console.warn(
-      '[kade] Could not read the review-bar state:',
-      cause instanceof Error ? cause.message : cause,
-    );
-    return { show: false, reference: null, reviewed: false, isReviewer: false };
-  }
-}
+export const loadReviewBar = cache(
+  async (profileId: string): Promise<ReviewBarState> => {
+    try {
+      const client = await createSupabaseServerClient();
+      const [application, reviewer] = await Promise.all([
+        client
+          .from('applications')
+          .select('ref, status')
+          .eq('profile_id', profileId)
+          .maybeSingle(),
+        client
+          .from('reviewers')
+          .select('id')
+          .eq('id', profileId)
+          .maybeSingle(),
+      ]);
+      if (application.error) throw new Error(application.error.message);
+      const row = application.data as
+        | { ref: string | null; status: string | null }
+        | null;
+      return {
+        show: row !== null && row.status !== 'approved',
+        reference: row?.ref ?? null,
+        reviewed: row !== null && row.status === 'approved',
+        isReviewer: reviewer.error === null && reviewer.data !== null,
+      };
+    } catch (cause) {
+      console.warn(
+        '[kade] Could not read the review-bar state:',
+        cause instanceof Error ? cause.message : cause,
+      );
+      return { show: false, reference: null, reviewed: false, isReviewer: false };
+    }
+  },
+);

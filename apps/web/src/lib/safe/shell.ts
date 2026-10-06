@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { chainByChainId } from '@kade/shared';
 import {
   safeDeploymentStore,
@@ -19,6 +20,14 @@ import {
  *
  * Never throws. The shell is rendered on every authenticated page, so a database
  * problem must degrade to "no account yet" rather than take the page down.
+ *
+ * Wrapped in React's per-request `cache()`. The shared `(resident)/layout.tsx`
+ * reads the shell state and a page that needs the Safe address reads it again
+ * (`holdings`, `invest`, `residency`, `account`, …); without this, one navigation
+ * performed the same deployment-record read twice. `cache()` collapses those
+ * into a single read **within the request that shares it** — the cache is
+ * request-scoped, so it can never serve one resident's Safe to another or
+ * outlive the render.
  */
 export interface ShellSafe {
   readonly address: string | null;
@@ -47,18 +56,20 @@ function explorerForChain(chainId: number): string | null {
   return chainByChainId(chainId)?.explorerUrl ?? null;
 }
 
-export async function loadShellSafe(profileId: string): Promise<ShellSafe> {
-  try {
-    const record = await safeDeploymentStore().getForProfile(profileId);
-    if (!record) return NO_SAFE;
-    return {
-      address: record.safeAddress,
-      deployed: record.status === 'deployed',
-      explorerUrl: explorerForChain(record.manifest.deploymentChainId),
-      status: record.status,
-    };
-  } catch (cause) {
-    console.warn('[kade] could not read the Safe record for the shell:', cause);
-    return NO_SAFE;
-  }
-}
+export const loadShellSafe = cache(
+  async (profileId: string): Promise<ShellSafe> => {
+    try {
+      const record = await safeDeploymentStore().getForProfile(profileId);
+      if (!record) return NO_SAFE;
+      return {
+        address: record.safeAddress,
+        deployed: record.status === 'deployed',
+        explorerUrl: explorerForChain(record.manifest.deploymentChainId),
+        status: record.status,
+      };
+    } catch (cause) {
+      console.warn('[kade] could not read the Safe record for the shell:', cause);
+      return NO_SAFE;
+    }
+  },
+);
