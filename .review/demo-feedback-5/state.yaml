@@ -1,0 +1,36 @@
+iteration: demo-feedback-5
+profile: NORMAL
+known_good: 5e0991949dc7cb7624a8806c89289f4552846728
+candidate: d94e6e2
+mode: discovery
+reviewed_scopes:
+  onboarding-completeness: complete
+  post-login-destination: complete
+  loading-boundaries: complete
+  certificate-reveal-motion: complete
+  certificate-trigger: complete
+  certificate-rename: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: d94e6e2
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc. Machine idle; no worker tests running in parallel."
+requirements:
+  - "A resident who already completed onboarding must land on the Overview after signing in, not be sent through onboarding again."
+  - "The fallback shown while the resident shell resolves must not be the login/setup-shaped placeholder."
+  - "The first time the citizenship artifact opens must be a distinctly spectacular reveal; every later open uses the refined standard reveal."
+  - "The citizenship artifact must be renamed so it does not collide with the real identity passport that Self verifies."
+  - "The human-approved reveal feel (the gentle 22-degree tilt, the sweep, the staggered fields) must be preserved, not regressed."
+notes:
+  - "F1 (WARN, open): save_onboarding_step2 does not constrain p_gender server-side, and isComplete now masks an empty gender. The only in-app write path validates the strict enum before the RPC, so no normal submission can persist ''; the bypass requires an authenticated resident to call the RPC directly and yields no privilege gain. The missing RPC constraint is pre-existing; the candidate changes the predicate that made it matter. Queued for a bounded hardening pass (a CHECK allowing NULL but rejecting empty/invalid)."
+  - "Prior WARN demo-feedback-4 F1 (reduced-motion static sweep) is RESOLVED: globals.css pins the guilloche ::after to opacity 0 under prefers-reduced-motion, and the sweep element is not rendered."
+  - "The approved baseline animation is preserved byte-identically (kade-passport-flip / kade-residency-pass-flip 22/24 degrees, kade-artifact-sweep, the four-step field stagger); improvements are layered on top."
+  - "The earlier intermediate-commit VERIFY FAILURE was classified as the known load-sensitive flake in onboarding-flow.test.tsx (isolated ~2650ms vs a 5000ms budget) under concurrent worker test load. The reviewer confirmed the classification: that test is not in the diff and imports nothing changed."
+human_note: "The human approved a follow-up: make the resident chrome persist (non-blocking shell reads in the layout) instead of being replaced by a skeleton."

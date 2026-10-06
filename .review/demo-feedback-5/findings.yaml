@@ -1,0 +1,12 @@
+- id: F1
+  severity: WARN
+  scope: onboarding-completeness
+  title: "save_onboarding_step2 does not constrain p_gender, and completeness now masks an empty gender"
+  evidence: "supabase/migrations/20261005000001_gender_and_relation.sql (no check on p_gender; execute granted to authenticated); apps/web/src/app/onboarding/actions.ts:53-58; packages/shared/src/onboarding.ts:178,264-274; apps/web/src/lib/onboarding/state.ts:35-36"
+  failure_mode: "A resident who deliberately calls the RPC directly with p_gender:'' stores an empty gender; isComplete then reports them complete and they skip the onboarding gate."
+  materiality: "Defense-in-depth gap. The normal write path validates the strict enum before the RPC; the bypass is deliberate, self-scoped, and yields no privilege gain (the onboarding gate is a UX gate, not a security boundary). The missing RPC constraint is pre-existing; this candidate changes the predicate that made it matter."
+  status: open
+  introduced_by: d94e6e2
+  resolved_by: null
+  recheck_attempts: 0
+  planned_remediation: "Bounded hardening pass: add a CHECK on profiles.gender / household_members.gender that allows NULL (legacy rows) but rejects empty or out-of-enum values, and optionally guard p_gender in save_onboarding_step2. Must not break the legacy NULL rows."
