@@ -260,6 +260,12 @@ describe('ColosseumResidency — states', () => {
     });
     expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
 
+    // The counter is still honest in State D: the window is complete.
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('0:00');
+    expect(
+      screen.getByTestId('colosseum-compliance-progress'),
+    ).toHaveAttribute('aria-valuetext', '0:00 remaining');
+
     // Exactly one primary action in the state, and it is citizenship.
     const primaries = screen
       .getAllByRole('button')

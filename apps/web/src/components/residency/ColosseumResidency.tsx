@@ -343,6 +343,7 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
           affordance so the two claims never compete. */}
       {showStateD ? (
         <StateD
+          remainingSeconds={secondsRemaining}
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
           onBecomeCitizen={becomeCitizen}
@@ -659,10 +660,12 @@ function StateC({
 
 /** State D — the 2-minute window elapsed; "Become a Citizen" is the action. */
 function StateD({
+  remainingSeconds,
   residencyPassClaimed,
   onClaimResidency,
   onBecomeCitizen,
 }: {
+  readonly remainingSeconds: number;
   readonly residencyPassClaimed: boolean;
   readonly onClaimResidency: () => void;
   readonly onBecomeCitizen: () => void;
@@ -674,7 +677,7 @@ function StateD({
         You have remained a compliant resident for 2 minutes. Become a
         Colosseum Citizen to receive your citizenship certificate.
       </p>
-      <ComplianceProgress remainingSeconds={0} />
+      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
         data-variant="primary"
