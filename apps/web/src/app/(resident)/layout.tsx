@@ -1,10 +1,19 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { chainsForEnv } from '@kade/shared';
 import { AppShell } from '@/components/shell/AppShell';
+import {
+  ShellAdminFallback,
+  ShellAdminSwitch,
+} from '@/components/shell/ShellAdminSwitch';
+import { ShellReviewBanner } from '@/components/shell/ShellReviewBanner';
+import { ShellReviewNotice } from '@/components/shell/ShellReviewNotice';
+import {
+  ShellSafeCard,
+  ShellSafeCardFallback,
+} from '@/components/shell/ShellSafeCard';
 import { getSessionUser } from '@/lib/supabase/server';
 import { readChainEnv } from '@/lib/env';
-import { loadReviewBar } from '@/lib/review/review-bar';
-import { loadShellSafe } from '@/lib/safe/shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,20 +44,32 @@ function activeSettlementChainLabel(): string {
  * visibly reload) when the resident moves between screens; only the page content
  * is replaced, and the group's `loading.tsx` covers that content area alone.
  *
+ * **The frame renders immediately.** The session is still resolved here, before
+ * any chrome: an unauthenticated request must redirect to `/login` server-side
+ * and must never see the shell. Once the session is known, `AppShell` renders
+ * with only what is already available — the nav, the chain label and the page
+ * content. The two per-resident reads (`loadShellSafe` and `loadReviewBar`) are
+ * no longer awaited here; they move behind `<Suspense>` in the async slot
+ * components below, so the shell paints while they resolve instead of waiting
+ * for both database reads first. That blocking pair was the floor this layout
+ * imposed on every full page load.
+ *
+ * Each streamed slot has a fallback that fabricates nothing: the Safe card's is
+ * an empty grey shape (never "no account yet" or `0x…`), the Admin affordance's
+ * is an empty shape (never the disabled "not a reviewer" state), and the two
+ * conditional regions — the review notice and the top banner — render nothing
+ * until they know whether they apply. See `ShellSlotFallback`.
+ *
  * While this layout itself is resolving, the boundary that covers it is the
  * parent segment's `app/loading.tsx`, not this group's own `loading.tsx`: a
  * segment's `loading.tsx` wraps its children (its pages), not the layout beside
  * it. That fallback is the resident shell skeleton (`ResidentShellLoading`), not
  * the setup placeholder, so the resident frame never flashes the sign-in shape.
  *
- * The session and the shell state are resolved **once here**, from the same
- * reads the pages used to make to feed `AppShell`. Each page keeps its own reads
- * for its own content and its own redirects (for example the Overview's
- * not-onboarded redirect to `/onboarding`); this layout only owns the shell.
- *
- * Unauthenticated requests are redirected to `/login` exactly as before. The
- * pages keep their own session gate as well, so the policy is unchanged if a
- * page is ever reached outside this group.
+ * Each page keeps its own reads for its own content and its own redirects (for
+ * example the Overview's not-onboarded redirect to `/onboarding`); this layout
+ * only owns the shell. The pages keep their own session gate as well, so the
+ * policy is unchanged if a page is ever reached outside this group.
  */
 export default async function ResidentLayout({
   children,
@@ -58,21 +79,32 @@ export default async function ResidentLayout({
     redirect('/login');
   }
 
-  const [shellSafe, reviewBar] = await Promise.all([
-    loadShellSafe(session.userId),
-    loadReviewBar(session.userId),
-  ]);
+  const network = activeSettlementChainLabel();
 
   return (
     <AppShell
       email={session.email}
-      safeAddress={shellSafe.address}
-      safeDeployed={shellSafe.deployed}
-      safeStatus={shellSafe.status}
-      explorerUrl={shellSafe.explorerUrl}
-      network={activeSettlementChainLabel()}
-      reviewBar={reviewBar}
-      isReviewer={reviewBar.isReviewer}
+      network={network}
+      safeCard={
+        <Suspense fallback={<ShellSafeCardFallback />}>
+          <ShellSafeCard userId={session.userId} network={network} />
+        </Suspense>
+      }
+      reviewNotice={
+        <Suspense fallback={null}>
+          <ShellReviewNotice userId={session.userId} />
+        </Suspense>
+      }
+      reviewBanner={
+        <Suspense fallback={null}>
+          <ShellReviewBanner userId={session.userId} />
+        </Suspense>
+      }
+      footerAdmin={
+        <Suspense fallback={<ShellAdminFallback />}>
+          <ShellAdminSwitch userId={session.userId} />
+        </Suspense>
+      }
     >
       {children}
     </AppShell>
