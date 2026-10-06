@@ -189,7 +189,6 @@ export function FullScreenReveal({
   const titleId = useId();
   const cardRef = useRef<HTMLDivElement>(null);
   const tiltRef = useRef<HTMLDivElement>(null);
-  const foilLightRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const foil = useRef<FoilState>(freshFoilState());
   const reducedMotion = usePrefersReducedMotion();
@@ -333,8 +332,6 @@ export function FullScreenReveal({
     const state = foil.current;
     const tilt = tiltRef.current;
     if (!tilt) return;
-    tilt.style.setProperty('--kade-foil-x', `${state.x}px`);
-    tilt.style.setProperty('--kade-foil-y', `${state.y}px`);
     tilt.style.setProperty('--kade-tilt-x', `${state.tiltX}deg`);
     tilt.style.setProperty('--kade-tilt-y', `${state.tiltY}deg`);
   }, []);
@@ -391,7 +388,6 @@ export function FullScreenReveal({
         Math.min(FOIL_MAX_TILT_DEG, nx * 4),
       );
       state.active = true;
-      foilLightRef.current?.setAttribute('data-active', 'true');
       startFoilLoop();
     },
     [foilReady, reducedMotion, startFoilLoop],
@@ -403,7 +399,6 @@ export function FullScreenReveal({
     state.active = false;
     state.targetTiltX = 0;
     state.targetTiltY = 0;
-    foilLightRef.current?.setAttribute('data-active', 'false');
     startFoilLoop();
   }, [reducedMotion, startFoilLoop]);
 
@@ -495,23 +490,13 @@ export function FullScreenReveal({
             <div className={documentClassName} style={documentWrap}>
               {children}
             </div>
-            {reducedMotion ? (
-              <div
-                aria-hidden="true"
-                className="kade-foil-light kade-foil-light-static"
-              />
-            ) : (
-              <>
-                <div
-                  ref={foilLightRef}
-                  aria-hidden="true"
-                  className="kade-foil-light"
-                />
-                {/* Exactly ONE light pass per reveal. The celebration tier
-                    styles this same single element richer, so its flourish
-                    reads as one continuous gesture rather than a second pass. */}
-                <div aria-hidden="true" className="kade-foil-pass" />
-              </>
+            {/* Exactly ONE light sweep per reveal, and only when motion is
+                allowed. It traverses the whole card; the celebration tier
+                styles this same single element richer, so its flourish reads as
+                one continuous gesture rather than a second pass. Under
+                `prefers-reduced-motion` no sweep element is rendered at all. */}
+            {reducedMotion ? null : (
+              <div aria-hidden="true" className="kade-foil-pass" />
             )}
           </div>
         </div>

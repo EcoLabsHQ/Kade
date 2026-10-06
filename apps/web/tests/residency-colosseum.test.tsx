@@ -1138,7 +1138,7 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
     expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.querySelector('.kade-foil-tilt')).toBeNull();
     expect(document.querySelector('.kade-foil-pass')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
@@ -1263,7 +1263,7 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
     expect(document.querySelector('.kade-celebration-ray')).toBeNull();
     expect(document.querySelector('.kade-celebration-bloom')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.querySelector('.kade-foil-tilt')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
   });
@@ -1317,12 +1317,17 @@ describe('ColosseumResidency — reduced motion', () => {
     );
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-passport-flip')).toBeNull();
-    // The reduced-motion path renders no sweep element at all.
+    // The reduced-motion path renders no sweep or light element at all; the
+    // card content itself keeps it from being blank.
     expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    // It uses the static highlight instead, so the card is never left blank.
-    expect(document.querySelector('.kade-foil-light-static')).not.toBeNull();
+    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(
+      screen
+        .getByTestId('colosseum-certificate-overlay')
+        .querySelectorAll('.kade-artifact-field').length,
+    ).toBeGreaterThan(0);
   });
 
   it('renders no celebratory overlays under reduced motion', () => {
