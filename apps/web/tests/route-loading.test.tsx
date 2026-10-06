@@ -5,17 +5,16 @@ import { cleanup, render, screen } from '@testing-library/react';
 /**
  * Route-level loading shells.
  *
- * The human's complaint was that a click between pages produced 1–2 seconds of
- * dead screen. The fix is App Router `loading.tsx` fallbacks that paint the
- * shell immediately while the `force-dynamic` page resolves. These tests pin the
- * two properties that make the fallback safe:
+ * The resident routes now share `(resident)/layout.tsx`, which keeps the
+ * sidebar, the top banner and the footer mounted across client-side navigation.
+ * The loading state therefore covers **only the content area**: these tests pin
+ * that the resident fallback draws the content skeleton and nothing else — no
+ * shell frame, no sidebar, no footer — while still rendering no data, so no
+ * balance, name, address, status or figure can be mistaken for real data.
  *
- *   1. it renders **no data** — the placeholder region's text content is empty,
- *      so no balance, name, address, status or figure can be mistaken for real
- *      data (in particular it must not render the Safe card's "no account yet"
- *      status while the real account loads); and
- *   2. it renders the frame once — a single global footer, the same shell
- *      classes and paddings, so the layout does not jump when the page arrives.
+ * `/login` and `/onboarding` are outside the group and render their own setup
+ * flow, never the resident shell, so their fallbacks (and the root fallback that
+ * also covers `/admin` and `/vault/withdraw`) must stay shell-free.
  *
  * It also pins the navigation prefetch contract: the resident nav destinations
  * are Next `<Link>`s with the default (hover/viewport) prefetch, never
@@ -45,45 +44,27 @@ vi.mock('next/link', () => ({
   },
 }));
 
+import ResidentLoading from '@/app/(resident)/loading';
 import RootLoading from '@/app/loading';
-import HoldingsLoading from '@/app/holdings/loading';
-import InvestLoading from '@/app/invest/loading';
-import ResidencyLoading from '@/app/residency/loading';
-import BankLoading from '@/app/bank/loading';
-import CardLoading from '@/app/card/loading';
-import VoteLoading from '@/app/vote/loading';
-import AccountLoading from '@/app/account/loading';
 import LoginLoading from '@/app/login/loading';
 import OnboardingLoading from '@/app/onboarding/loading';
 import { NavItem } from '@/components/shell/NavItem';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
-/** Every resident-shell route's fallback, so a missing file fails the suite. */
-const LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
-  ['/', RootLoading],
-  ['/holdings', HoldingsLoading],
-  ['/invest', InvestLoading],
-  ['/residency', ResidencyLoading],
-  ['/bank', BankLoading],
-  ['/card', CardLoading],
-  ['/vote', VoteLoading],
-  ['/account', AccountLoading],
-];
-
 /**
- * The non-resident routes. They render their own setup flow, never the resident
- * `AppShell`, so their fallbacks must not draw a resident sidebar or frame.
+ * The shell-free fallbacks: the root segment (which also covers `/admin` and
+ * `/vault/withdraw`) and the two non-resident routes.
  */
 const PLAIN_LOADERS: ReadonlyArray<readonly [string, () => ReactNode]> = [
+  ['/ (root fallback)', RootLoading],
   ['/login', LoginLoading],
   ['/onboarding', OnboardingLoading],
 ];
 
-/** The text the fallback's decorative placeholder regions contain. */
+/** The text the fallback's decorative placeholder region contains. */
 function placeholderText(container: HTMLElement): string {
   const content = container.querySelector('[data-testid="route-loading"]');
-  const sidebar = container.querySelector('[data-testid="route-loading-sidebar"]');
-  return `${content?.textContent ?? ''}${sidebar?.textContent ?? ''}`.trim();
+  return (content?.textContent ?? '').trim();
 }
 
 /**
@@ -97,54 +78,42 @@ function textWithoutFooter(container: HTMLElement): string {
   return clone.textContent ?? '';
 }
 
-describe('route loading shells', () => {
-  for (const [route, Loading] of LOADERS) {
-    it(`renders an immediate, data-free shell for ${route}`, () => {
-      const { container } = render(<Loading />);
+describe('resident content loading shell', () => {
+  it('renders a data-free content skeleton with no shell frame, sidebar or footer', () => {
+    const { container } = render(<ResidentLoading />);
 
-      // The shell frame, with the real shell's layout classes so the frame
-      // does not shift when the page replaces it.
-      expect(container.querySelector('.kade-shell')).not.toBeNull();
-      expect(container.querySelector('.kade-sidebar')).not.toBeNull();
-      expect(container.querySelector('.kade-content')).not.toBeNull();
-      expect(container.querySelector('.kade-content-padding')).not.toBeNull();
-      expect(screen.getByTestId('route-loading')).toBeInTheDocument();
+    // The content column, with the real content's layout classes so the column
+    // does not shift when the page replaces it.
+    expect(container.querySelector('.kade-content')).not.toBeNull();
+    expect(container.querySelector('.kade-content-padding')).not.toBeNull();
+    expect(screen.getByTestId('route-loading')).toBeInTheDocument();
 
-      // No data: every placeholder is an empty shape.
-      expect(placeholderText(container)).toBe('');
+    // The shell frame is entirely absent: the persistent layout already draws
+    // it, so the fallback must not draw a second one.
+    expect(container.querySelector('.kade-shell')).toBeNull();
+    expect(container.querySelector('.kade-sidebar')).toBeNull();
+    expect(screen.queryByTestId('route-loading-sidebar')).toBeNull();
+    expect(container.querySelectorAll('footer')).toHaveLength(0);
 
-      // No fabricated or misleading content anywhere outside the real footer.
-      const text = textWithoutFooter(container);
-      expect(text).not.toMatch(/[0-9]/);
-      expect(text).not.toMatch(/[$€£%]/);
-      expect(text).not.toMatch(/0x/i);
-      expect(text.toLowerCase()).not.toContain('no account yet');
-      expect(text.toLowerCase()).not.toContain('created');
-      expect(text.toLowerCase()).not.toContain('deployed');
-      expect(text.toLowerCase()).not.toContain('pre-approved');
-      expect(screen.queryByTestId('safe-address-card')).toBeNull();
-      expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
+    // No data: every placeholder is an empty shape.
+    expect(placeholderText(container)).toBe('');
 
-      // The global footer is rendered once, never duplicated by the fallback.
-      expect(container.querySelectorAll('footer')).toHaveLength(1);
+    // No fabricated or misleading content anywhere.
+    const text = textWithoutFooter(container);
+    expect(text).not.toMatch(/[0-9]/);
+    expect(text).not.toMatch(/[$€£%]/);
+    expect(text).not.toMatch(/0x/i);
+    expect(text.toLowerCase()).not.toContain('no account yet');
+    expect(text.toLowerCase()).not.toContain('created');
+    expect(text.toLowerCase()).not.toContain('deployed');
+    expect(text.toLowerCase()).not.toContain('pre-approved');
+    expect(screen.queryByTestId('safe-address-card')).toBeNull();
+    expect(screen.queryByTestId('sidebar-review-notice')).toBeNull();
 
-      // An honest status is exposed to assistive tech.
-      expect(screen.getByRole('status')).toHaveTextContent('Loading');
+    // An honest status is exposed to assistive tech.
+    expect(screen.getByRole('status')).toHaveTextContent('Loading');
 
-      cleanup();
-    });
-  }
-
-  it('shares one skeleton across every covered route', () => {
-    const rendered = LOADERS.map(([, Loading]) => {
-      const { container } = render(<Loading />);
-      const html = container.innerHTML;
-      cleanup();
-      return html;
-    });
-    // Identical output means the per-route files really re-use the one shell
-    // rather than drifting into eight copies.
-    expect(new Set(rendered).size).toBe(1);
+    cleanup();
   });
 });
 
@@ -180,14 +149,6 @@ describe('plain loading shells for non-resident routes', () => {
       cleanup();
     });
   }
-
-  it('still renders the resident shell frame on the resident routes', () => {
-    const { container } = render(<RootLoading />);
-    expect(container.querySelector('.kade-shell')).not.toBeNull();
-    expect(container.querySelector('.kade-sidebar')).not.toBeNull();
-    expect(container.querySelectorAll('footer')).toHaveLength(1);
-    cleanup();
-  });
 });
 
 describe('resident nav prefetch', () => {
