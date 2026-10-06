@@ -3,6 +3,15 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
 import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
+import { playRevealSound } from '@/components/residency/reveal-sound';
+
+// Wrap the real cue in a spy so the tests can assert how often the reveal asks
+// for sound without needing a real AudioContext.
+vi.mock('@/components/residency/reveal-sound', async (importActual) => {
+  const actual =
+    await importActual<typeof import('@/components/residency/reveal-sound')>();
+  return { ...actual, playRevealSound: vi.fn(actual.playRevealSound) };
+});
 
 /**
  * The mocked Colosseum sub-section inside Residency.
@@ -1212,5 +1221,127 @@ describe('FullScreenReveal — the page lock', () => {
     outer.unmount();
     expect(priorBodyStyles()).toEqual(previous);
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The reveal sound                                                            */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the reveal sound', () => {
+  const KEY = 'app-sound';
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'AudioContext');
+  });
+
+  function openPass() {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+  }
+
+  it('renders a labelled, persisted mute control that toggles', () => {
+    openPass();
+
+    const mute = screen.getByRole('button', { name: /mute reveal sound/i });
+    expect(mute.tagName).toBe('BUTTON');
+    expect(mute).toHaveAttribute('aria-pressed', 'false');
+    expect(mute).toHaveTextContent(/sound/i);
+
+    fireEvent.click(mute);
+    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBe('1');
+    const unmute = screen.getByRole('button', { name: /unmute reveal sound/i });
+    expect(unmute).toHaveAttribute('aria-pressed', 'true');
+    expect(unmute).toHaveTextContent(/muted/i);
+
+    fireEvent.click(unmute);
+    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /mute reveal sound/i }),
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('restores the persisted mute preference on the next open', () => {
+    window.localStorage.setItem('kade.reveal.sound.muted', '1');
+    openPass();
+
+    expect(
+      screen.getByRole('button', { name: /unmute reveal sound/i }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('asks for the cue exactly once per open and not on a re-render', () => {
+    const cue = vi.mocked(playRevealSound);
+    cue.mockClear();
+
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(cue).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    expect(cue).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the richer celebration cue for the live transition', () => {
+    const cue = vi.mocked(playRevealSound);
+    cue.mockClear();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(cue).toHaveBeenCalledWith('celebration');
+  });
+
+  it('degrades silently when AudioContext is unavailable', async () => {
+    Reflect.deleteProperty(window, 'AudioContext');
+    vi.resetModules();
+    const { playRevealSound: freshPlay } = await import(
+      '@/components/residency/reveal-sound'
+    );
+    expect(() => freshPlay('standard')).not.toThrow();
+    expect(() => freshPlay('celebration')).not.toThrow();
+  });
+
+  it('degrades silently when the AudioContext constructor throws', async () => {
+    (window as unknown as { AudioContext: unknown }).AudioContext = function () {
+      throw new Error('autoplay blocked');
+    };
+    vi.resetModules();
+    const { playRevealSound: freshPlay } = await import(
+      '@/components/residency/reveal-sound'
+    );
+    expect(() => freshPlay('standard')).not.toThrow();
+    expect(() => freshPlay('celebration')).not.toThrow();
   });
 });
