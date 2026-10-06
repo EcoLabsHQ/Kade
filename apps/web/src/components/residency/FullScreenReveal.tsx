@@ -7,6 +7,85 @@ import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 /**
+ * The page-behind scroll lock.
+ *
+ * `overflow: hidden` on the body is not enough: iOS Safari still scrolls the
+ * page behind a fixed overlay, and the page can shift when the lock engages.
+ * The robust form pins the body at its current scroll offset so the page
+ * genuinely cannot move, then puts it back exactly. The lock is
+ * reference-counted so nested reveals (and React's development double-invoke)
+ * cannot overwrite the saved styles with already-locked ones.
+ */
+interface SavedBodyStyles {
+  readonly position: string;
+  readonly top: string;
+  readonly left: string;
+  readonly right: string;
+  readonly overflow: string;
+  readonly paddingRight: string;
+}
+
+let bodyLockCount = 0;
+let savedBodyStyles: SavedBodyStyles | null = null;
+let savedScrollY = 0;
+
+function lockBody(): void {
+  bodyLockCount += 1;
+  if (bodyLockCount > 1) return;
+
+  const body = document.body;
+  savedScrollY = window.scrollY;
+  savedBodyStyles = {
+    position: body.style.position,
+    top: body.style.top,
+    left: body.style.left,
+    right: body.style.right,
+    overflow: body.style.overflow,
+    paddingRight: body.style.paddingRight,
+  };
+
+  body.style.position = 'fixed';
+  body.style.top = `-${savedScrollY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.overflow = 'hidden';
+
+  // `scrollbar-gutter: stable` on the root already reserves the gutter, so only
+  // compensate with padding when the browser does not support it. Never both.
+  const supportsScrollbarGutter =
+    typeof CSS !== 'undefined' &&
+    typeof CSS.supports === 'function' &&
+    CSS.supports('scrollbar-gutter: stable');
+  if (!supportsScrollbarGutter) {
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+  }
+
+  document.documentElement.setAttribute('data-overlay-open', 'true');
+}
+
+function unlockBody(): void {
+  if (bodyLockCount === 0) return;
+  bodyLockCount -= 1;
+  if (bodyLockCount > 0) return;
+
+  const body = document.body;
+  if (savedBodyStyles) {
+    body.style.position = savedBodyStyles.position;
+    body.style.top = savedBodyStyles.top;
+    body.style.left = savedBodyStyles.left;
+    body.style.right = savedBodyStyles.right;
+    body.style.overflow = savedBodyStyles.overflow;
+    body.style.paddingRight = savedBodyStyles.paddingRight;
+  }
+  savedBodyStyles = null;
+
+  document.documentElement.removeAttribute('data-overlay-open');
+  window.scrollTo({ top: savedScrollY, left: 0, behavior: 'instant' });
+}
+
+/**
  * The shared full-screen shell for the Colosseum demo artifacts (the virtual
  * residency pass and the citizenship passport).
  *
@@ -91,14 +170,11 @@ export function FullScreenReveal({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  // Scroll-lock the page only while open; always restore the previous value.
+  // Scroll-lock the page only while open; always restore the previous state.
   useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
+    lockBody();
+    return unlockBody;
   }, [open]);
 
   if (!open || !mounted) return null;
