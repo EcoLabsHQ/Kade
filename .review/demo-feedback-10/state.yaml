@@ -1,0 +1,35 @@
+iteration: demo-feedback-10
+profile: NORMAL
+known_good: be3cd7b
+candidate: 677e868
+mode: discovery
+reviewed_scopes:
+  erc5192-extension: complete
+  soulbound-enforcement: complete
+  membership-manager-state-machine: complete
+  access-control: complete
+  safeaddress-rederivation: complete
+  dependency-pin: complete
+  tests: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 677e868
+  recorded_at: 2026-10-06
+  note: "OZ v5.7.0 installed into the gitignored packages/contracts/lib before verify."
+notes:
+  - "PRIORITY 1 CLEARED: the SafeAddress re-derivation does NOT mask a regression. The reviewer independently reproduced the constants (0xf2deadba...3279f9d / 0x82d8d413...7c217c) from a forced full build; SafeAddress.sol's arithmetic is untouched; the test vector is explicitly synthetic; and the real frozen deployment input DEPLOYED_SAFE_PROXY_CREATION_CODE (packages/shared/src/safe-deployments.ts:268) is unchanged, so the Sepolia resident-Safe address cannot change."
+  - "F1 (WARN): the worker's stated mechanism is WRONG. SafeProxy's metadata `sources` is dependency-scoped (1 entry), so added sources did not change it; the real cause is that solc embeds settings.remappings in metadata, and the new openzeppelin-contracts/ remapping changed every artifact's creation code. The comment in SafeAddress.t.sol:54-58 and README.md:133-137 state the false mechanism. Also the documented re-derivation is cache-fragile: a stale out/SafeProxy.json printed the OLD constants until `forge build --force`. Recommendation: force a clean build (forge clean && forge build) before re-deriving, state the real cause, and consider pinning keccak256(type(SafeProxy).creationCode) inside the test instead of a cacheable artifact value."
+  - "F2 (WARN): renounceOwnership remains callable by the owner (standard OZ Ownable2Step behaviour). Deliberate Safe action only; no attacker path."
+  - "F3 (WARN): setCollections does not reject resident_ == citizen_. Owner misconfiguration could conflate the two credential types. Defensive validation gap."
+  - "All contract behaviours verified with file:line evidence: locked() semantics, ERC-5192 interface id, every transfer variant reverting (incl. approved operator and self-transfer), no unlock, no ERC721Burnable, balanceOf <= 1, Safe-only access with no deployer privilege, the full state machine and rejection paths, atomic promotion with a rejecting receiver, reentrancy ordering (state before _safeMint), burned-id non-reuse, and personal-data-free metadata."
+  - "Hygiene verified: no deployment/broadcast/transaction/Snapshot artifact in the diff; OZ pinned with --no-git and lib/ gitignored; the frozen docs are untouched."
+  - "NO ON-CHAIN VALIDATION WAS PERFORMED OR POSSIBLE. Nothing is deployed."
+governance_note: "The human approved the CONTRACTS only. Deployment, Snapshot spaces and real proposals stay blocked pending four data points (network, Safe address, wallet-account mapping, and whether Citizen keeps access to Resident votes)."
+human_note: "The human pasted a full Colosseum Membership v1 spec and said it must be implemented."

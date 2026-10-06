@@ -1,0 +1,34 @@
+- id: F1
+  severity: WARN
+  scope: safeaddress-rederivation
+  title: "SafeAddress pin comment misstates the metadata mechanism; re-derivation is cache-fragile"
+  evidence: "packages/contracts/test/SafeAddress.t.sol:54-58; packages/contracts/README.md:133-137; solc metadata settings.remappings; stale out/SafeProxy.json (mtime Oct 2) vs rebuilt Colosseum artifacts"
+  failure_mode: "The comment/README state a false cause (added sources) for a real effect (added remappings), and the documented forge build + safe:vector procedure can print stale constants that contradict the pin."
+  materiality: "Documentation and procedure accuracy. NOT masking a regression: the new constants were independently reproduced from a forced full build, SafeAddress.sol is unchanged, and the real frozen input DEPLOYED_SAFE_PROXY_CREATION_CODE is untouched."
+  status: open
+  introduced_by: pre-existing design, exposed by 677e868
+  resolved_by: null
+  recheck_attempts: 0
+  planned_remediation: "Correct the mechanism in the comment and README, require forge clean && forge build before re-deriving, and consider pinning keccak256(type(SafeProxy).creationCode) inside the test."
+- id: F2
+  severity: WARN
+  scope: access-control
+  title: "Ownable2Step leaves renounceOwnership callable by the Safe"
+  evidence: "packages/contracts/src/MembershipManager.sol:28; lib/openzeppelin-contracts/contracts/access/Ownable.sol:76"
+  failure_mode: "The Safe could renounce ownership and permanently disable membership administration. Deliberate owner action only; no attacker path."
+  materiality: "Standard OZ behaviour; robustness observation."
+  status: open
+  introduced_by: 677e868
+  resolved_by: null
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: membership-manager-state-machine
+  title: "setCollections does not reject resident_ == citizen_"
+  evidence: "packages/contracts/src/MembershipManager.sol:68-84"
+  failure_mode: "Owner misconfiguration can conflate the two credential types: promoteToCitizen would burn and re-mint inside one collection."
+  materiality: "Defensive validation gap; one-time owner-only wiring."
+  status: open
+  introduced_by: 677e868
+  resolved_by: null
+  recheck_attempts: 0
