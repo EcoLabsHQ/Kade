@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isAuthConfigured, readAuthEnv } from '@/lib/env';
-import { resolveSafeReturnPath } from '@/lib/safe-redirect';
+import { postLoginPath } from '@/lib/onboarding/state';
+import { DEFAULT_RETURN_PATH, resolveSafeReturnPath } from '@/lib/safe-redirect';
 
 /**
  * PKCE code exchange for the Supabase auth callback, shared by Google OAuth
@@ -33,19 +34,31 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login?error=missing-code', origin));
   }
 
+  let userId: string | null = null;
   try {
     const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       return NextResponse.redirect(
         new URL('/login?error=callback-failed', origin),
       );
     }
+    userId = data.user?.id ?? null;
   } catch {
     return NextResponse.redirect(
       new URL('/login?error=callback-failed', origin),
     );
   }
 
-  return NextResponse.redirect(new URL(next, origin));
+  // An explicitly requested path always wins. Otherwise land the resident where
+  // their onboarding state says they belong, through the same predicate the
+  // Overview gate uses (`postLoginPath`), so the two cannot disagree. The
+  // exchange has already established the session in this request's cookie jar,
+  // which is what the completion read needs.
+  const destination =
+    next === DEFAULT_RETURN_PATH && userId !== null
+      ? await postLoginPath(userId)
+      : next;
+
+  return NextResponse.redirect(new URL(destination, origin));
 }
