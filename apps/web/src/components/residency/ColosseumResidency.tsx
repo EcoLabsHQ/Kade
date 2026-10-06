@@ -730,9 +730,6 @@ function StateE({
           serial={serial}
           issuedAt={issuedAt}
         />
-        <span aria-hidden="true" className="kade-passport-trigger-badge">
-          Open
-        </span>
         <button
           type="button"
           onClick={onOpenFullScreen}

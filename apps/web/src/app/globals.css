@@ -966,7 +966,10 @@ textarea {
 /* The inline certificate is a real control without invalid nesting: the
    artifact is a plain container and a transparent <button> overlays it as a
    sibling. The button carries the accessible name; the card's text stays in the
-   accessibility tree. */
+   accessibility tree. The affordance belongs to the interaction rather than the
+   document: at rest the card is clean, and a centered pill appears only on
+   hover or keyboard focus, so it can never collide with the artifact's own
+   header chips. */
 .kade-passport-trigger {
   position: relative;
   display: block;
@@ -995,21 +998,32 @@ textarea {
   outline-offset: 2px;
 }
 
-.kade-passport-trigger-badge {
+.kade-passport-trigger-button::after {
+  content: 'Open full-screen';
   position: absolute;
-  top: 10px;
-  right: 12px;
+  left: 50%;
+  bottom: 16px;
   z-index: 2;
-  font-size: 10px;
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(7, 29, 48, 0.86);
+  color: #f4f8ff;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(244, 248, 255, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
-  padding: 3px 9px;
-  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.kade-passport-trigger-button:hover::after,
+.kade-passport-trigger-button:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -996,6 +996,20 @@ describe('ColosseumResidency — the inline certificate control', () => {
       }),
     ).toHaveLength(1);
   });
+
+  it('renders no floating badge over the artifact; the affordance is the button itself', () => {
+    renderStoredCitizen();
+
+    // The old top-right "Open" pill collided with the artifact's own "Citizen"
+    // chip; it is gone. The interaction affordance is the overlay button (a
+    // hover/focus pill in CSS), so the card's face stays clean.
+    expect(document.querySelector('.kade-passport-trigger-badge')).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    ).toBeInTheDocument();
+  });
 });
 
 /* -------------------------------------------------------------------------- */
