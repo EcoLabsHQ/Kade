@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
+import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
 
 /**
  * The mocked Colosseum sub-section inside Residency.
@@ -36,6 +37,9 @@ function checks(f: ResidencyFacts) {
 beforeEach(() => {
   vi.useFakeTimers();
   window.localStorage.clear();
+  // jsdom does not implement `scrollTo`, but the full-screen reveal's body
+  // lock calls it to restore the scroll position on close.
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -43,6 +47,7 @@ afterEach(() => {
   vi.useRealTimers();
   cleanup();
   window.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('ColosseumResidency — states', () => {
@@ -685,5 +690,133 @@ describe('ColosseumResidency — reduced motion', () => {
     expect(document.querySelector('.kade-reveal-backdrop')).not.toBeNull();
     expect(document.querySelector('.kade-residency-pass-reveal')).not.toBeNull();
     expect(document.querySelector('.kade-residency-pass-flip')).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The full-screen reveal's page lock                                          */
+/*                                                                             */
+/* jsdom cannot measure layout, so the overlay's own scroll port is confirmed  */
+/* visually in a browser. What can be asserted here is the body lock: it pins  */
+/* the body with the fixed technique, flags the root, and restores the exact   */
+/* previous inline styles and scroll position on close.                        */
+/* -------------------------------------------------------------------------- */
+
+describe('FullScreenReveal — the page lock', () => {
+  function setPriorBodyStyles(): void {
+    document.body.style.position = 'relative';
+    document.body.style.top = '1px';
+    document.body.style.left = '2px';
+    document.body.style.right = '3px';
+    document.body.style.overflow = 'scroll';
+    document.body.style.paddingRight = '4px';
+  }
+
+  function priorBodyStyles() {
+    return {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      left: document.body.style.left,
+      right: document.body.style.right,
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+    };
+  }
+
+  function renderReveal() {
+    return render(
+      <FullScreenReveal
+        open
+        onClose={() => {}}
+        title="Test artifact"
+        announcement="Test artifact"
+      >
+        <div data-testid="test-artifact">artifact</div>
+      </FullScreenReveal>,
+    );
+  }
+
+  function pinScrollPosition(scrollY: number): void {
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      value: scrollY,
+    });
+  }
+
+  afterEach(() => {
+    document.body.removeAttribute('style');
+    document.documentElement.removeAttribute('data-overlay-open');
+    Reflect.deleteProperty(window, 'scrollY');
+  });
+
+  it('pins the body with the fixed technique and flags the root while open', () => {
+    setPriorBodyStyles();
+    const scrollTo = vi.mocked(window.scrollTo);
+    pinScrollPosition(420);
+
+    renderReveal();
+
+    expect(document.body.style.position).toBe('fixed');
+    expect(document.body.style.top).toBe('-420px');
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement).toHaveAttribute('data-overlay-open');
+    // Opening must not move the page.
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('restores the exact previous inline styles and scroll position on close', () => {
+    setPriorBodyStyles();
+    const previous = priorBodyStyles();
+    const scrollTo = vi.mocked(window.scrollTo);
+    pinScrollPosition(420);
+
+    const { unmount } = renderReveal();
+    expect(document.body.style.position).toBe('fixed');
+
+    unmount();
+
+    expect(priorBodyStyles()).toEqual(previous);
+    expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 420,
+      left: 0,
+      behavior: 'instant',
+    });
+  });
+
+  it('survives a second open/close cycle without corrupting the saved styles', () => {
+    setPriorBodyStyles();
+    const previous = priorBodyStyles();
+    pinScrollPosition(420);
+
+    const first = renderReveal();
+    first.unmount();
+    expect(priorBodyStyles()).toEqual(previous);
+
+    // Re-opening must capture the *restored* styles, not the locked ones.
+    const second = renderReveal();
+    expect(document.body.style.position).toBe('fixed');
+    second.unmount();
+
+    expect(priorBodyStyles()).toEqual(previous);
+    expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
+  });
+
+  it('reference-counts nested reveals so closing one keeps the page locked', () => {
+    setPriorBodyStyles();
+    const previous = priorBodyStyles();
+    pinScrollPosition(420);
+
+    const outer = renderReveal();
+    const inner = renderReveal();
+
+    // Closing the inner reveal must not unlock the page under the outer one.
+    inner.unmount();
+    expect(document.body.style.position).toBe('fixed');
+    expect(document.documentElement).toHaveAttribute('data-overlay-open');
+
+    outer.unmount();
+    expect(priorBodyStyles()).toEqual(previous);
+    expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
   });
 });
