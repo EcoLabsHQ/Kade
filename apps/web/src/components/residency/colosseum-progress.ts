@@ -16,8 +16,10 @@
  *     `met` before citizenship (the clock resets), matching the existing decay.
  *   - `citizenAt` — the ISO instant the resident became a Colosseum Citizen.
  *   - `passportSerial` — the demo citizenship-certificate serial, generated
- *     client-side (`KADE-CL-…`). The field name is kept for stored-data
- *     compatibility; it is the certificate's serial, not an identity passport.
+ *     client-side (`KADE-CL-…`). The identifier keeps the `passportSerial`
+ *     wording only because `apps/web/src/lib/review/overview.ts` declares the
+ *     same field and is outside this store; it is the certificate's serial, not
+ *     an identity passport.
  *   - `residencyPassAt` / `residencyPassSerial` — the ISO instant the resident
  *     claimed their virtual residency pass and its client-generated demo serial
  *     (`KADE-RES-…`). They are stored so re-opening the pass shows the same
@@ -74,8 +76,9 @@ function normalizeProfileKey(profileKey: string | null | undefined): string {
 /**
  * The demo citizenship-certificate serial. Client-generated, non-sensitive, and
  * clearly a demo value: Kade never issues a real document, so it is not read
- * from anywhere. The `passportSerial` field name is kept for stored-data
- * compatibility.
+ * from anywhere. The `generatePassportSerial` name is retained only because
+ * `apps/web/src/lib/review/overview.ts` consumes the matching `passportSerial`
+ * field and is outside this store.
  */
 export function generatePassportSerial(random: () => number = Math.random): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
