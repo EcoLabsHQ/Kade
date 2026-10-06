@@ -89,6 +89,9 @@ contract MembershipManager is Ownable2Step, ReentrancyGuard {
         if (address(resident_) == address(0) || address(citizen_) == address(0)) {
             revert ZeroCollection();
         }
+        if (address(resident_) == address(citizen_)) {
+            revert CollectionsMustDiffer();
+        }
         if (resident_.manager() != address(this) || citizen_.manager() != address(this)) {
             revert WrongManager();
         }

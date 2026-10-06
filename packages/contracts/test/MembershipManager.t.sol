@@ -167,6 +167,18 @@ contract MembershipManagerTest is Test {
         fresh.setCollections(resident, citizen);
     }
 
+    function test_SetCollectionsRejectsTheSameCollectionTwice() public {
+        MembershipManager fresh = new MembershipManager(SAFE);
+        ColosseumResident freshResident = new ColosseumResident(address(fresh));
+
+        // Wiring one collection as both resident and citizen would make
+        // promoteToCitizen burn and re-mint inside a single collection,
+        // silently conflating the two credential types.
+        vm.prank(SAFE);
+        vm.expectRevert(MembershipManager.CollectionsMustDiffer.selector);
+        fresh.setCollections(freshResident, ColosseumCitizen(address(freshResident)));
+    }
+
     // ---------------------------------------------------------------------
     // 7. Full state machine: issue -> promote -> revoke
     // ---------------------------------------------------------------------
