@@ -35,6 +35,12 @@ function activeSettlementChainLabel(): string {
  * visibly reload) when the resident moves between screens; only the page content
  * is replaced, and the group's `loading.tsx` covers that content area alone.
  *
+ * While this layout itself is resolving, the boundary that covers it is the
+ * parent segment's `app/loading.tsx`, not this group's own `loading.tsx`: a
+ * segment's `loading.tsx` wraps its children (its pages), not the layout beside
+ * it. That fallback is the resident shell skeleton (`ResidentShellLoading`), not
+ * the setup placeholder, so the resident frame never flashes the sign-in shape.
+ *
  * The session and the shell state are resolved **once here**, from the same
  * reads the pages used to make to feed `AppShell`. Each page keeps its own reads
  * for its own content and its own redirects (for example the Overview's
