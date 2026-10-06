@@ -14,10 +14,11 @@ import { formatIssueDate } from './artifact-format';
  * residency snapshot carries no holder name), so it shows a neutral placeholder
  * unless a caller supplies one.
  *
- * Reveal 1 — a five-layer security print. The substrate, guilloche, seal and
- * portrait layers wipe up behind the credential, which settles last. Every
- * layer is decorative and `aria-hidden`; the readable credential is the only
- * thing exposed to assistive tech.
+ * Reveal 1 — a five-layer security print. The substrate, seal and portrait
+ * layers wipe up behind the credential; the circular guilloche now lives INSIDE
+ * the opaque credential so its grid is actually visible, and the credential
+ * settles last. Every layer is decorative and `aria-hidden`; the readable
+ * credential is the only thing exposed to assistive tech.
  */
 export interface ResidencyPassProps {
   readonly open: boolean;

@@ -90,11 +90,11 @@ function unlockBody(): void {
   window.scrollTo({ top: savedScrollY, left: 0, behavior: 'instant' });
 }
 
-/** The pointer light is armed only after the automatic foil pass has finished. */
+/** The pointer tilt is armed only after the automatic foil pass has finished. */
 const FOIL_POINTER_ARM_MS = 1080;
 /** The celebratory tier runs longer; interaction is enabled at ~1.6s. */
 const CELEBRATION_POINTER_ARM_MS = 1600;
-/** How quickly the light and tilt chase the pointer (Reveal 3: 0.14). */
+/** How quickly the tilt chases the pointer (Reveal 3: 0.14). */
 const FOIL_LERP = 0.14;
 /** Reveal 3 caps the tilt at ±2deg. */
 const FOIL_MAX_TILT_DEG = 2;
@@ -144,8 +144,9 @@ function freshFoilState(): FoilState {
  *     so dismissing never leaves the page blocked;
  *   - a polite live region announces the reveal;
  *   - the backdrop and card carry the shared Reveal 3 motion (a fast settle),
- *     and a pointer-tracked foil light, unless `prefers-reduced-motion: reduce`
- *     is set, in which case only a short fade is used.
+ *     a pointer tilt and one full-card light sweep, unless
+ *     `prefers-reduced-motion: reduce` is set, in which case only a short fade
+ *     is used (and no sweep element is rendered).
  *
  * The reveal is intentionally non-blocking in spirit: there is no focus trap
  * and nothing to complete. The user can always get out, at any moment of the
@@ -167,8 +168,8 @@ export interface FullScreenRevealProps {
   readonly flipClassName?: string;
   /**
    * The one-time celebratory tier (the first, live citizenship reveal): a
-   * deeper, slower rise with a controlled overshoot, bloom, rays, a wide foil
-   * pass and a slow sheen. Every subsequent open uses the standard tier.
+   * deeper, slower rise with a controlled overshoot, bloom, rays and a wider
+   * single light sweep. Every subsequent open uses the standard tier.
    */
   readonly celebration?: boolean;
   readonly children: ReactNode;
@@ -195,9 +196,8 @@ export function FullScreenReveal({
   const [mounted, setMounted] = useState(false);
   // Pointer control begins only once the automatic foil pass has completed.
   const [foilReady, setFoilReady] = useState(false);
-  // The overlay is the single scroll port, but it must not actually scroll: if
-  // the artifact genuinely cannot fit on a short viewport we scale it down
-  // rather than let the overlay grow a scrollbar. 1 means "no scaling".
+  // The overlay cannot scroll; if the artifact genuinely cannot fit on a short
+  // viewport we scale it down instead. 1 means "no scaling".
   const [fitScale, setFitScale] = useState(1);
   // The reveal sound plays automatically; there is no mute control. A missing
   // or blocked AudioContext degrades silently to no sound.
@@ -298,8 +298,8 @@ export function FullScreenReveal({
     playCitizenshipCue();
   }, [open, celebration]);
 
-  // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under
-  // reduced motion the light is static and the pointer never drives it.
+  // Arm the pointer tilt after the one-shot foil pass (640ms + 440ms). Under
+  // reduced motion the pointer never drives it.
   useEffect(() => {
     setFoilReady(false);
     if (!open || reducedMotion) return;
@@ -586,8 +586,8 @@ const scene: CSSProperties = {
   perspective: '1200px',
   display: 'flex',
   justifyContent: 'center',
-  // Let the scene shrink inside the flex column; the overlay, not this region,
-  // owns scrolling, so no nested scrollbar can appear.
+  // Let the scene shrink inside the flex column; the overlay is not a scroll
+  // port, so no nested scrollbar can appear here either.
   minHeight: 0,
 };
 
