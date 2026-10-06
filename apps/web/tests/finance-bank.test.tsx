@@ -50,6 +50,31 @@ describe('BankScreen reference layout', () => {
     cleanup();
   });
 
+  it('renders the Girasol logo at the cropped intrinsic size with an optical nudge', () => {
+    render(<BankScreen />);
+    const callout = screen.getByRole('link', { name: 'Powered by Girasol' });
+    const logo = screen.getByRole('img', { name: 'Girasol' });
+
+    // The committed asset was cropped tight around the wordmark's ink, so it
+    // is 263×84 (was 300×100 with asymmetric transparent padding). These
+    // attributes must match the file or next/image reserves the wrong box and
+    // the logo renders distorted.
+    expect(logo).toHaveAttribute('width', '263');
+    expect(logo).toHaveAttribute('height', '84');
+
+    // Block display with auto width preserves the cropped aspect ratio, and
+    // the measured half-pixel upward nudge re-centres the wordmark's optical
+    // mass (the "g" descender) against the "Powered by" cap height.
+    expect(logo.style.display).toBe('block');
+    expect(logo.style.width).toBe('auto');
+    expect(logo.style.height).toBe('15px');
+    expect(logo.style.transform).toBe('translateY(-0.5px)');
+
+    // Symmetric horizontal padding keeps the pill balanced around its contents.
+    expect(callout.style.padding).toBe('5px 10px');
+    cleanup();
+  });
+
   it('renders both direction cards', () => {
     render(<BankScreen />);
     expect(screen.getByTestId('bank-direction-bank-crypto')).toHaveTextContent(
