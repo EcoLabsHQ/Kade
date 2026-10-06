@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
@@ -23,8 +24,8 @@ import { tokens } from '@/components/ui/tokens';
  *
  * Laid out to match the reference's GOS screen (see the screenshot
  * `reference/design-handoff/screenshots/20-bank-crypto.png`): the header with the
- * "powered by GOS" chip, the two direction cards, the three KPI cards, and the
- * transfer-history panel.
+ * "Powered by" + Girasol-logo call-out, the two direction cards, the three KPI
+ * cards, and the transfer-history panel.
  */
 
 const GRID = '.7fr 1fr 1.5fr 1fr 1fr 1fr';
@@ -777,7 +778,10 @@ export function BankScreen() {
             Fund your vault from a bank account, or offramp into your bank.
           </p>
         </div>
-        <span
+        <a
+          href="https://www.girasolpayments.com/"
+          target="_blank"
+          rel="noopener noreferrer"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -789,10 +793,18 @@ export function BankScreen() {
             padding: '5px 10px',
             borderRadius: '999px',
             whiteSpace: 'nowrap',
+            textDecoration: 'none',
           }}
         >
-          powered by GOS
-        </span>
+          Powered by
+          <Image
+            src="/girasol-logo.png"
+            alt="Girasol"
+            width={300}
+            height={100}
+            style={{ height: 14, width: 'auto', display: 'block' }}
+          />
+        </a>
       </div>
 
       <div
