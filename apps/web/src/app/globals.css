@@ -47,6 +47,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Reserve the classic scrollbar's gutter on the root so the page does not
+ * shift horizontally when a full-screen reveal engages the body scroll lock.
+ * The lock only adds a `padding-right` compensation when this is unsupported.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
+/*
+ * While a full-screen reveal is open the root stops rubber-banding; the overlay
+ * owns scrolling (`overscroll-behavior: contain`). The attribute is set by
+ * `FullScreenReveal`'s body lock.
+ */
+html[data-overlay-open] {
+  overscroll-behavior: none;
+}
+
 a {
   color: var(--kade-action);
   text-decoration: none;

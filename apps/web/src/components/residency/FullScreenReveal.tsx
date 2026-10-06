@@ -7,6 +7,85 @@ import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 /**
+ * The page-behind scroll lock.
+ *
+ * `overflow: hidden` on the body is not enough: iOS Safari still scrolls the
+ * page behind a fixed overlay, and the page can shift when the lock engages.
+ * The robust form pins the body at its current scroll offset so the page
+ * genuinely cannot move, then puts it back exactly. The lock is
+ * reference-counted so nested reveals (and React's development double-invoke)
+ * cannot overwrite the saved styles with already-locked ones.
+ */
+interface SavedBodyStyles {
+  readonly position: string;
+  readonly top: string;
+  readonly left: string;
+  readonly right: string;
+  readonly overflow: string;
+  readonly paddingRight: string;
+}
+
+let bodyLockCount = 0;
+let savedBodyStyles: SavedBodyStyles | null = null;
+let savedScrollY = 0;
+
+function lockBody(): void {
+  bodyLockCount += 1;
+  if (bodyLockCount > 1) return;
+
+  const body = document.body;
+  savedScrollY = window.scrollY;
+  savedBodyStyles = {
+    position: body.style.position,
+    top: body.style.top,
+    left: body.style.left,
+    right: body.style.right,
+    overflow: body.style.overflow,
+    paddingRight: body.style.paddingRight,
+  };
+
+  body.style.position = 'fixed';
+  body.style.top = `-${savedScrollY}px`;
+  body.style.left = '0';
+  body.style.right = '0';
+  body.style.overflow = 'hidden';
+
+  // `scrollbar-gutter: stable` on the root already reserves the gutter, so only
+  // compensate with padding when the browser does not support it. Never both.
+  const supportsScrollbarGutter =
+    typeof CSS !== 'undefined' &&
+    typeof CSS.supports === 'function' &&
+    CSS.supports('scrollbar-gutter: stable');
+  if (!supportsScrollbarGutter) {
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+  }
+
+  document.documentElement.setAttribute('data-overlay-open', 'true');
+}
+
+function unlockBody(): void {
+  if (bodyLockCount === 0) return;
+  bodyLockCount -= 1;
+  if (bodyLockCount > 0) return;
+
+  const body = document.body;
+  if (savedBodyStyles) {
+    body.style.position = savedBodyStyles.position;
+    body.style.top = savedBodyStyles.top;
+    body.style.left = savedBodyStyles.left;
+    body.style.right = savedBodyStyles.right;
+    body.style.overflow = savedBodyStyles.overflow;
+    body.style.paddingRight = savedBodyStyles.paddingRight;
+  }
+  savedBodyStyles = null;
+
+  document.documentElement.removeAttribute('data-overlay-open');
+  window.scrollTo({ top: savedScrollY, left: 0, behavior: 'instant' });
+}
+
+/**
  * The shared full-screen shell for the Colosseum demo artifacts (the virtual
  * residency pass and the citizenship passport).
  *
@@ -91,14 +170,11 @@ export function FullScreenReveal({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  // Scroll-lock the page only while open; always restore the previous value.
+  // Scroll-lock the page only while open; always restore the previous state.
   useEffect(() => {
     if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
+    lockBody();
+    return unlockBody;
   }, [open]);
 
   if (!open || !mounted) return null;
@@ -154,13 +230,28 @@ export function FullScreenReveal({
 
 const backdrop: CSSProperties = {
   position: 'fixed',
+  // `inset: 0` rather than `width: 100vw`: a `100vw` width includes the classic
+  // scrollbar and can itself cause a horizontal overflow.
   inset: 0,
+  // `dvh` tracks the visible viewport as mobile browser chrome moves; `vh`
+  // would overhang. The overlay is the one and only scroll port: when the
+  // artifact is taller than the viewport it scrolls here, never in a nested
+  // region.
+  blockSize: '100dvh',
   background:
     'radial-gradient(120% 120% at 50% 0%, rgba(7,29,48,.82) 0%, rgba(4,14,24,.92) 100%)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: 'clamp(12px, 4vw, 40px)',
+  overflowX: 'hidden',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  WebkitOverflowScrolling: 'touch',
+  boxSizing: 'border-box',
+  paddingTop: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-top))',
+  paddingRight: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-right))',
+  paddingBottom: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-bottom))',
+  paddingLeft: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-left))',
   zIndex: 80,
 };
 
@@ -168,8 +259,15 @@ const card: CSSProperties = {
   position: 'relative',
   display: 'flex',
   flexDirection: 'column',
-  width: 'min(720px, 94vw)',
-  maxHeight: '92vh',
+  // `margin: auto` centers the card while keeping it reachable when it is
+  // taller than the viewport, unlike `align-items: center` alone which clips
+  // the start of an overflowing flex item.
+  margin: 'auto',
+  // Bound the artifact to the visible area on a laptop or a phone; the overlay
+  // scrolls gracefully as a last resort if the content still exceeds it.
+  width: 'min(92vw, 560px)',
+  maxInlineSize: '100%',
+  maxBlockSize: 'min(100%, 78dvh)',
   outline: 'none',
 };
 
@@ -201,11 +299,10 @@ const closeLabel: CSSProperties = {
 
 const scene: CSSProperties = {
   perspective: '1200px',
-  overflow: 'auto',
   display: 'flex',
   justifyContent: 'center',
-  // Let the scroll area shrink inside the flex column instead of overflowing
-  // the card's `maxHeight`.
+  // Let the scene shrink inside the flex column; the overlay, not this region,
+  // owns scrolling, so no nested scrollbar can appear.
   minHeight: 0,
 };
 

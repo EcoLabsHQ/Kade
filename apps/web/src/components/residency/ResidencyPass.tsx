@@ -103,6 +103,9 @@ export function ResidencyPass({
 const passCard: CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
+  // Never exceed the reveal shell, so the pass cannot spill horizontally.
+  maxInlineSize: '100%',
+  boxSizing: 'border-box',
   background:
     'radial-gradient(120% 140% at 18% 0%, #12514a 0%, #0a3a38 45%, #062322 100%)',
   borderRadius: '20px',

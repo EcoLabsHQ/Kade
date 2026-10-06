@@ -95,6 +95,9 @@ export function CitizenshipPassport({
 const passportCard: CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
+  // Never exceed the reveal shell, so the passport cannot spill horizontally.
+  maxInlineSize: '100%',
+  boxSizing: 'border-box',
   background:
     'radial-gradient(120% 140% at 18% 0%, #12415f 0%, #0a2a43 45%, #071d30 100%)',
   borderRadius: '20px',
