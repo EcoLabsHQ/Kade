@@ -60,6 +60,7 @@ export function NavItem({ item, active }: NavItemProps) {
         }}
       >
         <span
+          className="kade-nav-dot"
           style={{
             width: '5px',
             height: '5px',
@@ -92,6 +93,7 @@ export function NavItem({ item, active }: NavItemProps) {
       }}
     >
       <span
+        className="kade-nav-dot"
         style={{
           width: '5px',
           height: '5px',

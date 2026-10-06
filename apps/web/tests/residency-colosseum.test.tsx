@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
 
@@ -138,7 +138,7 @@ describe('ColosseumResidency — states', () => {
     ).toBeEnabled();
   });
 
-  it('State D → E: becoming a citizen shows the virtual passport and clears the highlight', () => {
+  it('State D → E: becoming a citizen celebrates with the full-screen passport and clears the highlight', () => {
     render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     act(() => {
@@ -149,18 +149,28 @@ describe('ColosseumResidency — states', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
+    // The inline artifact stays on the page…
     expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
-    expect(screen.getByText(/virtual passport/i)).toBeInTheDocument();
-    // The artifact is still declared demo, and carries a serial/MRZ footer.
-    expect(
-      screen.getByText(/not a real travel or identity document/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/the demo layer|demo artifact only/i),
-    ).toBeInTheDocument();
     expect(screen.getByTestId('colosseum-passport-serial')).toHaveTextContent(
       /^KADE-CL-/,
     );
+    // …and the milestone plays the full-screen passport reveal.
+    const overlay = screen.getByTestId('colosseum-passport-overlay');
+    expect(overlay).toBeInTheDocument();
+    expect(within(overlay).getByText(/virtual passport/i)).toBeInTheDocument();
+    expect(
+      within(overlay).getByText(/not a real travel or identity document/i),
+    ).toBeInTheDocument();
+    expect(
+      within(overlay).getByText(/demo artifact only/i),
+    ).toBeInTheDocument();
+    expect(
+      within(overlay).getByTestId('colosseum-passport-overlay-serial'),
+    ).toHaveTextContent(/^KADE-CL-/);
+    // The overlay is a labelled, modal dialog.
+    expect(
+      screen.getByRole('dialog', { name: /virtual citizenship passport/i }),
+    ).toHaveAttribute('aria-modal', 'true');
     // Becoming a citizen clears the nav highlight.
     expect(window.localStorage.getItem('kade.colosseum.attention')).toBeNull();
   });
@@ -321,5 +331,265 @@ describe('ColosseumResidency — persisted demo progress', () => {
     // A different profile's (empty) record must not hide this profile's clock.
     expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Full-screen reveals: the virtual residency pass, the passport, reduced motion */
+/* -------------------------------------------------------------------------- */
+
+function mockMatchMedia(matches: boolean): void {
+  window.matchMedia = ((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
+describe('ColosseumResidency — the virtual residency pass', () => {
+  const KEY = 'app-pass';
+
+  it('claims the pass from the resident state, reveals it full-screen, and persists the demo serial', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const overlay = screen.getByTestId('colosseum-residency-pass-overlay');
+    expect(
+      within(overlay).getByText(/virtual residency pass/i),
+    ).toBeInTheDocument();
+    expect(within(overlay).getByText('Demo')).toBeInTheDocument();
+    expect(
+      within(overlay).getByText(/not a real residency, status or document/i),
+    ).toBeInTheDocument();
+    expect(
+      within(overlay).getByTestId('colosseum-residency-pass-holder'),
+    ).toHaveTextContent('Kade Resident');
+    expect(
+      within(overlay).getByTestId('colosseum-residency-pass-serial'),
+    ).toHaveTextContent(/^KADE-RES-/);
+    expect(
+      within(overlay).getByTestId('colosseum-residency-pass-issued'),
+    ).not.toHaveTextContent('—');
+
+    // A labelled, modal dialog.
+    const dialog = screen.getByRole('dialog', {
+      name: /colosseum residency pass/i,
+    });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+
+    // The claim is persisted as demo state.
+    const stored = JSON.parse(
+      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
+    expect(stored.residencyPassSerial).toMatch(/^KADE-RES-/);
+    expect(stored.residencyPassAt).not.toBeNull();
+  });
+
+  it('dismisses with Escape, a click outside and the visible close control, and restores the page', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
+    // The page behind is not left scroll-locked.
+    expect(document.body.style.overflow).not.toBe('hidden');
+
+    // Re-open, then click the backdrop.
+    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    const dialog = screen.getByRole('dialog', {
+      name: /colosseum residency pass/i,
+    });
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
+
+    // Re-open, then use the visible close control.
+    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
+  });
+
+  it('re-opens the same persisted pass after a reload rather than minting a new one', () => {
+    const { unmount } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    const serial = within(
+      screen.getByTestId('colosseum-residency-pass-overlay'),
+    ).getByTestId('colosseum-residency-pass-serial').textContent;
+    unmount();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    // Already claimed: the action re-opens instead of offering a fresh claim.
+    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    expect(screen.getByTestId('colosseum-residency-pass-serial')).toHaveTextContent(
+      serial!,
+    );
+  });
+
+  it('keeps the claimed residency pass when citizenship is later recorded', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    const claimed = JSON.parse(
+      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    // Recording citizenship must not drop the already-claimed pass fields.
+    const stored = JSON.parse(
+      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
+    expect(stored.residencyPassSerial).toBe(claimed.residencyPassSerial);
+    expect(stored.residencyPassAt).toBe(claimed.residencyPassAt);
+  });
+
+  it('offers the full-screen passport from the inline artifact after a stored citizenship', () => {
+    window.localStorage.setItem(
+      `kade.colosseum.progress.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+
+    // A stored citizen does not auto-open the reveal…
+    expect(screen.queryByTestId('colosseum-passport-overlay')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: /open full-screen passport/i }),
+    );
+    const overlay = screen.getByTestId('colosseum-passport-overlay');
+    expect(
+      within(overlay).getByTestId('colosseum-passport-overlay-serial'),
+    ).toHaveTextContent('KADE-CL-ABCD2345');
+    // The issue date comes from the recorded citizenship instant.
+    expect(
+      within(overlay).getByTestId('colosseum-passport-overlay-issued'),
+    ).toHaveTextContent('02 Jan 2026');
+  });
+});
+
+describe('ColosseumResidency — reduced motion', () => {
+  const KEY = 'app-reduced';
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'matchMedia');
+  });
+
+  it('skips the pass reveal animation but still renders a readable pass', () => {
+    mockMatchMedia(true);
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    expect(screen.getByTestId('colosseum-residency-pass-serial')).toHaveTextContent(
+      /^KADE-RES-/,
+    );
+    expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
+    expect(document.querySelector('.kade-reveal-card')).toBeNull();
+    expect(document.querySelector('.kade-residency-pass-reveal')).toBeNull();
+    expect(document.querySelector('.kade-residency-pass-flip')).toBeNull();
+  });
+
+  it('skips the passport reveal animation but still renders a readable passport', () => {
+    mockMatchMedia(true);
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    expect(screen.getByTestId('colosseum-passport-overlay-serial')).toHaveTextContent(
+      /^KADE-CL-/,
+    );
+    expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
+    expect(document.querySelector('.kade-passport-flip')).toBeNull();
+  });
+
+  it('applies the reveal animation when reduced motion is not requested', () => {
+    // No matchMedia stub: the hook reports false, so the classes are applied.
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(document.querySelector('.kade-reveal-backdrop')).not.toBeNull();
+    expect(document.querySelector('.kade-residency-pass-reveal')).not.toBeNull();
+    expect(document.querySelector('.kade-residency-pass-flip')).not.toBeNull();
   });
 });
