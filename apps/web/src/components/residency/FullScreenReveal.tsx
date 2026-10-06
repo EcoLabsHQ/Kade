@@ -9,11 +9,7 @@ import type {
 import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
-import {
-  isRevealSoundMuted,
-  playRevealSound,
-  setRevealSoundMuted,
-} from './reveal-sound';
+import { playCitizenshipCue } from './reveal-sound';
 
 /**
  * The page-behind scroll lock.
@@ -94,11 +90,11 @@ function unlockBody(): void {
   window.scrollTo({ top: savedScrollY, left: 0, behavior: 'instant' });
 }
 
-/** The pointer light is armed only after the automatic foil pass has finished. */
+/** The pointer tilt is armed only after the automatic foil pass has finished. */
 const FOIL_POINTER_ARM_MS = 1080;
 /** The celebratory tier runs longer; interaction is enabled at ~1.6s. */
 const CELEBRATION_POINTER_ARM_MS = 1600;
-/** How quickly the light and tilt chase the pointer (Reveal 3: 0.14). */
+/** How quickly the tilt chases the pointer (Reveal 3: 0.14). */
 const FOIL_LERP = 0.14;
 /** Reveal 3 caps the tilt at ±2deg. */
 const FOIL_MAX_TILT_DEG = 2;
@@ -148,8 +144,9 @@ function freshFoilState(): FoilState {
  *     so dismissing never leaves the page blocked;
  *   - a polite live region announces the reveal;
  *   - the backdrop and card carry the shared Reveal 3 motion (a fast settle),
- *     and a pointer-tracked foil light, unless `prefers-reduced-motion: reduce`
- *     is set, in which case only a short fade is used.
+ *     a pointer tilt and one full-card light sweep, unless
+ *     `prefers-reduced-motion: reduce` is set, in which case only a short fade
+ *     is used (and no sweep element is rendered).
  *
  * The reveal is intentionally non-blocking in spirit: there is no focus trap
  * and nothing to complete. The user can always get out, at any moment of the
@@ -171,8 +168,8 @@ export interface FullScreenRevealProps {
   readonly flipClassName?: string;
   /**
    * The one-time celebratory tier (the first, live citizenship reveal): a
-   * deeper, slower rise with a controlled overshoot, bloom, rays, a wide foil
-   * pass and a slow sheen. Every subsequent open uses the standard tier.
+   * deeper, slower rise with a controlled overshoot, bloom, rays and a wider
+   * single light sweep. Every subsequent open uses the standard tier.
    */
   readonly celebration?: boolean;
   readonly children: ReactNode;
@@ -191,7 +188,6 @@ export function FullScreenReveal({
   const titleId = useId();
   const cardRef = useRef<HTMLDivElement>(null);
   const tiltRef = useRef<HTMLDivElement>(null);
-  const foilLightRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const foil = useRef<FoilState>(freshFoilState());
   const reducedMotion = usePrefersReducedMotion();
@@ -200,13 +196,11 @@ export function FullScreenReveal({
   const [mounted, setMounted] = useState(false);
   // Pointer control begins only once the automatic foil pass has completed.
   const [foilReady, setFoilReady] = useState(false);
-  // The overlay is the single scroll port, but it must not actually scroll: if
-  // the artifact genuinely cannot fit on a short viewport we scale it down
-  // rather than let the overlay grow a scrollbar. 1 means "no scaling".
+  // The overlay cannot scroll; if the artifact genuinely cannot fit on a short
+  // viewport we scale it down instead. 1 means "no scaling".
   const [fitScale, setFitScale] = useState(1);
-  // The reveal sound is opt-out: on by default, persisted mute preference, and
-  // a missing or blocked AudioContext degrades silently to no sound.
-  const [soundMuted, setSoundMuted] = useState(false);
+  // The reveal sound plays automatically; there is no mute control. A missing
+  // or blocked AudioContext degrades silently to no sound.
   // Guards against a re-render (or a React StrictMode double-invoke) replaying
   // the cue. Reset when the reveal closes.
   const soundPlayedRef = useRef(false);
@@ -251,13 +245,16 @@ export function FullScreenReveal({
     return unlockBody;
   }, [open]);
 
-  // Keep the artifact inside the overlay's visible area. The overlay stays the
-  // single scroll port (see `backdrop`), but a short viewport must scale the
-  // artifact down rather than grow a scrollbar. The card's own layout height is
-  // measured; if it exceeds the visible area we scale it. jsdom reports zero
-  // heights, so the guard leaves the scale at 1 there.
+  // Make the artifact always fit the overlay's visible area. The overlay is NOT
+  // a scroll port: it cannot scroll (see `backdrop`), so a short viewport must
+  // scale the artifact down instead. The card's natural height is measured and
+  // the card is scaled by the true ratio with no floor, so it can never be left
+  // overflowing. The effect depends on `mounted` as well as `open`: the card
+  // only exists after mount, and a reveal that ever mounts already-open must
+  // still compute a scale. jsdom reports zero heights, so the guard leaves the
+  // scale at 1 there.
   useEffect(() => {
-    if (!open) {
+    if (!open || !mounted) {
       setFitScale(1);
       return;
     }
@@ -277,41 +274,32 @@ export function FullScreenReveal({
         setFitScale(1);
         return;
       }
-      setFitScale(Math.max(0.6, Number((available / natural).toFixed(3))));
+      // No floor: a floor above the true ratio would leave the artifact taller
+      // than the viewport and reintroduce an overflow. The true ratio always
+      // fits.
+      setFitScale(Number((available / natural).toFixed(4)));
     };
     compute();
     window.addEventListener('resize', compute);
     return () => window.removeEventListener('resize', compute);
-  }, [open]);
+  }, [open, mounted]);
 
-  // Read the persisted mute preference once the reveal mounts (client only).
-  useEffect(() => {
-    setSoundMuted(isRevealSoundMuted());
-  }, []);
-
-  // Play the cue exactly once per open, on the live open. A restored citizen
-  // load never opens the reveal, so it never replays. Deliberately independent
-  // of `prefers-reduced-motion`: sound is not motion, the mute control is.
+  // Play the one-time citizenship cue only on the live celebration open. The
+  // standard reveal, a re-open and the residency pass are all silent. A
+  // restored citizen load never opens the reveal, so it never replays.
+  // Deliberately independent of `prefers-reduced-motion`: sound is not motion.
   useEffect(() => {
     if (!open) {
       soundPlayedRef.current = false;
       return;
     }
-    if (soundPlayedRef.current) return;
+    if (!celebration || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
-    playRevealSound(celebration ? 'celebration' : 'standard');
+    playCitizenshipCue();
   }, [open, celebration]);
 
-  const toggleSound = useCallback(() => {
-    setSoundMuted((previous) => {
-      const next = !previous;
-      setRevealSoundMuted(next);
-      return next;
-    });
-  }, []);
-
-  // Arm the pointer light after the one-shot foil pass (640ms + 440ms). Under
-  // reduced motion the light is static and the pointer never drives it.
+  // Arm the pointer tilt after the one-shot foil pass (640ms + 440ms). Under
+  // reduced motion the pointer never drives it.
   useEffect(() => {
     setFoilReady(false);
     if (!open || reducedMotion) return;
@@ -349,8 +337,6 @@ export function FullScreenReveal({
     const state = foil.current;
     const tilt = tiltRef.current;
     if (!tilt) return;
-    tilt.style.setProperty('--kade-foil-x', `${state.x}px`);
-    tilt.style.setProperty('--kade-foil-y', `${state.y}px`);
     tilt.style.setProperty('--kade-tilt-x', `${state.tiltX}deg`);
     tilt.style.setProperty('--kade-tilt-y', `${state.tiltY}deg`);
   }, []);
@@ -407,7 +393,6 @@ export function FullScreenReveal({
         Math.min(FOIL_MAX_TILT_DEG, nx * 4),
       );
       state.active = true;
-      foilLightRef.current?.setAttribute('data-active', 'true');
       startFoilLoop();
     },
     [foilReady, reducedMotion, startFoilLoop],
@@ -419,7 +404,6 @@ export function FullScreenReveal({
     state.active = false;
     state.targetTiltX = 0;
     state.targetTiltY = 0;
-    foilLightRef.current?.setAttribute('data-active', 'false');
     startFoilLoop();
   }, [reducedMotion, startFoilLoop]);
 
@@ -479,16 +463,6 @@ export function FullScreenReveal({
         <div style={closeRow}>
           <button
             type="button"
-            aria-pressed={soundMuted}
-            aria-label={soundMuted ? 'Unmute reveal sound' : 'Mute reveal sound'}
-            onClick={toggleSound}
-            style={soundButton}
-          >
-            <span aria-hidden="true">{soundMuted ? '🔇' : '🔊'}</span>
-            <span style={closeLabel}>{soundMuted ? 'Muted' : 'Sound'}</span>
-          </button>
-          <button
-            type="button"
             aria-label="Close"
             onClick={onClose}
             style={closeButton}
@@ -521,23 +495,13 @@ export function FullScreenReveal({
             <div className={documentClassName} style={documentWrap}>
               {children}
             </div>
-            {reducedMotion ? (
-              <div
-                aria-hidden="true"
-                className="kade-foil-light kade-foil-light-static"
-              />
-            ) : (
-              <>
-                <div
-                  ref={foilLightRef}
-                  aria-hidden="true"
-                  className="kade-foil-light"
-                />
-                {/* Exactly ONE light pass per reveal. The celebration tier
-                    styles this same single element richer, so its flourish
-                    reads as one continuous gesture rather than a second pass. */}
-                <div aria-hidden="true" className="kade-foil-pass" />
-              </>
+            {/* Exactly ONE light sweep per reveal, and only when motion is
+                allowed. It traverses the whole card; the celebration tier
+                styles this same single element richer, so its flourish reads as
+                one continuous gesture rather than a second pass. Under
+                `prefers-reduced-motion` no sweep element is rendered at all. */}
+            {reducedMotion ? null : (
+              <div aria-hidden="true" className="kade-foil-pass" />
             )}
           </div>
         </div>
@@ -553,9 +517,9 @@ const backdrop: CSSProperties = {
   // scrollbar and can itself cause a horizontal overflow.
   inset: 0,
   // `dvh` tracks the visible viewport as mobile browser chrome moves; `vh`
-  // would overhang. The overlay is the one and only scroll port: when the
-  // artifact is taller than the viewport it scrolls here, never in a nested
-  // region.
+  // would overhang. The overlay is NOT a scroll port: `overflow: hidden` on
+  // both axes guarantees the reveal cannot scroll, and the card is scaled to
+  // fit instead (see the fit effect above). It is the single clipped region.
   blockSize: '100dvh',
   background:
     'radial-gradient(120% 120% at 50% 0%, rgba(7,29,48,.82) 0%, rgba(4,14,24,.92) 100%)',
@@ -563,9 +527,8 @@ const backdrop: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   overflowX: 'hidden',
-  overflowY: 'auto',
+  overflowY: 'hidden',
   overscrollBehavior: 'contain',
-  WebkitOverflowScrolling: 'touch',
   boxSizing: 'border-box',
   // Gives the card's Reveal 3 `rotateX` a perspective to read against.
   perspective: '1400px',
@@ -580,15 +543,14 @@ const card: CSSProperties = {
   position: 'relative',
   display: 'flex',
   flexDirection: 'column',
-  // `margin: auto` centers the card while keeping it reachable when it is
-  // taller than the viewport, unlike `align-items: center` alone which clips
-  // the start of an overflowing flex item.
+  // `margin: auto` centers the card in the overlay.
   margin: 'auto',
-  // Bound the artifact to the visible area on a laptop or a phone; the overlay
-  // scrolls gracefully as a last resort if the content still exceeds it.
+  // Bound the artifact horizontally on a laptop or a phone. There is no
+  // block-size cap: the card's natural height is measured and it is scaled to
+  // fit the viewport (see the fit effect), so it can never overflow the
+  // non-scrolling overlay.
   width: 'min(92vw, 560px)',
   maxInlineSize: '100%',
-  maxBlockSize: 'min(100%, 78dvh)',
   outline: 'none',
 };
 
@@ -616,24 +578,6 @@ const closeButton: CSSProperties = {
   cursor: 'pointer',
 };
 
-// The persisted mute control. It sits beside Close, is a real button, and is
-// labelled both visibly ("Sound" / "Muted") and for assistive tech.
-const soundButton: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  height: '34px',
-  padding: '0 12px',
-  border: '1px solid rgba(255,255,255,.28)',
-  borderRadius: '999px',
-  background: 'rgba(255,255,255,.06)',
-  color: '#f4f8ff',
-  fontFamily: 'inherit',
-  fontSize: '13px',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
 const closeLabel: CSSProperties = {
   lineHeight: 1,
 };
@@ -642,8 +586,8 @@ const scene: CSSProperties = {
   perspective: '1200px',
   display: 'flex',
   justifyContent: 'center',
-  // Let the scene shrink inside the flex column; the overlay, not this region,
-  // owns scrolling, so no nested scrollbar can appear.
+  // Let the scene shrink inside the flex column; the overlay is not a scroll
+  // port, so no nested scrollbar can appear here either.
   minHeight: 0,
 };
 

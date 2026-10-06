@@ -376,11 +376,11 @@ textarea {
 /* Colosseum full-screen artifact reveals                                     */
 /*                                                                            */
 /* The approved baseline feel is preserved — the gentle card rise, the 22°    */
-/* document tilt, the one-shot guilloche sweep and the staggered field        */
-/* entrance — and the specified motions are layered on top:                    */
+/* document tilt, the single light sweep and the staggered field entrance —   */
+/* and the specified motions are layered on top:                              */
 /*   Reveal 1 — the residency pass security print (five layers wipe up);      */
 /*   Reveal 2 — the citizenship certificate 3D stack resolving;               */
-/*   Reveal 3 — the shared foil: a pointer-tracked light and a one-shot pass; */
+/*   Reveal 3 — the shared foil: a pointer tilt and one full-card sweep;      */
 /* plus a one-time celebratory tier for the first live citizenship reveal.    */
 /*                                                                            */
 /* Everything animates transform/opacity only (plus clip-path, box-shadow and */
@@ -776,37 +776,14 @@ textarea {
   animation-delay: 0.835s;
 }
 
-/* Reveal 3 — the shared foil. The card tilts at most ±2deg and carries a
-   pointer-tracked radial light (180px, peak alpha 0.18). The light's position
-   is supplied as custom properties by the React handler. */
+/* Reveal 3 — the shared foil. The card tilts at most ±2deg under the pointer,
+   and a single light sweep crosses the whole card once. There is deliberately
+   only ONE sweep element: the celebration tier restyles this same element
+   rather than adding a second one. */
 .kade-foil-tilt {
   transform: rotateX(var(--kade-tilt-x, 0deg)) rotateY(var(--kade-tilt-y, 0deg));
   transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
   transform-style: preserve-3d;
-}
-
-.kade-foil-light {
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.18s linear;
-  background: radial-gradient(
-    180px circle at var(--kade-foil-x, 50%) var(--kade-foil-y, 50%),
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.07) 45%,
-    transparent 72%
-  );
-}
-
-.kade-foil-light[data-active='true'] {
-  opacity: 1;
-}
-
-.kade-foil-light-static {
-  opacity: 0.08;
-  transition: none;
 }
 
 .kade-foil-pass {
@@ -817,48 +794,54 @@ textarea {
   pointer-events: none;
 }
 
+/* The single sweep: a narrow diagonal highlight that starts fully off the
+   card's leading edge and exits fully past its trailing edge, so it always
+   reads as one continuous pass across the WHOLE card. `translateX` is a
+   percentage of the band's own width (50% of the card), so -110% is entirely
+   before the left edge and 210% is entirely past the right edge. */
 .kade-foil-pass::after {
   content: '';
   position: absolute;
   top: -40%;
   bottom: -40%;
-  left: -20%;
-  width: 70%;
+  left: 0;
+  width: 50%;
   background: linear-gradient(
     100deg,
-    transparent,
-    rgba(255, 255, 255, 0.16) 50%,
-    transparent
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
   );
-  transform: translateX(-35%) skewX(-14deg);
-  animation: kade-foil-pass 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) 0.64s both;
+  transform: translateX(-110%) skewX(-14deg);
+  animation: kade-foil-pass 0.52s cubic-bezier(0.22, 0.61, 0.36, 1) 0.64s both;
 }
 
 @keyframes kade-foil-pass {
   from {
     opacity: 0;
-    transform: translateX(-35%) skewX(-14deg);
+    transform: translateX(-110%) skewX(-14deg);
   }
-  15% {
+  12% {
     opacity: 1;
   }
   to {
     opacity: 0;
-    transform: translateX(135%) skewX(-14deg);
+    transform: translateX(210%) skewX(-14deg);
   }
 }
 
 /* The celebration tier does not add a second pass: it makes this same single
    pass wider, brighter and a touch later, so the flourish reads as one
-   continuous gesture. */
+   continuous gesture. The keyframe travel is width-relative, so at 60% it
+   still starts off the leading edge and exits past the trailing edge. */
 .kade-celebration .kade-foil-pass::after {
-  width: 90%;
+  width: 60%;
   background: linear-gradient(
     100deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.06) 30%,
+    rgba(255, 255, 255, 0.06) 28%,
     rgba(255, 255, 255, 0.28) 50%,
-    rgba(255, 255, 255, 0.06) 70%,
+    rgba(255, 255, 255, 0.06) 72%,
     transparent 100%
   );
   animation-duration: 0.7s;
@@ -966,11 +949,18 @@ textarea {
 /* The inline certificate is a real control without invalid nesting: the
    artifact is a plain container and a transparent <button> overlays it as a
    sibling. The button carries the accessible name; the card's text stays in the
-   accessibility tree. */
+   accessibility tree. The affordance belongs to the interaction rather than the
+   document: at rest the card is clean, and a centered pill appears only on
+   hover or keyboard focus, so it can never collide with the artifact's own
+   header chips. */
 .kade-passport-trigger {
   position: relative;
   display: block;
-  width: 100%;
+  /* Bound the inline card to a card-like width so it reads as the same object
+     as the popup (bounded to `min(92vw, 560px)`) rather than stretching to the
+     full Colosseum section. The overlay button matches this box exactly. */
+  width: min(100%, 420px);
+  margin: 0 auto;
   border-radius: 18px;
 }
 
@@ -995,21 +985,32 @@ textarea {
   outline-offset: 2px;
 }
 
-.kade-passport-trigger-badge {
+.kade-passport-trigger-button::after {
+  content: 'Open full-screen';
   position: absolute;
-  top: 10px;
-  right: 12px;
+  left: 50%;
+  bottom: 16px;
   z-index: 2;
-  font-size: 10px;
+  transform: translateX(-50%) translateY(4px);
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(7, 29, 48, 0.86);
+  color: #f4f8ff;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(244, 248, 255, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 999px;
-  padding: 3px 9px;
-  background: rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.kade-passport-trigger-button:hover::after,
+.kade-passport-trigger-button:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1091,11 +1092,6 @@ textarea {
     animation: none;
     opacity: 1;
     transform: none;
-  }
-
-  .kade-foil-light {
-    opacity: 0.08;
-    transition: none;
   }
 }
 

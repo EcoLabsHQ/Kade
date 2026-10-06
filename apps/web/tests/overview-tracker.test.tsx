@@ -69,7 +69,7 @@ describe('OverviewTracker persisted demo state', () => {
 
   it('reflects the persisted Colosseum progress', () => {
     window.localStorage.setItem(
-      'kade.colosseum.progress.user-1',
+      'kade.colosseum.progress.v2.user-1',
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-01T00:02:00.000Z',
@@ -104,7 +104,7 @@ describe('OverviewTracker key agreement with the Residency step', () => {
     // under the same key, so a key drift between the two surfaces is caught.
     writeDocumentsComplete(documentsFlagKey(APPLICATION_ID), true);
     window.localStorage.setItem(
-      `kade.colosseum.progress.${APPLICATION_ID}`,
+      `kade.colosseum.progress.v2.${APPLICATION_ID}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: null,

@@ -16,8 +16,10 @@
  *     `met` before citizenship (the clock resets), matching the existing decay.
  *   - `citizenAt` — the ISO instant the resident became a Colosseum Citizen.
  *   - `passportSerial` — the demo citizenship-certificate serial, generated
- *     client-side (`KADE-CL-…`). The field name is kept for stored-data
- *     compatibility; it is the certificate's serial, not an identity passport.
+ *     client-side (`KADE-CL-…`). The identifier keeps the `passportSerial`
+ *     wording only because `apps/web/src/lib/review/overview.ts` declares the
+ *     same field and is outside this store; it is the certificate's serial, not
+ *     an identity passport.
  *   - `residencyPassAt` / `residencyPassSerial` — the ISO instant the resident
  *     claimed their virtual residency pass and its client-generated demo serial
  *     (`KADE-RES-…`). They are stored so re-opening the pass shows the same
@@ -41,7 +43,13 @@ export interface ColosseumProgress {
   readonly residencyPassSerial: string | null;
 }
 
-const STORAGE_PREFIX = 'kade.colosseum.progress.';
+/**
+ * The demo progress key namespace. The `.v2` bump deliberately abandons any
+ * progress written by an earlier build, so an existing tester (including a
+ * reviewer's boss) gets a genuine first-time flow without clearing storage.
+ * The old `kade.colosseum.progress.` data is simply never read again.
+ */
+const STORAGE_PREFIX = 'kade.colosseum.progress.v2.';
 
 export const EMPTY_COLOSSEUM_PROGRESS: ColosseumProgress = {
   residentSince: null,
@@ -68,8 +76,9 @@ function normalizeProfileKey(profileKey: string | null | undefined): string {
 /**
  * The demo citizenship-certificate serial. Client-generated, non-sensitive, and
  * clearly a demo value: Kade never issues a real document, so it is not read
- * from anywhere. The `passportSerial` field name is kept for stored-data
- * compatibility.
+ * from anywhere. The `generatePassportSerial` name is retained only because
+ * `apps/web/src/lib/review/overview.ts` consumes the matching `passportSerial`
+ * field and is outside this store.
  */
 export function generatePassportSerial(random: () => number = Math.random): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -243,7 +252,11 @@ export function resetColosseumProgress(profileKey: string | null | undefined): v
  * persisted here so the Overview tracker can read the same fact, without the
  * Overview needing the count or the Residency step's session state.
  */
-const DOCUMENTS_PREFIX = 'kade.documents.complete.';
+/**
+ * The documents flag namespace. Bumped alongside the Colosseum progress key
+ * (`.v2`) so a fresh tester starts from an empty demo state.
+ */
+const DOCUMENTS_PREFIX = 'kade.documents.complete.v2.';
 
 export function documentsFlagKey(profileKey: string | null | undefined): string {
   return `${DOCUMENTS_PREFIX}${normalizeProfileKey(profileKey)}`;

@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
+import { documentsFlagKey } from '@/components/residency/colosseum-progress';
 import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
-import { playRevealSound } from '@/components/residency/reveal-sound';
+import { playCitizenshipCue } from '@/components/residency/reveal-sound';
 
 // Wrap the real cue in a spy so the tests can assert how often the reveal asks
 // for sound without needing a real AudioContext.
 vi.mock('@/components/residency/reveal-sound', async (importActual) => {
   const actual =
     await importActual<typeof import('@/components/residency/reveal-sound')>();
-  return { ...actual, playRevealSound: vi.fn(actual.playRevealSound) };
+  return { ...actual, playCitizenshipCue: vi.fn(actual.playCitizenshipCue) };
 });
 
 /**
@@ -405,7 +406,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
   it('resumes the countdown from the stored residentSince instead of restarting it', () => {
     // A window that started one minute ago: 1:00 should remain, not 2:00.
     window.localStorage.setItem(
-      'kade.colosseum.progress.app-42',
+      'kade.colosseum.progress.v2.app-42',
       JSON.stringify({
         residentSince: new Date(Date.now() - 60_000).toISOString(),
         citizenAt: null,
@@ -427,7 +428,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
 
   it('shows the certificate immediately from a stored citizenship, without re-animating', () => {
     window.localStorage.setItem(
-      'kade.colosseum.progress.app-42',
+      'kade.colosseum.progress.v2.app-42',
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-01T00:02:00.000Z',
@@ -471,14 +472,14 @@ describe('ColosseumResidency — persisted demo progress', () => {
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
     const stored = JSON.parse(
-      window.localStorage.getItem('kade.colosseum.progress.app-42')!,
+      window.localStorage.getItem('kade.colosseum.progress.v2.app-42')!,
     ) as { citizenAt: string | null; passportSerial: string | null };
     expect(stored.citizenAt).not.toBeNull();
     expect(stored.passportSerial).toMatch(/^KADE-CL-/);
     unmount();
 
     // Decay: checks stop being green before citizenship clears the live clock.
-    window.localStorage.removeItem('kade.colosseum.progress.app-42');
+    window.localStorage.removeItem('kade.colosseum.progress.v2.app-42');
     const { rerender } = render(
       <ColosseumResidency
         tier="colosseum"
@@ -490,7 +491,7 @@ describe('ColosseumResidency — persisted demo progress', () => {
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(window.localStorage.getItem('kade.colosseum.progress.app-42')).not.toBeNull();
+    expect(window.localStorage.getItem('kade.colosseum.progress.v2.app-42')).not.toBeNull();
     rerender(
       <ColosseumResidency
         tier="colosseum"
@@ -499,14 +500,14 @@ describe('ColosseumResidency — persisted demo progress', () => {
       />,
     );
     const afterDecay = JSON.parse(
-      window.localStorage.getItem('kade.colosseum.progress.app-42') ?? 'null',
+      window.localStorage.getItem('kade.colosseum.progress.v2.app-42') ?? 'null',
     ) as { residentSince: string | null } | null;
     expect(afterDecay?.residentSince ?? null).toBeNull();
   });
 
   it('scopes the demo progress per profile', () => {
     window.localStorage.setItem(
-      'kade.colosseum.progress.other-app',
+      'kade.colosseum.progress.v2.other-app',
       JSON.stringify({
         residentSince: null,
         citizenAt: null,
@@ -525,6 +526,29 @@ describe('ColosseumResidency — persisted demo progress', () => {
     // A different profile's (empty) record must not hide this profile's clock.
     expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+  });
+
+  it('reads and writes under the bumped v2 key namespace, never the abandoned one', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    // Starting the live clock writes the v2 key and never the v1 key.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(
+      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`),
+    ).not.toBeNull();
+    expect(
+      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`),
+    ).toBeNull();
+
+    // The documents flag is bumped alongside it.
+    expect(documentsFlagKey('app-x')).toBe('kade.documents.complete.v2.app-x');
   });
 });
 
@@ -587,7 +611,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
 
     // The claim is persisted as demo state.
     const stored = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
     ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
     expect(stored.residencyPassSerial).toMatch(/^KADE-RES-/);
     expect(stored.residencyPassAt).not.toBeNull();
@@ -667,7 +691,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
     const claimed = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
     ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
     fireEvent.keyDown(document, { key: 'Escape' });
 
@@ -678,7 +702,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
 
     // Recording citizenship must not drop the already-claimed pass fields.
     const stored = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.${KEY}`)!,
+      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
     ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
     expect(stored.residencyPassSerial).toBe(claimed.residencyPassSerial);
     expect(stored.residencyPassAt).toBe(claimed.residencyPassAt);
@@ -686,7 +710,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
 
   it('opens the full-screen certificate from the inline artifact after a stored citizenship', () => {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -754,7 +778,7 @@ describe('ColosseumResidency — the residency pass security print', () => {
 
   it('renders the certificate texture inside its opaque card', () => {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -891,7 +915,7 @@ describe('ColosseumResidency — exactly one reveal light pass', () => {
 
   it('renders exactly one sweep element for the standard certificate', () => {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -943,7 +967,7 @@ describe('ColosseumResidency — the inline certificate control', () => {
 
   function renderStoredCitizen() {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -995,6 +1019,53 @@ describe('ColosseumResidency — the inline certificate control', () => {
         name: /open the citizenship certificate full-screen/i,
       }),
     ).toHaveLength(1);
+  });
+
+  it('renders no floating badge over the artifact; the affordance is the button itself', () => {
+    renderStoredCitizen();
+
+    // The old top-right "Open" pill collided with the artifact's own "Citizen"
+    // chip; it is gone. The interaction affordance is the overlay button (a
+    // hover/focus pill in CSS), so the card's face stays clean.
+    expect(document.querySelector('.kade-passport-trigger-badge')).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('composes the embedded card as the same artifact as the popup, inside the bounded trigger wrapper', () => {
+    renderStoredCitizen();
+
+    const embedded = screen.getByTestId('colosseum-certificate');
+    // The embedded card fills the trigger wrapper, which carries the
+    // `min(100%, 420px)` bound (see `.kade-passport-trigger`), so it no longer
+    // stretches to the section width.
+    expect(embedded.style.width).toBe('100%');
+    expect(embedded.closest('.kade-passport-trigger')).not.toBeNull();
+
+    // Same composition as the popup: four fields, the guilloche texture, the
+    // MRZ and the emblem.
+    expect(embedded.querySelectorAll('.kade-artifact-field')).toHaveLength(4);
+    expect(embedded.querySelector('.kade-passport-guilloche')).not.toBeNull();
+    expect(
+      within(embedded).getByTestId('colosseum-certificate-mrz'),
+    ).toBeInTheDocument();
+    expect(embedded.textContent).toContain('✦');
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    );
+    const overlay = screen.getByTestId('colosseum-certificate-overlay');
+    expect(overlay.querySelectorAll('.kade-artifact-field')).toHaveLength(4);
+    expect(overlay.querySelector('.kade-passport-guilloche')).not.toBeNull();
+    expect(
+      within(overlay).getByTestId('colosseum-certificate-overlay-mrz'),
+    ).toBeInTheDocument();
+    expect(overlay.textContent).toContain('✦');
   });
 });
 
@@ -1091,7 +1162,7 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
     expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.querySelector('.kade-foil-tilt')).toBeNull();
     expect(document.querySelector('.kade-foil-pass')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
@@ -1105,7 +1176,7 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
 
   it('does not auto-open for an already-citizen restored state', () => {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -1167,7 +1238,7 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
 
   it('does not use the celebratory tier for a stored-citizen open', () => {
     window.localStorage.setItem(
-      `kade.colosseum.progress.${KEY}`,
+      `kade.colosseum.progress.v2.${KEY}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
@@ -1216,7 +1287,7 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
     expect(document.querySelector('.kade-celebration-ray')).toBeNull();
     expect(document.querySelector('.kade-celebration-bloom')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(document.querySelector('.kade-foil-tilt')).toBeNull();
     expect(document.body.style.overflow).not.toBe('hidden');
     expect(document.documentElement).not.toHaveAttribute('data-overlay-open');
   });
@@ -1270,12 +1341,17 @@ describe('ColosseumResidency — reduced motion', () => {
     );
     expect(document.querySelector('.kade-reveal-backdrop')).toBeNull();
     expect(document.querySelector('.kade-passport-flip')).toBeNull();
-    // The reduced-motion path renders no sweep element at all.
+    // The reduced-motion path renders no sweep or light element at all; the
+    // card content itself keeps it from being blank.
     expect(document.querySelectorAll('.kade-foil-pass')).toHaveLength(0);
     expect(document.querySelector('.kade-passport-sweep')).toBeNull();
     expect(document.querySelector('.kade-celebration-sweep')).toBeNull();
-    // It uses the static highlight instead, so the card is never left blank.
-    expect(document.querySelector('.kade-foil-light-static')).not.toBeNull();
+    expect(document.querySelector('.kade-foil-light')).toBeNull();
+    expect(
+      screen
+        .getByTestId('colosseum-certificate-overlay')
+        .querySelectorAll('.kade-artifact-field').length,
+    ).toBeGreaterThan(0);
   });
 
   it('renders no celebratory overlays under reduced motion', () => {
@@ -1392,21 +1468,70 @@ describe('FullScreenReveal — the page lock', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  it('keeps the overlay as the single scroll port and bounds the card', () => {
+  it('never lets the overlay scroll: the card is scaled to fit instead', () => {
     renderReveal();
 
     const dialog = screen.getByRole('dialog');
     const backdrop = dialog.parentElement!;
-    // The overlay is the one and only scroll port, on both axes pinned.
+    // The overlay cannot scroll on either axis: it is a clipped region.
     expect(backdrop.style.position).toBe('fixed');
     expect(backdrop.style.blockSize).toBe('100dvh');
-    expect(backdrop.style.overflowY).toBe('auto');
+    expect(backdrop.style.overflowY).toBe('hidden');
     expect(backdrop.style.overflowX).toBe('hidden');
-    // The card is bounded so the artifact cannot push the overlay to scroll.
-    expect(dialog.style.maxBlockSize).toContain('dvh');
+    // The card carries no block-size cap that could leave content overflowing;
+    // it is scaled by the true ratio to fit instead (no floor).
+    expect(dialog.style.maxBlockSize).toBe('');
     // jsdom reports zero heights, so the fit scale stays neutral and the card
     // carries no transform of its own.
     expect(dialog.style.transform).toBe('');
+  });
+
+  it('scales the artifact to fit when it is taller than the viewport, including a mount-with-open reveal', () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollHeight',
+    );
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientHeight',
+    );
+    // The card is 1200px tall inside an 800px overlay: available = 800 - 96.
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 1200,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 800,
+    });
+    try {
+      renderReveal();
+
+      const dialog = screen.getByRole('dialog');
+      // The reveal mounts already-open, and the scale is still computed after
+      // mount (the effect depends on `mounted`, not only `open`). No floor, so
+      // the true ratio (704 / 1200) is used and the card fits.
+      expect(dialog.style.transform).toBe('scale(0.5867)');
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'scrollHeight',
+          scrollHeightDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+      }
+      if (clientHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'clientHeight',
+          clientHeightDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      }
+    }
   });
 
   it('restores the exact previous inline styles and scroll position on close', () => {
@@ -1477,7 +1602,41 @@ describe('ColosseumResidency — the reveal sound', () => {
     Reflect.deleteProperty(window, 'AudioContext');
   });
 
-  function openPass() {
+  it('stays silent for the standard reveal and the residency pass', () => {
+    const cue = vi.mocked(playCitizenshipCue);
+    cue.mockClear();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    // Claiming the residency pass opens the standard reveal: no sound.
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    expect(
+      screen.getByTestId('colosseum-residency-pass-overlay'),
+    ).toBeInTheDocument();
+    expect(cue).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when the certificate is re-opened from the inline artifact', () => {
+    const cue = vi.mocked(playCitizenshipCue);
+    cue.mockClear();
+
+    window.localStorage.setItem(
+      `kade.colosseum.progress.v2.${KEY}`,
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      }),
+    );
     render(
       <ColosseumResidency
         tier="colosseum"
@@ -1486,42 +1645,16 @@ describe('ColosseumResidency — the reveal sound', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: /claim colosseum residency/i }),
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
     );
-  }
-
-  it('renders a labelled, persisted mute control that toggles', () => {
-    openPass();
-
-    const mute = screen.getByRole('button', { name: /mute reveal sound/i });
-    expect(mute.tagName).toBe('BUTTON');
-    expect(mute).toHaveAttribute('aria-pressed', 'false');
-    expect(mute).toHaveTextContent(/sound/i);
-
-    fireEvent.click(mute);
-    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBe('1');
-    const unmute = screen.getByRole('button', { name: /unmute reveal sound/i });
-    expect(unmute).toHaveAttribute('aria-pressed', 'true');
-    expect(unmute).toHaveTextContent(/muted/i);
-
-    fireEvent.click(unmute);
-    expect(window.localStorage.getItem('kade.reveal.sound.muted')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: /mute reveal sound/i }),
-    ).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(cue).not.toHaveBeenCalled();
   });
 
-  it('restores the persisted mute preference on the next open', () => {
-    window.localStorage.setItem('kade.reveal.sound.muted', '1');
-    openPass();
-
-    expect(
-      screen.getByRole('button', { name: /unmute reveal sound/i }),
-    ).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('asks for the cue exactly once per open and not on a re-render', () => {
-    const cue = vi.mocked(playRevealSound);
+  it('plays the citizenship cue exactly once on the live celebration, not on a re-render', () => {
+    const cue = vi.mocked(playCitizenshipCue);
     cue.mockClear();
 
     const { rerender } = render(
@@ -1531,9 +1664,11 @@ describe('ColosseumResidency — the reveal sound', () => {
         profileKey={KEY}
       />,
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: /claim colosseum residency/i }),
-    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
     expect(cue).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -1546,8 +1681,8 @@ describe('ColosseumResidency — the reveal sound', () => {
     expect(cue).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the richer celebration cue for the live transition', () => {
-    const cue = vi.mocked(playRevealSound);
+  it('does not replay the cue after dismissal and re-open', () => {
+    const cue = vi.mocked(playCitizenshipCue);
     cue.mockClear();
 
     render(
@@ -1561,18 +1696,25 @@ describe('ColosseumResidency — the reveal sound', () => {
       vi.advanceTimersByTime(120_000);
     });
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+    expect(cue).toHaveBeenCalledTimes(1);
 
-    expect(cue).toHaveBeenCalledWith('celebration');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /open the citizenship certificate full-screen/i,
+      }),
+    );
+    expect(screen.getByTestId('colosseum-certificate-overlay')).toBeInTheDocument();
+    expect(cue).toHaveBeenCalledTimes(1);
   });
 
   it('degrades silently when AudioContext is unavailable', async () => {
     Reflect.deleteProperty(window, 'AudioContext');
     vi.resetModules();
-    const { playRevealSound: freshPlay } = await import(
+    const { playCitizenshipCue: freshPlay } = await import(
       '@/components/residency/reveal-sound'
     );
-    expect(() => freshPlay('standard')).not.toThrow();
-    expect(() => freshPlay('celebration')).not.toThrow();
+    expect(() => freshPlay()).not.toThrow();
   });
 
   it('degrades silently when the AudioContext constructor throws', async () => {
@@ -1580,10 +1722,9 @@ describe('ColosseumResidency — the reveal sound', () => {
       throw new Error('autoplay blocked');
     };
     vi.resetModules();
-    const { playRevealSound: freshPlay } = await import(
+    const { playCitizenshipCue: freshPlay } = await import(
       '@/components/residency/reveal-sound'
     );
-    expect(() => freshPlay('standard')).not.toThrow();
-    expect(() => freshPlay('celebration')).not.toThrow();
+    expect(() => freshPlay()).not.toThrow();
   });
 });
