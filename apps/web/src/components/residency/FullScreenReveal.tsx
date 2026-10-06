@@ -371,7 +371,13 @@ export function FullScreenReveal({
 
   const documentClassName = reducedMotion
     ? undefined
-    : [revealClassName, flipClassName].filter(Boolean).join(' ');
+    : [
+        revealClassName,
+        flipClassName,
+        showCelebration ? 'kade-reveal-flip-celebration' : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
   return createPortal(
     <div className={backdropClassName} onClick={onClose} style={backdrop}>

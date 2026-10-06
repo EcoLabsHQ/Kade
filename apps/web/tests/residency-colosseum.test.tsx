@@ -565,6 +565,56 @@ describe('ColosseumResidency — the residency pass security print', () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* The reveal motion is one fused timeline                                     */
+/* -------------------------------------------------------------------------- */
+
+describe('ColosseumResidency — the reveal motion is one fused timeline', () => {
+  const KEY = 'app-fused-motion';
+
+  it('applies exactly one flip transform to the residency pass reveal', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const flips = document.querySelectorAll(
+      '.kade-residency-pass-flip, .kade-passport-flip, .kade-reveal-flip-celebration',
+    );
+    expect(flips).toHaveLength(1);
+    // The credential card itself no longer carries its own rise animation.
+    const credential = document.querySelector('.kade-security-credential');
+    expect(credential).not.toBeNull();
+    expect(credential!.className).not.toMatch(/kade-reveal-card|flip/);
+  });
+
+  it('uses the single fused celebration timeline for the live transition', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
+
+    const flips = document.querySelectorAll(
+      '.kade-passport-flip, .kade-reveal-flip-celebration',
+    );
+    expect(flips).toHaveLength(1);
+    expect(document.querySelector('.kade-reveal-flip-celebration')).not.toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* The inline certificate is the full-screen trigger                           */
 /* -------------------------------------------------------------------------- */
 

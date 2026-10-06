@@ -406,45 +406,48 @@ textarea {
   animation: kade-reveal-backdrop 0.36s ease-out both;
 }
 
-/* The approved card entrance: a gentle rise and scale to rest. */
+/* The card element only fades. The rise and tilt are fused into the single
+   document timeline below (`kade-passport-flip` / `kade-residency-pass-flip`),
+   so the credential has exactly ONE transform animation instead of a stack of
+   nested transforms (card rise ∘ document flip ∘ stack/credential settle) that
+   fought each other and flattened the settle. */
 @keyframes kade-reveal-card {
   from {
     opacity: 0;
-    transform: translateY(26px) scale(0.955);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 .kade-reveal-card {
-  animation: kade-reveal-card 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: kade-reveal-card 0.5s ease-out both;
 }
 
-/* The approved gentle document tilt (a 22° lean, never a full flip). Kept for
-   both artifacts; the new layer reveals play inside it. */
+/* The approved gentle document tilt (a 22° lean, never a full flip), now fused
+   with the card rise/scale into one fluid timeline. The 55% overshoot waypoint
+   is what made the approved baseline settle feel fluid; it is preserved. */
 @keyframes kade-passport-flip {
-  from {
-    transform: rotateY(-22deg) rotateX(7deg) translateY(10px) scale(0.975);
+  0% {
+    transform: translateY(30px) rotateY(-22deg) rotateX(7deg) scale(0.955);
   }
   55% {
-    transform: rotateY(6deg) rotateX(-1.5deg) translateY(-3px) scale(1.006);
+    transform: translateY(-3px) rotateY(6deg) rotateX(-1.5deg) scale(1.006);
   }
-  to {
-    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
+  100% {
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
   }
 }
 
 @keyframes kade-residency-pass-flip {
-  from {
-    transform: rotateY(24deg) rotateX(-7deg) translateY(10px) scale(0.975);
+  0% {
+    transform: translateY(30px) rotateY(24deg) rotateX(-7deg) scale(0.955);
   }
   55% {
-    transform: rotateY(-6deg) rotateX(1.5deg) translateY(-3px) scale(1.006);
+    transform: translateY(-3px) rotateY(-6deg) rotateX(1.5deg) scale(1.006);
   }
-  to {
-    transform: rotateY(0deg) rotateX(0deg) translateY(0) scale(1);
+  100% {
+    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
   }
 }
 
@@ -478,23 +481,42 @@ textarea {
 }
 
 @keyframes kade-reveal-card-celebration {
-  0% {
+  from {
     opacity: 0;
-    transform: translateY(64px) translateZ(-160px) rotateX(18deg) rotateZ(-5deg)
-      scale(0.86);
   }
-  72% {
+  to {
     opacity: 1;
-    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1.035);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
 }
 
 .kade-reveal-card-celebration {
-  animation: kade-reveal-card-celebration 0.9s cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  animation: kade-reveal-fade 0.5s ease-out 80ms both;
+}
+
+/* The celebratory tier's single fused timeline, carried by the same document
+   wrapper as the standard flip. The big rise/depth/tilt lives here instead of
+   on the card, so the credential still has exactly one transform animation. */
+@keyframes kade-reveal-flip-celebration {
+  0% {
+    opacity: 0;
+    transform: translateY(64px) translateZ(-160px) rotateY(-14deg)
+      rotateX(16deg) rotateZ(-5deg) scale(0.86);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0) translateZ(0) rotateY(4deg) rotateX(-2deg)
+      rotateZ(0deg) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) translateZ(0) rotateY(0deg) rotateX(0deg)
+      rotateZ(0deg) scale(1);
+  }
+}
+
+.kade-reveal-flip-celebration {
+  animation: kade-reveal-flip-celebration 0.9s cubic-bezier(0.16, 1, 0.3, 1)
+    80ms both;
 }
 
 /* A plain opacity fade, used for the reduced-motion entrances. */
@@ -595,24 +617,38 @@ textarea {
   animation-delay: 165ms;
 }
 
-.kade-layer-credential {
-  --kade-layer-end: 1;
-  animation-delay: 220ms;
-  position: relative;
-  z-index: 1;
+/* The credential layer holds the pass card, so it must not transform: the
+   fused document timeline carries the whole card's motion. It only wipes in. */
+@keyframes kade-credential-layer-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0);
+  }
 }
 
-/* The credential settles: a hair of scale and a deepening outer shadow. */
+.kade-layer-credential {
+  --kade-layer-end: 1;
+  position: relative;
+  z-index: 1;
+  animation: kade-credential-layer-in 0.46s cubic-bezier(0.45, 0, 0.2, 1)
+    220ms both;
+  will-change: opacity, clip-path;
+}
+
+/* The credential settles: only the outer shadow deepens. The scale that used to
+   live here was a third competing transform on the credential. */
 @keyframes kade-credential-settle {
   from {
-    transform: scale(0.985);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.35) inset,
       0 -2px 6px rgba(0, 0, 0, 0.4) inset,
       0 34px 16px -30px rgba(4, 24, 22, 0.9);
   }
   to {
-    transform: scale(1);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.35) inset,
       0 -2px 6px rgba(0, 0, 0, 0.4) inset,
@@ -621,8 +657,9 @@ textarea {
 }
 
 .kade-security-credential {
-  animation: kade-credential-settle 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) 0.34s both;
-  will-change: transform, box-shadow;
+  animation: kade-credential-settle 0.28s cubic-bezier(0.22, 0.61, 0.36, 1) 0.34s
+    both;
+  will-change: box-shadow;
 }
 
 /* The seal's stroke draws itself on. */
@@ -724,24 +761,18 @@ textarea {
 }
 
 @keyframes kade-stack-in {
-  from {
+  0% {
     opacity: 0;
     transform: translateY(36px) translateZ(-80px) rotateX(12deg) rotateZ(-3deg)
       scale(0.94);
   }
-  to {
+  72% {
     opacity: 1;
-    transform: translateY(0) translateZ(var(--kade-stack-z, 0px))
-      rotateX(0deg) rotateZ(var(--kade-stack-rz, 0deg)) scale(1);
+    transform: translateY(0) translateZ(0) rotateX(0deg) rotateZ(0deg) scale(1);
   }
-}
-
-@keyframes kade-stack-settle {
-  from {
-    transform: translateZ(var(--kade-stack-z, 0px)) rotateZ(var(--kade-stack-rz, 0deg));
-  }
-  to {
-    transform: translateZ(0px) rotateZ(0deg);
+  100% {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -750,31 +781,28 @@ textarea {
   inset: 0;
   transform-style: preserve-3d;
   opacity: 0;
-  animation:
-    kade-stack-in 0.72s cubic-bezier(0.16, 1, 0.3, 1) var(--kade-stack-delay, 100ms) both,
-    kade-stack-settle 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) 0.62s forwards;
+  animation: kade-stack-in 0.72s cubic-bezier(0.16, 1, 0.3, 1)
+    var(--kade-stack-delay, 100ms) both;
   will-change: transform, opacity;
   pointer-events: none;
 }
 
 .kade-stack-layer.kade-stack-back {
-  --kade-stack-z: -12px;
-  --kade-stack-rz: -1deg;
   --kade-stack-delay: 100ms;
 }
 
 .kade-stack-layer.kade-stack-mid {
-  --kade-stack-z: -6px;
-  --kade-stack-rz: 0.6deg;
   --kade-stack-delay: 170ms;
 }
 
+/* The front layer holds the credential, so it must NOT add its own transform
+   on top of the document timeline: it only fades in, and the fused
+   `kade-passport-flip` carries the whole card's motion. */
 .kade-stack-layer.kade-stack-front {
-  --kade-stack-z: 0px;
-  --kade-stack-rz: 0deg;
-  --kade-stack-delay: 240ms;
   position: relative;
   z-index: 1;
+  animation: kade-reveal-fade 0.45s ease-out 120ms both;
+  will-change: opacity;
 }
 
 .kade-passport-reveal .kade-artifact-field {
@@ -1118,6 +1146,7 @@ textarea {
   .kade-foil-pass,
   .kade-reveal-backdrop-celebration,
   .kade-reveal-card-celebration,
+  .kade-reveal-flip-celebration,
   .kade-celebration-bloom,
   .kade-celebration-ray,
   .kade-celebration-sweep,
