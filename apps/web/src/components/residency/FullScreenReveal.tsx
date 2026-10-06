@@ -230,13 +230,28 @@ export function FullScreenReveal({
 
 const backdrop: CSSProperties = {
   position: 'fixed',
+  // `inset: 0` rather than `width: 100vw`: a `100vw` width includes the classic
+  // scrollbar and can itself cause a horizontal overflow.
   inset: 0,
+  // `dvh` tracks the visible viewport as mobile browser chrome moves; `vh`
+  // would overhang. The overlay is the one and only scroll port: when the
+  // artifact is taller than the viewport it scrolls here, never in a nested
+  // region.
+  blockSize: '100dvh',
   background:
     'radial-gradient(120% 120% at 50% 0%, rgba(7,29,48,.82) 0%, rgba(4,14,24,.92) 100%)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: 'clamp(12px, 4vw, 40px)',
+  overflowX: 'hidden',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  WebkitOverflowScrolling: 'touch',
+  boxSizing: 'border-box',
+  paddingTop: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-top))',
+  paddingRight: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-right))',
+  paddingBottom: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-bottom))',
+  paddingLeft: 'calc(clamp(12px, 4vw, 40px) + env(safe-area-inset-left))',
   zIndex: 80,
 };
 
@@ -244,8 +259,15 @@ const card: CSSProperties = {
   position: 'relative',
   display: 'flex',
   flexDirection: 'column',
-  width: 'min(720px, 94vw)',
-  maxHeight: '92vh',
+  // `margin: auto` centers the card while keeping it reachable when it is
+  // taller than the viewport, unlike `align-items: center` alone which clips
+  // the start of an overflowing flex item.
+  margin: 'auto',
+  // Bound the artifact to the visible area on a laptop or a phone; the overlay
+  // scrolls gracefully as a last resort if the content still exceeds it.
+  width: 'min(92vw, 560px)',
+  maxInlineSize: '100%',
+  maxBlockSize: 'min(100%, 78dvh)',
   outline: 'none',
 };
 
@@ -277,11 +299,10 @@ const closeLabel: CSSProperties = {
 
 const scene: CSSProperties = {
   perspective: '1200px',
-  overflow: 'auto',
   display: 'flex',
   justifyContent: 'center',
-  // Let the scroll area shrink inside the flex column instead of overflowing
-  // the card's `maxHeight`.
+  // Let the scene shrink inside the flex column; the overlay, not this region,
+  // owns scrolling, so no nested scrollbar can appear.
   minHeight: 0,
 };
 
