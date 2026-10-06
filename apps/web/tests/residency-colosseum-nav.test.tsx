@@ -46,6 +46,18 @@ describe('NavItem — the Colosseum highlight', () => {
     expect(link).toHaveClass('kade-nav-attention');
   });
 
+  it('carries the breathing dot the nav stylesheet animates, not a halo', () => {
+    render(<NavItem item={residency} active={false} />);
+
+    act(() => setColosseumAttention(true));
+
+    const link = screen.getByRole('link', { name: /residency/i });
+    // The attention class is the stylesheet hook; the dot inside it is what
+    // breathes (`globals.css` targets `.kade-nav-attention .kade-nav-dot`).
+    expect(link).toHaveClass('kade-nav-attention');
+    expect(link.querySelector('.kade-nav-dot')).not.toBeNull();
+  });
+
   it('clears the highlight when attention is cleared', () => {
     render(<NavItem item={residency} active={false} />);
 

@@ -319,21 +319,39 @@ textarea {
   animation: kade-spin .8s linear infinite;
 }
 
-/* The Colosseum demo's nav attention pulse. The mocked 2-minute window has
-   elapsed and "Become a Citizen" is available, so the Residency nav item gently
-   pulses until the resident acts. Inline styles cannot express keyframes. */
-@keyframes kade-nav-pulse {
+/* The Colosseum demo's nav attention. The mocked 2-minute window has elapsed and
+   "Become a Citizen" is available, so the Residency nav item breathes gently
+   until the resident acts: its dot softens and recovers, and the tint deepens by
+   a hair. There is no halo and no heavy glow — it reads as "there is something
+   to do" without shouting on repeat. Inline styles cannot express keyframes. */
+@keyframes kade-nav-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(10, 124, 255, 0);
+    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(10, 124, 255, 0.28);
+    opacity: 0.45;
+    transform: scale(0.7);
+  }
+}
+
+@keyframes kade-nav-shimmer {
+  0%,
+  100% {
+    background-color: #e6f1fe;
+  }
+  50% {
+    background-color: #f1f7ff;
   }
 }
 
 .kade-nav-attention {
-  animation: kade-nav-pulse 1.6s ease-in-out infinite;
+  animation: kade-nav-shimmer 3.4s ease-in-out infinite;
+}
+
+.kade-nav-attention .kade-nav-dot {
+  animation: kade-nav-breathe 3.4s ease-in-out infinite;
 }
 
 /* The Colosseum full-screen artifact reveals. The backdrop fades, the card rises
@@ -405,6 +423,8 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .kade-nav-attention,
+  .kade-nav-attention .kade-nav-dot,
   .kade-reveal-backdrop,
   .kade-reveal-card,
   .kade-passport-reveal,
