@@ -46,13 +46,9 @@ vi.mock('@/lib/residency/service-fee-server', () => ({
     rpcUrl: 'https://sepolia.example',
   }),
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => children,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock('@/components/shell/SiteFooter', () => ({ SiteFooter: () => null }));
 vi.mock('@/components/wallet/WalletProvider', () => ({
   WalletProvider: ({ children }: { children: ReactNode }) => children,
 }));
@@ -63,7 +59,7 @@ vi.mock('@/components/residency/ResidencyStep', () => ({
   },
 }));
 
-import ResidencyPage from '@/app/residency/page';
+import ResidencyPage from '@/app/(resident)/residency/page';
 
 const SNAPSHOT = {
   applicationId: 'app-1',

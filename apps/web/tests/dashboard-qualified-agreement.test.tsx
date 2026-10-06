@@ -65,9 +65,6 @@ vi.mock('@/lib/env', () => ({
 vi.mock('@/components/review/ReviewGateWatcher', () => ({
   ReviewGateWatcher: () => null,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -78,7 +75,7 @@ vi.mock('@/lib/payments/server', () => ({
   loadFeePayment: hoisted.loadFeePayment,
 }));
 
-import OverviewPage from '@/app/page';
+import OverviewPage from '@/app/(resident)/page';
 
 const SAFE = '0x5Af1000000000000000000000000000000000c09D';
 

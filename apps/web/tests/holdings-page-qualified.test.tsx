@@ -67,9 +67,6 @@ vi.mock('@/lib/wealth/vault-holdings', () => ({
 vi.mock('@/components/wallet/WalletProvider', () => ({
   WalletProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock('@/components/shell/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 vi.mock('@/components/shell/ContentContainer', () => ({
   ContentContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -98,7 +95,7 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
   addConnectedWallet: vi.fn(),
 }));
 
-import HoldingsPage from '@/app/holdings/page';
+import HoldingsPage from '@/app/(resident)/holdings/page';
 
 describe('HoldingsPage qualified total', () => {
   it('reduces the on-chain rows once and passes the single value to the view', async () => {
