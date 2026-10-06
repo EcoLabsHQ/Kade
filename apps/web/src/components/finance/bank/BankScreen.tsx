@@ -790,6 +790,8 @@ export function BankScreen() {
             color: tokens.brandPrimary,
             fontSize: '11px',
             fontWeight: 700,
+            // Symmetric horizontal padding keeps the pill balanced around the
+            // text + logo contents.
             padding: '5px 10px',
             borderRadius: '999px',
             whiteSpace: 'nowrap',
@@ -797,12 +799,32 @@ export function BankScreen() {
           }}
         >
           Powered by
+          {/*
+            The asset is now cropped tight around the wordmark's ink, so 263×84
+            is its true intrinsic size (it was 300×100 with asymmetric
+            transparent padding: top 6, bottom 18, left 19, right 26).
+          */}
           <Image
             src="/girasol-logo.png"
             alt="Girasol"
-            width={300}
-            height={100}
-            style={{ height: 14, width: 'auto', display: 'block' }}
+            width={263}
+            height={84}
+            style={{
+              // Size the Girasol mark to the label's cap height: the mark's ink
+              // is 44px tall in the 84px canvas, so at height 15 it renders at
+              // ~7.9px, matching the ~8px cap height of the 11px bold label.
+              height: 15,
+              width: 'auto',
+              display: 'block',
+              // Optical centring. Measured on the 263×84 asset: the wordmark's
+              // x-height band (source rows 26–63) centres ~1px below the ink
+              // bbox centre, and the alpha-weighted centroid ~1.5px below it,
+              // because the "g" descender loop carries more ink than the "l"
+              // ascender. With the box centred the body therefore reads a
+              // fraction low beside "Powered by"; the residual is ~0.2–0.3px
+              // at this render size, applied as a half-pixel upward nudge.
+              transform: 'translateY(-0.5px)',
+            }}
           />
         </a>
       </div>
