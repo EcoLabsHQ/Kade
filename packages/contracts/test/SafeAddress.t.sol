@@ -51,12 +51,18 @@ contract SafeAddressTest is Test {
     // (viem) from this repository's compiled `SafeProxy` creation code by
     // `node scripts/safe-address-vector.mjs`.
     //
+    // These values were re-derived when the pinned OpenZeppelin dependency
+    // (v5.7.0) was added for the Colosseum Membership contracts. Foundry
+    // compiles every source in one solc input, so adding sources changes each
+    // artifact's metadata (and therefore its creation code). The change is
+    // loud on purpose; the vector arithmetic itself is unchanged.
+    //
     // NOTE: this hash pins our own build. It is deliberately NOT the code the
     // deployed factory uses (438 bytes, 0x941b3e88…), so it must not be used to
     // derive a real account address.
-    address internal constant EXPECTED_ADDRESS = 0x6D2C2fD420Fd7b7AF36b0F001606d2010a02B490;
+    address internal constant EXPECTED_ADDRESS = 0x82d8D41378E916167Cb0ddef489B0fb9887c217c;
     bytes32 internal constant PROXY_CREATION_CODE_HASH =
-        0xa547798e9cb7097a11fa42521894d2a7522e2deb5d8acbcef74b6e92adc906cf;
+        0xf2deadba95d5ae1951007f5719ce3eaa70b96918e544e6b31e519b08d3279f9d;
 
     bytes internal proxyCreationCode;
 
