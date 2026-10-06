@@ -9,8 +9,10 @@ import {
 } from '@/lib/invest/morpho-config';
 import {
   EVM_READ_CHAINS,
+  EVM_READ_CONCURRENCY,
   USDC_DECIMALS,
   formatUnits,
+  mapWithConcurrency,
   readEvmBalances,
 } from './evm';
 import type { EvmChainBalance } from './types';
@@ -261,15 +263,46 @@ export async function loadVaultHoldings(
       ? options.morphoConfigs
       : configuredMorphoConfigs();
 
+  const configs = morphoConfigs ?? [];
   const rows: VaultHoldingRow[] = [];
 
-  let balances: readonly EvmChainBalance[] = [];
-  let balancesFailure: string | null = null;
-  try {
-    balances = await readBalances(address);
-  } catch (cause) {
-    balancesFailure = `The vault balances could not be read: ${reasonOf(cause)}`;
-  }
+  // The balance read and the per-rail vault reads are independent, so they are
+  // issued together: a navigation pays the slower of the two, not their sum.
+  // The vault rails also run with a small concurrency bound rather than one
+  // after another. Results keep the registry order, so the rendered rows are
+  // unchanged. A balance failure is still carried to every chain row, and a
+  // vault failure is still carried on its own row — nothing is fabricated.
+  const [balanceResult, morphoPositions] = await Promise.all([
+    (async (): Promise<{
+      readonly balances: readonly EvmChainBalance[];
+      readonly failure: string | null;
+    }> => {
+      try {
+        return { balances: await readBalances(address), failure: null };
+      } catch (cause) {
+        return {
+          balances: [],
+          failure: `The vault balances could not be read: ${reasonOf(cause)}`,
+        };
+      }
+    })(),
+    mapWithConcurrency(
+      configs,
+      EVM_READ_CONCURRENCY,
+      async (config): Promise<MorphoPositionRead> => {
+        try {
+          return await readMorpho({ safeAddress: address, config });
+        } catch (cause) {
+          return {
+            status: 'failed',
+            reason: `The vault position could not be read: ${reasonOf(cause)}`,
+          };
+        }
+      },
+    ),
+  ]);
+
+  const { balances, failure: balancesFailure } = balanceResult;
 
   for (const chain of chains) {
     const read = balances.find((balance) => balance.chainId === chain.chainId);
@@ -338,16 +371,9 @@ export async function loadVaultHoldings(
     }
   }
 
-  for (const morphoConfig of morphoConfigs ?? []) {
-    let position: MorphoPositionRead;
-    try {
-      position = await readMorpho({ safeAddress: address, config: morphoConfig });
-    } catch (cause) {
-      position = {
-        status: 'failed',
-        reason: `The vault position could not be read: ${reasonOf(cause)}`,
-      };
-    }
+  for (let index = 0; index < configs.length; index += 1) {
+    const morphoConfig = configs[index] as MorphoVaultConfig;
+    const position = morphoPositions[index] as MorphoPositionRead;
 
     const morphoChainName = chainNameOf(chains, morphoConfig.chainId);
 
