@@ -167,11 +167,65 @@ const RETRY_BASE_DELAY_MS = 200;
  */
 export const EVM_READ_TIMEOUT_MS = 8_000;
 
+/**
+ * How long Next may reuse a cached ETH/USD price, in seconds.
+ *
+ * [arbitrary] 60 s. A price is **not** a balance: a one-minute-old rate is still
+ * an honest valuation for the display-only USD figure, while the native amount
+ * itself is always the fresh on-chain read. The window is bounded rather than
+ * unbounded so a stale rate cannot persist. The failure path is unchanged — a
+ * missing price is `null` (USD left unknown), never a fabricated rate — and Next
+ * only caches a successful (HTTP 200) response, so a transient failure is not
+ * cached and cannot mask a later success.
+ */
+export const ETH_USD_PRICE_CACHE_SECONDS = 60;
+
+/**
+ * How many independent per-chain reads may be in flight at once.
+ *
+ * [arbitrary] Three overlaps the three product chains (Ethereum, Base, Arbitrum
+ * One) without opening a burst of sockets at the public RPC providers, which
+ * rate-limit. The bound is deliberately small: the goal is to remove the serial
+ * latency, not to saturate the provider.
+ */
+export const EVM_READ_CONCURRENCY = 3;
+
 /** Await `ms` without depending on a specific timer implementation. */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/**
+ * Map `items` through an async `map` with at most `limit` operations in flight,
+ * returning results in input order.
+ *
+ * Used for the independent per-chain reads so a navigation pays roughly one
+ * chain's latency instead of the sum of them, while the small bound keeps the
+ * number of concurrent provider requests under control. Results keep the input
+ * order, so a caller's row order never depends on which chain answers first.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  map: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  // At least one worker: a non-positive `limit` must not leave the results
+  // uninitialised, and an empty list is a no-op either way.
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await map(items[index] as T, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 /** HTTP statuses that are worth retrying: rate limit, timeout and 5xx. */
@@ -481,6 +535,13 @@ function priceSourceChain(
  * dedicated stats endpoint (`coin_price`), not an address summary — that is the
  * endpoint that was durably dead on Base, and it is not needed just for a rate.
  * Uses the same bounded retry as every other provider request, and never throws.
+ *
+ * The read is cached by Next for `ETH_USD_PRICE_CACHE_SECONDS`, so repeated
+ * navigations reuse the rate instead of hitting the provider every time. The
+ * cache key is the stats URL alone — there is no resident or address in it, so
+ * the cached rate is a public market price and can never carry one resident's
+ * data to another. Next caches only a successful response, so a failed read is
+ * retried on the next navigation rather than being remembered.
  */
 async function readEthUsdPrice(
   chains: readonly EvmReadChain[],
@@ -491,7 +552,10 @@ async function readEthUsdPrice(
 
   const base = source.baseUrl.replace(/\/+$/, '');
   const outcome = await fetchWithRetry(
-    () => fetchImpl(`${base}/api/v2/stats`),
+    () =>
+      fetchImpl(`${base}/api/v2/stats`, {
+        next: { revalidate: ETH_USD_PRICE_CACHE_SECONDS },
+      }),
     source,
   );
   if ('failure' in outcome) return null;
@@ -903,20 +967,30 @@ async function readUsdcBalance(
  * A failed USDC read keeps the chain's native balance and records the failure
  * on the balance as `tokenFailure`, so the token amount stays unread rather
  * than becoming zero and the specific reason survives to every consumer.
+ *
+ * The native and USDC reads are independent, so they are issued together rather
+ * than one after the other: the chain pays one round-trip of latency instead of
+ * two in series. The ETH/USD price promise was started before this read and is
+ * awaited alongside them, so it overlaps both. The retry, timeout and
+ * classification budgets are unchanged — each source still runs its own bounded
+ * retry, and the same failure takes precedence as before.
  */
 async function readChainBalance(
   chain: EvmReadChain,
   address: string,
   fetchImpl: typeof fetch,
-  ethUsd: number | null,
+  ethUsd: Promise<number | null>,
 ): Promise<EvmChainRead> {
-  const native = await readNativeBalance(chain, address, fetchImpl);
+  const [native, usdcRead, rate] = await Promise.all([
+    readNativeBalance(chain, address, fetchImpl),
+    readUsdcBalance(chain, address, fetchImpl),
+    ethUsd,
+  ]);
   if (!native.ok) return { chain, ok: false, failure: native.failure };
 
   const nativeAmount = formatNative(native.wei);
-  const nativeUsd = toUsd(nativeAmount, ethUsd);
+  const nativeUsd = toUsd(nativeAmount, rate);
 
-  const usdcRead = await readUsdcBalance(chain, address, fetchImpl);
   const usdc = usdcRead.ok ? usdcRead.token : null;
   // The token sub-read's failure is not dropped: it rides on the balance so the
   // screen can name the specific reason the USDC amount is unread. The native
@@ -979,13 +1053,16 @@ export async function readEvmChainBalances(
   const fetchImpl = options.fetchImpl ?? fetch;
   const chains = resolveChains(options.chains);
 
-  // Read the one ETH/USD price before the per-chain loop, so it is fetched once
-  // and applied to every chain rather than once per chain.
-  const ethUsd = await readEthUsdPrice(chains, fetchImpl);
+  // Start the one ETH/USD price read and the per-chain reads together. The
+  // price is a single shared promise awaited by each chain, so it overlaps the
+  // chain reads instead of preceding them, and it is still fetched once rather
+  // than once per chain. `readEthUsdPrice` never throws; the guard only keeps a
+  // hypothetical rejection from failing a balance read.
+  const ethUsd = readEthUsdPrice(chains, fetchImpl).catch(() => null);
 
-  const results: EvmChainRead[] = [];
-  for (const chain of chains) {
-    results.push(await readChainBalance(chain, normalized, fetchImpl, ethUsd));
-  }
-  return results;
+  // Chains are independent, so they run with a small concurrency bound instead
+  // of one after another; the result keeps the chain order.
+  return mapWithConcurrency(chains, EVM_READ_CONCURRENCY, (chain) =>
+    readChainBalance(chain, normalized, fetchImpl, ethUsd),
+  );
 }
