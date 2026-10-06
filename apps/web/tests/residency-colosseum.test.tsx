@@ -1444,21 +1444,70 @@ describe('FullScreenReveal — the page lock', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
-  it('keeps the overlay as the single scroll port and bounds the card', () => {
+  it('never lets the overlay scroll: the card is scaled to fit instead', () => {
     renderReveal();
 
     const dialog = screen.getByRole('dialog');
     const backdrop = dialog.parentElement!;
-    // The overlay is the one and only scroll port, on both axes pinned.
+    // The overlay cannot scroll on either axis: it is a clipped region.
     expect(backdrop.style.position).toBe('fixed');
     expect(backdrop.style.blockSize).toBe('100dvh');
-    expect(backdrop.style.overflowY).toBe('auto');
+    expect(backdrop.style.overflowY).toBe('hidden');
     expect(backdrop.style.overflowX).toBe('hidden');
-    // The card is bounded so the artifact cannot push the overlay to scroll.
-    expect(dialog.style.maxBlockSize).toContain('dvh');
+    // The card carries no block-size cap that could leave content overflowing;
+    // it is scaled by the true ratio to fit instead (no floor).
+    expect(dialog.style.maxBlockSize).toBe('');
     // jsdom reports zero heights, so the fit scale stays neutral and the card
     // carries no transform of its own.
     expect(dialog.style.transform).toBe('');
+  });
+
+  it('scales the artifact to fit when it is taller than the viewport, including a mount-with-open reveal', () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollHeight',
+    );
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientHeight',
+    );
+    // The card is 1200px tall inside an 800px overlay: available = 800 - 96.
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 1200,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 800,
+    });
+    try {
+      renderReveal();
+
+      const dialog = screen.getByRole('dialog');
+      // The reveal mounts already-open, and the scale is still computed after
+      // mount (the effect depends on `mounted`, not only `open`). No floor, so
+      // the true ratio (704 / 1200) is used and the card fits.
+      expect(dialog.style.transform).toBe('scale(0.5867)');
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'scrollHeight',
+          scrollHeightDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+      }
+      if (clientHeightDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'clientHeight',
+          clientHeightDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+      }
+    }
   });
 
   it('restores the exact previous inline styles and scroll position on close', () => {

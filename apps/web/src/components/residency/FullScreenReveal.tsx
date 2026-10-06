@@ -247,13 +247,16 @@ export function FullScreenReveal({
     return unlockBody;
   }, [open]);
 
-  // Keep the artifact inside the overlay's visible area. The overlay stays the
-  // single scroll port (see `backdrop`), but a short viewport must scale the
-  // artifact down rather than grow a scrollbar. The card's own layout height is
-  // measured; if it exceeds the visible area we scale it. jsdom reports zero
-  // heights, so the guard leaves the scale at 1 there.
+  // Make the artifact always fit the overlay's visible area. The overlay is NOT
+  // a scroll port: it cannot scroll (see `backdrop`), so a short viewport must
+  // scale the artifact down instead. The card's natural height is measured and
+  // the card is scaled by the true ratio with no floor, so it can never be left
+  // overflowing. The effect depends on `mounted` as well as `open`: the card
+  // only exists after mount, and a reveal that ever mounts already-open must
+  // still compute a scale. jsdom reports zero heights, so the guard leaves the
+  // scale at 1 there.
   useEffect(() => {
-    if (!open) {
+    if (!open || !mounted) {
       setFitScale(1);
       return;
     }
@@ -273,12 +276,15 @@ export function FullScreenReveal({
         setFitScale(1);
         return;
       }
-      setFitScale(Math.max(0.6, Number((available / natural).toFixed(3))));
+      // No floor: a floor above the true ratio would leave the artifact taller
+      // than the viewport and reintroduce an overflow. The true ratio always
+      // fits.
+      setFitScale(Number((available / natural).toFixed(4)));
     };
     compute();
     window.addEventListener('resize', compute);
     return () => window.removeEventListener('resize', compute);
-  }, [open]);
+  }, [open, mounted]);
 
   // Play the cue exactly once per open, on the live open. A restored citizen
   // load never opens the reveal, so it never replays. Deliberately independent
@@ -512,9 +518,9 @@ const backdrop: CSSProperties = {
   // scrollbar and can itself cause a horizontal overflow.
   inset: 0,
   // `dvh` tracks the visible viewport as mobile browser chrome moves; `vh`
-  // would overhang. The overlay is the one and only scroll port: when the
-  // artifact is taller than the viewport it scrolls here, never in a nested
-  // region.
+  // would overhang. The overlay is NOT a scroll port: `overflow: hidden` on
+  // both axes guarantees the reveal cannot scroll, and the card is scaled to
+  // fit instead (see the fit effect above). It is the single clipped region.
   blockSize: '100dvh',
   background:
     'radial-gradient(120% 120% at 50% 0%, rgba(7,29,48,.82) 0%, rgba(4,14,24,.92) 100%)',
@@ -522,9 +528,8 @@ const backdrop: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   overflowX: 'hidden',
-  overflowY: 'auto',
+  overflowY: 'hidden',
   overscrollBehavior: 'contain',
-  WebkitOverflowScrolling: 'touch',
   boxSizing: 'border-box',
   // Gives the card's Reveal 3 `rotateX` a perspective to read against.
   perspective: '1400px',
@@ -539,15 +544,14 @@ const card: CSSProperties = {
   position: 'relative',
   display: 'flex',
   flexDirection: 'column',
-  // `margin: auto` centers the card while keeping it reachable when it is
-  // taller than the viewport, unlike `align-items: center` alone which clips
-  // the start of an overflowing flex item.
+  // `margin: auto` centers the card in the overlay.
   margin: 'auto',
-  // Bound the artifact to the visible area on a laptop or a phone; the overlay
-  // scrolls gracefully as a last resort if the content still exceeds it.
+  // Bound the artifact horizontally on a laptop or a phone. There is no
+  // block-size cap: the card's natural height is measured and it is scaled to
+  // fit the viewport (see the fit effect), so it can never overflow the
+  // non-scrolling overlay.
   width: 'min(92vw, 560px)',
   maxInlineSize: '100%',
-  maxBlockSize: 'min(100%, 78dvh)',
   outline: 'none',
 };
 
