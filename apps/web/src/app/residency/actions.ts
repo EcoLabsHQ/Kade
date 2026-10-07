@@ -15,7 +15,10 @@ import {
   mintMembershipForClaimFromEnv,
   type MembershipMintOutcome,
 } from '@/lib/membership/mint';
-import type { MembershipClaimTarget } from '@/lib/membership/plan';
+import {
+  parseMembershipClaimTarget,
+  type MembershipClaimTarget,
+} from '@/lib/membership/plan';
 import { membershipTransitionStore } from '@/lib/membership/store';
 
 /**
@@ -152,7 +155,22 @@ export async function claimMembershipAction(
       reason: 'Your session expired. Sign in again to claim.',
     };
   }
-  const outcome = await mintMembershipForClaimFromEnv(session.userId, target);
+
+  // The argument crosses the network, so the annotation is not a guard: an
+  // authenticated caller can send `"none"`. Validate at the boundary before the
+  // mint is reached; `revoke` is not a claim target and broadcasts nothing.
+  const parsed = parseMembershipClaimTarget(target as unknown);
+  if (parsed === null) {
+    return {
+      status: 'blocked',
+      sent: false,
+      reason:
+        `"${String(target)}" is not a Colosseum claim target; only resident and ` +
+        'citizen can be claimed.',
+    };
+  }
+
+  const outcome = await mintMembershipForClaimFromEnv(session.userId, parsed);
   if (outcome.status === 'sent') {
     revalidatePath('/residency');
   }

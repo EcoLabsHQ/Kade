@@ -14,7 +14,8 @@ import {
 import { reconcileMembershipEvents, type MembershipLogClient } from './indexer';
 import {
   buildMembershipTransitionPlan,
-  operationForTransition,
+  operationForClaim,
+  parseMembershipClaimTarget,
   type MembershipClaimTarget,
   type MembershipOperation,
 } from './plan';
@@ -55,16 +56,26 @@ import type { MembershipClaimStore } from './store';
  * is indexed and confirms the row. `sent` is literally `false` until a
  * successful receipt is indexed and the row is confirmed.
  *
+ * ## The claim target is validated at runtime
+ *
+ * A server action's argument crosses the network, so the TypeScript annotation
+ * is not a guard. The target is parsed at the boundary
+ * (`parseMembershipClaimTarget`) and only `resident` / `citizen` are accepted;
+ * `revoke` and any unknown value are refused and mint nothing. The operation is
+ * derived with `operationForClaim`, which cannot return `revoke`, so a claim can
+ * never burn a soulbound credential.
+ *
  * ## The compliance-window gap (reported, not papered over)
  *
  * The Citizenship claim's 2-minute window lives in client-side `localStorage`
  * (`@/components/residency/colosseum-progress`), which the server cannot read.
  * The four checks are the enforceable gate. A server-side window is recorded in
  * `applications.colosseum_resident_since` (migration
- * `20261006000002_colosseum_compliance_window.sql`, written but NOT applied) and
- * enforced when present; when it cannot be read (for example the migration is
- * not applied) the path degrades honestly to the four checks and reports that
- * the window was not enforced rather than pretending it was.
+ * `20261006000002_colosseum_compliance_window.sql`, written but NOT applied). A
+ * recorded window is enforced; a readable-but-null window is **fail-closed**
+ * (the clock is started and the claim refused); only an **unread** window — the
+ * migration is not applied — degrades honestly to the four checks, and that is
+ * reported rather than pretended.
  */
 
 /** The four checks a Colosseum claim must have green, in display order. */
@@ -201,6 +212,17 @@ export async function mintMembershipForClaim(input: {
   const { deps } = input;
   const now = deps.now ?? Date.now;
 
+  // 0. The claim target crosses the network, so the type annotation is not a
+  //    guard: re-validate at runtime. `revoke` (and anything unknown) is not a
+  //    claim target and mints nothing.
+  const target = parseMembershipClaimTarget(input.target as unknown);
+  if (target === null) {
+    return blocked(
+      `"${String(input.target)}" is not a Colosseum claim target; only resident ` +
+        'and citizen can be claimed, so nothing is minted.',
+    );
+  }
+
   const gate = resolveGate(deps.gate);
   if (gate === null) {
     return notConfigured(
@@ -268,12 +290,19 @@ export async function mintMembershipForClaim(input: {
     );
   }
 
-  // 4. The transition the read warrants. An invalid jump is refused, not encoded.
-  const derived = operationForTransition(read.membership, input.target);
+  // 4. The transition the read warrants. A claim can only issue or promote; an
+  //    invalid jump is refused, not encoded.
+  const derived = operationForClaim(read.membership, target);
   if ('reason' in derived) {
     return blocked(derived.reason);
   }
   const operation: MembershipOperation = derived.operation;
+  // Defence in depth: a claim must never burn a soulbound credential. This is
+  // unreachable while `operationForClaim` excludes revoke, and is asserted so a
+  // future change cannot quietly reintroduce it.
+  if (operation === 'revoke') {
+    return blocked('a claim never revokes a membership, so nothing is minted.');
+  }
 
   // 5. The record guard: a confirmed transition is refused even if the chain read
   //    lags, so a retry cannot issue twice.
@@ -292,26 +321,37 @@ export async function mintMembershipForClaim(input: {
     );
   }
 
-  // 6. The server-side compliance window. Enforced only when a start instant is
-  //    actually recorded; an unread/absent window is reported, not invented.
+  // 6. The server-side compliance window.
+  //
+  //    - A recorded start instant is enforced: the Citizen claim is refused
+  //      until two minutes have elapsed.
+  //    - A readable-but-null window is **fail-closed**: the server can enforce
+  //      the window, the record is simply absent (for example a Resident minted
+  //      before the column existed). Start the clock now and refuse this claim,
+  //      so a missing record can never bypass the wait. This also closes the
+  //      TOCTOU between a Resident mint's on-chain confirmation and its
+  //      best-effort window write: a concurrent claim that wins the read starts
+  //      the clock and waits rather than proceeding.
+  //    - An **unread** window is the only degradation: the column/function is
+  //      not deployed, so the server cannot enforce anything. It is reported,
+  //      never invented.
   let complianceNote = '';
-  if (input.target === 'citizen') {
+  if (target === 'citizen') {
     const window = await readComplianceWindow(deps.store, input.profileId);
     if (window.status === 'unread') {
       complianceNote =
         ' The 2-minute compliance window could not be read server-side, so it ' +
         'was not enforced on this claim.';
     } else if (window.since === null) {
-      // No start instant: record one for future claims and do not block this
-      // one, since the window may already have elapsed in the browser.
       try {
         await deps.store.recordColosseumResidentSince(input.profileId);
       } catch {
-        // Best-effort; the window remains unenforced.
+        // Fail closed regardless: the claim is refused below.
       }
-      complianceNote =
-        ' No server-side compliance window was recorded, so it was not enforced ' +
-        'on this claim.';
+      return blocked(
+        'no server-side compliance window was recorded, so it was started now; ' +
+          'the Citizen claim is refused until two minutes have elapsed.',
+      );
     } else {
       const elapsed = complianceWindowElapsed(window.since, now());
       if (elapsed !== true) {
@@ -419,7 +459,7 @@ export async function mintMembershipForClaim(input: {
   }
 
   // 11. The Resident credential starts the server-side compliance window.
-  if (input.target === 'resident') {
+  if (target === 'resident') {
     try {
       await deps.store.recordColosseumResidentSince(input.profileId);
     } catch {

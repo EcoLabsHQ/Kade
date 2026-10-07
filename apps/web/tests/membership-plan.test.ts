@@ -3,7 +3,9 @@ import {
   buildMembershipCall,
   buildMembershipTransitionPlan,
   encodeMembershipCall,
+  operationForClaim,
   operationForTransition,
+  parseMembershipClaimTarget,
 } from '@/lib/membership/plan';
 
 /**
@@ -129,5 +131,45 @@ describe('operationForTransition', () => {
 
   it('refuses an invalid jump', () => {
     expect(operationForTransition('none', 'citizen')).toHaveProperty('reason');
+  });
+});
+
+describe('parseMembershipClaimTarget', () => {
+  it('accepts only the two claim targets', () => {
+    expect(parseMembershipClaimTarget('resident')).toBe('resident');
+    expect(parseMembershipClaimTarget('citizen')).toBe('citizen');
+  });
+
+  it('refuses revoke, unknown values and non-strings', () => {
+    expect(parseMembershipClaimTarget('none')).toBeNull();
+    expect(parseMembershipClaimTarget('revoke')).toBeNull();
+    expect(parseMembershipClaimTarget('')).toBeNull();
+    expect(parseMembershipClaimTarget(null)).toBeNull();
+    expect(parseMembershipClaimTarget(1)).toBeNull();
+    expect(parseMembershipClaimTarget({ operation: 'revoke' })).toBeNull();
+  });
+});
+
+describe('operationForClaim', () => {
+  it('maps only the two claim transitions', () => {
+    expect(operationForClaim('none', 'resident')).toEqual({
+      operation: 'issue-resident',
+    });
+    expect(operationForClaim('resident', 'citizen')).toEqual({
+      operation: 'promote-to-citizen',
+    });
+  });
+
+  it('never returns revoke, whatever the current state', () => {
+    for (const current of ['none', 'resident', 'citizen'] as const) {
+      for (const target of ['resident', 'citizen'] as const) {
+        const derived = operationForClaim(current, target);
+        if ('operation' in derived) {
+          expect(derived.operation).not.toBe('revoke');
+        } else {
+          expect(typeof derived.reason).toBe('string');
+        }
+      }
+    }
   });
 });

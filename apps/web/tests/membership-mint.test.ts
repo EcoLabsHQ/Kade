@@ -9,6 +9,7 @@ import {
 } from '@/lib/membership/mint';
 import { MEMBERSHIP_MANAGER_ABI } from '@/lib/membership/abi';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
+import type { MembershipClaimTarget } from '@/lib/membership/plan';
 import type {
   MembershipEventInput,
   MembershipIntentInput,
@@ -330,6 +331,81 @@ describe('mintMembershipForClaim — the chain read', () => {
   });
 });
 
+describe('mintMembershipForClaim — the claim target is validated at runtime', () => {
+  // The dangerous case: on-chain Resident + target 'none' would otherwise derive
+  // `revoke` and burn the soulbound credential. It must be refused before any
+  // read of the operation, and the executor must never run.
+  it('refuses target "none" (revoke) and executes nothing', async () => {
+    const store = makeStore();
+    const executor = makeExecutor();
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'none' as unknown as MembershipClaimTarget,
+      deps: deps({
+        store: store.store,
+        readClient: readClient(1),
+        executor: executor.executor,
+      }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(outcome.sent).toBe(false);
+    expect(outcome.reason).toMatch(/not a Colosseum claim target/i);
+    expect(executor.calls).toHaveLength(0);
+    expect(store.intents).toHaveLength(0);
+  });
+
+  it('refuses an unknown string target and executes nothing', async () => {
+    const store = makeStore();
+    const executor = makeExecutor();
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'revoke' as unknown as MembershipClaimTarget,
+      deps: deps({ store: store.store, executor: executor.executor }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(executor.calls).toHaveLength(0);
+    expect(store.intents).toHaveLength(0);
+  });
+
+  it('refuses a non-string target and executes nothing', async () => {
+    const executor = makeExecutor();
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: { operation: 'revoke' } as unknown as MembershipClaimTarget,
+      deps: deps({ executor: executor.executor }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(executor.calls).toHaveLength(0);
+  });
+
+  it('still mints the legitimate targets', async () => {
+    const resident = makeExecutor();
+    const residentOutcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({ executor: resident.executor }),
+    });
+    expect(residentOutcome.status).toBe('sent');
+
+    const store = makeStore({ since: new Date(NOW - 130_000).toISOString() });
+    const citizen = makeExecutor();
+    const citizenOutcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'citizen',
+      deps: deps({
+        store: store.store,
+        readClient: readClient(1),
+        logClient: logClient(1, 2),
+        executor: citizen.executor,
+      }),
+    });
+    expect(citizenOutcome.status).toBe('sent');
+  });
+});
+
 describe('mintMembershipForClaim — the mint', () => {
   it('executes exactly one owner-Safe transaction when all four checks are met', async () => {
     const order: string[] = [];
@@ -445,6 +521,28 @@ describe('mintMembershipForClaim — the compliance window', () => {
     expect(outcome.status).toBe('blocked');
     expect(outcome.reason).toMatch(/compliance window has not elapsed/i);
     expect(executor.calls).toHaveLength(0);
+  });
+
+  it('fails closed on a readable-but-null window: starts the clock and refuses', async () => {
+    const store = makeStore({ since: null });
+    const executor = makeExecutor();
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'citizen',
+      deps: deps({
+        store: store.store,
+        readClient: readClient(1),
+        executor: executor.executor,
+      }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(outcome.sent).toBe(false);
+    expect(outcome.reason).toMatch(/started now/i);
+    expect(outcome.reason).toMatch(/two minutes/i);
+    expect(executor.calls).toHaveLength(0);
+    // The clock is started so a later claim can pass.
+    expect(store.getSince()).not.toBeNull();
   });
 
   it('degrades honestly when the window cannot be read, never inventing one', async () => {

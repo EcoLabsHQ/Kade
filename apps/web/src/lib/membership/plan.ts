@@ -36,6 +36,23 @@ export type MembershipOperation = (typeof MEMBERSHIP_OPERATIONS)[number];
 export const MEMBERSHIP_CLAIM_TARGETS = ['resident', 'citizen'] as const;
 export type MembershipClaimTarget = (typeof MEMBERSHIP_CLAIM_TARGETS)[number];
 
+/**
+ * The runtime guard for an untrusted claim target.
+ *
+ * A server action's argument crosses the network, so the TypeScript annotation
+ * is not enforced: an authenticated caller can send `"none"` or anything else.
+ * This is the boundary that turns that value into a claim target or `null`, so
+ * `revoke` is refused as well as a type error. Callers refuse a `null`.
+ */
+export function parseMembershipClaimTarget(
+  value: unknown,
+): MembershipClaimTarget | null {
+  return typeof value === 'string' &&
+    (MEMBERSHIP_CLAIM_TARGETS as readonly string[]).includes(value)
+    ? (value as MembershipClaimTarget)
+    : null;
+}
+
 /** The manager function each operation calls. */
 export const OPERATION_FUNCTION = {
   'issue-resident': 'issueResident',
@@ -164,6 +181,32 @@ export function operationForTransition(
   }
   return {
     reason: `The manager has no transition from ${current} to ${target}.`,
+  };
+}
+
+/**
+ * The operation a **claim** warrants, or a reason it is not a claim.
+ *
+ * Deliberately narrower than {@link operationForTransition}: a claim can only
+ * issue a Resident credential or promote a Resident to Citizen. `revoke` is an
+ * operator action and is **unrepresentable here**, so an untrusted target can
+ * never reach a burn through the claim path. `operationForTransition` keeps
+ * `revoke` reachable for the operator/prepare path it was written for.
+ */
+export function operationForClaim(
+  current: Membership,
+  target: MembershipClaimTarget,
+): { readonly operation: MembershipOperation } | { readonly reason: string } {
+  if (target === 'resident') {
+    if (current === 'none') return { operation: 'issue-resident' };
+    return {
+      reason: `The account is already ${current}; there is nothing to mint.`,
+    };
+  }
+  // target === 'citizen'
+  if (current === 'resident') return { operation: 'promote-to-citizen' };
+  return {
+    reason: `The manager has no claim transition from ${current} to citizen.`,
   };
 }
 
