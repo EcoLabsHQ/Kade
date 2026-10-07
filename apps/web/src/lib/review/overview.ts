@@ -120,13 +120,14 @@ export interface OverviewInput {
    */
   readonly serviceFee?: OverviewServiceFee | null;
   /**
-   * Whether the persisted "Documents complete" demo flag is set. Read on the
-   * client from the same store the Residency step writes; absence means the flag
-   * is not set (documents are not issued), never a fabricated done.
+   * Whether the "Documents complete" demo flag is set. Read server-side for the
+   * account (the same record the Residency step writes through a server action);
+   * absence means the flag is not set (documents are not issued), never a
+   * fabricated done.
    */
   readonly documentsComplete?: boolean;
   /**
-   * The persisted Colosseum demo progress, if the caller reads it. These are
+   * The Colosseum demo progress, read server-side for the account. These are
    * declared demo state and always `provenance: 'demo'`.
    */
   readonly colosseum?: OverviewColosseumProgress | null;

@@ -1,18 +1,22 @@
 /**
- * The Colosseum nav highlight — a tiny shareable client state.
+ * The Colosseum nav highlight — a derived, transient, cross-page nav hint.
  *
- * The Colosseum demo layer lives inside the Residency screen and its 2-minute
- * clock and "Become a Citizen" step are entirely client-side (no table, no RPC).
- * The nav, however, is rendered by the shell, which is a server component. This
- * module is the one honest bridge between them: the Residency screen sets a flag
- * when the demo's 2-minute window has elapsed (State D), and the client
- * `NavItem` reads it to paint the Residency nav item.
+ * The nav is rendered by the shell, which is a server component; the Residency
+ * screen is a client component. This module is the one bridge between them: the
+ * Residency screen sets the hint when the demo's compliance window has elapsed
+ * and "Become a Citizen" is available (State D), and the client `NavItem` reads
+ * it to paint the Residency nav item.
  *
- * It is deliberately module state plus a `localStorage` mirror, not a database
- * or a cookie: the whole Colosseum layer is a declared demo and persists
- * nothing. A page reload resets the demo timer anyway, so restoring the
- * highlight from `localStorage` simply keeps the nav consistent with that demo
- * state. Nothing outside the Colosseum layer reads or writes it.
+ * The underlying state (the compliance window) is now server-side and
+ * account-bound; this hint is *derived* from it — the Residency screen
+ * recomputes `citizenEligible` from the server-read state and sets the hint on
+ * every render. The hint itself is a browser-local, transient UI affordance: it
+ * is module state plus a `localStorage` mirror so a full page reload on another
+ * route keeps the nav consistent until the Residency screen recomputes it. It
+ * is not account state and it grants nothing; it is the one Colosseum value that
+ * deliberately remains browser-local, because moving it server-side would
+ * require the shell to derive the residency checks. Nothing outside the
+ * Colosseum layer reads or writes it.
  */
 
 const STORAGE_KEY = 'kade.colosseum.attention';
