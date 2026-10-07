@@ -26,6 +26,12 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/residency/actions', () => ({
   createSelfSessionAction: hoisted.createSelf,
   issueResidencyPermitAction: hoisted.issuePermit,
+  claimMembershipAction: vi.fn(async () => null),
+  startColosseumWindowAction: vi.fn(async () => null),
+  clearColosseumWindowAction: vi.fn(async () => null),
+  claimColosseumResidencyAction: vi.fn(async () => null),
+  becomeColosseumCitizenAction: vi.fn(async () => null),
+  setColosseumDocumentsCompleteAction: vi.fn(async () => null),
 }));
 vi.mock('@/components/residency/ServiceFeePayment', () => ({
   ServiceFeePayment: ({ amountUsdc }: { amountUsdc: string }) => (

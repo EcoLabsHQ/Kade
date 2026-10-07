@@ -30,6 +30,7 @@ const hoisted = vi.hoisted(() => ({
   loadFeePayment: vi.fn(),
   loadIdentityFact: vi.fn(),
   loadResidencyServiceFeePayment: vi.fn(),
+  loadColosseumState: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
@@ -44,6 +45,9 @@ vi.mock('@/lib/residency/server', async (importOriginal) => {
 });
 vi.mock('@/lib/residency/service-fee-server', () => ({
   loadResidencyServiceFeePayment: hoisted.loadResidencyServiceFeePayment,
+}));
+vi.mock('@/lib/residency/colosseum-state-server', () => ({
+  loadColosseumState: hoisted.loadColosseumState,
 }));
 vi.mock('@/lib/onboarding/state', () => ({
   hasCompletedOnboarding: hoisted.hasCompletedOnboarding,
@@ -108,6 +112,16 @@ beforeEach(() => {
   hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
   hoisted.loadIdentityFact.mockResolvedValue(null);
   hoisted.loadResidencyServiceFeePayment.mockResolvedValue({ status: 'none' });
+  hoisted.loadColosseumState.mockResolvedValue({
+    progress: {
+      residentSince: null,
+      citizenAt: null,
+      passportSerial: null,
+      residencyPassAt: null,
+      residencyPassSerial: null,
+    },
+    documentsComplete: false,
+  });
 });
 
 describe('Overview dashboard header actions', () => {
