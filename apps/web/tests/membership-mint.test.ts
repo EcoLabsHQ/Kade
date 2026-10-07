@@ -42,8 +42,6 @@ const NOW = Date.parse('2026-10-06T12:00:00.000Z');
 
 const APPROVED = {
   onchainGateApproved: true,
-  approvedBy: 'owner',
-  approvedAt: '2026-10-06',
 } as const;
 
 function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
