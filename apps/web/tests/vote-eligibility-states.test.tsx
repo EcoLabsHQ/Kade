@@ -101,7 +101,7 @@ describe('VoteScreen eligibility states', () => {
     const eligibility = screen.getByTestId('vote-eligibility');
     expect(eligibility).toHaveAttribute('data-reason', 'wallet-disconnected');
     expect(eligibility).toHaveTextContent(/connect your wallet/i);
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 
@@ -111,7 +111,7 @@ describe('VoteScreen eligibility states', () => {
     const eligibility = screen.getByTestId('vote-eligibility');
     expect(eligibility).toHaveAttribute('data-reason', 'loading');
     expect(eligibility).toHaveTextContent(/checking your eligibility/i);
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 
@@ -121,7 +121,7 @@ describe('VoteScreen eligibility states', () => {
     const eligibility = await screen.findByTestId('vote-eligibility');
     expect(eligibility).toHaveAttribute('data-reason', 'error');
     expect(eligibility).toHaveTextContent(/eligibility is not assumed/i);
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 
@@ -142,7 +142,7 @@ describe('VoteScreen eligibility states', () => {
     const eligibility = await screen.findByTestId('vote-eligibility');
     expect(eligibility).toHaveAttribute('data-reason', 'closed');
     expect(eligibility).toHaveTextContent(/closed/i);
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 
@@ -165,7 +165,7 @@ describe('VoteScreen eligibility states', () => {
     expect(eligibility).toHaveTextContent('Colosseum Citizens only');
     // The choices are disabled, and the vote button is disabled.
     expect(screen.getByTestId('vote-choice-0')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 
@@ -207,7 +207,7 @@ describe('VoteScreen eligibility states', () => {
 
     const eligibility = await screen.findByTestId('vote-eligibility');
     expect(eligibility).toHaveAttribute('data-reason', 'no-power');
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
     cleanup();
   });
 });

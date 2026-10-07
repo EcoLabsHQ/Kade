@@ -89,7 +89,7 @@ const EYEBROW: CSSProperties = {
 };
 
 const NOTE_BEFORE =
-  'Off-chain signature, no gas. Eligibility checked against your KYC attestation — one resident, one vote.';
+  'Demo only: your choice is recorded in this browser and is not sent to Snapshot. Eligibility is checked against your on-chain credential.';
 
 export interface VoteScreenProps {
   /**
@@ -283,9 +283,8 @@ export function VoteScreen({
       : selected?.end !== undefined
         ? `Open · closes ${formatCloseDate(selected.end)}`
         : 'Open';
-  const noteAfter = `Signed EIP-712 message · stored on IPFS · verifiable at snapshot.org/#/${
-    selected?.spaceId ?? RESIDENT_SPACE_ID
-  }`;
+  const noteAfter =
+    'Recorded in this browser only — nothing was signed, sent or stored on Snapshot.';
 
   return (
     <>
@@ -641,7 +640,7 @@ export function VoteScreen({
                 ...(voted ? { background: tokens.success } : null),
               }}
             >
-              {voted ? 'Vote recorded on Snapshot ✓' : 'Sign & cast vote'}
+              {voted ? 'Recorded locally · demo only' : 'Record this choice'}
             </Button>
             <div
               style={{

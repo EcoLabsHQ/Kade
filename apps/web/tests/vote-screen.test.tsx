@@ -112,7 +112,7 @@ describe('VoteScreen real proposal rendering', () => {
       'Select an option',
     );
     expect(
-      screen.getByRole('button', { name: 'Sign & cast vote' }),
+      screen.getByRole('button', { name: 'Record this choice' }),
     ).toBeDisabled();
     cleanup();
   });
@@ -121,25 +121,25 @@ describe('VoteScreen real proposal rendering', () => {
 describe('VoteScreen local ballot behaviour', () => {
   it('enables the cast button when a choice is selected', async () => {
     await renderLoaded();
-    const cast = screen.getByRole('button', { name: 'Sign & cast vote' });
+    const cast = screen.getByRole('button', { name: 'Record this choice' });
     expect(cast).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
 
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent('Against');
-    expect(screen.getByRole('button', { name: 'Sign & cast vote' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeEnabled();
     cleanup();
   });
 
   it('casting records locally and leaves the real tally untouched', async () => {
     await renderLoaded();
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign & cast vote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record this choice' }));
 
     // The ballot freezes on the chosen label and the button records locally.
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent('Against');
     expect(
-      screen.getByRole('button', { name: 'Vote recorded on Snapshot ✓' }),
+      screen.getByRole('button', { name: 'Recorded locally · demo only' }),
     ).toBeDisabled();
 
     // The real tally is not fabricated: it stays at the source's zero votes.
@@ -153,7 +153,7 @@ describe('VoteScreen local ballot behaviour', () => {
   it('locks further selection once the vote is recorded', async () => {
     await renderLoaded();
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sign & cast vote' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record this choice' }));
 
     // The reference's `if (!s.voted)` guard: picking another choice is a no-op.
     fireEvent.click(screen.getByRole('button', { name: 'For' }));
