@@ -1,9 +1,8 @@
 import { createPublicClient, http, type Address } from 'viem';
 import {
-  readChainEnv,
   readMembershipChainId,
   readMembershipManagerAddress,
-  readRpcUrlFor,
+  readRpcUrlForChain,
 } from '@/lib/env';
 import { readMembership, type MembershipReadClient } from './chain';
 import {
@@ -205,6 +204,19 @@ export async function prepareMembershipTransition(input: {
 }
 
 /**
+ * The JSON-RPC endpoint for the configured manager chain, or null.
+ *
+ * Resolved from the **manager's chain id**, not the app's active chain
+ * environment: the manager is on Arbitrum One, so under `KADE_CHAIN_ENV=mainnet`
+ * the chain-environment lookup returned `ETHEREUM_RPC_URL` — the wrong chain.
+ * The mint path already resolves by chain id; this is the same rule, exposed so
+ * it is pinned by a test.
+ */
+export function membershipRpcUrl(chainId: number | null): string | null {
+  return chainId === null ? null : readRpcUrlForChain(chainId);
+}
+
+/**
  * Environment wiring for {@link prepareMembershipTransition}.
  *
  * Reads the manager address, chain id and RPC from the server environment. When
@@ -219,7 +231,7 @@ export async function prepareMembershipTransitionFromEnv(
 ): Promise<MembershipTransitionOutcome> {
   const managerAddress = readMembershipManagerAddress();
   const chainId = readMembershipChainId();
-  const rpcUrl = readRpcUrlFor(readChainEnv());
+  const rpcUrl = membershipRpcUrl(chainId);
 
   let readClient: MembershipReadClient | null = null;
   if (rpcUrl !== null) {
