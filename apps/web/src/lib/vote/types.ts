@@ -101,6 +101,29 @@ export interface VoteProposal {
   readonly start?: number;
   readonly end?: number;
   readonly choices: readonly VoteChoice[];
+  /**
+   * The proposal's description, exactly as the hub reports it. An empty string
+   * means the proposal carries no description; `undefined` means the source did
+   * not report one. The screen never invents description copy.
+   */
+  readonly body?: string;
+  /**
+   * The proposal's vote type as the hub reports it (`basic`, `single-choice`,
+   * `weighted`, `approval`, `quadratic`, `ranked-choice`, …). `undefined` when
+   * the source did not report one.
+   */
+  readonly type?: string;
+  /** Per-choice totals, aligned index-for-index with `choices`. */
+  readonly scores?: readonly number[];
+  /**
+   * The sum of {@link scores}. Zero means no votes have been cast; `undefined`
+   * means the source did not report a tally. Neither is a distribution.
+   */
+  readonly scoresTotal?: number;
+  /** The number of votes cast, as the hub reports it. */
+  readonly votes?: number;
+  /** The quorum the proposal requires, as the hub reports it. */
+  readonly quorum?: number;
   readonly provenance: VoteProvenance;
 }
 

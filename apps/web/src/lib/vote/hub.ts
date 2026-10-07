@@ -25,6 +25,21 @@ export interface HubProposal {
   readonly snapshot: number;
   readonly space: { readonly id: string; readonly name: string };
   readonly choices: readonly string[];
+  /**
+   * The proposal description. `undefined` when the hub did not report one; an
+   * empty string when the hub reports the proposal has none.
+   */
+  readonly body: string | undefined;
+  /** The vote type (`basic`, `single-choice`, `weighted`, …). */
+  readonly type: string | undefined;
+  /** Per-choice totals, aligned with `choices`. */
+  readonly scores: readonly number[] | undefined;
+  /** The sum of `scores`; zero means no votes. */
+  readonly scoresTotal: number | undefined;
+  /** The number of votes cast. */
+  readonly votes: number | undefined;
+  /** The quorum the proposal requires. */
+  readonly quorum: number | undefined;
 }
 
 /** The narrow hub surface the adapter depends on. */
@@ -53,12 +68,49 @@ const PROPOSALS_QUERY = `query Proposals($spaces: [String!]!) {
     end
     snapshot
     choices
+    body
+    type
+    scores
+    scores_total
+    votes
+    quorum
     space { id name }
   }
 }`;
 
 function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/** A string field, or `undefined` when the hub did not report one. */
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** A finite number, or `undefined` when the hub did not report one. */
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/** An array of finite numbers, or `undefined` when the hub did not report one. */
+function optionalNumberArray(value: unknown): readonly number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.every(
+    (entry): entry is number => typeof entry === 'number' && Number.isFinite(entry),
+  )
+    ? value
+    : undefined;
+}
+
+/**
+ * The hub's `body` field: a string when reported, an empty string when the
+ * proposal has no description (the hub reports that as `null`), and `undefined`
+ * when the field was genuinely absent.
+ */
+function parseBody(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (value === null) return '';
+  return undefined;
 }
 
 function parseHubProposal(raw: unknown): HubProposal {
@@ -100,6 +152,12 @@ function parseHubProposal(raw: unknown): HubProposal {
       name: typeof space.name === 'string' ? space.name : space.id,
     },
     choices,
+    body: parseBody(record.body),
+    type: optionalString(record.type),
+    scores: optionalNumberArray(record.scores),
+    scoresTotal: optionalNumber(record.scores_total),
+    votes: optionalNumber(record.votes),
+    quorum: optionalNumber(record.quorum),
   };
 }
 
