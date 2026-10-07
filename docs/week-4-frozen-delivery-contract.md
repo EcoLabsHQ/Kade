@@ -18,6 +18,30 @@ to v1.10), or the Week 1 contract (`docs/week-1-frozen-delivery-contract.md`,
 Frozen v1.10) beyond this increment; everything those contracts froze remains
 frozen.
 
+## Amendment v1.1 — 7 October 2026
+
+**Supersedes, for the claim path only, the "never send" property recorded in
+§1.2 and §2 property 4.**
+
+By explicit human decision taken after this contract was recorded, **the claim
+action is the trigger for issuance**: when a resident claims Colosseum
+Residency the backend mints the Resident credential, and on the Citizenship
+claim it promotes to Citizen. The backend executes a Safe transaction signed by
+a server-held key; the resident signs nothing and pays nothing. The app-side
+flow therefore **does** sign and broadcast, which contradicts that property as
+originally written.
+
+Everything else the property protected still holds: the prepare path remains
+`sent: false`, the deployment-plan tooling still never signs or broadcasts, and
+the contracts, the frozen Week 1–3 contracts and the KadeLock rules are
+untouched. The change was reviewed (demo-feedback-15); its one blocking finding —
+an unvalidated client-supplied claim target that could have executed an
+irreversible `revokeMembership` — was fixed on the same branch before promotion.
+
+The statements at §1.2 and §2 property 4 are left as written, because they record
+what was true when this contract was frozen. This amendment records what
+supersedes them.
+
 Where product scope and the development contract disagree, the development
 contract governs how work is verified and promoted; this contract governs what is
 in scope for the Week 4 increment. Delegated execution follows
