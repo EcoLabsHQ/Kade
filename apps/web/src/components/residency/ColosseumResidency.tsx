@@ -347,7 +347,6 @@ export function ColosseumResidency({
           "Claim Colosseum Residency" is the single primary action. */}
       {showStateC ? (
         <StateC
-          remainingSeconds={secondsRemaining}
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
         />
@@ -358,7 +357,6 @@ export function ColosseumResidency({
           affordance so the two claims never compete. */}
       {showStateD ? (
         <StateD
-          remainingSeconds={secondsRemaining}
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
           onBecomeCitizen={becomeCitizen}
@@ -396,6 +394,17 @@ export function ColosseumResidency({
         issuedAt={progress.citizenAt}
         celebration={certificateCelebration}
       />
+
+      {/* The 2-minute compliance window is a TESTING affordance, not product UI.
+          It is a single muted line at the very bottom of the section (feedback
+          4): visually it should read as developer chrome, not as part of the
+          Colosseum story. The state and the window itself are untouched — the
+          countdown is still computed from the same persisted `residentSince`,
+          and it stays in the accessibility tree (the progressbar and its
+          `aria-valuetext`), so assistive tech can still reach it. */}
+      {progress.residentSince !== null && !citizen ? (
+        <ComplianceProgress remainingSeconds={secondsRemaining} />
+      ) : null}
     </section>
   );
 }
@@ -519,10 +528,15 @@ function StateB({
 }
 
 /**
- * The compliance window, kept discreet: a thin progress line plus small, muted
- * text carrying the real remaining time. The time is in the accessibility tree
- * (the visible text, and the progressbar's `aria-valuetext`), but it is no
- * longer the headline of the card.
+ * The compliance window, made almost invisible: a hairline progress track plus a
+ * single small, muted line of text at the very bottom of the section. The
+ * human's feedback was that the counter was "demasiado protagonico" and is only
+ * for testing, so it must read as developer chrome rather than product UI.
+ *
+ * It stays honest and reachable: the remaining time is real (computed from the
+ * same persisted `residentSince`), it is still visible text, and the
+ * `progressbar` keeps its `aria-valuetext`, so assistive tech can still reach
+ * it. Nothing about the underlying state or the server-side window changes.
  */
 function ComplianceProgress({
   remainingSeconds,
@@ -533,11 +547,11 @@ function ComplianceProgress({
   const elapsed = Math.min(total, Math.max(0, total - remainingSeconds));
   const fraction = total > 0 ? elapsed / total : 1;
   return (
-    <div style={complianceWrap}>
+    <div data-testid="colosseum-compliance" style={complianceWrap}>
       <div
         data-testid="colosseum-compliance-progress"
         role="progressbar"
-        aria-label="Compliance window"
+        aria-label="Compliance window (testing only)"
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={elapsed}
@@ -547,6 +561,7 @@ function ComplianceProgress({
         <div style={{ ...progressFill, transform: `scaleX(${fraction})` }} />
       </div>
       <p style={complianceText}>
+        Testing only ·{' '}
         <span data-testid="colosseum-countdown" style={complianceTime}>
           {formatCountdown(remainingSeconds)}
         </span>{' '}
@@ -568,11 +583,9 @@ function residencyPassLabel(claimed: boolean): string {
 
 /** State C — all four checks green: congrats, the running window and the pass. */
 function StateC({
-  remainingSeconds,
   residencyPassClaimed,
   onClaimResidency,
 }: {
-  readonly remainingSeconds: number;
   readonly residencyPassClaimed: boolean;
   readonly onClaimResidency: () => void;
 }) {
@@ -588,7 +601,6 @@ function StateC({
         Remain a compliant resident for 2 minutes to be eligible to become a
         Colosseum Citizen.
       </p>
-      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
         data-variant={residencyPassClaimed ? 'secondary' : 'primary'}
@@ -603,12 +615,10 @@ function StateC({
 
 /** State D — the 2-minute window elapsed; "Become a Citizen" is the action. */
 function StateD({
-  remainingSeconds,
   residencyPassClaimed,
   onClaimResidency,
   onBecomeCitizen,
 }: {
-  readonly remainingSeconds: number;
   readonly residencyPassClaimed: boolean;
   readonly onClaimResidency: () => void;
   readonly onBecomeCitizen: () => void;
@@ -620,7 +630,6 @@ function StateD({
         You have remained a compliant resident for 2 minutes. Become a
         Colosseum Citizen to receive your citizenship certificate.
       </p>
-      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
         data-variant="primary"
@@ -887,13 +896,16 @@ const checkState = {
   whiteSpace: 'nowrap' as const,
 };
 
-/* The discreet compliance window: a thin line plus small, muted text. */
+/* The testing-only compliance window: a hairline track plus one small, muted
+   line at the very bottom of the section, deliberately low-contrast so it does
+   not read as product UI. */
 const complianceWrap = {
-  marginTop: '14px',
+  marginTop: '22px',
+  opacity: 0.5,
 };
 
 const progressTrack = {
-  height: '4px',
+  height: '2px',
   borderRadius: '999px',
   background: tokens.border,
   overflow: 'hidden',
@@ -902,20 +914,21 @@ const progressTrack = {
 const progressFill = {
   height: '100%',
   borderRadius: '999px',
-  background: tokens.brandPrimary,
+  background: tokens.locked,
   transformOrigin: 'left center',
 };
 
 const complianceText = {
-  margin: '6px 0 0',
-  fontSize: '11.5px',
+  margin: '4px 0 0',
+  fontSize: '10px',
+  letterSpacing: '.01em',
   color: tokens.muted,
 };
 
 const complianceTime = {
   fontWeight: 600,
   fontVariantNumeric: 'tabular-nums',
-  color: tokens.chipFg,
+  color: tokens.muted,
 };
 
 /* The quiet, text-only residency-pass affordance used in state D so it never

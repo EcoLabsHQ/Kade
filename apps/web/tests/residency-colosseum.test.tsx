@@ -161,7 +161,7 @@ describe('ColosseumResidency — states', () => {
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
   });
 
-  it('keeps the compliance counter discreet: a thin progressbar with the real remaining time', () => {
+  it('keeps the compliance counter discreet: a hairline progressbar with the real remaining time', () => {
     render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     // Not a large metric row: a progressbar carrying the real remaining time.
@@ -185,6 +185,22 @@ describe('ColosseumResidency — states', () => {
     expect(
       screen.getByTestId('colosseum-compliance-progress'),
     ).toHaveAttribute('aria-valuetext', '1:30 remaining');
+  });
+
+  it('marks the compliance counter as testing-only and keeps it at the very bottom', () => {
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
+
+    // The human's feedback: the counter is "demasiado protagonico" and is only
+    // for testing. It now reads as developer chrome ("Testing only"), not as
+    // product copy, and it sits after every product element in the section.
+    const compliance = screen.getByTestId('colosseum-compliance');
+    expect(compliance).toHaveTextContent(/testing only/i);
+    const section = screen.getByTestId('colosseum-section');
+    const productChildren = Array.from(section.children).filter(
+      (child) => child !== compliance,
+    );
+    expect(section.lastElementChild).toBe(compliance);
+    expect(productChildren.length).toBeGreaterThan(0);
   });
 
   it('removed the milestone rail: the state boxes tell the story on their own', () => {
