@@ -72,6 +72,29 @@ function fakeFetch(body: unknown, ok = true, status = 200): typeof fetch {
   })) as unknown as typeof fetch;
 }
 
+/** A hub proposal carrying every content field the screen now reads. */
+const FULL_HUB_PROPOSAL = {
+  id: '0xresident',
+  title: 'Resident: Add February 2nd to official holiday',
+  state: 'active',
+  start: 1791382034,
+  end: 1791814034,
+  snapshot: 512586595,
+  choices: ['For', 'Against', 'Abstain'],
+  body: 'Add February 2nd to official holiday',
+  type: 'basic',
+  scores: [10, 5, 5],
+  scores_total: 20,
+  votes: 3,
+  quorum: 0,
+  space: { id: RESIDENT_SPACE_ID, name: 'Curaçao Residents' },
+};
+
+/** A hub response carrying the full proposal content fields. */
+const FULL_HUB_RESPONSE = {
+  data: { proposals: [FULL_HUB_PROPOSAL] },
+};
+
 function adapterWith(chain: VoteChainReader, fetchImpl = fakeFetch(HUB_RESPONSE)): SnapshotAdapter {
   return createRealSnapshotAdapter({
     hub: createSnapshotHubClient({ fetch: fetchImpl }),
@@ -176,6 +199,46 @@ describe('real Snapshot adapter — hub parsing', () => {
     await expect(adapter.listProposals(RESIDENT_SPACE_ID)).rejects.toThrow(
       /rate limited/,
     );
+  });
+});
+
+describe('real Snapshot adapter — proposal content fields', () => {
+  it('carries the real body, type, scores, votes and quorum through', async () => {
+    const adapter = adapterWith(chainFor('resident'), fakeFetch(FULL_HUB_RESPONSE));
+    const [proposal] = await adapter.listProposals(RESIDENT_SPACE_ID);
+    expect(proposal).toMatchObject({
+      body: 'Add February 2nd to official holiday',
+      type: 'basic',
+      choices: [
+        { id: '0', label: 'For' },
+        { id: '1', label: 'Against' },
+        { id: '2', label: 'Abstain' },
+      ],
+      scores: [10, 5, 5],
+      scoresTotal: 20,
+      votes: 3,
+      quorum: 0,
+    });
+  });
+
+  it('leaves absent content fields undefined rather than inventing them', async () => {
+    const adapter = adapterWith(chainFor('resident'));
+    const [proposal] = await adapter.listProposals(RESIDENT_SPACE_ID);
+    expect(proposal?.body).toBeUndefined();
+    expect(proposal?.type).toBeUndefined();
+    expect(proposal?.scores).toBeUndefined();
+    expect(proposal?.scoresTotal).toBeUndefined();
+    expect(proposal?.votes).toBeUndefined();
+    expect(proposal?.quorum).toBeUndefined();
+  });
+
+  it('reports an empty hub body as an empty string, not undefined', async () => {
+    const adapter = adapterWith(
+      chainFor('resident'),
+      fakeFetch({ data: { proposals: [{ ...FULL_HUB_PROPOSAL, body: null }] } }),
+    );
+    const [proposal] = await adapter.listProposals(RESIDENT_SPACE_ID);
+    expect(proposal?.body).toBe('');
   });
 });
 

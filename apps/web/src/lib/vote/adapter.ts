@@ -47,9 +47,11 @@ export interface VoteChainReader {
 }
 
 /**
- * The reference's resident consultation, kept as the mock's proposal so the
- * existing screen content is unchanged. `provenance: 'mock'` and
- * `snapshotBlock: 0` record that it is not a real Snapshot proposal.
+ * The mock's resident proposal. It is **not** a real Snapshot proposal:
+ * `provenance: 'mock'` and `snapshotBlock: 0` record that. It carries no
+ * invented description or tally — the body is empty and every score is zero,
+ * exactly as the source reports them — so the screen's real rendering path is
+ * exercised without reference copy.
  */
 const MOCK_RESIDENT_PROPOSAL: VoteProposal = {
   spaceId: RESIDENT_SPACE_ID,
@@ -58,11 +60,17 @@ const MOCK_RESIDENT_PROPOSAL: VoteProposal = {
   category: 'resident',
   state: 'open',
   snapshotBlock: 0,
+  body: '',
+  type: 'basic',
   choices: [
-    { id: 'housing', label: 'Housing supply — co-finance 120 affordable units' },
-    { id: 'sme', label: 'SME credit — first-loss capital for local lenders' },
-    { id: 'split', label: 'Split 50 / 50' },
+    { id: '0', label: 'For' },
+    { id: '1', label: 'Against' },
+    { id: '2', label: 'Abstain' },
   ],
+  scores: [0, 0, 0],
+  scoresTotal: 0,
+  votes: 0,
+  quorum: 0,
   provenance: 'mock',
 };
 
@@ -74,10 +82,17 @@ const MOCK_CITIZEN_PROPOSAL: VoteProposal = {
   category: 'citizen',
   state: 'open',
   snapshotBlock: 0,
+  body: '',
+  type: 'basic',
   choices: [
-    { id: 'for', label: 'Approve' },
-    { id: 'against', label: 'Reject' },
+    { id: '0', label: 'For' },
+    { id: '1', label: 'Against' },
+    { id: '2', label: 'Abstain' },
   ],
+  scores: [0, 0, 0],
+  scoresTotal: 0,
+  votes: 0,
+  quorum: 0,
   provenance: 'mock',
 };
 
@@ -152,6 +167,14 @@ function toVoteProposal(proposal: HubProposal, config: VoteSpaceConfig): VotePro
     start: proposal.start,
     end: proposal.end,
     choices: proposal.choices.map((label, index) => ({ id: String(index), label })),
+    // The proposal's own content, carried through untouched. An absent field
+    // stays `undefined` so the screen can degrade honestly rather than invent.
+    body: proposal.body,
+    type: proposal.type,
+    scores: proposal.scores,
+    scoresTotal: proposal.scoresTotal,
+    votes: proposal.votes,
+    quorum: proposal.quorum,
     provenance: 'snapshot',
   };
 }

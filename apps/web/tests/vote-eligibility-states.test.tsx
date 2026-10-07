@@ -33,6 +33,7 @@ const OPEN_RESIDENT: VoteProposal = {
   category: 'resident',
   state: 'open',
   snapshotBlock: 100,
+  type: 'basic',
   choices: [{ id: 'a', label: 'Approve' }],
   provenance: 'mock',
 };
