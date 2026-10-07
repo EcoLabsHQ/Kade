@@ -57,7 +57,7 @@ describe('VoteScreen reference layout', () => {
     expect(
       screen.getByRole('heading', { name: 'Programme consultation' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('onchainisland.eth')).toBeInTheDocument();
+    expect(screen.getByText('kadeglobal.eth')).toBeInTheDocument();
     expect(screen.getByText('Open · closes 30 Sep')).toBeInTheDocument();
     expect(
       screen.getByText(/Should the Local Innovation Fund allocation for 2027/),
