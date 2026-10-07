@@ -29,17 +29,46 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-import { VoteScreen } from '@/components/vote/VoteScreen';
+import { VoteScreen, type VoteScreenProps } from '@/components/vote/VoteScreen';
 import { mockSnapshotAdapter } from '@/lib/vote/adapter';
+import type { SnapshotVoteResult } from '@/lib/vote/submit';
 import { RESIDENT_NAV } from '@/components/shell/nav';
 
 /** The demo wallet the connected state is exercised with. */
 const WALLET = '0x1111111111111111111111111111111111111111';
 
+/** A fake cast action that reports a sequencer acceptance. */
+function acceptedCast(): {
+  castVote: NonNullable<VoteScreenProps['castVote']>;
+  calls: Array<{ spaceId: string; proposalId: string; choice: number }>;
+} {
+  const calls: Array<{ spaceId: string; proposalId: string; choice: number }> = [];
+  const castVote: NonNullable<VoteScreenProps['castVote']> = async (input) => {
+    calls.push(input);
+    return {
+      status: 'submitted',
+      submitted: true,
+      reason: 'The Snapshot sequencer accepted the vote.',
+      spaceId: input.spaceId,
+      proposalId: input.proposalId,
+      voter: WALLET,
+      choice: input.choice + 1,
+      voteId: '0xaccepted',
+      ipfsHash: null,
+    } satisfies SnapshotVoteResult;
+  };
+  return { castVote, calls };
+}
+
 /** Render the screen in its loaded, eligible state and wait for it. */
-async function renderLoaded() {
+async function renderLoaded(castVote?: VoteScreenProps['castVote']) {
   render(
-    <VoteScreen wallet={WALLET} membership="resident" adapter={mockSnapshotAdapter} />,
+    <VoteScreen
+      wallet={WALLET}
+      membership="resident"
+      adapter={mockSnapshotAdapter}
+      castVote={castVote}
+    />,
   );
   // The eligibility block disappears once the power read settles and the viewer
   // is eligible, so its absence is the signal that the screen is loaded.
@@ -112,35 +141,40 @@ describe('VoteScreen real proposal rendering', () => {
       'Select an option',
     );
     expect(
-      screen.getByRole('button', { name: 'Record this choice' }),
+      screen.getByRole('button', { name: 'Cast vote' }),
     ).toBeDisabled();
     cleanup();
   });
 });
 
-describe('VoteScreen local ballot behaviour', () => {
+describe('VoteScreen ballot submission', () => {
   it('enables the cast button when a choice is selected', async () => {
     await renderLoaded();
-    const cast = screen.getByRole('button', { name: 'Record this choice' });
+    const cast = screen.getByRole('button', { name: 'Cast vote' });
     expect(cast).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
 
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent('Against');
-    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Cast vote' })).toBeEnabled();
     cleanup();
   });
 
-  it('casting records locally and leaves the real tally untouched', async () => {
-    await renderLoaded();
+  it('submits the real cast and leaves the real tally untouched', async () => {
+    const { castVote, calls } = acceptedCast();
+    await renderLoaded(castVote);
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Record this choice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast vote' }));
 
-    // The ballot freezes on the chosen label and the button records locally.
+    // The real action is called with the selected proposal and the 0-based
+    // choice index; the success state is shown only after it resolves.
+    await screen.findByRole('button', { name: 'Vote cast' });
+    expect(calls).toEqual([
+      { spaceId: 'kadeglobal.eth', proposalId: 'mock-resident-consultation', choice: 1 },
+    ]);
+    expect(screen.getByRole('button', { name: 'Vote cast' })).toBeDisabled();
+    expect(screen.getByTestId('vote-result')).toHaveTextContent('Submitted to Snapshot');
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent('Against');
-    expect(
-      screen.getByRole('button', { name: 'Recorded locally · demo only' }),
-    ).toBeDisabled();
 
     // The real tally is not fabricated: it stays at the source's zero votes.
     expect(screen.getByTestId('vote-tally-note')).toHaveTextContent(
@@ -151,13 +185,34 @@ describe('VoteScreen local ballot behaviour', () => {
   });
 
   it('locks further selection once the vote is recorded', async () => {
-    await renderLoaded();
+    const { castVote } = acceptedCast();
+    await renderLoaded(castVote);
     fireEvent.click(screen.getByRole('button', { name: 'Against' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Record this choice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast vote' }));
+    await screen.findByRole('button', { name: 'Vote cast' });
 
     // The reference's `if (!s.voted)` guard: picking another choice is a no-op.
     fireEvent.click(screen.getByRole('button', { name: 'For' }));
     expect(screen.getByTestId('vote-ballot-choice')).toHaveTextContent('Against');
+    cleanup();
+  });
+
+  it('reports a refused cast honestly and does not claim it was recorded', async () => {
+    const castVote: NonNullable<VoteScreenProps['castVote']> = async () => ({
+      status: 'failed',
+      submitted: false,
+      reason: 'The Snapshot sequencer rejected the vote (400): invalid signature.',
+    });
+    await renderLoaded(castVote);
+    fireEvent.click(screen.getByRole('button', { name: 'Against' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cast vote' }));
+
+    const result = await screen.findByTestId('vote-result');
+    expect(result).toHaveAttribute('data-status', 'failed');
+    expect(result).toHaveTextContent('invalid signature');
+    expect(result).toHaveTextContent('Your vote was not recorded.');
+    // The button is available again, and the ballot is not frozen as cast.
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
     cleanup();
   });
 });

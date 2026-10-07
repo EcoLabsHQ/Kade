@@ -209,3 +209,73 @@ export function createSnapshotHubClient(
     },
   };
 }
+
+/**
+ * The read-only "has this voter already voted on this proposal?" surface.
+ *
+ * Snapshot rejects a duplicate vote itself, but the vote path should not try to
+ * cast one: before it signs anything it asks the hub whether the voter already
+ * has a vote on the proposal. This is a **read** — it never writes to Snapshot.
+ */
+export interface SnapshotVoteLookup {
+  hasVoted(input: {
+    readonly proposal: string;
+    readonly voter: string;
+  }): Promise<boolean>;
+}
+
+const VOTER_VOTE_QUERY = `query VoterVote($proposal: String!, $voter: String!) {
+  votes(first: 1, where: { proposal: $proposal, voter: $voter }) {
+    id
+  }
+}`;
+
+/**
+ * Build a read-only vote lookup over the injected `fetch`.
+ *
+ * A hub error is thrown, never collapsed into "no vote": the caller fails closed
+ * rather than signing a vote it could not check for a duplicate.
+ */
+export function createSnapshotVoteLookup(
+  deps: SnapshotHubClientDeps,
+): SnapshotVoteLookup {
+  const endpoint = deps.endpoint ?? SNAPSHOT_HUB_URL;
+  return {
+    async hasVoted({ proposal, voter }) {
+      let response: Response;
+      try {
+        response = await deps.fetch(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            query: VOTER_VOTE_QUERY,
+            variables: { proposal, voter },
+          }),
+        });
+      } catch (cause) {
+        throw new Error(`The Snapshot hub could not be reached: ${describe(cause)}`);
+      }
+      if (!response.ok) {
+        throw new Error(`The Snapshot hub responded ${response.status}.`);
+      }
+      const body: unknown = await response.json();
+      if (typeof body !== 'object' || body === null) {
+        throw new Error('The Snapshot hub returned a response that is not an object.');
+      }
+      const { errors, data } = body as { errors?: unknown; data?: unknown };
+      if (Array.isArray(errors) && errors.length > 0) {
+        const first = errors[0] as { message?: unknown } | undefined;
+        throw new Error(
+          `The Snapshot hub rejected the query: ${
+            typeof first?.message === 'string' ? first.message : 'unknown error'
+          }`,
+        );
+      }
+      const votes = (data as { votes?: unknown } | undefined)?.votes;
+      if (!Array.isArray(votes)) {
+        throw new Error('The Snapshot hub returned no votes array.');
+      }
+      return votes.length > 0;
+    },
+  };
+}
