@@ -308,8 +308,8 @@ export function VoteScreen({
             textWrap: 'pretty',
           }}
         >
-          Resident consultations run on Snapshot. One KYC-attested resident, one
-          vote, no gas.
+          Resident consultations are read from Snapshot. One vote per on-chain
+          credential.
         </p>
       </div>
 
@@ -408,7 +408,7 @@ export function VoteScreen({
               <span style={{ color: tokens.ink, fontWeight: 600 }}>
                 {selected?.spaceId ?? RESIDENT_SPACE_ID}
               </span>{' '}
-              · one vote per KYC-attested resident · gasless signature
+              · one vote per on-chain credential · your choice stays in this browser
             </div>
           </div>
           <Chip

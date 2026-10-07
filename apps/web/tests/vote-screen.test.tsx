@@ -55,7 +55,7 @@ describe('VoteScreen real proposal rendering', () => {
     expect(screen.getByRole('heading', { name: 'Vote' })).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Resident consultations run on Snapshot\. One KYC-attested resident, one vote, no gas\./,
+        /Resident consultations are read from Snapshot\. One vote per on-chain credential\./,
       ),
     ).toBeInTheDocument();
     cleanup();
