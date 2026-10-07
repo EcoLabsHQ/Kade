@@ -1,0 +1,27 @@
+iteration: demo-feedback-14
+profile: NORMAL
+known_good: a3449e6
+candidate: 30a8e4b
+mode: recheck
+reviewed_scopes:
+  week4-contract-accuracy: complete
+active_findings: []
+resolved_findings: [F1, F2, F3, F4]
+next_finding_id: F5
+recheck_attempts: {F1: 1, F2: 1, F3: 1, F4: 1}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 30a8e4b
+  recorded_at: 2026-10-07
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "F1 (FAIL, resolved in bdc2991): the Week 4 contract recorded the owning Safe as threshold 1 of 2 with two owners. The chain shows 1 of 3 — the address 0xc0bBeB90... was added via AddedOwner at block 512420086, after the facts were gathered. Corrected at all four sites, including the backend-signer reasoning that had been derived from the wrong owner set."
+  - "F2 (WARN, resolved): the deployment-plan tooling paths omitted the packages/contracts/ prefix."
+  - "F3 (WARN, resolved): the deployment-inputs list was attributed to the membership README; it is in the contracts README."
+  - "F4 (FAIL, resolved in 30a8e4b): the F1 correction introduced '(the backend signer)' next to the owner address — an identity claim traceable to no repo artifact, review state or on-chain read, and in tension with section 6.3 which records the backend-signer decision as not yet implemented. The parenthetical was removed; the record states only the on-chain fact that the address is a Safe owner, and the off-chain role stays in the open decision. This was the orchestrator's own error, caught by the reviewer."
+  - "The reviewer corroborated the whole document against reality: the three contract addresses and their wiring, the deploy/setCollections/OwnershipTransferred blocks and tx hashes, the manager runtime code hash, the ERC-5192 and locked()/renounceOwnership() semantics, the 84 tests (13+30+3+26+12), the migration's applied status (version 20261007010043 vs the committed filename 20261006000001), and the Snapshot space's strategy."
+  - "Documentation debt recorded, deliberately not fixed by this task: packages/contracts/README.md, membership/README.md and the contract headers still say 'NOT deployed'; apps/web/src/lib/vote/spaces.ts still names onchainisland.eth / onchainisland-citizens.eth while the real space is kadeglobal.eth."
+  - "Facts the author could not establish and declared as such: the viem/chains WARN (no review state names it), the backend-signer module recommendation (not recorded anywhere), the Vercel-masked secrets claim, a Week 4 human-approval date, and the second Snapshot space's exact name."
