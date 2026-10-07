@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Hex } from 'viem';
 import { tokens } from '@/components/ui/tokens';
 import { tierMinimumUsdc, type ResidencyCheck } from '@/lib/residency/checks';
+import type { MembershipClaimTarget } from '@/lib/membership/plan';
 import { usd, usd2, usdc2 } from '@/lib/wealth/format';
 import type { ResidencySnapshot } from '@/lib/residency/server';
 import type { PermitIssuanceResult } from '@/lib/residency/permit';
 import {
+  claimMembershipAction,
   createSelfSessionAction,
   issueResidencyPermitAction,
   type SelfSessionActionOutcome,
@@ -205,6 +207,26 @@ export function ResidencyStep({
     setNotice(permitMessage(result));
   }
 
+  /**
+   * The Colosseum claim trigger. The server re-validates the four real checks
+   * and mints the credential; it is fire-and-forget so the reveal is never
+   * delayed. A failure is logged without any secret (the outcome never carries
+   * the signer key) and does not disturb the demo reveal.
+   */
+  const claimMembership = useCallback((target: MembershipClaimTarget) => {
+    const report = (cause: unknown) =>
+      console.warn(
+        '[kade] the Colosseum membership claim could not be submitted:',
+        cause instanceof Error ? cause.message : cause,
+      );
+    try {
+      const result = claimMembershipAction(target);
+      void result.catch(report);
+    } catch (cause) {
+      report(cause);
+    }
+  }, []);
+
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>
       <div
@@ -393,6 +415,7 @@ export function ResidencyStep({
         checks={view.checks}
         tier={snapshot.tier}
         profileKey={profileKey}
+        onClaimMembership={claimMembership}
       />
 
       {notice ? (
