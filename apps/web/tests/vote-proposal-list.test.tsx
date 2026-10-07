@@ -29,6 +29,7 @@ const RESIDENT: VoteProposal = {
   category: 'resident',
   state: 'open',
   snapshotBlock: 100,
+  type: 'basic',
   choices: [{ id: '0', label: 'For' }],
   provenance: 'snapshot',
 };
