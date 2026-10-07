@@ -17,7 +17,7 @@ import {
   readColosseumProgress,
   type ColosseumProgress,
 } from './colosseum-progress';
-import { ResidencyPass } from './ResidencyPass';
+import { ResidencyPass, ResidencyPassArtifact } from './ResidencyPass';
 import {
   CertificateArtifact,
   CitizenshipCertificate,
@@ -90,6 +90,28 @@ const CHECK_LABELS: Record<ResidencyCheckId, string> = {
  */
 export const COLOSSEUM_COMPLIANCE_WINDOW_SECONDS = 120;
 
+/**
+ * The mint outcome the section renders, structurally compatible with the claim
+ * server action's result. Only the fields the UI needs are named; the action
+ * outcome (including the additive `explorerUrl`) satisfies it directly, and a
+ * local submission failure can be represented without importing the server
+ * module.
+ */
+export interface ClaimOutcomeView {
+  readonly status:
+    | 'sent'
+    | 'failed'
+    | 'blocked'
+    | 'not-configured'
+    | 'unauthenticated';
+  readonly sent: boolean;
+  readonly reason: string;
+  readonly txHash?: string | null;
+  readonly account?: string | null;
+  readonly operation?: string | null;
+  readonly explorerUrl?: string | null;
+}
+
 export interface ColosseumResidencyProps {
   /**
    * The real, derived residency checks. The funds check carries the real
@@ -121,12 +143,15 @@ export interface ColosseumResidencyProps {
   readonly profileKey?: string | null;
   /**
    * The claim trigger. Called once, on the first claim of each milestone, with
-   * the target the server should mint (`resident` / `citizen`). It is
-   * fire-and-forget: the reveal is opened before it is called, so the mint
-   * never changes the reveal timing or the one-shot guards. Omitted in tests
-   * and any surface that only renders the demo.
+   * the target the server should mint (`resident` / `citizen`). It returns the
+   * mint outcome so the section can report honestly whether the credential was
+   * issued on chain (feedback 1); the reveal is opened before it is awaited, so
+   * the mint never changes the reveal timing or the one-shot guards. A caller
+   * that only renders the demo may omit it or return nothing.
    */
-  readonly onClaimMembership?: (target: MembershipClaimTarget) => void;
+  readonly onClaimMembership?: (
+    target: MembershipClaimTarget,
+  ) => Promise<ClaimOutcomeView | null> | void;
 }
 
 function formatCountdown(totalSeconds: number): string {
@@ -197,6 +222,16 @@ export function ColosseumResidency({
   // The first, live citizenship reveal uses the celebratory tier; every later
   // open uses the standard one.
   const [certificateCelebration, setCertificateCelebration] = useState(false);
+  // The mint outcome per claim target, so the section can report honestly
+  // whether the on-chain credential was issued (feedback 1). Session state only:
+  // it is not persisted, and it is cleared for a target while a fresh claim is
+  // in flight so a stale confirmation is never shown.
+  const [mintOutcomes, setMintOutcomes] = useState<
+    Partial<Record<MembershipClaimTarget, ClaimOutcomeView>>
+  >({});
+  const [mintPending, setMintPending] = useState<MembershipClaimTarget | null>(
+    null,
+  );
   // The certificate reveal must fire exactly once, on the *live* transition to
   // citizen — not on a restored citizen load and not again after a dismissal.
   // `restoredCitizenRef` records whether the progress read at mount/profile
@@ -259,14 +294,47 @@ export function ColosseumResidency({
     setColosseumAttention(citizenEligible);
   }, [citizenEligible]);
 
+  /**
+   * Submit a claim and record its outcome. The reveal is already opening by the
+   * time this is called, so awaiting the mint never affects the reveal timing.
+   * While the promise is in flight the target is marked pending and any stale
+   * outcome is dropped; when it settles the real outcome (or a caller-provided
+   * `failed` outcome) is stored, so the section never shows a confirmation the
+   * mint did not produce.
+   */
+  const runClaim = useCallback(
+    (target: MembershipClaimTarget) => {
+      const result = onClaimMembership?.(target);
+      if (!result || typeof result.then !== 'function') return;
+      setMintPending(target);
+      setMintOutcomes((current) => {
+        const next = { ...current };
+        delete next[target];
+        return next;
+      });
+      void result.then(
+        (outcome) => {
+          if (outcome) {
+            setMintOutcomes((current) => ({ ...current, [target]: outcome }));
+          }
+          setMintPending((pending) => (pending === target ? null : pending));
+        },
+        () => {
+          setMintPending((pending) => (pending === target ? null : pending));
+        },
+      );
+    },
+    [onClaimMembership],
+  );
+
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
     setColosseumAttention(false);
     // The claim is the trigger: the server re-validates and mints the Citizen
-    // credential. Fire-and-forget after the local transition, so the reveal is
-    // never delayed by the mint.
-    onClaimMembership?.('citizen');
-  }, [profileKey, onClaimMembership]);
+    // credential. The reveal opens from the local transition; the mint outcome
+    // is awaited afterwards.
+    runClaim('citizen');
+  }, [profileKey, runClaim]);
 
   // Celebrate the milestone with the full-screen certificate reveal, exactly
   // once, on the live transition to citizen. A restored citizen (already
@@ -297,16 +365,22 @@ export function ColosseumResidency({
     );
     setResidencyPassOpen(true);
     if (!alreadyClaimed) {
-      // Fire-and-forget after the local transition: the reveal is already
-      // opening, so the mint never changes its timing.
-      onClaimMembership?.('resident');
+      // The reveal is already opening, so the mint never changes its timing; the
+      // outcome is awaited afterwards and reported honestly.
+      runClaim('resident');
     }
-  }, [profileKey, progress.residencyPassAt, onClaimMembership]);
+  }, [profileKey, progress.residencyPassAt, runClaim]);
 
-  const showCertificate = mounted && citizen;
-  const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
-  const showStateC = mounted && allChecksMet && !citizen && !windowElapsed;
   const residencyPassClaimed = progress.residencyPassSerial !== null;
+  const showCertificate = mounted && citizen;
+  // Once the resident has claimed their residency pass, the section shows the
+  // same inline artifact treatment a citizen gets — the resident card instead of
+  // the certificate (feedback 3). State C/D remain the pre-claim affordances.
+  const showResident = mounted && allChecksMet && !citizen && residencyPassClaimed;
+  const showStateD =
+    mounted && allChecksMet && !citizen && windowElapsed && !residencyPassClaimed;
+  const showStateC =
+    mounted && allChecksMet && !citizen && !windowElapsed && !residencyPassClaimed;
 
   return (
     <section data-testid="colosseum-section" style={card}>
@@ -325,17 +399,6 @@ export function ColosseumResidency({
         qualified position — it adds no check of its own. A Colosseum Resident
         qualifies at a demo-scale {COLOSSEUM_THRESHOLD}.
       </p>
-
-      {/* One progression, always visible: the four milestones the resident moves
-          through, with the current one highlighted. It is what makes the
-          mutually-exclusive states below read as one story rather than five
-          unrelated boxes. */}
-      <PhaseRail
-        fundsMet={fundsMet}
-        allChecksMet={allChecksMet}
-        windowElapsed={windowElapsed}
-        citizen={citizen}
-      />
 
       {/* State A — not eligible yet: the real funds check is below the 10 USDC
           threshold. The figure is the resident's real qualified amount. When the
@@ -358,7 +421,6 @@ export function ColosseumResidency({
           "Claim Colosseum Residency" is the single primary action. */}
       {showStateC ? (
         <StateC
-          remainingSeconds={secondsRemaining}
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
         />
@@ -369,9 +431,28 @@ export function ColosseumResidency({
           affordance so the two claims never compete. */}
       {showStateD ? (
         <StateD
-          remainingSeconds={secondsRemaining}
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
+          onBecomeCitizen={becomeCitizen}
+        />
+      ) : null}
+
+      {/* State R — the resident has claimed their residency pass: the same
+          inline artifact treatment as the citizen state (State E), but the
+          residency pass instead of the certificate. The artifact is the control
+          that opens the full-screen reveal on demand; the citizenship action
+          stays reachable below it, and the testing-only counter sits at the very
+          bottom of the section. */}
+      {showResident ? (
+        <StateResident
+          serial={progress.residencyPassSerial}
+          issuedAt={progress.residencyPassAt}
+          windowElapsed={windowElapsed}
+          mintPending={mintPending === 'resident'}
+          mintOutcome={mintOutcomes.resident ?? null}
+          onOpenFullScreen={() => {
+            setResidencyPassOpen(true);
+          }}
           onBecomeCitizen={becomeCitizen}
         />
       ) : null}
@@ -383,6 +464,8 @@ export function ColosseumResidency({
         <StateE
           serial={progress.passportSerial}
           issuedAt={progress.citizenAt}
+          mintPending={mintPending === 'citizen'}
+          mintOutcome={mintOutcomes.citizen ?? null}
           onOpenFullScreen={() => {
             setCertificateCelebration(false);
             setCertificateOpen(true);
@@ -407,6 +490,17 @@ export function ColosseumResidency({
         issuedAt={progress.citizenAt}
         celebration={certificateCelebration}
       />
+
+      {/* The 2-minute compliance window is a TESTING affordance, not product UI.
+          It is a single muted line at the very bottom of the section (feedback
+          4): visually it should read as developer chrome, not as part of the
+          Colosseum story. The state and the window itself are untouched — the
+          countdown is still computed from the same persisted `residentSince`,
+          and it stays in the accessibility tree (the progressbar and its
+          `aria-valuetext`), so assistive tech can still reach it. */}
+      {progress.residentSince !== null && !citizen ? (
+        <ComplianceProgress remainingSeconds={secondsRemaining} />
+      ) : null}
     </section>
   );
 }
@@ -450,78 +544,6 @@ function StateA({
         </span>
       </div>
     </div>
-  );
-}
-
-/**
- * The four-milestone progression rail. It is rendered for every state so the
- * mutually-exclusive boxes below read as one advancing story. Each phase's
- * `done` flag comes from the same derived state the section already computes;
- * nothing here is a fixture.
- */
-function PhaseRail({
-  fundsMet,
-  allChecksMet,
-  windowElapsed,
-  citizen,
-}: {
-  readonly fundsMet: boolean;
-  readonly allChecksMet: boolean;
-  readonly windowElapsed: boolean;
-  readonly citizen: boolean;
-}) {
-  const phases = [
-    { id: 'threshold', label: 'Threshold', done: fundsMet },
-    { id: 'checks', label: 'Checks', done: allChecksMet },
-    { id: 'compliance', label: 'Compliance', done: windowElapsed || citizen },
-    { id: 'citizen', label: 'Citizen', done: citizen },
-  ];
-  const activeIndex = phases.findIndex((phase) => !phase.done);
-
-  return (
-    <ol
-      data-testid="colosseum-phases"
-      aria-label="Colosseum residency progress"
-      style={phaseRail}
-    >
-      {phases.map((phase, index) => {
-        const state = phase.done
-          ? 'done'
-          : index === activeIndex
-            ? 'active'
-            : 'todo';
-        return (
-          <li
-            key={phase.id}
-            data-testid={`colosseum-phase-${phase.id}`}
-            data-state={state}
-            style={phaseItem}
-          >
-            <span
-              aria-hidden
-              style={{
-                ...phaseDot,
-                ...(phase.done
-                  ? phaseDotDone
-                  : state === 'active'
-                    ? phaseDotActive
-                    : phaseDotTodo),
-              }}
-            >
-              {phase.done ? '✓' : ''}
-            </span>
-            <span
-              style={{
-                ...phaseLabel,
-                ...(state === 'active' ? phaseLabelActive : {}),
-              }}
-            >
-              {phase.label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -602,10 +624,15 @@ function StateB({
 }
 
 /**
- * The compliance window, kept discreet: a thin progress line plus small, muted
- * text carrying the real remaining time. The time is in the accessibility tree
- * (the visible text, and the progressbar's `aria-valuetext`), but it is no
- * longer the headline of the card.
+ * The compliance window, made almost invisible: a hairline progress track plus a
+ * single small, muted line of text at the very bottom of the section. The
+ * human's feedback was that the counter was "demasiado protagonico" and is only
+ * for testing, so it must read as developer chrome rather than product UI.
+ *
+ * It stays honest and reachable: the remaining time is real (computed from the
+ * same persisted `residentSince`), it is still visible text, and the
+ * `progressbar` keeps its `aria-valuetext`, so assistive tech can still reach
+ * it. Nothing about the underlying state or the server-side window changes.
  */
 function ComplianceProgress({
   remainingSeconds,
@@ -616,11 +643,11 @@ function ComplianceProgress({
   const elapsed = Math.min(total, Math.max(0, total - remainingSeconds));
   const fraction = total > 0 ? elapsed / total : 1;
   return (
-    <div style={complianceWrap}>
+    <div data-testid="colosseum-compliance" style={complianceWrap}>
       <div
         data-testid="colosseum-compliance-progress"
         role="progressbar"
-        aria-label="Compliance window"
+        aria-label="Compliance window (testing only)"
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={elapsed}
@@ -630,6 +657,7 @@ function ComplianceProgress({
         <div style={{ ...progressFill, transform: `scaleX(${fraction})` }} />
       </div>
       <p style={complianceText}>
+        Testing only ·{' '}
         <span data-testid="colosseum-countdown" style={complianceTime}>
           {formatCountdown(remainingSeconds)}
         </span>{' '}
@@ -651,11 +679,9 @@ function residencyPassLabel(claimed: boolean): string {
 
 /** State C — all four checks green: congrats, the running window and the pass. */
 function StateC({
-  remainingSeconds,
   residencyPassClaimed,
   onClaimResidency,
 }: {
-  readonly remainingSeconds: number;
   readonly residencyPassClaimed: boolean;
   readonly onClaimResidency: () => void;
 }) {
@@ -671,7 +697,6 @@ function StateC({
         Remain a compliant resident for 2 minutes to be eligible to become a
         Colosseum Citizen.
       </p>
-      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
         data-variant={residencyPassClaimed ? 'secondary' : 'primary'}
@@ -686,12 +711,10 @@ function StateC({
 
 /** State D — the 2-minute window elapsed; "Become a Citizen" is the action. */
 function StateD({
-  remainingSeconds,
   residencyPassClaimed,
   onClaimResidency,
   onBecomeCitizen,
 }: {
-  readonly remainingSeconds: number;
   readonly residencyPassClaimed: boolean;
   readonly onClaimResidency: () => void;
   readonly onBecomeCitizen: () => void;
@@ -703,7 +726,6 @@ function StateD({
         You have remained a compliant resident for 2 minutes. Become a
         Colosseum Citizen to receive your citizenship certificate.
       </p>
-      <ComplianceProgress remainingSeconds={remainingSeconds} />
       <button
         type="button"
         data-variant="primary"
@@ -725,44 +747,254 @@ function StateD({
 }
 
 /**
- * State E — already a Colosseum Citizen: the inline citizenship certificate.
+ * The inline artifact stage shared by the resident and citizen states: the
+ * embedded credential card plus the transparent overlay button that opens its
+ * full-screen reveal. Both states use exactly this structure and differ only in
+ * which artifact is rendered (feedback 3), so the two cannot drift apart.
  *
- * The certificate stays readable in the page (so a stored citizen always sees
- * it), and is itself the control that opens the full-screen reveal on demand.
- * It is a real `<button>` so keyboard and assistive-tech users can reach it; it
- * contains no interactive children. The full-screen celebration is what plays
- * automatically on the moment of citizenship.
+ * The artifact is a non-interactive container; a real <button> overlays it as a
+ * sibling, so the button carries the accessible name while the card's text stays
+ * in the accessibility tree. A <button> wrapping the block content would be
+ * invalid (phrasing-content content model).
  */
-function StateE({
+function ArtifactStage({
+  artifact,
   serial,
   issuedAt,
   onOpenFullScreen,
 }: {
+  readonly artifact: 'certificate' | 'residency-pass';
   readonly serial: string | null;
   readonly issuedAt: string | null;
   readonly onOpenFullScreen: () => void;
 }) {
+  const certificate = artifact === 'certificate';
+  return (
+    <div className="kade-passport-trigger">
+      {certificate ? (
+        <CertificateArtifact variant="embedded" serial={serial} issuedAt={issuedAt} />
+      ) : (
+        <ResidencyPassArtifact variant="embedded" serial={serial} issuedAt={issuedAt} />
+      )}
+      <button
+        type="button"
+        onClick={onOpenFullScreen}
+        aria-label={
+          certificate
+            ? 'Open the citizenship certificate full-screen'
+            : 'Open the residency pass full-screen'
+        }
+        className="kade-passport-trigger-button"
+      />
+    </div>
+  );
+}
+
+/**
+ * State E — already a Colosseum Citizen: the inline citizenship certificate.
+ *
+ * The certificate stays readable in the page (so a stored citizen always sees
+ * it), and is itself the control that opens the full-screen reveal on demand.
+ * The full-screen celebration is what plays automatically on the moment of
+ * citizenship.
+ */
+function StateE({
+  serial,
+  issuedAt,
+  mintPending,
+  mintOutcome,
+  onOpenFullScreen,
+}: {
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  readonly mintPending: boolean;
+  readonly mintOutcome: ClaimOutcomeView | null;
+  readonly onOpenFullScreen: () => void;
+}) {
   return (
     <div data-testid="colosseum-state-e" style={certificateStage}>
-      {/*
-        The artifact is a non-interactive container; a real <button> overlays it
-        as a sibling, so the button carries the accessible name while the card's
-        text stays in the accessibility tree. A <button> wrapping the block
-        content would be invalid (phrasing-content content model).
-      */}
-      <div className="kade-passport-trigger">
-        <CertificateArtifact
-          variant="embedded"
-          serial={serial}
-          issuedAt={issuedAt}
-        />
+      <ArtifactStage
+        artifact="certificate"
+        serial={serial}
+        issuedAt={issuedAt}
+        onOpenFullScreen={onOpenFullScreen}
+      />
+      <MintReceipt
+        target="citizen"
+        pending={mintPending}
+        outcome={mintOutcome}
+        serial={serial}
+      />
+    </div>
+  );
+}
+
+/**
+ * State R — a Colosseum Resident who has claimed their residency pass: the same
+ * layout as the citizen state (State E), rendering the residency pass artifact
+ * instead of the certificate (feedback 3). The artifact is the control that
+ * opens the full-screen reveal on demand. Once the compliance window has
+ * elapsed, becoming a citizen is the single primary action; before that the
+ * resident is told to remain compliant. The testing-only counter sits at the
+ * very bottom of the section, outside this state.
+ */
+function StateResident({
+  serial,
+  issuedAt,
+  windowElapsed,
+  mintPending,
+  mintOutcome,
+  onOpenFullScreen,
+  onBecomeCitizen,
+}: {
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  readonly windowElapsed: boolean;
+  readonly mintPending: boolean;
+  readonly mintOutcome: ClaimOutcomeView | null;
+  readonly onOpenFullScreen: () => void;
+  readonly onBecomeCitizen: () => void;
+}) {
+  return (
+    <div data-testid="colosseum-state-resident" style={certificateStage}>
+      <ArtifactStage
+        artifact="residency-pass"
+        serial={serial}
+        issuedAt={issuedAt}
+        onOpenFullScreen={onOpenFullScreen}
+      />
+      <MintReceipt
+        target="resident"
+        pending={mintPending}
+        outcome={mintOutcome}
+        serial={serial}
+      />
+      {windowElapsed ? (
         <button
           type="button"
-          onClick={onOpenFullScreen}
-          aria-label="Open the citizenship certificate full-screen"
-          className="kade-passport-trigger-button"
-        />
-      </div>
+          data-variant="primary"
+          onClick={onBecomeCitizen}
+          style={{ ...primaryButton, width: '100%' }}
+        >
+          Become a Citizen
+        </button>
+      ) : (
+        <p style={{ ...body, fontWeight: 600 }}>
+          Remain a compliant resident for 2 minutes to be eligible to become a
+          Colosseum Citizen.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The honest mint receipt (feedback 1).
+ *
+ * When a claim confirms, the server returns the real on-chain outcome: the
+ * transaction hash, the member account and the operation. This component
+ * surfaces exactly that — it never fabricates a "success". It links to the
+ * credential on the membership chain's explorer (the issuance transaction and
+ * the holder account) and repeats the serial/state the app already knows.
+ *
+ * While the mint is in flight it says so; a failed/blocked/unconfigured claim
+ * says the credential was NOT issued and shows the reason. It is session state:
+ * a reload falls back to the artifact's own serial/state.
+ */
+function MintReceipt({
+  target,
+  pending,
+  outcome,
+  serial,
+}: {
+  readonly target: MembershipClaimTarget;
+  readonly pending: boolean;
+  readonly outcome: ClaimOutcomeView | null;
+  readonly serial: string | null;
+}) {
+  const noun =
+    target === 'resident'
+      ? 'Colosseum Resident credential'
+      : 'Colosseum Citizen credential';
+  const state = target === 'resident' ? 'Resident' : 'Citizen';
+
+  if (pending) {
+    return (
+      <p
+        data-testid={`colosseum-mint-${target}`}
+        data-state="pending"
+        style={mintReceiptBox}
+      >
+        Issuing your {noun} on chain — waiting for confirmation…
+      </p>
+    );
+  }
+  if (!outcome) return null;
+
+  const explorerUrl = outcome.explorerUrl ?? null;
+  const txHash = outcome.txHash ?? null;
+  const account = outcome.account ?? null;
+  const txLink = explorerUrl && txHash ? `${explorerUrl}/tx/${txHash}` : null;
+  const accountLink =
+    explorerUrl && account ? `${explorerUrl}/address/${account}` : null;
+
+  return (
+    <div
+      data-testid={`colosseum-mint-${target}`}
+      data-state={outcome.status}
+      style={mintReceiptBox}
+    >
+      {outcome.status === 'sent' ? (
+        <>
+          <p style={mintLine}>
+            <strong>Issued on chain.</strong> Your {noun} was confirmed.
+          </p>
+          <p style={mintMeta}>
+            Status: {state}
+            {serial ? ` · Serial ${serial}` : ''}
+          </p>
+          {txLink || accountLink ? (
+            <ul style={mintLinks}>
+              {txLink ? (
+                <li>
+                  <a href={txLink} target="_blank" rel="noreferrer" style={mintLink}>
+                    View the issuance transaction on Arbiscan
+                  </a>
+                </li>
+              ) : null}
+              {accountLink ? (
+                <li>
+                  <a
+                    href={accountLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={mintLink}
+                  >
+                    View the credential holder on Arbiscan
+                  </a>
+                </li>
+              ) : null}
+            </ul>
+          ) : txHash ? (
+            <p style={mintMeta}>
+              Transaction: <code>{txHash}</code>
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <p style={mintLine}>
+            <strong>The credential was not issued.</strong> {outcome.reason}
+          </p>
+          {txLink ? (
+            <p style={mintMeta}>
+              <a href={txLink} target="_blank" rel="noreferrer" style={mintLink}>
+                View the transaction on Arbiscan
+              </a>
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -904,62 +1136,6 @@ const secondaryButton = {
   cursor: 'pointer',
 };
 
-/* The four-milestone progression rail. Small dots and labels only: it is a
-   wayfinding device, not a headline. */
-const phaseRail = {
-  display: 'flex',
-  flexWrap: 'wrap' as const,
-  alignItems: 'center',
-  gap: '6px 16px',
-  margin: '14px 0 0',
-  padding: 0,
-  listStyle: 'none' as const,
-};
-
-const phaseItem = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-};
-
-const phaseDot = {
-  width: '16px',
-  height: '16px',
-  borderRadius: '50%',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flex: '0 0 auto',
-  fontSize: '9px',
-  fontWeight: 700,
-  lineHeight: 1,
-};
-
-const phaseDotDone = {
-  background: tokens.brandPrimary,
-  color: '#fff',
-};
-
-const phaseDotActive = {
-  background: tokens.activeNavBg,
-  color: tokens.brandPrimary,
-};
-
-const phaseDotTodo = {
-  background: tokens.chipBg,
-  color: tokens.muted,
-};
-
-const phaseLabel = {
-  fontSize: '11.5px',
-  fontWeight: 600,
-  color: tokens.muted,
-};
-
-const phaseLabelActive = {
-  color: tokens.brandPrimary,
-};
-
 /* State B's inline checklist of the four real checks. */
 const checklist = {
   margin: '4px 0 0',
@@ -1026,13 +1202,16 @@ const checkState = {
   whiteSpace: 'nowrap' as const,
 };
 
-/* The discreet compliance window: a thin line plus small, muted text. */
+/* The testing-only compliance window: a hairline track plus one small, muted
+   line at the very bottom of the section, deliberately low-contrast so it does
+   not read as product UI. */
 const complianceWrap = {
-  marginTop: '14px',
+  marginTop: '22px',
+  opacity: 0.5,
 };
 
 const progressTrack = {
-  height: '4px',
+  height: '2px',
   borderRadius: '999px',
   background: tokens.border,
   overflow: 'hidden',
@@ -1041,20 +1220,21 @@ const progressTrack = {
 const progressFill = {
   height: '100%',
   borderRadius: '999px',
-  background: tokens.brandPrimary,
+  background: tokens.locked,
   transformOrigin: 'left center',
 };
 
 const complianceText = {
-  margin: '6px 0 0',
-  fontSize: '11.5px',
+  margin: '4px 0 0',
+  fontSize: '10px',
+  letterSpacing: '.01em',
   color: tokens.muted,
 };
 
 const complianceTime = {
   fontWeight: 600,
   fontVariantNumeric: 'tabular-nums',
-  color: tokens.chipFg,
+  color: tokens.muted,
 };
 
 /* The quiet, text-only residency-pass affordance used in state D so it never
@@ -1073,6 +1253,37 @@ const quietAction = {
   cursor: 'pointer',
   textDecoration: 'underline',
   textUnderlineOffset: '3px',
+};
+
+/* The honest mint receipt shown under the resident/citizen artifact. */
+const mintReceiptBox = {
+  marginTop: '12px',
+  padding: '12px 14px',
+  borderRadius: '10px',
+  background: '#fff',
+  border: `1px solid ${tokens.border}`,
+  fontSize: '12.5px',
+  lineHeight: 1.6,
+  color: tokens.chipFg,
+};
+
+const mintLine = {
+  margin: 0,
+};
+
+const mintMeta = {
+  margin: '4px 0 0',
+  color: tokens.muted,
+};
+
+const mintLinks = {
+  margin: '6px 0 0',
+  paddingLeft: '18px',
+};
+
+const mintLink = {
+  color: tokens.brandPrimary,
+  fontWeight: 600,
 };
 
 const certificateStage = {

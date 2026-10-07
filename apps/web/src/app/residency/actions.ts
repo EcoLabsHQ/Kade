@@ -1,7 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { chainByChainId } from '@kade/shared';
 import { getSessionUser } from '@/lib/supabase/server';
+import { readMembershipChainId } from '@/lib/env';
 import { recordResidencyServiceFeePayment } from '@/lib/residency/service-fee-server';
 import { createSelfSession, type SelfSessionResult } from '@/lib/residency/self';
 import { issuePermit, type PermitIssuanceResult } from '@/lib/residency/permit';
@@ -130,10 +132,36 @@ export async function prepareMembershipTransitionAction(
   );
 }
 
-/** The claim-mint action's result. */
+/**
+ * The Arbiscan base for the chain the MembershipManager is deployed on, or null
+ * when the chain is unconfigured/unknown. The mint outcome carries the
+ * transaction hash and the member account; the browser needs the explorer base
+ * to build a link that actually reaches the credential. It is surfaced from the
+ * server rather than hard-coded so the link follows the configured chain.
+ */
+function membershipExplorerUrl(): string | null {
+  const chainId = readMembershipChainId();
+  if (chainId === null) return null;
+  return chainByChainId(chainId)?.explorerUrl ?? null;
+}
+
+/**
+ * The claim-mint action's result.
+ *
+ * The mint outcome is surfaced unchanged (the same discriminated union the
+ * server produces), with one additive field: `explorerUrl`, the explorer base
+ * for the membership chain. The UI uses it, together with the outcome's
+ * `txHash`/`account`, to link the resident to the credential they just minted;
+ * it never claims an issuance the mint did not confirm.
+ */
 export type MembershipClaimActionOutcome =
-  | MembershipMintOutcome
-  | { readonly status: 'unauthenticated'; readonly sent: false; readonly reason: string };
+  | (MembershipMintOutcome & { readonly explorerUrl: string | null })
+  | {
+      readonly status: 'unauthenticated';
+      readonly sent: false;
+      readonly reason: string;
+      readonly explorerUrl: null;
+    };
 
 /**
  * Mint the credential a Colosseum claim warrants.
@@ -153,8 +181,11 @@ export async function claimMembershipAction(
       status: 'unauthenticated',
       sent: false,
       reason: 'Your session expired. Sign in again to claim.',
+      explorerUrl: null,
     };
   }
+
+  const explorerUrl = membershipExplorerUrl();
 
   // The argument crosses the network, so the annotation is not a guard: an
   // authenticated caller can send `"none"`. Validate at the boundary before the
@@ -167,6 +198,7 @@ export async function claimMembershipAction(
       reason:
         `"${String(target)}" is not a Colosseum claim target; only resident and ` +
         'citizen can be claimed.',
+      explorerUrl,
     };
   }
 
@@ -174,5 +206,5 @@ export async function claimMembershipAction(
   if (outcome.status === 'sent') {
     revalidatePath('/residency');
   }
-  return outcome;
+  return { ...outcome, explorerUrl };
 }

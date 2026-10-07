@@ -209,23 +209,41 @@ export function ResidencyStep({
 
   /**
    * The Colosseum claim trigger. The server re-validates the four real checks
-   * and mints the credential; it is fire-and-forget so the reveal is never
-   * delayed. A failure is logged without any secret (the outcome never carries
-   * the signer key) and does not disturb the demo reveal.
+   * and mints the credential; the returned promise carries the mint outcome so
+   * the section can report honestly whether the credential was issued on chain
+   * (feedback 1). The reveal is never delayed by it: the section opens the
+   * reveal synchronously and awaits the outcome afterwards.
+   *
+   * A submission failure is logged without any secret (the outcome never
+   * carries the signer key) and is surfaced to the section as a `failed`
+   * outcome, so the UI never claims an issuance that did not confirm.
    */
-  const claimMembership = useCallback((target: MembershipClaimTarget) => {
-    const report = (cause: unknown) =>
-      console.warn(
-        '[kade] the Colosseum membership claim could not be submitted:',
-        cause instanceof Error ? cause.message : cause,
-      );
-    try {
-      const result = claimMembershipAction(target);
-      void result.catch(report);
-    } catch (cause) {
-      report(cause);
-    }
-  }, []);
+  const claimMembership = useCallback(
+    (target: MembershipClaimTarget) => {
+      const report = (cause: unknown) =>
+        console.warn(
+          '[kade] the Colosseum membership claim could not be submitted:',
+          cause instanceof Error ? cause.message : cause,
+        );
+      const failure = (cause: unknown) => {
+        report(cause);
+        return {
+          status: 'failed' as const,
+          sent: false as const,
+          reason:
+            'The claim could not be submitted. Please try again.',
+          txHash: null,
+          explorerUrl: null,
+        };
+      };
+      try {
+        return claimMembershipAction(target).catch(failure);
+      } catch (cause) {
+        return Promise.resolve(failure(cause));
+      }
+    },
+    [],
+  );
 
   return (
     <div style={{ animation: 'fadeUp .2s ease-out' }}>

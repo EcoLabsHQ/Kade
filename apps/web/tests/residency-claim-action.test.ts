@@ -22,6 +22,11 @@ vi.mock('next/cache', () => ({ revalidatePath: hoisted.revalidatePath }));
 vi.mock('@/lib/membership/mint', () => ({
   mintMembershipForClaimFromEnv: hoisted.mint,
 }));
+// The membership manager is on Arbitrum One in the deployed environment; the
+// action resolves the explorer base from the configured chain id.
+vi.mock('@/lib/env', () => ({
+  readMembershipChainId: () => 42161,
+}));
 
 import { claimMembershipAction } from '@/app/residency/actions';
 
@@ -67,6 +72,39 @@ describe('claimMembershipAction — the runtime target guard', () => {
     expect(hoisted.mint).toHaveBeenCalledWith('profile-1', 'resident');
     expect(outcome.status).toBe('sent');
     expect(hoisted.revalidatePath).toHaveBeenCalledWith('/residency');
+  });
+
+  it('surfaces the Arbiscan base for the configured membership chain', async () => {
+    hoisted.mint.mockResolvedValue({
+      status: 'sent',
+      sent: true,
+      reason: 'confirmed',
+      operation: 'issue-resident',
+      account: '0x1111111111111111111111111111111111111111',
+      txHash: `0x${'ab'.repeat(32)}`,
+      blockNumber: 1n,
+      eventKey: 'k',
+    });
+
+    const outcome = await claimMembershipAction('resident');
+    expect(outcome.explorerUrl).toBe('https://arbiscan.io');
+    // The raw mint outcome is otherwise unchanged.
+    if (outcome.status !== 'sent') throw new Error('expected a sent outcome');
+    expect(outcome.txHash).toBe(`0x${'ab'.repeat(32)}`);
+    expect(outcome.account).toBe('0x1111111111111111111111111111111111111111');
+  });
+
+  it('surfaces the explorer base on a refused claim too, never a fabricated one', async () => {
+    hoisted.mint.mockResolvedValue({
+      status: 'blocked',
+      sent: false,
+      reason: 'the four residency checks are not all met.',
+    });
+
+    const outcome = await claimMembershipAction('resident');
+    expect(outcome.status).toBe('blocked');
+    expect(outcome.explorerUrl).toBe('https://arbiscan.io');
+    expect(outcome.sent).toBe(false);
   });
 
   it('reports unauthenticated without calling the mint', async () => {

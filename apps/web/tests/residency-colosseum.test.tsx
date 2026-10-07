@@ -161,7 +161,7 @@ describe('ColosseumResidency — states', () => {
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
   });
 
-  it('keeps the compliance counter discreet: a thin progressbar with the real remaining time', () => {
+  it('keeps the compliance counter discreet: a hairline progressbar with the real remaining time', () => {
     render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
 
     // Not a large metric row: a progressbar carrying the real remaining time.
@@ -187,7 +187,28 @@ describe('ColosseumResidency — states', () => {
     ).toHaveAttribute('aria-valuetext', '1:30 remaining');
   });
 
-  it('reads as one progression: the milestone rail advances with the state', () => {
+  it('marks the compliance counter as testing-only and keeps it at the very bottom', () => {
+    render(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
+
+    // The human's feedback: the counter is "demasiado protagonico" and is only
+    // for testing. It now reads as developer chrome ("Testing only"), not as
+    // product copy, and it sits after every product element in the section.
+    const compliance = screen.getByTestId('colosseum-compliance');
+    expect(compliance).toHaveTextContent(/testing only/i);
+    const section = screen.getByTestId('colosseum-section');
+    const productChildren = Array.from(section.children).filter(
+      (child) => child !== compliance,
+    );
+    expect(section.lastElementChild).toBe(compliance);
+    expect(productChildren.length).toBeGreaterThan(0);
+  });
+
+  it('removed the milestone rail: the state boxes tell the story on their own', () => {
+    // The human removed the four-step rail ("Threshold · Checks · Compliance ·
+    // Citizen") from the Colosseum section: it read as a competing progress
+    // indicator. The state boxes are the only progression now, so the rail
+    // testids must be absent in every state — and must not be replaced by
+    // another progress indicator.
     const { rerender } = render(
       <ColosseumResidency
         tier="colosseum"
@@ -196,11 +217,7 @@ describe('ColosseumResidency — states', () => {
     );
 
     // A — below threshold.
-    expect(screen.getByTestId('colosseum-phases')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // B — threshold met, checks pending.
     rerender(
@@ -209,48 +226,24 @@ describe('ColosseumResidency — states', () => {
         checks={checks(facts({ identity: null }))}
       />,
     );
-    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // C — all checks green, window running.
     rerender(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
-    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // D — window elapsed, eligible.
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
-    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // E — citizen.
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
-    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
   });
 
-  it('State D: "Become a Citizen" is the only primary action; the claimed pass is a quiet text affordance', () => {
+  it('State R: a claimed resident sees the resident card, with citizenship as the only primary action', () => {
     render(
       <ColosseumResidency
         tier="colosseum"
@@ -259,34 +252,40 @@ describe('ColosseumResidency — states', () => {
       />,
     );
 
-    // Claim the pass in state C so it exists in state D, then close the reveal.
+    // Claim the pass in state C, then close the reveal. The section now shows
+    // the inline resident card — the same treatment a citizen gets (feedback 3)
+    // — instead of a "View residency pass" button.
     fireEvent.click(
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
     fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByTestId('colosseum-state-resident')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-residency-pass')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-state-c')).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
-    expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
 
-    // The counter is still honest in State D: the window is complete.
+    // The counter is still honest: the window is complete.
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('0:00');
     expect(
       screen.getByTestId('colosseum-compliance-progress'),
     ).toHaveAttribute('aria-valuetext', '0:00 remaining');
 
-    // Exactly one primary action in the state, and it is citizenship.
+    // Exactly one primary action, and it is citizenship.
     const primaries = screen
       .getAllByRole('button')
       .filter((button) => button.getAttribute('data-variant') === 'primary');
     expect(primaries).toHaveLength(1);
     expect(primaries[0]).toHaveTextContent(/become a citizen/i);
 
-    // The residency pass is present but quiet: a real button, not a filled one.
-    const pass = screen.getByRole('button', { name: /view residency pass/i });
+    // The pass is reachable from the card itself, not a competing filled button.
+    const pass = screen.getByRole('button', {
+      name: /open the residency pass full-screen/i,
+    });
     expect(pass.tagName).toBe('BUTTON');
-    expect(pass).toHaveAttribute('data-variant', 'quiet');
+    expect(pass).not.toHaveAttribute('data-variant', 'primary');
   });
 
   it('State D: still lets an unclaimed pass be claimed, but only as a quiet affordance', () => {
@@ -594,13 +593,13 @@ describe('ColosseumResidency — the virtual residency pass', () => {
       within(overlay).getByText(/not a real residency, status or document/i),
     ).toBeInTheDocument();
     expect(
-      within(overlay).getByTestId('colosseum-residency-pass-holder'),
+      within(overlay).getByTestId('colosseum-residency-pass-overlay-holder'),
     ).toHaveTextContent('Kade Resident');
     expect(
-      within(overlay).getByTestId('colosseum-residency-pass-serial'),
+      within(overlay).getByTestId('colosseum-residency-pass-overlay-serial'),
     ).toHaveTextContent(/^KADE-RES-/);
     expect(
-      within(overlay).getByTestId('colosseum-residency-pass-issued'),
+      within(overlay).getByTestId('colosseum-residency-pass-overlay-issued'),
     ).not.toHaveTextContent('—');
 
     // A labelled, modal dialog.
@@ -635,8 +634,10 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     // The page behind is not left scroll-locked.
     expect(document.body.style.overflow).not.toBe('hidden');
 
-    // Re-open, then click the backdrop.
-    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    // Re-open from the inline resident card, then click the backdrop.
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the residency pass full-screen/i }),
+    );
     const dialog = screen.getByRole('dialog', {
       name: /colosseum residency pass/i,
     });
@@ -644,7 +645,9 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
 
     // Re-open, then use the visible close control.
-    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the residency pass full-screen/i }),
+    );
     fireEvent.click(screen.getByRole('button', { name: /close/i }));
     expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
   });
@@ -662,7 +665,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     );
     const serial = within(
       screen.getByTestId('colosseum-residency-pass-overlay'),
-    ).getByTestId('colosseum-residency-pass-serial').textContent;
+    ).getByTestId('colosseum-residency-pass-overlay-serial').textContent;
     unmount();
 
     render(
@@ -672,11 +675,66 @@ describe('ColosseumResidency — the virtual residency pass', () => {
         profileKey={KEY}
       />,
     );
-    // Already claimed: the action re-opens instead of offering a fresh claim.
-    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
-    expect(screen.getByTestId('colosseum-residency-pass-serial')).toHaveTextContent(
+    // Already claimed: the resident card is shown, and its control re-opens the
+    // same persisted pass instead of offering a fresh claim.
+    expect(screen.getByTestId('colosseum-residency-pass')).toHaveTextContent(
       serial!,
     );
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the residency pass full-screen/i }),
+    );
+    expect(
+      screen.getByTestId('colosseum-residency-pass-overlay-serial'),
+    ).toHaveTextContent(serial!);
+  });
+
+  it('gives a claimed resident the same inline layout as a citizen, with the pass artifact', () => {
+    // Resident: claim the pass. The section shows the inline residency pass with
+    // the same trigger structure the citizen certificate uses (feedback 3).
+    const { unmount } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="resident-layout"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    const resident = screen.getByTestId('colosseum-state-resident');
+    expect(resident.querySelector('.kade-passport-trigger')).not.toBeNull();
+    expect(resident.querySelector('.kade-passport-trigger-button')).not.toBeNull();
+    expect(screen.getByTestId('colosseum-residency-pass')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-certificate')).toBeNull();
+    unmount();
+    window.localStorage.clear();
+
+    // Citizen: the same structure, differing only in the artifact shown.
+    window.localStorage.setItem(
+      'kade.colosseum.progress.v2.resident-layout',
+      JSON.stringify({
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-02T00:00:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: '2026-01-01T00:01:00.000Z',
+        residencyPassSerial: 'KADE-RES-ABCD2345',
+      }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="resident-layout"
+      />,
+    );
+
+    const citizen = screen.getByTestId('colosseum-state-e');
+    expect(citizen.querySelector('.kade-passport-trigger')).not.toBeNull();
+    expect(citizen.querySelector('.kade-passport-trigger-button')).not.toBeNull();
+    expect(screen.getByTestId('colosseum-certificate')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-residency-pass')).toBeNull();
   });
 
   it('keeps the claimed residency pass when citizenship is later recorded', () => {
@@ -763,8 +821,12 @@ describe('ColosseumResidency — the residency pass security print', () => {
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
 
-    const grid = document.querySelector('.kade-residency-pass-guilloche');
-    const card = document.querySelector('.kade-security-credential');
+    // Scope to the full-screen overlay: the embedded resident card (feedback 3)
+    // also renders a guilloche, and this test is about the reveal's security
+    // print, not the inline card.
+    const overlay = screen.getByTestId('colosseum-residency-pass-overlay');
+    const grid = overlay.querySelector('.kade-residency-pass-guilloche');
+    const card = overlay.querySelector('.kade-security-credential');
     expect(grid).not.toBeNull();
     expect(card).not.toBeNull();
     // The grid must be a descendant of the opaque credential card: as a sibling
@@ -830,8 +892,11 @@ describe('ColosseumResidency — the reveal motion is one fused timeline', () =>
       '.kade-residency-pass-flip, .kade-passport-flip, .kade-reveal-flip-celebration',
     );
     expect(flips).toHaveLength(1);
-    // The credential card itself no longer carries its own rise animation.
-    const credential = document.querySelector('.kade-security-credential');
+    // The credential card itself no longer carries its own rise animation. Scope
+    // to the overlay: the embedded resident card renders the same credential
+    // class without any reveal motion.
+    const overlay = screen.getByTestId('colosseum-residency-pass-overlay');
+    const credential = overlay.querySelector('.kade-security-credential');
     expect(credential).not.toBeNull();
     expect(credential!.className).not.toMatch(/kade-reveal-card|flip/);
   });
