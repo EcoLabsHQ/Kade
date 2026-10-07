@@ -1,0 +1,25 @@
+iteration: demo-feedback-16
+profile: NORMAL
+known_good: 4d2e414
+candidate: a3a9f0f
+mode: targeted
+reviewed_scopes:
+  issuance-gate-simplification: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 1}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: a3a9f0f
+  recorded_at: 2026-10-07
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "Human-directed: the membership and KYC issuance gates now require ONLY the APPROVED flag; _BY/_AT were removed from the code entirely (interfaces, env names, throws, reads, comments, .env.example, known-gaps, tests). The approved === 'true' comparison is unchanged."
+  - "The gate remains a real precondition: absent/blank -> not-configured; false or any non-'true' -> blocked; no send path skips it (mint.ts:234, kyc-emitter.ts:503,652-655)."
+  - "F1 (WARN, resolved in a3a9f0f): the changed files' comments claimed to 'mirror' PermitIssuanceGate / RegistrationApproval, which still require an approver and a timestamp. The comments now state that the rationale is shared but the env shape deliberately differs. This was the reviewer's catch and the orchestrator's fix."
+  - "OUT OF SCOPE, deliberately untouched: apps/web/src/lib/residency/permit.ts and packages/shared/src/eas.ts still require attribution. If the human wants uniformity across all issuance gates, that is a separate task."
+  - "Orchestrator to remove the now-unused Vercel keys: KADE_MEMBERSHIP_ISSUANCE_APPROVED_BY/_AT and KADE_KYC_ISSUANCE_APPROVED_BY/_AT."

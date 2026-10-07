@@ -1,0 +1,27 @@
+iteration: demo-feedback-17
+profile: NORMAL
+known_good: 4d2e414
+candidate: f4ae96c
+mode: targeted
+reviewed_scopes:
+  vote-snapshot-real: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: f4ae96c
+  recorded_at: 2026-10-07
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "The Vote surface now reads the two real Snapshot spaces (kadeglobal.eth = Residents, cwcitizen.eth = Citizens) and computes voting power for real: balanceOf of the configured credentials at the proposal's snapshot block, via viem on Arbitrum One. The mock remains as a named export, honest via provenance:'mock', and is no longer the production default."
+  - "Read-only verified: the hub client only issues a GraphQL query; there is no writeContract/signTypedData/sendTransaction/key material anywhere in the vote subsystem; the cast is local state."
+  - "The reviewer read the live space configs and confirmed the credential-per-space table matches what Snapshot itself sums (kadeglobal.eth has KCIT + KRES; cwcitizen.eth has KCIT), so the sum is the same weight Snapshot grants and the UI only tests > 0."
+  - "F1 (WARN): the citizen-only gate reads the membership MANAGER, not the credential, so with the manager unread a KCIT holder is refused a cwcitizen.eth proposal. Fail-closed, but the 'Citizen votes both' path needs the manager configured. The manager IS now set in Vercel (KADE_MEMBERSHIP_MANAGER_ADDRESS); the reviewer only saw the local env."
+  - "F2 (WARN, OPERATIONAL): reading balanceOf at a PAST block requires an archive-capable ARBITRUM_RPC_URL. If the endpoint is not archive, every power read errors and the page refuses every proposal. That is an honest refusal, NOT a silent zero, but it denies legitimate holders until the endpoint is right. Needs verifying against the real DRPC endpoint."
+  - "F3 (WARN): a CLOSED Citizens proposal is not greyed with the exact 'Colosseum Citizens only' text (the closed check runs before the category check). Still not votable. Not triggered by the live data."
+  - "Pre-existing, not a finding: the demo copy 'Vote recorded on Snapshot ✓' / 'Signed EIP-712 message · stored on IPFS' describes a write that never happens. That is the frozen Week-3 VOTE-1 reference copy declared as local demo state; only the URL was updated to the real space."
