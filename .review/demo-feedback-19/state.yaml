@@ -1,0 +1,28 @@
+iteration: demo-feedback-19
+profile: NORMAL
+known_good: adba1f5
+candidate: b6c8fe6
+mode: discovery
+reviewed_scopes:
+  residency-ui: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 16a2404
+  recorded_at: 2026-10-07
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "PROCESS GAP CLOSED BY THIS SESSION: the task/residency-ui-3 merge was integrated and pushed WITHOUT a review. The demo-feedback-18 reviewer spotted it by noticing the candidate contained a merge its session did not cover. This session is that missing review."
+  - "Point 1 honesty verified end-to-end: 'Issued on chain' is gated on a mined owner-Safe receipt PLUS a decoded MembershipChanged log PLUS a transition row reading confirmed (mint.ts:429-480, indexer.ts:160-210, owner-execute.ts:162-166). No sent:false path can render it. Every other status renders 'The credential was not issued.' plus the server reason."
+  - "Point 2: PhaseRail, its call site and all rail styles are deleted; the test asserts absence in every state."
+  - "Point 3: State R and State E share ArtifactStage and differ only in the artifact (residency pass vs certificate). Reveal timing and the one-shot/celebration guards are unchanged. State R still exposes 'Become a Citizen' once the window elapses."
+  - "Point 4: the counter is still real, still role=progressbar with aria-valuetext, and genuinely demoted (opacity 0.5, 2px track, 10px muted text, section bottom)."
+  - "F1 (WARN): the receipt's 'Serial' is the client-generated demo serial, not the on-chain credential's tokenId. The issuance claim is accurate and the section is marked Demo; the ambiguity is in the adjacent label."
+  - "F2 (WARN): the link label hard-codes 'Arbiscan' while the href follows the configured chain. Latent only — the manager is on Arbitrum One."
+  - "F3 (WARN): the reduced-motion residency-pass test now resolves to the inline card rather than the reveal overlay, because both exist after the claim. Coverage drift; the overlay is covered elsewhere."

@@ -1,0 +1,24 @@
+iteration: demo-feedback-18
+profile: NORMAL
+known_good: adba1f5
+candidate: b6c8fe6
+mode: recheck
+reviewed_scopes:
+  vote-card-real: complete
+active_findings: [F2, F3, F4]
+resolved_findings: [F1]
+next_finding_id: F5
+recheck_attempts: {F1: 2}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: b6c8fe6
+  recorded_at: 2026-10-07
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "The Vote card now renders the REAL Snapshot proposal: body, choices, per-choice percentages from real scores/scores_total, real votes as turnout, real type, real close date. Ten pieces of invented reference copy were removed from production rendering."
+  - "F1 (FAIL, resolved after TWO rechecks): the card asserted a signature/gasless flow and a KYC attestation the code never performs. The first correction fixed the button and the before/after notes instance-by-instance; the first recheck caught that the SAME CLASS survived in the card header. The second pass named the class, inventoried the whole Vote surface once (two sites), and fixed them together, per the orchestrator's repeated-finding rule. Nothing now claims a signature, gas, IPFS or a Snapshot write."
+  - "Open WARNs, all non-blocking: F2 the mock still carries the reference title and generic choices (mock-only, not production-rendered); F3 a disconnected wallet shows 'Reading your voting power...' indefinitely; F4 the error/no-proposal state shows a green 'Open' chip and a static space line."
+  - "The vote remains LOCAL demo state. Nothing is signed, sent or stored; the real tally does not change. Real Snapshot voting is a separate, unstarted piece of work."
