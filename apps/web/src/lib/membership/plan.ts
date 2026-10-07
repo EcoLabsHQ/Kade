@@ -27,6 +27,15 @@ export const MEMBERSHIP_OPERATIONS = [
 
 export type MembershipOperation = (typeof MEMBERSHIP_OPERATIONS)[number];
 
+/**
+ * The two Colosseum milestones a resident can claim. The claim action is the
+ * trigger the human fixed: claiming Residency mints the Resident credential and
+ * claiming Citizenship promotes to Citizen. `revoke` is an operator action and
+ * is deliberately not a claim target.
+ */
+export const MEMBERSHIP_CLAIM_TARGETS = ['resident', 'citizen'] as const;
+export type MembershipClaimTarget = (typeof MEMBERSHIP_CLAIM_TARGETS)[number];
+
 /** The manager function each operation calls. */
 export const OPERATION_FUNCTION = {
   'issue-resident': 'issueResident',

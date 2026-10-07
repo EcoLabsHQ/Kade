@@ -1,3 +1,5 @@
+import { rpcEnvVarForChain } from '@kade/shared';
+
 /**
  * Authentication environment contract.
  *
@@ -259,6 +261,56 @@ export function readMembershipChainId(): number | null {
     return null;
   }
   return value;
+}
+
+/**
+ * The Safe that owns the deployed `MembershipManager`.
+ *
+ * Server-only and deliberately **not** `NEXT_PUBLIC_`: the backend executes the
+ * membership transition from this Safe, so the browser must not be able to
+ * substitute it. Returns null (never a placeholder) when absent or malformed,
+ * so the mint path degrades to `not-configured` rather than executing from an
+ * address nobody controls.
+ */
+export function readMembershipOwnerSafeAddress(): string | null {
+  return readAddressEnv('KADE_MEMBERSHIP_OWNER_SAFE_ADDRESS');
+}
+
+/** The 32-byte hex shape a private key must have. */
+const PRIVATE_KEY_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+
+/**
+ * The server-held owner key the backend signs membership transitions with.
+ *
+ * Server-only and deliberately **not** `NEXT_PUBLIC_`. The value is a secret:
+ * it is returned for the owner-Safe execution seam and must never be logged,
+ * serialised or sent to the client. A malformed value is ignored with a
+ * **value-free** warning (the reason is reported, the key is not), so a bad
+ * configuration degrades to `not-configured` instead of signing with garbage.
+ */
+export function readMembershipSignerPrivateKey(): string | null {
+  const value = process.env.KADE_MEMBERSHIP_SIGNER_PRIVATE_KEY?.trim();
+  if (!value) return null;
+  if (!PRIVATE_KEY_PATTERN.test(value)) {
+    console.warn(
+      '[kade] KADE_MEMBERSHIP_SIGNER_PRIVATE_KEY is not a 32-byte hex private ' +
+        'key; ignoring it.',
+    );
+    return null;
+  }
+  return value;
+}
+
+/**
+ * The JSON-RPC endpoint for a specific chain id, resolved through the shared
+ * `rpcEnvVarForChain` table so the membership path cannot invent a variable
+ * name. Returns null when the chain has no supported variable or the variable
+ * is unset.
+ */
+export function readRpcUrlForChain(chainId: number): string | null {
+  const variable = rpcEnvVarForChain(chainId);
+  if (!variable) return null;
+  return process.env[variable]?.trim() || null;
 }
 
 /**

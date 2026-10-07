@@ -9,10 +9,13 @@
  *   - `./chain`      the `membershipOf` read (known vs unread);
  *   - `./store`      the Supabase-backed transition record;
  *   - `./indexer`    the `MembershipChanged` reconcile (idempotent);
- *   - `./server`     the prepare entry point and its environment wiring.
+ *   - `./server`     the prepare entry point and its environment wiring;
+ *   - `./mint`       the claim-triggered mint (re-validate, execute, index).
  *
- * Nothing in this module signs or broadcasts. The manager's owner is the Safe,
- * so the owner-Safe execution is the human step.
+ * `./server` prepares and never sends. `./mint` is the claim path: it
+ * re-validates the four real checks server-side, reads `membershipOf`, and
+ * executes the owner-Safe call through the injected `@/lib/safe/owner-execute`
+ * seam, then indexes the event and confirms the row.
  */
 export * from './abi';
 export * from './plan';
@@ -21,3 +24,4 @@ export * from './chain';
 export * from './store';
 export * from './indexer';
 export * from './server';
+export * from './mint';

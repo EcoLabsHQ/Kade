@@ -11,6 +11,11 @@ import {
   prepareMembershipTransitionFromEnv,
   type MembershipTransitionOutcome,
 } from '@/lib/membership/server';
+import {
+  mintMembershipForClaimFromEnv,
+  type MembershipMintOutcome,
+} from '@/lib/membership/mint';
+import type { MembershipClaimTarget } from '@/lib/membership/plan';
 import { membershipTransitionStore } from '@/lib/membership/store';
 
 /**
@@ -120,4 +125,36 @@ export async function prepareMembershipTransitionAction(
     target,
     membershipTransitionStore(),
   );
+}
+
+/** The claim-mint action's result. */
+export type MembershipClaimActionOutcome =
+  | MembershipMintOutcome
+  | { readonly status: 'unauthenticated'; readonly sent: false; readonly reason: string };
+
+/**
+ * Mint the credential a Colosseum claim warrants.
+ *
+ * This is the claim trigger the human fixed: claiming Colosseum Residency mints
+ * the Resident credential; claiming Citizenship promotes to Citizen. Nothing is
+ * trusted from the client — the profile comes from the session and the four
+ * real checks are re-derived server-side. The backend executes the owner-Safe
+ * call with its owner key; the resident signs nothing and pays nothing.
+ */
+export async function claimMembershipAction(
+  target: MembershipClaimTarget,
+): Promise<MembershipClaimActionOutcome> {
+  const session = await getSessionUser();
+  if (!session) {
+    return {
+      status: 'unauthenticated',
+      sent: false,
+      reason: 'Your session expired. Sign in again to claim.',
+    };
+  }
+  const outcome = await mintMembershipForClaimFromEnv(session.userId, target);
+  if (outcome.status === 'sent') {
+    revalidatePath('/residency');
+  }
+  return outcome;
 }

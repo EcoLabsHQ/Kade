@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokens } from '@/components/ui/tokens';
 import { tierMinimumUsdc, type ResidencyCheckId } from '@/lib/residency/checks';
+import type { MembershipClaimTarget } from '@/lib/membership/plan';
 import {
   setColosseumAttention,
 } from '@/components/shell/colosseum-attention';
@@ -118,6 +119,14 @@ export interface ColosseumResidencyProps {
    * constant.
    */
   readonly profileKey?: string | null;
+  /**
+   * The claim trigger. Called once, on the first claim of each milestone, with
+   * the target the server should mint (`resident` / `citizen`). It is
+   * fire-and-forget: the reveal is opened before it is called, so the mint
+   * never changes the reveal timing or the one-shot guards. Omitted in tests
+   * and any surface that only renders the demo.
+   */
+  readonly onClaimMembership?: (target: MembershipClaimTarget) => void;
 }
 
 function formatCountdown(totalSeconds: number): string {
@@ -149,7 +158,12 @@ function qualifiedFigure(detail: string): string | null {
   return match ? `$${match[1]}` : null;
 }
 
-export function ColosseumResidency({ checks, tier, profileKey }: ColosseumResidencyProps) {
+export function ColosseumResidency({
+  checks,
+  tier,
+  profileKey,
+  onClaimMembership,
+}: ColosseumResidencyProps) {
   const funds = checks.find((check) => check.id === 'funds');
   const fundsMet = funds?.state === 'met';
   const allChecksMet = REQUIRED_CHECKS.every(
@@ -248,7 +262,11 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
     setColosseumAttention(false);
-  }, [profileKey]);
+    // The claim is the trigger: the server re-validates and mints the Citizen
+    // credential. Fire-and-forget after the local transition, so the reveal is
+    // never delayed by the mint.
+    onClaimMembership?.('citizen');
+  }, [profileKey, onClaimMembership]);
 
   // Celebrate the milestone with the full-screen certificate reveal, exactly
   // once, on the live transition to citizen. A restored citizen (already
@@ -267,6 +285,9 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
   // Claiming the residency pass records a demo serial/instant once, then reveals
   // it full-screen. Claiming again (re-opening) shows the same artifact.
   const claimResidency = useCallback(() => {
+    // The mint is triggered only on the *first* claim; re-opening the pass is
+    // not a claim and must not call the server again.
+    const alreadyClaimed = progress.residencyPassAt !== null;
     setProgress(
       claimResidencyPass(
         profileKey ?? null,
@@ -275,7 +296,12 @@ export function ColosseumResidency({ checks, tier, profileKey }: ColosseumReside
       ),
     );
     setResidencyPassOpen(true);
-  }, [profileKey]);
+    if (!alreadyClaimed) {
+      // Fire-and-forget after the local transition: the reveal is already
+      // opening, so the mint never changes its timing.
+      onClaimMembership?.('resident');
+    }
+  }, [profileKey, progress.residencyPassAt, onClaimMembership]);
 
   const showCertificate = mounted && citizen;
   const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
