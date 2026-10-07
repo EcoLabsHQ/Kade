@@ -62,7 +62,8 @@ manager's `owner()` now returns the Safe and `pendingOwner()` is the zero
 address.
 
 **The owning Safe (verified read-only):** `0xa0Ae1C8A46Ab19b6D9A43d5D7564Db9d5517e72c`,
-Safe version **1.5.0**, threshold **1 of 2**, owners
+Safe version **1.5.0**, threshold **1 of 3**, owners
+`0xc0bBeB90953033fF4B9021A1743DFdfF870eE714` (the backend signer),
 `0x1726cf86DA996BC4B2F393E713f6F8ef83f2e4f6` and
 `0x31cd90C2788f3e390d2Bb72871f5aD3F1a4B22a1`.
 
@@ -172,8 +173,8 @@ reading the code and by a repository-wide search for write paths (demo-feedback-
   in this build, so it reports `not-configured` and writes nothing. The Colosseum
   demo citizenship milestone is **deliberately not auto-wired**; the
   `prepareMembershipTransitionAction` is exposed as the seam for it.
-- **Deployment-plan tooling** (`packages/contracts/membership/`, `scripts/generate-membership-deployment-plan.mjs`,
-  `scripts/membership-deployment-plan.mjs`): it produces a reviewable plan —
+- **Deployment-plan tooling** (`packages/contracts/membership/`, `packages/contracts/scripts/generate-membership-deployment-plan.mjs`,
+  `packages/contracts/scripts/membership-deployment-plan.mjs`): it produces a reviewable plan —
   deploy order, constructor arguments, predicted CREATE addresses and exact
   calldata — and **fails closed** when any required input is absent. **No script
   signs or broadcasts**, no private key is read, and every result is `sent: false`.
@@ -207,7 +208,7 @@ logic**, while keeping the Snapshot source **mocked**.
 - **The real space.** The created Snapshot space is **`kadeglobal.eth`** on
   network **`42161`**, strategy **`erc721`** → symbol `KCIT`, address
   `0x36914467AF7EB4862A08da2F26B59b651EeD31BF` (the Citizen contract); its admins
-  are the two Safe owners. Verified read-only through Snapshot's public API while
+  are two of the three Safe owners. Verified read-only through Snapshot's public API while
   writing this contract. The **second** space does not exist.
 - **What is mocked versus real, stated plainly.** Real: the eligibility logic,
   the types, the adapter interface, the mocked adapter's provenance, and the
@@ -293,7 +294,7 @@ mechanical gate.
    transfer, no unlock, revocation burns, burned ids are never reused, and only
    the manager may mint or burn.
 3. **The Safe owns the manager and cannot renounce.** Ownership is the Safe
-   (threshold 1 of 2); `renounceOwnership` reverts; ownership moves only through
+   (threshold 1 of 3); `renounceOwnership` reverts; ownership moves only through
    the two-step transfer.
 4. **Nothing in the app signs or sends.** Every membership plan is `sent: false`;
    the issuance gate is server-only and fails closed; the deployment planner
@@ -472,10 +473,10 @@ exposed as the seam and is **deliberately not auto-wired**. This remains open.
 
 ### 6.3 The backend signer decision
 
-The manager's owner is the **Safe** (threshold 1 of 2) and every
+The manager's owner is the **Safe** (threshold 1 of 3) and every
 membership-changing function is `onlyOwner`. Automated issuance from the backend
 therefore requires **either** a Safe-owner key (the threshold is 1, so one of the
-two owners suffices) **or** a permissioned Safe module. The **module is the
+three owners suffices) **or** a permissioned Safe module. The **module is the
 safer, recommended path**, because it does not put an owner key in the server
 environment. This decision is **not yet implemented or recorded in the
 repository**; it is recorded here as the increment's open decision. The
@@ -492,7 +493,7 @@ separate, readable key. No private key value is committed.
 The planner fails closed until every required input is present:
 `chainId`, `chainName`, `rpcUrl` (only its host is recorded), `deployer`,
 `safe`, and an optional `deployerNonce` (without it, CREATE addresses and
-dependent calldata are reported as unknown). The membership README additionally
+dependent calldata are reported as unknown). The contracts README additionally
 names the inputs a deployment still needs: the target network, the Safe address
 that owns the manager, and the wallet ↔ account mapping used to decide who is
 issued a credential. The demo-feedback-10 governance note records the four data
