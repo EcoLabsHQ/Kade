@@ -26,6 +26,7 @@ import {
   becomeColosseumCitizen,
   claimColosseumResidencyPass,
   clearColosseumWindow,
+  ColosseumWindowNotEligibleError,
   setColosseumDocumentsComplete,
   startColosseumWindow,
   type ColosseumState,
@@ -252,6 +253,9 @@ export async function startColosseumWindowAction(): Promise<ColosseumState | nul
     revalidateColosseum();
     return state;
   } catch (cause) {
+    // A refusal for an ineligible resident is expected, not an error: the server
+    // re-derived the four checks and declined to start the clock.
+    if (cause instanceof ColosseumWindowNotEligibleError) return null;
     warnColosseum('started', cause);
     return null;
   }

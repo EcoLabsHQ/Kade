@@ -65,17 +65,19 @@ import type { MembershipClaimStore } from './store';
  * derived with `operationForClaim`, which cannot return `revoke`, so a claim can
  * never burn a soulbound credential.
  *
- * ## The compliance-window gap (reported, not papered over)
+ * ## The compliance window (server-side)
  *
- * The Citizenship claim's 2-minute window lives in client-side `localStorage`
- * (`@/components/residency/colosseum-progress`), which the server cannot read.
- * The four checks are the enforceable gate. A server-side window is recorded in
+ * The Citizenship claim's 2-minute window is enforced server-side from
  * `applications.colosseum_resident_since` (migration
- * `20261006000002_colosseum_compliance_window.sql`, written but NOT applied). A
+ * `20261006000002_colosseum_compliance_window.sql`, applied). The window is
+ * started by the Residency server action, which re-derives the four checks and
+ * writes through the service-role `record_colosseum_resident_since` writer, and
+ * also by this mint on a confirmed Resident transition; there is no
+ * resident-callable window writer, so a client cannot pre-start the clock. A
  * recorded window is enforced; a readable-but-null window is **fail-closed**
- * (the clock is started and the claim refused); only an **unread** window — the
- * migration is not applied — degrades honestly to the four checks, and that is
- * reported rather than pretended.
+ * (the clock is started and the claim refused); only an **unread** window
+ * degrades honestly to the four checks, and that is reported rather than
+ * pretended.
  */
 
 /** The four checks a Colosseum claim must have green, in display order. */

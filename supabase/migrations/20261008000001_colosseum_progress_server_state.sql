@@ -18,37 +18,46 @@
 --       * `residency_pass_at` / `residency_pass_serial` — the demo residency
 --         pass claim instant and serial;
 --       * `documents_complete` — the demo "Documents complete" flag.
---   - Resident-scoped SECURITY DEFINER writers for each write path. Every
---     writer derives the account from `auth.uid()`; a profile id is never
---     accepted from the client.
+--   - Resident-scoped SECURITY DEFINER writers for the DEMO values. Every writer
+--     derives the account from `auth.uid()`; a profile id is never accepted from
+--     the client. These record values the resident is entitled to set (their own
+--     demo pass/certificate and documents flag).
 --
 -- Reconciliation with the compliance window (single source of truth)
 --   The 2-minute compliance window is ALREADY server-side in
 --   `applications.colosseum_resident_since` (migration
 --   `20261006000002_colosseum_compliance_window.sql`), and the Citizen mint
 --   already reads it. This migration deliberately does NOT add a second
---   `resident_since` field: `start_colosseum_window()` and
---   `clear_colosseum_window()` write that same column, so the demo clock the
---   browser renders and the window the mint enforces are one record. The
---   service-role writer `record_colosseum_resident_since()` remains the
---   service-side entry point; these two are the resident-scoped entry points
---   for the demo clock (start on the four-checks-green transition, clear on the
---   pre-citizenship decay), and both are idempotent against the same column.
+--   `resident_since` field. The window is a GATE, not a demo value, so it is
+--   started by the server action `startColosseumWindow`, which re-derives the
+--   four real checks server-side and writes through the service-role
+--   `record_colosseum_resident_since()` writer — the same authority migration
+--   `20261006000002` established. There is NO resident-callable window writer:
+--   an earlier revision of this migration added `start_colosseum_window()`
+--   granted to `authenticated` with only an `auth.uid()` guard, which let a
+--   signed-in resident pre-start the clock and satisfy the 2-minute Citizen gate
+--   early. That function is dropped below and must not be reintroduced.
+--   `clear_colosseum_window()` stays resident-callable: clearing only resets the
+--   resident's own clock (it can only delay citizenship, never grant it), and it
+--   is scoped to `auth.uid()` and blocked once the resident is a citizen.
 --
 -- Trust boundary
 --   A resident may read their own row (`SELECT` grant + owner policy) and may
---   write only through the SECURITY DEFINER writers, which are scoped to
---   `auth.uid()`. Direct `INSERT`/`UPDATE`/`DELETE` grants are withheld, so a
---   resident cannot write another resident's row or bypass the writers.
+--   write the demo values only through the SECURITY DEFINER writers, which are
+--   scoped to `auth.uid()`. Direct `INSERT`/`UPDATE`/`DELETE` grants are
+--   withheld, so a resident cannot write another resident's row or bypass the
+--   writers.
 --
--- NOT APPLIED
---   This migration was written by the delegated implementation task and is
---   deliberately not applied. The orchestrator applies migrations. Until it is
---   applied the server read degrades honestly to an empty demo state rather
---   than inventing one.
+-- APPLIED, with a security repair
+--   The orchestrator applied this migration. The resident-callable
+--   `start_colosseum_window()` it originally created is dropped by the
+--   `drop function if exists` below; re-applying this file (it is idempotent)
+--   removes it. The table, the demo writers and `clear_colosseum_window()` are
+--   unchanged. The server read degrades honestly to an empty demo state when the
+--   record is absent.
 -- =============================================================================
 
-create table public.colosseum_progress (
+create table if not exists public.colosseum_progress (
   profile_id            uuid primary key references public.profiles (id) on delete cascade,
   citizen_at            timestamptz,
   passport_serial       text check (passport_serial is null or passport_serial ~ '^KADE-CL-[A-Z0-9]{8}$'),
@@ -64,7 +73,8 @@ comment on table public.colosseum_progress is
   'elsewhere: the demo citizenship instant/serial, the demo residency-pass '
   'instant/serial and the demo documents flag. The 2-minute compliance window '
   'lives in applications.colosseum_resident_since and is deliberately NOT '
-  'duplicated here. Server-written only, through the resident-scoped writers.';
+  'duplicated here. Written through the resident-scoped demo writers; the '
+  'window is started server-side through the service-role writer.';
 comment on column public.colosseum_progress.profile_id is
   'SECURITY-CRITICAL: the owning resident (auth.uid()). Server-derived; never '
   'client-supplied.';
@@ -91,55 +101,30 @@ alter table public.colosseum_progress enable row level security;
 revoke all on table public.colosseum_progress from anon, authenticated;
 grant select on table public.colosseum_progress to authenticated;
 
+drop policy if exists colosseum_progress_select_own on public.colosseum_progress;
 create policy colosseum_progress_select_own
   on public.colosseum_progress for select to authenticated
   using (profile_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
--- Writers (SECURITY DEFINER, resident-scoped, pinned search_path)
+-- Writers (SECURITY DEFINER, pinned search_path)
 --
--- Every writer derives the account from `auth.uid()`; none accepts a profile id.
--- The start/clear pair writes the existing `applications.colosseum_resident_since`
--- column, so the demo clock and the mint's compliance window are one record.
+-- The DEMO writers are resident-scoped and derive the account from `auth.uid()`;
+-- none accepts a profile id. They record values the resident is entitled to set.
+--
+-- The window is NOT one of them: it is a gate, not a demo value, and is started
+-- only by the server action `startColosseumWindow` (which re-derives the four
+-- real checks) through the service-role `record_colosseum_resident_since`
+-- writer. `clear_colosseum_window` stays resident-callable because clearing can
+-- only delay the resident's own citizenship, never grant it.
 -- ---------------------------------------------------------------------------
 
--- Start the compliance window once, from the demo's four-checks-green moment.
--- Idempotent: a second call returns the existing instant rather than moving it.
-create or replace function public.start_colosseum_window()
-returns timestamptz
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  v_since timestamptz;
-begin
-  if auth.uid() is null then
-    raise exception 'start_colosseum_window requires a signed-in resident'
-      using errcode = '28000';
-  end if;
-
-  update public.applications
-     set colosseum_resident_since = now()
-   where profile_id = auth.uid()
-     and colosseum_resident_since is null
-   returning colosseum_resident_since into v_since;
-
-  if v_since is null then
-    select colosseum_resident_since into v_since
-      from public.applications
-     where profile_id = auth.uid();
-  end if;
-
-  return v_since;
-end;
-$$;
-
-comment on function public.start_colosseum_window() is
-  'Starts the Colosseum compliance window for the signed-in resident once. '
-  'SECURITY DEFINER, authenticated only, account from auth.uid(). Writes the '
-  'same applications.colosseum_resident_since the Citizen mint reads, so the '
-  'demo clock and the mint are one record. Idempotent.';
+-- SECURITY REPAIR: remove the resident-callable window start. It was granted to
+-- `authenticated` and guarded only on `auth.uid() is not null`, so a signed-in
+-- resident could start the clock before the four checks were green and satisfy
+-- the 2-minute Citizen gate early. The window is now started server-side after a
+-- server-side re-derivation of the checks, through the service-role writer.
+drop function if exists public.start_colosseum_window();
 
 -- Clear the compliance window before citizenship (the checks stopped being
 -- green). A citizen keeps the record: citizenship is never cleared.
@@ -169,7 +154,9 @@ $$;
 
 comment on function public.clear_colosseum_window() is
   'Clears the Colosseum compliance window for the signed-in resident, matching '
-  'the pre-citizenship decay. SECURITY DEFINER, authenticated only. A recorded '
+  'the pre-citizenship decay. SECURITY DEFINER, authenticated only. Safe to '
+  'leave resident-callable: it is scoped to auth.uid(), can only reset the '
+  'resident''s own clock (delaying, never granting, citizenship), and a recorded '
   'citizen is never cleared.';
 
 -- Claim the virtual residency pass: record the instant and demo serial once.
@@ -274,8 +261,6 @@ comment on function public.set_colosseum_documents_complete(boolean) is
   'SECURITY DEFINER, authenticated only, account from auth.uid(). No document '
   'is uploaded.';
 
-revoke all on function public.start_colosseum_window()
-  from public, anon, authenticated;
 revoke all on function public.clear_colosseum_window()
   from public, anon, authenticated;
 revoke all on function public.claim_colosseum_residency_pass(text)
@@ -285,7 +270,6 @@ revoke all on function public.become_colosseum_citizen(text)
 revoke all on function public.set_colosseum_documents_complete(boolean)
   from public, anon, authenticated;
 
-grant execute on function public.start_colosseum_window() to authenticated;
 grant execute on function public.clear_colosseum_window() to authenticated;
 grant execute on function public.claim_colosseum_residency_pass(text) to authenticated;
 grant execute on function public.become_colosseum_citizen(text) to authenticated;

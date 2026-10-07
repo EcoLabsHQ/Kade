@@ -23,13 +23,22 @@ vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
 }));
 vi.mock('next/cache', () => ({ revalidatePath: hoisted.revalidatePath }));
-vi.mock('@/lib/residency/colosseum-state-server', () => ({
-  startColosseumWindow: hoisted.start,
-  clearColosseumWindow: hoisted.clear,
-  claimColosseumResidencyPass: hoisted.claim,
-  becomeColosseumCitizen: hoisted.become,
-  setColosseumDocumentsComplete: hoisted.documents,
-}));
+vi.mock('@/lib/residency/colosseum-state-server', () => {
+  class ColosseumWindowNotEligibleError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'ColosseumWindowNotEligibleError';
+    }
+  }
+  return {
+    ColosseumWindowNotEligibleError,
+    startColosseumWindow: hoisted.start,
+    clearColosseumWindow: hoisted.clear,
+    claimColosseumResidencyPass: hoisted.claim,
+    becomeColosseumCitizen: hoisted.become,
+    setColosseumDocumentsComplete: hoisted.documents,
+  };
+});
 
 import {
   becomeColosseumCitizenAction,
@@ -38,6 +47,7 @@ import {
   setColosseumDocumentsCompleteAction,
   startColosseumWindowAction,
 } from '@/app/residency/actions';
+import { ColosseumWindowNotEligibleError } from '@/lib/residency/colosseum-state-server';
 
 const STATE = {
   progress: {
@@ -105,5 +115,21 @@ describe('Colosseum state server actions — the account comes from the session'
     expect(await claimColosseumResidencyAction('KADE-RES-ABCD2345')).toBeNull();
     // A failed write does not revalidate: nothing changed.
     expect(hoisted.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('treats an ineligible window start as a refusal, not an error', async () => {
+    hoisted.start.mockRejectedValue(
+      new ColosseumWindowNotEligibleError(
+        'the four residency checks are not all met',
+      ),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(await startColosseumWindowAction()).toBeNull();
+    // A refusal changes nothing, so it is not revalidated and not warned about.
+    expect(hoisted.revalidatePath).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
   });
 });
