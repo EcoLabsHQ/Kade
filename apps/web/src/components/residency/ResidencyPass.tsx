@@ -31,6 +31,180 @@ export interface ResidencyPassProps {
 
 const PLACEHOLDER_HOLDER = 'Kade Resident';
 
+/**
+ * The shared residency-pass visual. Both the embedded artifact on the Residency
+ * screen (shown to a resident exactly as the certificate is shown to a citizen)
+ * and the full-screen popup render this same component, so the two cannot drift
+ * apart: the header, security print, fields and typography are one source of
+ * truth. The only differences are `variant` (scale, and which decorative
+ * security layers are mounted) and the motion the full-screen shell wraps it in.
+ *
+ * This mirrors `CertificateArtifact` for the citizenship certificate: the
+ * embedded rendering is compact and sits inside the section, the full rendering
+ * is what the full-screen reveal shows. The full variant keeps the five-layer
+ * security print (Reveal 1); the embedded one keeps only the credential card
+ * with its internal guilloche, so it does not replay the reveal animation in the
+ * page.
+ */
+export interface ResidencyPassArtifactProps {
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  /** The holder's display name; omitted for a neutral placeholder. */
+  readonly holderName?: string | null;
+  /** `embedded` is the compact inline rendering; `full` is the popup. */
+  readonly variant?: 'embedded' | 'full';
+}
+
+export function ResidencyPassArtifact({
+  serial,
+  issuedAt,
+  holderName,
+  variant = 'full',
+}: ResidencyPassArtifactProps) {
+  const full = variant === 'full';
+  const idBase = full
+    ? 'colosseum-residency-pass-overlay'
+    : 'colosseum-residency-pass';
+  const holder = (holderName ?? '').trim() || PLACEHOLDER_HOLDER;
+
+  return (
+    <div
+      data-testid={idBase}
+      className={full ? 'kade-security-print kade-artifact-card' : 'kade-security-print'}
+    >
+      {full ? (
+        <>
+          <div aria-hidden="true" className="kade-security-layer kade-layer-substrate" />
+          <div aria-hidden="true" className="kade-security-layer kade-layer-seal">
+            <svg
+              viewBox="0 0 120 120"
+              width="132"
+              height="132"
+              style={sealSvg}
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle
+                className="kade-seal-stroke"
+                cx="60"
+                cy="60"
+                r="46"
+                pathLength={100}
+                fill="none"
+                stroke="rgba(255,255,255,.45)"
+                strokeWidth="2"
+              />
+              <path
+                className="kade-seal-stroke"
+                d="M38 62 L54 78 L84 44"
+                pathLength={100}
+                fill="none"
+                stroke="rgba(255,255,255,.7)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div aria-hidden="true" className="kade-security-layer kade-layer-portrait">
+            <svg
+              viewBox="0 0 120 120"
+              width="150"
+              height="150"
+              style={portraitSvg}
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle cx="60" cy="44" r="22" fill="rgba(255,255,255,.16)" />
+              <path
+                d="M20 110 C24 80 40 70 60 70 C80 70 96 80 100 110 Z"
+                fill="rgba(255,255,255,.12)"
+              />
+            </svg>
+          </div>
+        </>
+      ) : null}
+
+      <div className={full ? 'kade-security-layer kade-layer-credential' : undefined}>
+        {/* The `kade-security-credential` class only carries the reveal's settle
+            animation, so the embedded card omits it: the inline card must not
+            replay reveal motion in the page. */}
+        <div
+          className={full ? 'kade-security-credential' : undefined}
+          style={full ? passCard : embeddedCard}
+        >
+          {/*
+            The circular security grid lives INSIDE the opaque credential, not
+            behind it. As a sibling security layer it sat under the credential
+            card's opaque background, so it was invisible no matter how opaque
+            the layer was. Inside the card it paints above the card background
+            and below the positioned text, exactly as the approved baseline.
+          */}
+          <div
+            aria-hidden="true"
+            className={
+              full ? 'kade-security-layer kade-layer-guilloche' : 'kade-layer-guilloche'
+            }
+            style={full ? undefined : guillocheLayerEmbedded}
+          >
+            <div className="kade-residency-pass-guilloche" style={guilloche} />
+          </div>
+          <div aria-hidden="true" style={emblem}>
+            ✦
+          </div>
+
+          <div style={header}>
+            <div style={org}>Colosseum · Demo Residency Pass</div>
+            <div style={typeChip}>Resident</div>
+          </div>
+
+          <div style={titleRow}>
+            <span style={full ? title : embeddedTitle}>Virtual residency pass</span>
+            <span style={demoChip}>Demo</span>
+          </div>
+
+          <p style={note}>Not a real residency, status or document.</p>
+
+          <dl style={fields}>
+            <div className="kade-artifact-field" style={field}>
+              <dt style={label}>Holder</dt>
+              <dd data-testid={`${idBase}-holder`} style={value}>
+                {holder}
+              </dd>
+            </div>
+            <div className="kade-artifact-field" style={field}>
+              <dt style={label}>Issued</dt>
+              <dd data-testid={`${idBase}-issued`} style={value}>
+                {formatIssueDate(issuedAt)}
+              </dd>
+            </div>
+            <div className="kade-artifact-field" style={field}>
+              <dt style={label}>Serial</dt>
+              <dd data-testid={`${idBase}-serial`} style={valueMono}>
+                {serial ?? '—'}
+              </dd>
+            </div>
+            <div className="kade-artifact-field" style={field}>
+              <dt style={label}>Status</dt>
+              <dd style={value}>Colosseum Resident · demo</dd>
+            </div>
+          </dl>
+
+          <div aria-hidden="true" style={mrz}>
+            <span>P&lt;KADECOLOSSEUM&lt;RESIDENT</span>
+            <span>{serial ?? '—'}</span>
+          </div>
+
+          <p style={disclaimer}>
+            Demo artifact only · confers no residency, status, onchain or
+            otherwise.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ResidencyPass({
   open,
   onClose,
@@ -38,8 +212,6 @@ export function ResidencyPass({
   issuedAt,
   holderName,
 }: ResidencyPassProps) {
-  const holder = (holderName ?? '').trim() || PLACEHOLDER_HOLDER;
-
   return (
     <FullScreenReveal
       open={open}
@@ -49,124 +221,12 @@ export function ResidencyPass({
       revealClassName="kade-residency-pass-reveal"
       flipClassName="kade-residency-pass-flip"
     >
-      <div
-        data-testid="colosseum-residency-pass-overlay"
-        className="kade-security-print kade-artifact-card"
-      >
-        <div aria-hidden="true" className="kade-security-layer kade-layer-substrate" />
-        <div aria-hidden="true" className="kade-security-layer kade-layer-seal">
-          <svg
-            viewBox="0 0 120 120"
-            width="132"
-            height="132"
-            style={sealSvg}
-            aria-hidden="true"
-            focusable="false"
-          >
-            <circle
-              className="kade-seal-stroke"
-              cx="60"
-              cy="60"
-              r="46"
-              pathLength={100}
-              fill="none"
-              stroke="rgba(255,255,255,.45)"
-              strokeWidth="2"
-            />
-            <path
-              className="kade-seal-stroke"
-              d="M38 62 L54 78 L84 44"
-              pathLength={100}
-              fill="none"
-              stroke="rgba(255,255,255,.7)"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-        <div aria-hidden="true" className="kade-security-layer kade-layer-portrait">
-          <svg
-            viewBox="0 0 120 120"
-            width="150"
-            height="150"
-            style={portraitSvg}
-            aria-hidden="true"
-            focusable="false"
-          >
-            <circle cx="60" cy="44" r="22" fill="rgba(255,255,255,.16)" />
-            <path
-              d="M20 110 C24 80 40 70 60 70 C80 70 96 80 100 110 Z"
-              fill="rgba(255,255,255,.12)"
-            />
-          </svg>
-        </div>
-
-        <div className="kade-security-layer kade-layer-credential">
-          <div className="kade-security-credential" style={passCard}>
-            {/*
-              The circular security grid lives INSIDE the opaque credential, not
-              behind it. As a sibling security layer it sat under the credential
-              card's opaque background, so it was invisible no matter how opaque
-              the layer was. Inside the card it paints above the card background
-              and below the positioned text, exactly as the approved baseline.
-            */}
-            <div aria-hidden="true" className="kade-security-layer kade-layer-guilloche">
-              <div className="kade-residency-pass-guilloche" style={guilloche} />
-            </div>
-            <div aria-hidden="true" style={emblem}>
-              ✦
-            </div>
-
-            <div style={header}>
-              <div style={org}>Colosseum · Demo Residency Pass</div>
-              <div style={typeChip}>Resident</div>
-            </div>
-
-            <div style={titleRow}>
-              <span style={title}>Virtual residency pass</span>
-              <span style={demoChip}>Demo</span>
-            </div>
-
-            <p style={note}>Not a real residency, status or document.</p>
-
-            <dl style={fields}>
-              <div className="kade-artifact-field" style={field}>
-                <dt style={label}>Holder</dt>
-                <dd data-testid="colosseum-residency-pass-holder" style={value}>
-                  {holder}
-                </dd>
-              </div>
-              <div className="kade-artifact-field" style={field}>
-                <dt style={label}>Issued</dt>
-                <dd data-testid="colosseum-residency-pass-issued" style={value}>
-                  {formatIssueDate(issuedAt)}
-                </dd>
-              </div>
-              <div className="kade-artifact-field" style={field}>
-                <dt style={label}>Serial</dt>
-                <dd data-testid="colosseum-residency-pass-serial" style={valueMono}>
-                  {serial ?? '—'}
-                </dd>
-              </div>
-              <div className="kade-artifact-field" style={field}>
-                <dt style={label}>Status</dt>
-                <dd style={value}>Colosseum Resident · demo</dd>
-              </div>
-            </dl>
-
-            <div aria-hidden="true" style={mrz}>
-              <span>P&lt;KADECOLOSSEUM&lt;RESIDENT</span>
-              <span>{serial ?? '—'}</span>
-            </div>
-
-            <p style={disclaimer}>
-              Demo artifact only · confers no residency, status, onchain or
-              otherwise.
-            </p>
-          </div>
-        </div>
-      </div>
+      <ResidencyPassArtifact
+        variant="full"
+        serial={serial}
+        issuedAt={issuedAt}
+        holderName={holderName}
+      />
     </FullScreenReveal>
   );
 }
@@ -186,6 +246,27 @@ const passCard: CSSProperties = {
   boxShadow:
     '0 1px 0 rgba(255,255,255,.35) inset, 0 -2px 6px rgba(0,0,0,.4) inset, 0 34px 80px -30px rgba(4,24,22,.9)',
   transformStyle: 'preserve-3d',
+};
+
+/* The embedded rendering fills the trigger wrapper, which spans the Colosseum
+   section width (see `.kade-passport-trigger`). The popup is the same component
+   bounded by the reveal shell; only the scale differs. */
+const embeddedCard: CSSProperties = {
+  ...passCard,
+  width: '100%',
+  borderRadius: '18px',
+  padding: '22px 22px 16px',
+};
+
+/* The embedded guilloche needs the absolute fill that the full variant gets from
+   `.kade-security-layer`, without that class's reveal animation replaying in the
+   page. */
+const guillocheLayerEmbedded: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 0,
+  overflow: 'hidden',
+  borderRadius: '18px',
 };
 
 const sealSvg: CSSProperties = {
@@ -263,6 +344,12 @@ const titleRow: CSSProperties = {
 
 const title: CSSProperties = {
   fontSize: '26px',
+  fontWeight: 700,
+  letterSpacing: '.01em',
+};
+
+const embeddedTitle: CSSProperties = {
+  fontSize: '19px',
   fontWeight: 700,
   letterSpacing: '.01em',
 };

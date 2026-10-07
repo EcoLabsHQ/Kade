@@ -88,7 +88,11 @@ describe('ColosseumResidency — claim triggers the mint', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClaimMembership).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /view residency pass/i }));
+    // Once claimed, the pass is shown inline (feedback 3); re-opening it from
+    // the card's overlay control must not call the mint again.
+    fireEvent.click(
+      screen.getByRole('button', { name: /open the residency pass full-screen/i }),
+    );
     expect(onClaimMembership).toHaveBeenCalledTimes(1);
   });
 

@@ -17,7 +17,7 @@ import {
   readColosseumProgress,
   type ColosseumProgress,
 } from './colosseum-progress';
-import { ResidencyPass } from './ResidencyPass';
+import { ResidencyPass, ResidencyPassArtifact } from './ResidencyPass';
 import {
   CertificateArtifact,
   CitizenshipCertificate,
@@ -303,10 +303,16 @@ export function ColosseumResidency({
     }
   }, [profileKey, progress.residencyPassAt, onClaimMembership]);
 
-  const showCertificate = mounted && citizen;
-  const showStateD = mounted && allChecksMet && !citizen && windowElapsed;
-  const showStateC = mounted && allChecksMet && !citizen && !windowElapsed;
   const residencyPassClaimed = progress.residencyPassSerial !== null;
+  const showCertificate = mounted && citizen;
+  // Once the resident has claimed their residency pass, the section shows the
+  // same inline artifact treatment a citizen gets — the resident card instead of
+  // the certificate (feedback 3). State C/D remain the pre-claim affordances.
+  const showResident = mounted && allChecksMet && !citizen && residencyPassClaimed;
+  const showStateD =
+    mounted && allChecksMet && !citizen && windowElapsed && !residencyPassClaimed;
+  const showStateC =
+    mounted && allChecksMet && !citizen && !windowElapsed && !residencyPassClaimed;
 
   return (
     <section data-testid="colosseum-section" style={card}>
@@ -359,6 +365,24 @@ export function ColosseumResidency({
         <StateD
           residencyPassClaimed={residencyPassClaimed}
           onClaimResidency={claimResidency}
+          onBecomeCitizen={becomeCitizen}
+        />
+      ) : null}
+
+      {/* State R — the resident has claimed their residency pass: the same
+          inline artifact treatment as the citizen state (State E), but the
+          residency pass instead of the certificate. The artifact is the control
+          that opens the full-screen reveal on demand; the citizenship action
+          stays reachable below it, and the testing-only counter sits at the very
+          bottom of the section. */}
+      {showResident ? (
+        <StateResident
+          serial={progress.residencyPassSerial}
+          issuedAt={progress.residencyPassAt}
+          windowElapsed={windowElapsed}
+          onOpenFullScreen={() => {
+            setResidencyPassOpen(true);
+          }}
           onBecomeCitizen={becomeCitizen}
         />
       ) : null}
@@ -651,13 +675,56 @@ function StateD({
 }
 
 /**
+ * The inline artifact stage shared by the resident and citizen states: the
+ * embedded credential card plus the transparent overlay button that opens its
+ * full-screen reveal. Both states use exactly this structure and differ only in
+ * which artifact is rendered (feedback 3), so the two cannot drift apart.
+ *
+ * The artifact is a non-interactive container; a real <button> overlays it as a
+ * sibling, so the button carries the accessible name while the card's text stays
+ * in the accessibility tree. A <button> wrapping the block content would be
+ * invalid (phrasing-content content model).
+ */
+function ArtifactStage({
+  artifact,
+  serial,
+  issuedAt,
+  onOpenFullScreen,
+}: {
+  readonly artifact: 'certificate' | 'residency-pass';
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  readonly onOpenFullScreen: () => void;
+}) {
+  const certificate = artifact === 'certificate';
+  return (
+    <div className="kade-passport-trigger">
+      {certificate ? (
+        <CertificateArtifact variant="embedded" serial={serial} issuedAt={issuedAt} />
+      ) : (
+        <ResidencyPassArtifact variant="embedded" serial={serial} issuedAt={issuedAt} />
+      )}
+      <button
+        type="button"
+        onClick={onOpenFullScreen}
+        aria-label={
+          certificate
+            ? 'Open the citizenship certificate full-screen'
+            : 'Open the residency pass full-screen'
+        }
+        className="kade-passport-trigger-button"
+      />
+    </div>
+  );
+}
+
+/**
  * State E — already a Colosseum Citizen: the inline citizenship certificate.
  *
  * The certificate stays readable in the page (so a stored citizen always sees
  * it), and is itself the control that opens the full-screen reveal on demand.
- * It is a real `<button>` so keyboard and assistive-tech users can reach it; it
- * contains no interactive children. The full-screen celebration is what plays
- * automatically on the moment of citizenship.
+ * The full-screen celebration is what plays automatically on the moment of
+ * citizenship.
  */
 function StateE({
   serial,
@@ -670,25 +737,61 @@ function StateE({
 }) {
   return (
     <div data-testid="colosseum-state-e" style={certificateStage}>
-      {/*
-        The artifact is a non-interactive container; a real <button> overlays it
-        as a sibling, so the button carries the accessible name while the card's
-        text stays in the accessibility tree. A <button> wrapping the block
-        content would be invalid (phrasing-content content model).
-      */}
-      <div className="kade-passport-trigger">
-        <CertificateArtifact
-          variant="embedded"
-          serial={serial}
-          issuedAt={issuedAt}
-        />
+      <ArtifactStage
+        artifact="certificate"
+        serial={serial}
+        issuedAt={issuedAt}
+        onOpenFullScreen={onOpenFullScreen}
+      />
+    </div>
+  );
+}
+
+/**
+ * State R — a Colosseum Resident who has claimed their residency pass: the same
+ * layout as the citizen state (State E), rendering the residency pass artifact
+ * instead of the certificate (feedback 3). The artifact is the control that
+ * opens the full-screen reveal on demand. Once the compliance window has
+ * elapsed, becoming a citizen is the single primary action; before that the
+ * resident is told to remain compliant. The testing-only counter sits at the
+ * very bottom of the section, outside this state.
+ */
+function StateResident({
+  serial,
+  issuedAt,
+  windowElapsed,
+  onOpenFullScreen,
+  onBecomeCitizen,
+}: {
+  readonly serial: string | null;
+  readonly issuedAt: string | null;
+  readonly windowElapsed: boolean;
+  readonly onOpenFullScreen: () => void;
+  readonly onBecomeCitizen: () => void;
+}) {
+  return (
+    <div data-testid="colosseum-state-resident" style={certificateStage}>
+      <ArtifactStage
+        artifact="residency-pass"
+        serial={serial}
+        issuedAt={issuedAt}
+        onOpenFullScreen={onOpenFullScreen}
+      />
+      {windowElapsed ? (
         <button
           type="button"
-          onClick={onOpenFullScreen}
-          aria-label="Open the citizenship certificate full-screen"
-          className="kade-passport-trigger-button"
-        />
-      </div>
+          data-variant="primary"
+          onClick={onBecomeCitizen}
+          style={{ ...primaryButton, width: '100%' }}
+        >
+          Become a Citizen
+        </button>
+      ) : (
+        <p style={{ ...body, fontWeight: 600 }}>
+          Remain a compliant resident for 2 minutes to be eligible to become a
+          Colosseum Citizen.
+        </p>
+      )}
     </div>
   );
 }
