@@ -12,7 +12,9 @@ import {
   evaluateVoteEligibility,
   type VoteViewerMembership,
 } from '@/lib/vote/eligibility';
+import { isSupportedVoteType } from '@/lib/vote/snapshot';
 import { RESIDENT_SPACE_ID } from '@/lib/vote/spaces';
+import type { SnapshotVoteResult } from '@/lib/vote/submit';
 import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
 
 /**
@@ -36,11 +38,12 @@ import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
  * in that list with the exact text "Colosseum Citizens only" and cannot be
  * selected. Citizens vote in everything; a Resident votes the Residents space.
  *
- * The ballot itself is still local demo state: casting records locally and never
- * sends anything. It does not alter the real tallies. The UI's eligibility block
- * is a **companion to the real rule, never the protection** — the contract and
- * the Snapshot strategy are what actually stop an ineligible vote. This
- * component only reflects the decision.
+ * The ballot is now **real**: casting calls the `castVote` server action, which
+ * signs the Snapshot `Vote` typed data through the owner Safe and POSTs it to
+ * the sequencer. `success` is shown only when the sequencer accepted the vote;
+ * every refusal names what failed and states plainly that the vote was **not**
+ * recorded. The UI's eligibility block is a **companion to the real rule, never
+ * the protection** — the server re-derives every precondition before it signs.
  *
  * Only the single-choice vote types (`basic`, `single-choice`) are supported.
  * Any other real type is surfaced as-is and its ballot is refused honestly,
@@ -49,9 +52,6 @@ import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
  * States that must exist, and do: disconnected wallet, loading, read error, and
  * closed proposal. On a read error, eligibility is **not** assumed.
  */
-
-/** The vote types this screen knows how to present. */
-const SUPPORTED_VOTE_TYPES = new Set(['basic', 'single-choice']);
 
 /** The short month labels used for a proposal's real close date (UTC). */
 const MONTHS = [
@@ -75,11 +75,6 @@ function formatCloseDate(unixSeconds: number): string {
   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()] ?? ''}`;
 }
 
-/** Whether the screen can present this proposal's real vote type as a ballot. */
-function isSupportedVoteType(type: string | undefined): boolean {
-  return type !== undefined && SUPPORTED_VOTE_TYPES.has(type);
-}
-
 const EYEBROW: CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
@@ -88,8 +83,11 @@ const EYEBROW: CSSProperties = {
   color: tokens.muted,
 };
 
+/** Voting-power reads keyed by proposal id. */
+type VotingPowerByProposal = Readonly<Record<string, VotingPowerRead>>;
+
 const NOTE_BEFORE =
-  'Demo only: your choice is recorded in this browser and is not sent to Snapshot. Eligibility is checked against your on-chain credential.';
+  'Casting signs this choice with your on-chain credential and submits it to Snapshot.';
 
 export interface VoteScreenProps {
   /**
@@ -112,6 +110,16 @@ export interface VoteScreenProps {
   readonly powers?: Readonly<Record<string, VotingPowerRead>>;
   /** A server-side load failure, or null. */
   readonly error?: string | null;
+  /**
+   * The real cast: the server action in production, a fake in tests. It is the
+   * only thing that sends a vote, and it returns the real outcome. When absent
+   * the screen cannot cast and says so rather than pretending.
+   */
+  readonly castVote?: (input: {
+    readonly spaceId: string;
+    readonly proposalId: string;
+    readonly choice: number;
+  }) => Promise<SnapshotVoteResult>;
 }
 
 export function VoteScreen({
@@ -122,13 +130,17 @@ export function VoteScreen({
   proposals: preloadedProposals,
   powers: preloadedPowers,
   error: preloadedError = null,
+  castVote,
 }: VoteScreenProps) {
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
-  const [voted, setVoted] = useState(false);
+  const [casting, setCasting] = useState(false);
+  const [result, setResult] = useState<SnapshotVoteResult | null>(null);
   const [proposals, setProposals] = useState<readonly VoteProposal[]>([]);
-  const [powers, setPowers] = useState<Readonly<Record<string, VotingPowerRead>>>({});
+  const [powers, setPowers] = useState<VotingPowerByProposal>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const voted = result?.submitted === true;
 
   // Load the proposals and voting power. With an injected adapter they are read
   // through it; otherwise the server-resolved props are used directly. A failed
@@ -248,28 +260,69 @@ export function VoteScreen({
       ? 'Select an option'
       : (selected?.choices[selectedChoice]?.label ?? 'Select an option');
   const castable =
-    eligibility.eligible && supportedType && selectedChoice !== null && !voted;
+    eligibility.eligible &&
+    supportedType &&
+    selectedChoice !== null &&
+    !voted &&
+    !casting;
 
   // The reference's `if (!s.voted)` guard: once cast, further selection is a
   // no-op and the ballot is frozen.
   function pick(index: number) {
-    if (voted || !eligibility.eligible || !supportedType) return;
+    if (voted || casting || !eligibility.eligible || !supportedType) return;
     setSelectedChoice(index);
+    // Changing the ballot clears a previous failure; a submitted vote stays
+    // frozen and cannot be changed.
+    if (result !== null && !result.submitted) setResult(null);
   }
 
-  function castVote() {
-    if (voted || selectedChoice === null || !eligibility.eligible || !supportedType) {
+  async function castSelectedVote() {
+    if (
+      voted ||
+      casting ||
+      selectedChoice === null ||
+      !eligibility.eligible ||
+      !supportedType ||
+      selected === null
+    ) {
       return;
     }
-    // Local demo state only: no vote is sent, and the real tally is untouched.
-    setVoted(true);
+    if (castVote === undefined) {
+      setResult({
+        status: 'failed',
+        submitted: false,
+        reason: 'Voting is not available on this screen.',
+      });
+      return;
+    }
+    const choice = selectedChoice;
+    const proposal = selected;
+    setCasting(true);
+    setResult(null);
+    try {
+      const outcome = await castVote({
+        spaceId: proposal.spaceId,
+        proposalId: proposal.proposalId,
+        choice,
+      });
+      setResult(outcome);
+    } catch (cause) {
+      setResult({
+        status: 'failed',
+        submitted: false,
+        reason:
+          cause instanceof Error ? cause.message : 'The vote could not be submitted.',
+      });
+    } finally {
+      setCasting(false);
+    }
   }
 
   function selectProposal(proposalId: string) {
     if (proposalId === selectedId) return;
     setSelectedId(proposalId);
     setSelectedChoice(null);
-    setVoted(false);
+    setResult(null);
   }
 
   const eligibilityMessage = blockedByError
@@ -283,8 +336,11 @@ export function VoteScreen({
       : selected?.end !== undefined
         ? `Open · closes ${formatCloseDate(selected.end)}`
         : 'Open';
-  const noteAfter =
-    'Recorded in this browser only — nothing was signed, sent or stored on Snapshot.';
+  const noteAfter = voted
+    ? result?.voteId !== null && result?.voteId !== undefined
+      ? `Submitted to Snapshot — message ${result.voteId}.`
+      : 'Submitted to Snapshot.'
+    : null;
 
   return (
     <>
@@ -408,7 +464,7 @@ export function VoteScreen({
               <span style={{ color: tokens.ink, fontWeight: 600 }}>
                 {selected?.spaceId ?? RESIDENT_SPACE_ID}
               </span>{' '}
-              · one vote per on-chain credential · your choice stays in this browser
+              · one vote per on-chain credential · your choice is submitted to Snapshot
             </div>
           </div>
           <Chip
@@ -632,7 +688,7 @@ export function VoteScreen({
               variant={castable ? 'primary' : 'locked'}
               fullWidth
               disabled={!castable}
-              onClick={castVote}
+              onClick={castSelectedVote}
               style={{
                 marginTop: '16px',
                 height: '42px',
@@ -640,9 +696,17 @@ export function VoteScreen({
                 ...(voted ? { background: tokens.success } : null),
               }}
             >
-              {voted ? 'Recorded locally · demo only' : 'Record this choice'}
+              {voted
+                ? 'Vote cast'
+                : casting
+                  ? 'Casting…'
+                  : result !== null
+                    ? 'Try again'
+                    : 'Cast vote'}
             </Button>
             <div
+              data-testid="vote-result"
+              data-status={result?.status ?? (casting ? 'casting' : 'idle')}
               style={{
                 marginTop: '12px',
                 fontSize: '12px',
@@ -650,7 +714,13 @@ export function VoteScreen({
                 lineHeight: 1.6,
               }}
             >
-              {voted ? noteAfter : NOTE_BEFORE}
+              {voted
+                ? noteAfter
+                : casting
+                  ? 'Signing this choice with your credential and submitting it to Snapshot…'
+                  : result !== null && !result.submitted
+                    ? `${result.reason} Your vote was not recorded.`
+                    : NOTE_BEFORE}
             </div>
             <div
               style={{
