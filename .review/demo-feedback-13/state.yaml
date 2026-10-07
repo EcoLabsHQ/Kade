@@ -1,0 +1,28 @@
+iteration: demo-feedback-13
+profile: NORMAL
+known_good: 77312ea
+candidate: ac17b63
+mode: targeted
+review_scope: "77312ea...ac17b63 — a single-file tooling config change"
+reviewed_scopes:
+  rpc-endpoint-config: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: ac17b63
+  recorded_at: 2026-10-06
+  note: "Node v22.17.0 per .nvmrc."
+notes:
+  - "No findings. The change is one file (packages/contracts/foundry.toml, 14 insertions): an [rpc_endpoints] entry naming `arbitrum` = ${ARBITRUM_RPC_URL}."
+  - "Secret hygiene verified by a full-tree blob scan for drpc.live: the only match is the placeholder in foundry.toml. The real key lives in the git-ignored membership/deployment-inputs.json."
+  - "Gate immunity verified from the mechanism, not from the claim: Foundry resolves rpc_endpoints LAZILY, so forge config (the same loader build/test use) exits 0 with the variable unset. No --fork-url or eth_rpc_url exists anywhere in the repo, so build/test cannot resolve an endpoint. Corroborates the recorded 84/84."
+  - "Fails loudly, not silently: with the variable unset, a command naming the endpoint errors with `environment variable ARBITRUM_RPC_URL not found` (exit 1) rather than falling back to localhost."
+  - "No broadcast capability introduced: rpc_endpoints only names endpoints; --broadcast is still required explicitly."
+  - "Naming only `arbitrum` is a deliberate minimum: the app's four-chain RPC map is a JS runtime concern, and the only Foundry network work targets Arbitrum One."
+  - "packages/contracts/membership/deploy.sh and deployment-plan.json are UNTRACKED local operator helpers, not part of this candidate."
