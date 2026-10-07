@@ -90,6 +90,28 @@ const CHECK_LABELS: Record<ResidencyCheckId, string> = {
  */
 export const COLOSSEUM_COMPLIANCE_WINDOW_SECONDS = 120;
 
+/**
+ * The mint outcome the section renders, structurally compatible with the claim
+ * server action's result. Only the fields the UI needs are named; the action
+ * outcome (including the additive `explorerUrl`) satisfies it directly, and a
+ * local submission failure can be represented without importing the server
+ * module.
+ */
+export interface ClaimOutcomeView {
+  readonly status:
+    | 'sent'
+    | 'failed'
+    | 'blocked'
+    | 'not-configured'
+    | 'unauthenticated';
+  readonly sent: boolean;
+  readonly reason: string;
+  readonly txHash?: string | null;
+  readonly account?: string | null;
+  readonly operation?: string | null;
+  readonly explorerUrl?: string | null;
+}
+
 export interface ColosseumResidencyProps {
   /**
    * The real, derived residency checks. The funds check carries the real
@@ -121,12 +143,15 @@ export interface ColosseumResidencyProps {
   readonly profileKey?: string | null;
   /**
    * The claim trigger. Called once, on the first claim of each milestone, with
-   * the target the server should mint (`resident` / `citizen`). It is
-   * fire-and-forget: the reveal is opened before it is called, so the mint
-   * never changes the reveal timing or the one-shot guards. Omitted in tests
-   * and any surface that only renders the demo.
+   * the target the server should mint (`resident` / `citizen`). It returns the
+   * mint outcome so the section can report honestly whether the credential was
+   * issued on chain (feedback 1); the reveal is opened before it is awaited, so
+   * the mint never changes the reveal timing or the one-shot guards. A caller
+   * that only renders the demo may omit it or return nothing.
    */
-  readonly onClaimMembership?: (target: MembershipClaimTarget) => void;
+  readonly onClaimMembership?: (
+    target: MembershipClaimTarget,
+  ) => Promise<ClaimOutcomeView | null> | void;
 }
 
 function formatCountdown(totalSeconds: number): string {
@@ -197,6 +222,16 @@ export function ColosseumResidency({
   // The first, live citizenship reveal uses the celebratory tier; every later
   // open uses the standard one.
   const [certificateCelebration, setCertificateCelebration] = useState(false);
+  // The mint outcome per claim target, so the section can report honestly
+  // whether the on-chain credential was issued (feedback 1). Session state only:
+  // it is not persisted, and it is cleared for a target while a fresh claim is
+  // in flight so a stale confirmation is never shown.
+  const [mintOutcomes, setMintOutcomes] = useState<
+    Partial<Record<MembershipClaimTarget, ClaimOutcomeView>>
+  >({});
+  const [mintPending, setMintPending] = useState<MembershipClaimTarget | null>(
+    null,
+  );
   // The certificate reveal must fire exactly once, on the *live* transition to
   // citizen — not on a restored citizen load and not again after a dismissal.
   // `restoredCitizenRef` records whether the progress read at mount/profile
@@ -259,14 +294,47 @@ export function ColosseumResidency({
     setColosseumAttention(citizenEligible);
   }, [citizenEligible]);
 
+  /**
+   * Submit a claim and record its outcome. The reveal is already opening by the
+   * time this is called, so awaiting the mint never affects the reveal timing.
+   * While the promise is in flight the target is marked pending and any stale
+   * outcome is dropped; when it settles the real outcome (or a caller-provided
+   * `failed` outcome) is stored, so the section never shows a confirmation the
+   * mint did not produce.
+   */
+  const runClaim = useCallback(
+    (target: MembershipClaimTarget) => {
+      const result = onClaimMembership?.(target);
+      if (!result || typeof result.then !== 'function') return;
+      setMintPending(target);
+      setMintOutcomes((current) => {
+        const next = { ...current };
+        delete next[target];
+        return next;
+      });
+      void result.then(
+        (outcome) => {
+          if (outcome) {
+            setMintOutcomes((current) => ({ ...current, [target]: outcome }));
+          }
+          setMintPending((pending) => (pending === target ? null : pending));
+        },
+        () => {
+          setMintPending((pending) => (pending === target ? null : pending));
+        },
+      );
+    },
+    [onClaimMembership],
+  );
+
   const becomeCitizen = useCallback(() => {
     setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
     setColosseumAttention(false);
     // The claim is the trigger: the server re-validates and mints the Citizen
-    // credential. Fire-and-forget after the local transition, so the reveal is
-    // never delayed by the mint.
-    onClaimMembership?.('citizen');
-  }, [profileKey, onClaimMembership]);
+    // credential. The reveal opens from the local transition; the mint outcome
+    // is awaited afterwards.
+    runClaim('citizen');
+  }, [profileKey, runClaim]);
 
   // Celebrate the milestone with the full-screen certificate reveal, exactly
   // once, on the live transition to citizen. A restored citizen (already
@@ -297,11 +365,11 @@ export function ColosseumResidency({
     );
     setResidencyPassOpen(true);
     if (!alreadyClaimed) {
-      // Fire-and-forget after the local transition: the reveal is already
-      // opening, so the mint never changes its timing.
-      onClaimMembership?.('resident');
+      // The reveal is already opening, so the mint never changes its timing; the
+      // outcome is awaited afterwards and reported honestly.
+      runClaim('resident');
     }
-  }, [profileKey, progress.residencyPassAt, onClaimMembership]);
+  }, [profileKey, progress.residencyPassAt, runClaim]);
 
   const residencyPassClaimed = progress.residencyPassSerial !== null;
   const showCertificate = mounted && citizen;
@@ -380,6 +448,8 @@ export function ColosseumResidency({
           serial={progress.residencyPassSerial}
           issuedAt={progress.residencyPassAt}
           windowElapsed={windowElapsed}
+          mintPending={mintPending === 'resident'}
+          mintOutcome={mintOutcomes.resident ?? null}
           onOpenFullScreen={() => {
             setResidencyPassOpen(true);
           }}
@@ -394,6 +464,8 @@ export function ColosseumResidency({
         <StateE
           serial={progress.passportSerial}
           issuedAt={progress.citizenAt}
+          mintPending={mintPending === 'citizen'}
+          mintOutcome={mintOutcomes.citizen ?? null}
           onOpenFullScreen={() => {
             setCertificateCelebration(false);
             setCertificateOpen(true);
@@ -729,10 +801,14 @@ function ArtifactStage({
 function StateE({
   serial,
   issuedAt,
+  mintPending,
+  mintOutcome,
   onOpenFullScreen,
 }: {
   readonly serial: string | null;
   readonly issuedAt: string | null;
+  readonly mintPending: boolean;
+  readonly mintOutcome: ClaimOutcomeView | null;
   readonly onOpenFullScreen: () => void;
 }) {
   return (
@@ -742,6 +818,12 @@ function StateE({
         serial={serial}
         issuedAt={issuedAt}
         onOpenFullScreen={onOpenFullScreen}
+      />
+      <MintReceipt
+        target="citizen"
+        pending={mintPending}
+        outcome={mintOutcome}
+        serial={serial}
       />
     </div>
   );
@@ -760,12 +842,16 @@ function StateResident({
   serial,
   issuedAt,
   windowElapsed,
+  mintPending,
+  mintOutcome,
   onOpenFullScreen,
   onBecomeCitizen,
 }: {
   readonly serial: string | null;
   readonly issuedAt: string | null;
   readonly windowElapsed: boolean;
+  readonly mintPending: boolean;
+  readonly mintOutcome: ClaimOutcomeView | null;
   readonly onOpenFullScreen: () => void;
   readonly onBecomeCitizen: () => void;
 }) {
@@ -776,6 +862,12 @@ function StateResident({
         serial={serial}
         issuedAt={issuedAt}
         onOpenFullScreen={onOpenFullScreen}
+      />
+      <MintReceipt
+        target="resident"
+        pending={mintPending}
+        outcome={mintOutcome}
+        serial={serial}
       />
       {windowElapsed ? (
         <button
@@ -791,6 +883,117 @@ function StateResident({
           Remain a compliant resident for 2 minutes to be eligible to become a
           Colosseum Citizen.
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The honest mint receipt (feedback 1).
+ *
+ * When a claim confirms, the server returns the real on-chain outcome: the
+ * transaction hash, the member account and the operation. This component
+ * surfaces exactly that — it never fabricates a "success". It links to the
+ * credential on the membership chain's explorer (the issuance transaction and
+ * the holder account) and repeats the serial/state the app already knows.
+ *
+ * While the mint is in flight it says so; a failed/blocked/unconfigured claim
+ * says the credential was NOT issued and shows the reason. It is session state:
+ * a reload falls back to the artifact's own serial/state.
+ */
+function MintReceipt({
+  target,
+  pending,
+  outcome,
+  serial,
+}: {
+  readonly target: MembershipClaimTarget;
+  readonly pending: boolean;
+  readonly outcome: ClaimOutcomeView | null;
+  readonly serial: string | null;
+}) {
+  const noun =
+    target === 'resident'
+      ? 'Colosseum Resident credential'
+      : 'Colosseum Citizen credential';
+  const state = target === 'resident' ? 'Resident' : 'Citizen';
+
+  if (pending) {
+    return (
+      <p
+        data-testid={`colosseum-mint-${target}`}
+        data-state="pending"
+        style={mintReceiptBox}
+      >
+        Issuing your {noun} on chain — waiting for confirmation…
+      </p>
+    );
+  }
+  if (!outcome) return null;
+
+  const explorerUrl = outcome.explorerUrl ?? null;
+  const txHash = outcome.txHash ?? null;
+  const account = outcome.account ?? null;
+  const txLink = explorerUrl && txHash ? `${explorerUrl}/tx/${txHash}` : null;
+  const accountLink =
+    explorerUrl && account ? `${explorerUrl}/address/${account}` : null;
+
+  return (
+    <div
+      data-testid={`colosseum-mint-${target}`}
+      data-state={outcome.status}
+      style={mintReceiptBox}
+    >
+      {outcome.status === 'sent' ? (
+        <>
+          <p style={mintLine}>
+            <strong>Issued on chain.</strong> Your {noun} was confirmed.
+          </p>
+          <p style={mintMeta}>
+            Status: {state}
+            {serial ? ` · Serial ${serial}` : ''}
+          </p>
+          {txLink || accountLink ? (
+            <ul style={mintLinks}>
+              {txLink ? (
+                <li>
+                  <a href={txLink} target="_blank" rel="noreferrer" style={mintLink}>
+                    View the issuance transaction on Arbiscan
+                  </a>
+                </li>
+              ) : null}
+              {accountLink ? (
+                <li>
+                  <a
+                    href={accountLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={mintLink}
+                  >
+                    View the credential holder on Arbiscan
+                  </a>
+                </li>
+              ) : null}
+            </ul>
+          ) : txHash ? (
+            <p style={mintMeta}>
+              Transaction: <code>{txHash}</code>
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <p style={mintLine}>
+            <strong>The credential was not issued.</strong> {outcome.reason}
+          </p>
+          {txLink ? (
+            <p style={mintMeta}>
+              <a href={txLink} target="_blank" rel="noreferrer" style={mintLink}>
+                View the transaction on Arbiscan
+              </a>
+            </p>
+          ) : null}
+        </>
       )}
     </div>
   );
@@ -1050,6 +1253,37 @@ const quietAction = {
   cursor: 'pointer',
   textDecoration: 'underline',
   textUnderlineOffset: '3px',
+};
+
+/* The honest mint receipt shown under the resident/citizen artifact. */
+const mintReceiptBox = {
+  marginTop: '12px',
+  padding: '12px 14px',
+  borderRadius: '10px',
+  background: '#fff',
+  border: `1px solid ${tokens.border}`,
+  fontSize: '12.5px',
+  lineHeight: 1.6,
+  color: tokens.chipFg,
+};
+
+const mintLine = {
+  margin: 0,
+};
+
+const mintMeta = {
+  margin: '4px 0 0',
+  color: tokens.muted,
+};
+
+const mintLinks = {
+  margin: '6px 0 0',
+  paddingLeft: '18px',
+};
+
+const mintLink = {
+  color: tokens.brandPrimary,
+  fontWeight: 600,
 };
 
 const certificateStage = {

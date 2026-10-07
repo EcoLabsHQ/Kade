@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
-import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
+import {
+  ColosseumResidency,
+  type ClaimOutcomeView,
+} from '@/components/residency/ColosseumResidency';
 
 /**
  * The claim → mint wiring.
@@ -147,5 +157,128 @@ describe('ColosseumResidency — claim triggers the mint', () => {
         screen.getByRole('button', { name: /claim colosseum residency/i }),
       ),
     ).not.toThrow();
+  });
+});
+
+describe('ColosseumResidency — the on-chain mint receipt (feedback 1)', () => {
+  it('reports the confirmed credential honestly, with the serial/state and Arbiscan links', async () => {
+    const onClaimMembership = vi.fn().mockResolvedValue({
+      status: 'sent',
+      sent: true,
+      reason: 'The issue-resident transition was confirmed on chain.',
+      operation: 'issue-resident',
+      account: '0x1111111111111111111111111111111111111111',
+      txHash: `0x${'ab'.repeat(32)}`,
+      explorerUrl: 'https://arbiscan.io',
+    });
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks()}
+        profileKey="claim-receipt"
+        onClaimMembership={onClaimMembership}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    await act(async () => {});
+
+    const receipt = screen.getByTestId('colosseum-mint-resident');
+    expect(receipt).toHaveAttribute('data-state', 'sent');
+    expect(receipt).toHaveTextContent(/issued on chain/i);
+    // The serial/state the app already knows is repeated.
+    expect(receipt).toHaveTextContent(/status: resident/i);
+    expect(receipt).toHaveTextContent(/KADE-RES-/);
+
+    // A real way to reach the credential: the issuance transaction and the
+    // holder account on the membership chain's explorer.
+    const links = within(receipt).getAllByRole('link');
+    expect(links[0]).toHaveAttribute(
+      'href',
+      `https://arbiscan.io/tx/0x${'ab'.repeat(32)}`,
+    );
+    expect(links[1]).toHaveAttribute(
+      'href',
+      'https://arbiscan.io/address/0x1111111111111111111111111111111111111111',
+    );
+  });
+
+  it('never claims issuance while the mint is still pending', async () => {
+    let resolve!: (value: ClaimOutcomeView | null) => void;
+    const onClaimMembership = vi.fn(
+      () =>
+        new Promise<ClaimOutcomeView | null>((r) => {
+          resolve = r;
+        }),
+    );
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks()}
+        profileKey="claim-pending"
+        onClaimMembership={onClaimMembership}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    const receipt = screen.getByTestId('colosseum-mint-resident');
+    expect(receipt).toHaveAttribute('data-state', 'pending');
+    expect(receipt).toHaveTextContent(/waiting for confirmation/i);
+    expect(receipt).not.toHaveTextContent(/issued on chain/i);
+
+    await act(async () => {
+      resolve({
+        status: 'sent',
+        sent: true,
+        reason: 'confirmed',
+        explorerUrl: null,
+      });
+    });
+    expect(screen.getByTestId('colosseum-mint-resident')).toHaveAttribute(
+      'data-state',
+      'sent',
+    );
+  });
+
+  it('says the credential was NOT issued when the mint fails', async () => {
+    const onClaimMembership = vi.fn().mockResolvedValue({
+      status: 'failed',
+      sent: false,
+      reason: 'the owner-Safe transaction reverted.',
+      txHash: null,
+      explorerUrl: null,
+    });
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks()}
+        profileKey="claim-failed"
+        onClaimMembership={onClaimMembership}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    await act(async () => {});
+
+    const receipt = screen.getByTestId('colosseum-mint-resident');
+    expect(receipt).toHaveAttribute('data-state', 'failed');
+    expect(receipt).toHaveTextContent(/not issued/i);
+    expect(receipt).not.toHaveTextContent(/issued on chain/i);
+  });
+
+  it('shows no receipt before a claim has been submitted', () => {
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks()}
+        profileKey="claim-before"
+        onClaimMembership={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('colosseum-mint-resident')).toBeNull();
   });
 });
