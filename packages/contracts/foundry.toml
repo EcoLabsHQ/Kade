@@ -15,3 +15,17 @@ libs = ["lib"]
 solc_version = "0.8.24"
 optimizer = false
 verbosity = 2
+
+# Named RPC endpoints, so a network command can say `--rpc-url arbitrum`.
+#
+# The URL is read from the environment and never committed: the provider (DRPC)
+# carries its key in the URL path, so a literal here would leak it. Export it
+# before a network command:
+#
+#   export ARBITRUM_RPC_URL="https://lb.drpc.live/arbitrum/<key>"
+#   forge script ... --rpc-url arbitrum
+#
+# `forge build` and `forge test` never touch these; no network command runs
+# without an explicit --rpc-url, and nothing here broadcasts.
+[rpc_endpoints]
+arbitrum = "${ARBITRUM_RPC_URL}"
