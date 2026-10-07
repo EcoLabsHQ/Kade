@@ -1,8 +1,13 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import {
+  createSupabaseServerClient,
+  createSupabaseServiceClient,
+} from '@/lib/supabase/server';
 import {
   EMPTY_COLOSSEUM_PROGRESS,
   type ColosseumProgress,
 } from '@/components/residency/colosseum-progress';
+import { loadResidencySnapshot } from '@/lib/residency/server';
+import { unmetMembershipChecks } from '@/lib/membership/mint';
 
 /**
  * The Colosseum demo state, read and written server-side, per account.
@@ -16,14 +21,19 @@ import {
  *     reads — the single source of truth for the 2-minute window;
  *   - the demo certificate/pass instants and serials and the documents flag are
  *     the `colosseum_progress` row (migration `20261008000001`);
- *   - every write goes through a resident-scoped `SECURITY DEFINER` function
- *     that derives the account from `auth.uid()`. No profile id is accepted from
- *     the client, and the functions are granted only to `authenticated`.
+ *   - the demo writes go through resident-scoped `SECURITY DEFINER` functions
+ *     that derive the account from `auth.uid()`; no profile id is accepted from
+ *     the client. They record values the resident is entitled to set (their own
+ *     demo pass/certificate and documents flag).
+ *   - the **window start is different**: it is a gate, not a demo value, so it
+ *     is not resident-callable. `startColosseumWindow` re-derives the four real
+ *     checks server-side and writes through the service-role
+ *     `record_colosseum_resident_since` writer (migration `20261006000002`).
  *
- * Every read degrades honestly: a failed read (for example the migration is not
- * applied yet) yields the empty demo state rather than inventing one. A write
- * that fails throws, so the caller can keep its optimistic state and report the
- * failure rather than pretending the state persisted.
+ * Every read degrades honestly: a failed read yields the empty demo state
+ * rather than inventing one. A write that fails throws, so the caller can keep
+ * its optimistic state and report the failure rather than pretending the state
+ * persisted.
  */
 
 export interface ColosseumState {
@@ -112,9 +122,53 @@ async function rpc(
   }
 }
 
-/** Start the compliance window once (the four-checks-green transition). */
+/**
+ * Raised when a window start is attempted for a resident whose four real
+ * residency checks are not all green. It is a refusal, not a failure: the
+ * server re-derived the checks and declined to start the clock.
+ */
+export class ColosseumWindowNotEligibleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ColosseumWindowNotEligibleError';
+  }
+}
+
+/**
+ * Start the compliance window once (the four-checks-green transition).
+ *
+ * SECURITY: the clock must not be startable by a client that merely claims to be
+ * eligible. This re-derives the four real residency checks **server-side**, from
+ * the same `loadResidencySnapshot` source the Citizen mint uses, with the same
+ * `unmetMembershipChecks` gate — so a signed-in resident cannot pre-start the
+ * window and satisfy the 2-minute gate early. Only when all four are `met` is
+ * the window written, and the write goes through the service-role
+ * `record_colosseum_resident_since` writer (the same authority migration
+ * `20261006000002` established for the clock); there is no resident-callable
+ * window writer.
+ */
 export async function startColosseumWindow(profileId: string): Promise<ColosseumState> {
-  await rpc('start_colosseum_window');
+  const snapshot = await loadResidencySnapshot(profileId);
+  const checks = snapshot?.view.checks ?? [];
+  const unmet = unmetMembershipChecks(checks);
+  if (unmet.length > 0) {
+    throw new ColosseumWindowNotEligibleError(
+      'the four residency checks are not all met, so the compliance window is ' +
+        'not started: ' +
+        unmet.map((check) => `${check.id} (${check.state})`).join(', ') +
+        '.',
+    );
+  }
+
+  const client = await createSupabaseServiceClient();
+  const { error } = await client.rpc('record_colosseum_resident_since', {
+    p_profile_id: profileId,
+  });
+  if (error) {
+    throw new Error(
+      `record_colosseum_resident_since failed: ${error.message}`,
+    );
+  }
   return loadColosseumState(profileId);
 }
 

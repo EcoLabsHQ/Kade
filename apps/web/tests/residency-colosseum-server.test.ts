@@ -17,12 +17,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const state = vi.hoisted(() => ({
-  // The "signed-in" account the fake client's writers act as (auth.uid()).
+  // The "signed-in" account the fake cookie client's writers act as (auth.uid()).
   current: 'profile-a',
   // applications.colosseum_resident_since, per profile.
   windows: new Map<string, string | null>(),
   // colosseum_progress, per profile.
   progress: new Map<string, Record<string, unknown>>(),
+  // The four checks the mocked loadResidencySnapshot reports. All met by default.
+  checks: [
+    { id: 'identity', state: 'met' },
+    { id: 'funds', state: 'met' },
+    { id: 'review', state: 'met' },
+    { id: 'service-fee', state: 'met' },
+  ] as Array<{ id: string; state: string }>,
+}));
+
+// The server-side eligibility re-derivation reads the four checks from the same
+// source the mint uses; the test injects them.
+vi.mock('@/lib/residency/server', () => ({
+  loadResidencySnapshot: async () => ({ view: { checks: state.checks } }),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -54,11 +67,6 @@ vi.mock('@/lib/supabase/server', () => ({
       const now = new Date().toISOString();
       const existing = state.progress.get(profile) ?? {};
       switch (name) {
-        case 'start_colosseum_window':
-          if ((state.windows.get(profile) ?? null) === null) {
-            state.windows.set(profile, now);
-          }
-          break;
         case 'clear_colosseum_window':
           if (!existing.citizen_at) state.windows.set(profile, null);
           break;
@@ -89,22 +97,45 @@ vi.mock('@/lib/supabase/server', () => ({
       return { error: null };
     },
   }),
+  // The service-role writer the window start goes through (no resident session).
+  createSupabaseServiceClient: async () => ({
+    rpc: async (name: string, args: Record<string, unknown> = {}) => {
+      if (name === 'record_colosseum_resident_since') {
+        const profile = String(args.p_profile_id);
+        if ((state.windows.get(profile) ?? null) === null) {
+          state.windows.set(profile, new Date().toISOString());
+        }
+        return { error: null };
+      }
+      return { error: { message: `unexpected service rpc ${name}` } };
+    },
+  }),
 }));
 
 import {
   becomeColosseumCitizen,
   claimColosseumResidencyPass,
   clearColosseumWindow,
+  ColosseumWindowNotEligibleError,
   EMPTY_COLOSSEUM_STATE,
   loadColosseumState,
   setColosseumDocumentsComplete,
   startColosseumWindow,
 } from '@/lib/residency/colosseum-state-server';
+import { complianceWindowElapsed } from '@/lib/membership/mint';
+
+const ELIGIBLE_CHECKS = [
+  { id: 'identity', state: 'met' },
+  { id: 'funds', state: 'met' },
+  { id: 'review', state: 'met' },
+  { id: 'service-fee', state: 'met' },
+];
 
 beforeEach(() => {
   state.current = 'profile-a';
   state.windows.clear();
   state.progress.clear();
+  state.checks = [...ELIGIBLE_CHECKS];
 });
 
 describe('colosseum state server store — round-trip', () => {
@@ -211,5 +242,66 @@ describe('colosseum state server store — idempotency and decay', () => {
     const afterCitizen = await clearColosseumWindow('profile-a');
     // A citizen keeps the record.
     expect(afterCitizen.progress.residentSince).not.toBeNull();
+  });
+});
+
+/**
+ * The security invariant the review flagged: the compliance window is a GATE,
+ * not a demo value, so a signed-in resident must not be able to start it before
+ * the four real checks are green. The start re-derives the checks server-side
+ * and writes through the service-role writer; there is no resident-callable
+ * window writer to bypass it.
+ */
+describe('colosseum state server store — the window start is gated by the four checks', () => {
+  it('starts the window for an eligible resident', async () => {
+    const started = await startColosseumWindow('profile-a');
+
+    expect(started.progress.residentSince).not.toBeNull();
+    expect(state.windows.get('profile-a')).not.toBeNull();
+  });
+
+  it('refuses to start the window when a check is not green, and records nothing', async () => {
+    state.checks = [
+      { id: 'identity', state: 'pending' },
+      { id: 'funds', state: 'met' },
+      { id: 'review', state: 'met' },
+      { id: 'service-fee', state: 'met' },
+    ];
+
+    await expect(startColosseumWindow('profile-a')).rejects.toBeInstanceOf(
+      ColosseumWindowNotEligibleError,
+    );
+    // No window was recorded, and the read shows none.
+    expect(state.windows.has('profile-a')).toBe(false);
+    expect((await loadColosseumState('profile-a')).progress.residentSince).toBeNull();
+  });
+
+  it('refuses when the checks are missing entirely (fail-closed)', async () => {
+    state.checks = [];
+
+    await expect(startColosseumWindow('profile-a')).rejects.toBeInstanceOf(
+      ColosseumWindowNotEligibleError,
+    );
+    expect(state.windows.has('profile-a')).toBe(false);
+  });
+
+  it('cannot be pre-satisfied: an ineligible resident leaves the mint’s gate closed', async () => {
+    // The resident calls the start while not eligible.
+    state.checks = [
+      { id: 'identity', state: 'met' },
+      { id: 'funds', state: 'blocked' },
+      { id: 'review', state: 'met' },
+      { id: 'service-fee', state: 'met' },
+    ];
+    await expect(startColosseumWindow('profile-a')).rejects.toBeInstanceOf(
+      ColosseumWindowNotEligibleError,
+    );
+
+    // The mint reads the same `applications.colosseum_resident_since` column. A
+    // null window is never treated as elapsed, so the Citizen claim cannot pass
+    // the 2-minute gate early.
+    const since = (await loadColosseumState('profile-a')).progress.residentSince;
+    expect(since).toBeNull();
+    expect(complianceWindowElapsed(since, Date.now())).toBeNull();
   });
 });
