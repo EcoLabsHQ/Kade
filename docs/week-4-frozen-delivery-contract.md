@@ -42,6 +42,15 @@ The statements at §1.2 and §2 property 4 are left as written, because they rec
 what was true when this contract was frozen. This amendment records what
 supersedes them.
 
+**Scope of the supersession.** To the extent the claim path now signs and
+executes, this amendment supersedes every contrary statement elsewhere in this
+document — in particular the §3 residual-risk line that says no credential has
+been issued, the §4 exclusions that say the app never sends them or that
+automated credential issuance does not exist, and the §6.2/§6.3 statements that
+the issuance trigger and the signer decision remain unimplemented. Those passages
+are likewise left as written, for the same reason: they record what was true when
+this contract was frozen.
+
 Where product scope and the development contract disagree, the development
 contract governs how work is verified and promoted; this contract governs what is
 in scope for the Week 4 increment. Delegated execution follows
