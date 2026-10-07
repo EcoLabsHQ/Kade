@@ -63,7 +63,7 @@ address.
 
 **The owning Safe (verified read-only):** `0xa0Ae1C8A46Ab19b6D9A43d5D7564Db9d5517e72c`,
 Safe version **1.5.0**, threshold **1 of 3**, owners
-`0xc0bBeB90953033fF4B9021A1743DFdfF870eE714` (the backend signer),
+`0xc0bBeB90953033fF4B9021A1743DFdfF870eE714`,
 `0x1726cf86DA996BC4B2F393E713f6F8ef83f2e4f6` and
 `0x31cd90C2788f3e390d2Bb72871f5aD3F1a4B22a1`.
 
