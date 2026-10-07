@@ -12,6 +12,8 @@ import {
 } from '@/lib/env';
 import { readMembership } from '@/lib/membership/chain';
 import type { VoteViewerMembership } from '@/lib/vote/eligibility';
+import { loadVoteData } from '@/lib/vote/server';
+import { CITIZEN_SPACE_ID, RESIDENT_SPACE_ID } from '@/lib/vote/spaces';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +22,7 @@ export const dynamic = 'force-dynamic';
  *
  * Auth-gated exactly like `/invest`: a signed-out visitor is redirected to
  * `/login`. The authenticated frame comes from the shared `(resident)/layout.tsx`,
- * so the page only gates the session and resolves the two inputs the screen
- * needs:
+ * so the page only gates the session and resolves the inputs the screen needs:
  *
  *   - the **wallet** is the resident's Safe address (from the deployment
  *     record), so a resident with no account sees the disconnected state; and
@@ -29,8 +30,10 @@ export const dynamic = 'force-dynamic';
  *     unread membership is treated as `none` for the citizen-only rule: on a
  *     read error, eligibility is not assumed.
  *
- * The Snapshot source itself is mocked for now (`@/lib/vote/adapter`); the
- * eligibility logic is real code against that mocked source.
+ * The Snapshot source is now **real** (`@/lib/vote/server`): the page loads the
+ * proposals for both spaces and the viewer's voting power through the real
+ * adapter, then hands the screen serialisable data. The hub client and the
+ * read-only chain client stay on the server; the screen never imports them.
  */
 async function loadViewerMembership(
   account: string | null,
@@ -57,10 +60,20 @@ export default async function VotePage() {
 
   const shellSafe = await loadShellSafe(session.userId);
   const membership = await loadViewerMembership(shellSafe.address);
+  const voteData = await loadVoteData({
+    wallet: shellSafe.address,
+    spaceIds: [RESIDENT_SPACE_ID, CITIZEN_SPACE_ID],
+  });
 
   return (
     <ContentContainer>
-      <VoteScreen wallet={shellSafe.address} membership={membership} />
+      <VoteScreen
+        wallet={shellSafe.address}
+        membership={membership}
+        proposals={voteData.proposals}
+        powers={voteData.powers}
+        error={voteData.error}
+      />
     </ContentContainer>
   );
 }

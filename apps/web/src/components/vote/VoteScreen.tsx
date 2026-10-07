@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
-import { mockSnapshotAdapter, type SnapshotAdapter } from '@/lib/vote/adapter';
+import type { SnapshotAdapter } from '@/lib/vote/adapter';
 import {
+  CITIZEN_ONLY_REFUSAL,
   evaluateVoteEligibility,
   type VoteViewerMembership,
 } from '@/lib/vote/eligibility';
@@ -18,11 +19,17 @@ import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
  * The Vote screen.
  *
  * The reference layout and copy are unchanged (VOTE-1, declared in
- * `docs/week-3-frozen-delivery-contract.md`), but the eligibility decision is
- * now **real code** (`@/lib/vote/eligibility`) evaluated against a Snapshot
- * adapter. The adapter is **mocked** for now (`@/lib/vote/adapter`): every read
- * carries `provenance: 'mock'`, the spaces report `created: false`, and the
- * screen says so. The real adapter swaps in without touching this component.
+ * `docs/week-3-frozen-delivery-contract.md`), and the eligibility decision is
+ * **real code** (`@/lib/vote/eligibility`). The Snapshot source is now the real
+ * adapter (`@/lib/vote/adapter`): the page resolves the proposals and voting
+ * power on the server and passes them here. An injected `adapter` is still
+ * accepted (the tests use it, and the mock stays available), but production
+ * renders the server-resolved data.
+ *
+ * When more than one proposal is loaded, a proposal list is shown. A proposal
+ * the viewer cannot vote — a Citizens-only proposal for a Resident — is greyed
+ * in that list with the exact text "Colosseum Citizens only" and cannot be
+ * selected. Citizens vote in everything; a Resident votes the Residents space.
  *
  * The ballot itself is still local demo state: casting increments an in-memory
  * tally and never sends anything. The UI's eligibility block is a **companion to
@@ -61,7 +68,7 @@ const EYEBROW: CSSProperties = {
 const NOTE_BEFORE =
   'Off-chain signature, no gas. Eligibility checked against your KYC attestation — one resident, one vote.';
 const NOTE_AFTER =
-  'Signed EIP-712 message · stored on IPFS · verifiable at snapshot.org/#/onchainisland.eth';
+  'Signed EIP-712 message · stored on IPFS · verifiable at snapshot.org/#/kadeglobal.eth';
 
 export interface VoteScreenProps {
   /**
@@ -72,52 +79,85 @@ export interface VoteScreenProps {
   /** The viewer's membership, used by the citizen-only rule. */
   readonly membership?: VoteViewerMembership;
   /**
-   * The Snapshot source. Defaults to the mock; a test (or the future real
-   * adapter) can inject its own.
+   * An injected Snapshot source. When present the screen loads through it; when
+   * absent it renders the server-resolved `proposals`/`powers`.
    */
   readonly adapter?: SnapshotAdapter;
+  /** The spaces to load through the adapter, in order. */
+  readonly spaceIds?: readonly string[];
+  /** Server-resolved proposals (the production path). */
+  readonly proposals?: readonly VoteProposal[];
+  /** Server-resolved voting-power reads, keyed by proposal id. */
+  readonly powers?: Readonly<Record<string, VotingPowerRead>>;
+  /** A server-side load failure, or null. */
+  readonly error?: string | null;
 }
 
 export function VoteScreen({
   wallet = null,
   membership = 'none',
-  adapter = mockSnapshotAdapter,
+  adapter,
+  spaceIds,
+  proposals: preloadedProposals,
+  powers: preloadedPowers,
+  error: preloadedError = null,
 }: VoteScreenProps) {
   const [counts, setCounts] = useState<readonly number[]>(() =>
     CHOICES.map((choice) => choice.count),
   );
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [voted, setVoted] = useState(false);
-  const [proposal, setProposal] = useState<VoteProposal | null>(null);
-  const [power, setPower] = useState<VotingPowerRead | null>(null);
+  const [proposals, setProposals] = useState<readonly VoteProposal[]>([]);
+  const [powers, setPowers] = useState<Readonly<Record<string, VotingPowerRead>>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load the proposal and the voting power through the adapter. A failed read is
-  // recorded as an error, never silently treated as "no power".
+  // Load the proposals and voting power. With an injected adapter they are read
+  // through it; otherwise the server-resolved props are used directly. A failed
+  // read is recorded as an error, never silently treated as "no power".
   useEffect(() => {
     let cancelled = false;
-    setProposal(null);
-    setPower(null);
     setLoadError(null);
+    setProposals([]);
+    setPowers({});
+    setSelectedId(null);
+
+    if (adapter === undefined) {
+      const loaded = preloadedProposals ?? [];
+      setProposals(loaded);
+      setPowers(preloadedPowers ?? {});
+      setSelectedId(loaded[0]?.proposalId ?? null);
+      setLoadError(preloadedError);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     void (async () => {
       try {
-        const space = await adapter.getSpace(RESIDENT_SPACE_ID);
-        if (space === null) {
-          throw new Error('The configured Resident space is missing.');
+        const ids = spaceIds ?? [RESIDENT_SPACE_ID];
+        const loaded: VoteProposal[] = [];
+        for (const id of ids) {
+          const space = await adapter.getSpace(id);
+          if (space === null) {
+            throw new Error(`The configured space "${id}" is missing.`);
+          }
+          loaded.push(...(await adapter.listProposals(space.id)));
         }
-        const proposals = await adapter.listProposals(space.id);
-        const loaded = proposals[0] ?? null;
         if (cancelled) return;
-        setProposal(loaded);
-        if (loaded === null || wallet === null) return;
-        const read = await adapter.readVotingPower({
-          spaceId: loaded.spaceId,
-          proposalId: loaded.proposalId,
-          wallet,
-          blockNumber: loaded.snapshotBlock,
-        });
-        if (!cancelled) setPower(read);
+        setProposals(loaded);
+        setSelectedId(loaded[0]?.proposalId ?? null);
+        if (wallet === null) return;
+        const reads: Record<string, VotingPowerRead> = {};
+        for (const proposal of loaded) {
+          reads[proposal.proposalId] = await adapter.readVotingPower({
+            spaceId: proposal.spaceId,
+            proposalId: proposal.proposalId,
+            wallet,
+            blockNumber: proposal.snapshotBlock,
+          });
+        }
+        if (!cancelled) setPowers(reads);
       } catch (cause) {
         if (!cancelled) {
           setLoadError(
@@ -130,13 +170,20 @@ export function VoteScreen({
     return () => {
       cancelled = true;
     };
-  }, [adapter, wallet]);
+  }, [adapter, wallet, spaceIds, preloadedProposals, preloadedPowers, preloadedError]);
+
+  const selected =
+    proposals.find((proposal) => proposal.proposalId === selectedId) ??
+    proposals[0] ??
+    null;
+  const selectedPower =
+    selected === null ? null : (powers[selected.proposalId] ?? null);
 
   const eligibility = evaluateVoteEligibility({
     wallet,
     membership,
-    proposal,
-    power,
+    proposal: selected,
+    power: selectedPower,
   });
 
   // A read that threw is an error state; otherwise the eligibility derivation
@@ -151,22 +198,31 @@ export function VoteScreen({
     Math.round(((counts[index] ?? 0) / total) * 100);
 
   const chosenLabel =
-    selected === null ? 'Select an option' : (CHOICES[selected]?.label ?? 'Select an option');
-  const castable = eligibility.eligible && selected !== null && !voted;
+    selectedChoice === null
+      ? 'Select an option'
+      : (CHOICES[selectedChoice]?.label ?? 'Select an option');
+  const castable = eligibility.eligible && selectedChoice !== null && !voted;
 
   // The reference's `if (!s.voted)` guard: once cast, further selection is a
   // no-op and the ballot is frozen.
   function pick(index: number) {
     if (voted || !eligibility.eligible) return;
-    setSelected(index);
+    setSelectedChoice(index);
   }
 
   function castVote() {
-    if (voted || selected === null || !eligibility.eligible) return;
+    if (voted || selectedChoice === null || !eligibility.eligible) return;
     setCounts((prev) =>
-      prev.map((count, index) => (index === selected ? count + 1 : count)),
+      prev.map((count, index) => (index === selectedChoice ? count + 1 : count)),
     );
     setVoted(true);
+  }
+
+  function selectProposal(proposalId: string) {
+    if (proposalId === selectedId) return;
+    setSelectedId(proposalId);
+    setSelectedChoice(null);
+    setVoted(false);
   }
 
   const eligibilityMessage = blockedByError
@@ -200,6 +256,74 @@ export function VoteScreen({
         </p>
       </div>
 
+      {proposals.length > 1 ? (
+        <Card padding="16px 18px" radius={12} style={{ marginBottom: '16px' }}>
+          <div style={EYEBROW}>Proposals · {proposals.length}</div>
+          <div
+            data-testid="vote-proposal-list"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              marginTop: '10px',
+            }}
+          >
+            {proposals.map((candidate) => {
+              const entry = evaluateVoteEligibility({
+                wallet,
+                membership,
+                proposal: candidate,
+                power: powers[candidate.proposalId] ?? null,
+              });
+              const refused = entry.reason === 'citizen-only';
+              const isSelected = candidate.proposalId === selected?.proposalId;
+              return (
+                <button
+                  key={candidate.proposalId}
+                  type="button"
+                  data-testid={`vote-proposal-${candidate.proposalId}`}
+                  data-refused={refused ? 'true' : 'false'}
+                  aria-pressed={isSelected}
+                  disabled={refused}
+                  onClick={() => selectProposal(candidate.proposalId)}
+                  style={{
+                    textAlign: 'left',
+                    background: '#fff',
+                    border: `1.5px solid ${isSelected ? tokens.action : tokens.border}`,
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    fontFamily: 'inherit',
+                    cursor: refused ? 'not-allowed' : 'pointer',
+                    opacity: refused ? 0.55 : 1,
+                    color: refused ? tokens.muted : tokens.ink,
+                  }}
+                >
+                  <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                    {candidate.title}
+                  </div>
+                  <div style={{ fontSize: '12px', color: tokens.muted, marginTop: '2px' }}>
+                    {candidate.spaceId}
+                    {candidate.state === 'closed' ? ' · Closed' : ''}
+                  </div>
+                  {refused ? (
+                    <div
+                      data-testid={`vote-proposal-refusal-${candidate.proposalId}`}
+                      style={{
+                        fontSize: '12.5px',
+                        color: tokens.muted,
+                        marginTop: '6px',
+                      }}
+                    >
+                      {CITIZEN_ONLY_REFUSAL}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      ) : null}
+
       <Card padding="24px 26px" radius={14}>
         <div
           style={{
@@ -220,22 +344,22 @@ export function VoteScreen({
                 letterSpacing: '-.01em',
               }}
             >
-              {proposal?.title ?? 'Programme consultation'}
+              {selected?.title ?? 'Programme consultation'}
             </h2>
             <div style={{ fontSize: '13.5px', color: tokens.muted }}>
               Space{' '}
               <span style={{ color: tokens.ink, fontWeight: 600 }}>
-                {RESIDENT_SPACE_ID}
+                {selected?.spaceId ?? RESIDENT_SPACE_ID}
               </span>{' '}
               · one vote per KYC-attested resident · gasless signature
             </div>
           </div>
           <Chip
-            tone={proposal?.state === 'closed' ? 'neutral' : 'success'}
+            tone={selected?.state === 'closed' ? 'neutral' : 'success'}
             dot
             style={{ fontWeight: 600, padding: '5px 10px' }}
           >
-            {proposal?.state === 'closed' ? 'Closed' : 'Open · closes 30 Sep'}
+            {selected?.state === 'closed' ? 'Closed' : 'Open · closes 30 Sep'}
           </Chip>
         </div>
 
@@ -275,7 +399,7 @@ export function VoteScreen({
               }}
             >
               {CHOICES.map((choice, index) => {
-                const isSelected = selected === index;
+                const isSelected = selectedChoice === index;
                 const disabled = !eligibility.eligible;
                 return (
                   <button
@@ -364,7 +488,7 @@ export function VoteScreen({
             >
               Voting power 1 · strategy{' '}
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                eas-attestation(kade.kyc.v1)
+                erc721(Colosseum)
               </span>
             </div>
 
