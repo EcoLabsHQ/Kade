@@ -121,13 +121,12 @@ export function encodeKycAttestationData(fields: KycFields): Hex {
 /**
  * The approval an irreversible identity attestation requires.
  *
- * Mirrors `PermitIssuanceGate` / `RegistrationApproval`: the gate must record
- * that it was approved and by whom.
+ * Mirrors `PermitIssuanceGate` / `RegistrationApproval`: the gate is a single
+ * `true` flag. No approver name or timestamp is recorded, so
+ * `KADE_KYC_ISSUANCE_APPROVED=true` alone is sufficient.
  */
 export interface KycIssuanceGate {
   readonly onchainGateApproved: boolean;
-  readonly approvedBy: string;
-  readonly approvedAt: string;
 }
 
 /** Read the issuance gate from the server environment, if recorded. */
@@ -136,8 +135,6 @@ export function readKycIssuanceGate(): KycIssuanceGate | null {
   if (!approved) return null;
   return {
     onchainGateApproved: approved === 'true',
-    approvedBy: process.env.KADE_KYC_ISSUANCE_APPROVED_BY?.trim() ?? '',
-    approvedAt: process.env.KADE_KYC_ISSUANCE_APPROVED_AT?.trim() ?? '',
   };
 }
 
@@ -146,11 +143,6 @@ export function assertKycIssuanceApproved(gate: KycIssuanceGate): void {
     throw new Error(
       'kade.kyc.v1 issuance blocked: the Onchain gate has not been approved ' +
         '(week-2 contract section 7, checkpoint 3). Issuance is irreversible.',
-    );
-  }
-  if (!gate.approvedBy || !gate.approvedAt) {
-    throw new Error(
-      'kade.kyc.v1 issuance blocked: approval must record who approved it and when.',
     );
   }
 }

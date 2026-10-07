@@ -111,8 +111,6 @@ describe('prepareKycAttestation', () => {
   it('is blocked and unsent when the gate is not approved', () => {
     const result = prepareKycAttestation(fields(), {
       onchainGateApproved: false,
-      approvedBy: 'owner',
-      approvedAt: '2026-09-24',
     });
     expect(result.status).toBe('blocked');
     expect(result.sent).toBe(false);
@@ -121,21 +119,9 @@ describe('prepareKycAttestation', () => {
     }
   });
 
-  it('is blocked when the approval does not say who approved it', () => {
-    const result = prepareKycAttestation(fields(), {
-      onchainGateApproved: true,
-      approvedBy: '',
-      approvedAt: '',
-    });
-    expect(result.status).toBe('blocked');
-    expect(result.sent).toBe(false);
-  });
-
   it('prepares a valid, unsent payload when the gate is approved', () => {
     const result = prepareKycAttestation(fields(), {
       onchainGateApproved: true,
-      approvedBy: 'owner',
-      approvedAt: '2026-09-24',
     });
     expect(result.status).toBe('prepared');
     expect(result.sent).toBe(false);
@@ -148,8 +134,6 @@ describe('prepareKycAttestation', () => {
   it('blocks an unencodable payload rather than preparing a wrong one', () => {
     const result = prepareKycAttestation(fields({ nationality: 'NLD' }), {
       onchainGateApproved: true,
-      approvedBy: 'owner',
-      approvedAt: '2026-09-24',
     });
     expect(result.status).toBe('blocked');
     expect(result.sent).toBe(false);
@@ -157,22 +141,18 @@ describe('prepareKycAttestation', () => {
 });
 
 describe('assertKycIssuanceApproved', () => {
-  it('throws without approval, and without an approver', () => {
+  it('throws only without approval', () => {
     expect(() =>
       assertKycIssuanceApproved({
         onchainGateApproved: false,
-        approvedBy: '',
-        approvedAt: '',
       }),
     ).toThrow(/Onchain gate/i);
 
     expect(() =>
       assertKycIssuanceApproved({
         onchainGateApproved: true,
-        approvedBy: '',
-        approvedAt: '',
       }),
-    ).toThrow(/who approved/i);
+    ).not.toThrow();
   });
 });
 
@@ -181,14 +161,10 @@ describe('readKycIssuanceGate', () => {
     expect(readKycIssuanceGate()).toBeNull();
   });
 
-  it('reads the recorded approval', () => {
+  it('reads the recorded approval from the single flag', () => {
     vi.stubEnv('KADE_KYC_ISSUANCE_APPROVED', 'true');
-    vi.stubEnv('KADE_KYC_ISSUANCE_APPROVED_BY', 'owner');
-    vi.stubEnv('KADE_KYC_ISSUANCE_APPROVED_AT', '2026-09-24');
     expect(readKycIssuanceGate()).toEqual({
       onchainGateApproved: true,
-      approvedBy: 'owner',
-      approvedAt: '2026-09-24',
     });
   });
 });

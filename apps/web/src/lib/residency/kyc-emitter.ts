@@ -37,8 +37,8 @@ import type { KycIssuanceGate } from './kyc-attestation';
  *      and the recipient from `safe_deployments` — it reads the real state
  *      rather than asserting it;
  *   3. it **refuses to sign or send unless the explicit issuance approval is
- *      recorded** (`KADE_KYC_ISSUANCE_APPROVED` / `_BY` / `_AT`, the gate
- *      `./kyc-attestation` already defines);
+ *      recorded** (`KADE_KYC_ISSUANCE_APPROVED`, the gate `./kyc-attestation`
+ *      already defines);
  *   4. a `prepared` result carries the exact calldata and `sent: false`; only a
  *      confirmed transaction yields `sent: true`, and only then is the frozen
  *      `identity_attestations` mirror written.
@@ -651,7 +651,7 @@ export async function issueKycAttestation(
 
   try {
     assertKycIssuanceApproved(
-      gate ?? { onchainGateApproved: false, approvedBy: '', approvedAt: '' },
+      gate ?? { onchainGateApproved: false },
     );
   } catch (cause) {
     return {

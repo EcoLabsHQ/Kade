@@ -43,8 +43,6 @@ const MANAGED_KEYS = [
   'KADE_MEMBERSHIP_MANAGER_ADDRESS',
   'KADE_MEMBERSHIP_CHAIN_ID',
   'KADE_MEMBERSHIP_ISSUANCE_APPROVED',
-  'KADE_MEMBERSHIP_ISSUANCE_APPROVED_BY',
-  'KADE_MEMBERSHIP_ISSUANCE_APPROVED_AT',
 ] as const;
 
 const saved: Record<string, string | undefined> = {};
@@ -70,8 +68,6 @@ beforeEach(() => {
   process.env.KADE_MEMBERSHIP_MANAGER_ADDRESS = MANAGER;
   process.env.KADE_MEMBERSHIP_CHAIN_ID = '42161';
   process.env.KADE_MEMBERSHIP_ISSUANCE_APPROVED = 'true';
-  process.env.KADE_MEMBERSHIP_ISSUANCE_APPROVED_BY = 'owner';
-  process.env.KADE_MEMBERSHIP_ISSUANCE_APPROVED_AT = '2026-10-06';
 });
 
 afterEach(() => {

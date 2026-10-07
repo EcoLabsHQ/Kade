@@ -22,8 +22,6 @@ const PROFILE = '11111111-1111-1111-1111-111111111111';
 
 const APPROVED = {
   onchainGateApproved: true,
-  approvedBy: 'owner',
-  approvedAt: '2026-10-06',
 } as const;
 
 function fakeStore(overrides: Partial<MembershipTransitionStore> = {}): MembershipTransitionStore & {
@@ -63,20 +61,21 @@ describe('membership issuance gate', () => {
     expect(
       readMembershipIssuanceGate({
         KADE_MEMBERSHIP_ISSUANCE_APPROVED: 'true',
-        KADE_MEMBERSHIP_ISSUANCE_APPROVED_BY: 'owner',
-        KADE_MEMBERSHIP_ISSUANCE_APPROVED_AT: '2026-10-06',
       }),
     ).toEqual(APPROVED);
   });
 
-  it('asserts approval and the approver', () => {
+  it('asserts approval with only the approved flag', () => {
     expect(() => assertMembershipIssuanceApproved(APPROVED)).not.toThrow();
     expect(() =>
       assertMembershipIssuanceApproved({ ...APPROVED, onchainGateApproved: false }),
     ).toThrow(/blocked/);
-    expect(() =>
-      assertMembershipIssuanceApproved({ ...APPROVED, approvedBy: '' }),
-    ).toThrow(/who approved/);
+  });
+
+  it('is not approved for any other value of the flag', () => {
+    expect(
+      readMembershipIssuanceGate({ KADE_MEMBERSHIP_ISSUANCE_APPROVED: 'false' }),
+    ).toEqual({ onchainGateApproved: false });
   });
 });
 

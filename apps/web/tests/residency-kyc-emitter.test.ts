@@ -43,8 +43,6 @@ const NULLIFIER_TEXT = '0x' + 'ab'.repeat(32);
 
 const APPROVED: KycIssuanceGate = {
   onchainGateApproved: true,
-  approvedBy: 'project owner',
-  approvedAt: '2026-09-24',
 };
 
 function padAddress(address: Address): Hex {
@@ -295,7 +293,7 @@ describe('prepareKycIssuance', () => {
     const { store } = makeStore();
     const result = await prepareKycIssuance('p', {
       store,
-      gate: { onchainGateApproved: false, approvedBy: 'owner', approvedAt: 'x' },
+      gate: { onchainGateApproved: false },
     });
     expect(result.status).toBe('blocked');
     expect(result.sent).toBe(false);
@@ -369,7 +367,7 @@ describe('issueKycAttestation', () => {
 
   it('sends nothing when the approval is recorded but not granted', async () => {
     const mocks = makeIssueDeps({
-      gate: { onchainGateApproved: false, approvedBy: 'owner', approvedAt: 'x' },
+      gate: { onchainGateApproved: false },
     });
     const result = await issueKycAttestation('p', mocks.deps);
     expect(result.sent).toBe(false);
