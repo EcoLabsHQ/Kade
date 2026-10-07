@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { deriveResidencyView, type ResidencyFacts } from '@/lib/residency/checks';
 import { ColosseumResidency } from '@/components/residency/ColosseumResidency';
-import { documentsFlagKey } from '@/components/residency/colosseum-progress';
+import {
+  EMPTY_COLOSSEUM_PROGRESS,
+  type ColosseumProgress,
+  type ColosseumProgressStore,
+} from '@/components/residency/colosseum-progress';
 import { FullScreenReveal } from '@/components/residency/FullScreenReveal';
 import { playCitizenshipCue } from '@/components/residency/reveal-sound';
 
@@ -42,6 +46,70 @@ function facts(overrides: Partial<ResidencyFacts> = {}): ResidencyFacts {
 
 function checks(f: ResidencyFacts) {
   return deriveResidencyView(f, true).checks;
+}
+
+/** A server-read Colosseum state fixture. */
+function progress(overrides: Partial<ColosseumProgress> = {}): ColosseumProgress {
+  return { ...EMPTY_COLOSSEUM_PROGRESS, ...overrides };
+}
+
+/**
+ * A spy store: records each transition and returns null, so the section keeps
+ * its optimistic state. Used to assert the write path fired.
+ */
+function spyStore(): ColosseumProgressStore {
+  return {
+    startWindow: vi.fn(async () => null),
+    clearWindow: vi.fn(async () => null),
+    claimResidencyPass: vi.fn(async () => null),
+    becomeCitizen: vi.fn(async () => null),
+  };
+}
+
+/**
+ * An in-memory server store so a remount sees the persisted state, exactly as a
+ * second request to the server would. `snapshot()` is the value the server would
+ * hand the next render.
+ */
+function memoryStore(initial: ColosseumProgress = EMPTY_COLOSSEUM_PROGRESS) {
+  let state = initial;
+  const store: ColosseumProgressStore = {
+    async startWindow(iso) {
+      state =
+        state.residentSince === null ? { ...state, residentSince: iso } : state;
+      return state;
+    },
+    async clearWindow() {
+      state =
+        state.citizenAt !== null || state.residentSince === null
+          ? state
+          : { ...state, residentSince: null };
+      return state;
+    },
+    async claimResidencyPass(iso, serial) {
+      state =
+        state.residencyPassAt !== null
+          ? state
+          : {
+              ...state,
+              residencyPassAt: iso,
+              residencyPassSerial: state.residencyPassSerial ?? serial,
+            };
+      return state;
+    },
+    async becomeCitizen(iso, serial) {
+      state =
+        state.citizenAt !== null
+          ? state
+          : {
+              ...state,
+              citizenAt: iso,
+              passportSerial: state.passportSerial ?? serial,
+            };
+      return state;
+    },
+  };
+  return { store, snapshot: () => state };
 }
 
 beforeEach(() => {
@@ -399,25 +467,19 @@ describe('ColosseumResidency — states', () => {
   });
 });
 
-describe('ColosseumResidency — persisted demo progress', () => {
+describe('ColosseumResidency — server-backed demo progress', () => {
   const KEY = 'app-42';
 
-  it('resumes the countdown from the stored residentSince instead of restarting it', () => {
+  it('resumes the countdown from the server-read residentSince instead of restarting it', () => {
     // A window that started one minute ago: 1:00 should remain, not 2:00.
-    window.localStorage.setItem(
-      'kade.colosseum.progress.v2.app-42',
-      JSON.stringify({
-        residentSince: new Date(Date.now() - 60_000).toISOString(),
-        citizenAt: null,
-        passportSerial: null,
-      }),
-    );
-
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: new Date(Date.now() - 60_000).toISOString(),
+        })}
       />,
     );
 
@@ -425,21 +487,17 @@ describe('ColosseumResidency — persisted demo progress', () => {
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('1:00');
   });
 
-  it('shows the certificate immediately from a stored citizenship, without re-animating', () => {
-    window.localStorage.setItem(
-      'kade.colosseum.progress.v2.app-42',
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-01T00:02:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-      }),
-    );
-
+  it('shows the certificate immediately from a server-recorded citizenship, without re-animating', () => {
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-01T00:02:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
 
@@ -455,12 +513,14 @@ describe('ColosseumResidency — persisted demo progress', () => {
     expect(screen.queryByTestId('colosseum-countdown')).toBeNull();
   });
 
-  it('writes citizenAt and a demo serial on becoming a citizen, and clears the clock on decay', () => {
+  it('persists citizenAt and a demo serial through the store on becoming a citizen, and clears the clock on decay', () => {
+    const { store, snapshot } = memoryStore();
     const { unmount } = render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
 
@@ -470,84 +530,111 @@ describe('ColosseumResidency — persisted demo progress', () => {
     expect(screen.getByTestId('colosseum-state-d')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
-    const stored = JSON.parse(
-      window.localStorage.getItem('kade.colosseum.progress.v2.app-42')!,
-    ) as { citizenAt: string | null; passportSerial: string | null };
-    expect(stored.citizenAt).not.toBeNull();
-    expect(stored.passportSerial).toMatch(/^KADE-CL-/);
+    expect(snapshot().citizenAt).not.toBeNull();
+    expect(snapshot().passportSerial).toMatch(/^KADE-CL-/);
     unmount();
 
     // Decay: checks stop being green before citizenship clears the live clock.
-    window.localStorage.removeItem('kade.colosseum.progress.v2.app-42');
+    const decay = memoryStore();
     const { rerender } = render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={decay.store}
       />,
     );
     // Start the window, then drop a check.
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(window.localStorage.getItem('kade.colosseum.progress.v2.app-42')).not.toBeNull();
+    expect(decay.snapshot().residentSince).not.toBeNull();
     rerender(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts({ review: 'pending' }))}
         profileKey={KEY}
+        store={decay.store}
       />,
     );
-    const afterDecay = JSON.parse(
-      window.localStorage.getItem('kade.colosseum.progress.v2.app-42') ?? 'null',
-    ) as { residentSince: string | null } | null;
-    expect(afterDecay?.residentSince ?? null).toBeNull();
+    expect(decay.snapshot().residentSince).toBeNull();
   });
 
-  it('scopes the demo progress per profile', () => {
-    window.localStorage.setItem(
-      'kade.colosseum.progress.v2.other-app',
-      JSON.stringify({
-        residentSince: null,
-        citizenAt: null,
-        passportSerial: null,
-      }),
-    );
-
+  it('starts the window once the four checks are green, and records it through the store', () => {
+    const store = spyStore();
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
 
-    // A different profile's (empty) record must not hide this profile's clock.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(store.startWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it('scopes the demo state per account (server-read, not a shared browser key)', () => {
+    // Two different accounts get two different server states: the section renders
+    // the one it was handed, so account B's empty state cannot hide account A's.
+    const { unmount } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="account-a"
+        initialProgress={progress({
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-AAAA1111',
+        })}
+      />,
+    );
+    expect(screen.getByTestId('colosseum-state-e')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="account-b"
+        initialProgress={progress()}
+      />,
+    );
     expect(screen.getByTestId('colosseum-state-c')).toBeInTheDocument();
     expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
   });
 
-  it('reads and writes under the bumped v2 key namespace, never the abandoned one', () => {
+  it('writes no Colosseum progress or documents key to localStorage', () => {
+    const { store } = memoryStore();
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
-    // Starting the live clock writes the v2 key and never the v1 key.
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+
+    // The state is server-side: neither the current nor the abandoned progress
+    // key, and no documents key, is written to the browser. (The nav highlight
+    // is a separate, transient UI hint.)
     expect(
       window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       window.localStorage.getItem(`kade.colosseum.progress.${KEY}`),
     ).toBeNull();
-
-    // The documents flag is bumped alongside it.
-    expect(documentsFlagKey('app-x')).toBe('kade.documents.complete.v2.app-x');
+    expect(
+      window.localStorage.getItem(`kade.documents.complete.v2.${KEY}`),
+    ).toBeNull();
   });
 });
 
@@ -572,11 +659,13 @@ describe('ColosseumResidency — the virtual residency pass', () => {
   const KEY = 'app-pass';
 
   it('claims the pass from the resident state, reveals it full-screen, and persists the demo serial', () => {
+    const { store, snapshot } = memoryStore();
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
 
@@ -608,12 +697,9 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
 
-    // The claim is persisted as demo state.
-    const stored = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
-    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
-    expect(stored.residencyPassSerial).toMatch(/^KADE-RES-/);
-    expect(stored.residencyPassAt).not.toBeNull();
+    // The claim is persisted server-side for the account.
+    expect(snapshot().residencyPassSerial).toMatch(/^KADE-RES-/);
+    expect(snapshot().residencyPassAt).not.toBeNull();
   });
 
   it('dismisses with Escape, a click outside and the visible close control, and restores the page', () => {
@@ -653,11 +739,13 @@ describe('ColosseumResidency — the virtual residency pass', () => {
   });
 
   it('re-opens the same persisted pass after a reload rather than minting a new one', () => {
+    const { store, snapshot } = memoryStore();
     const { unmount } = render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
     fireEvent.click(
@@ -668,11 +756,14 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     ).getByTestId('colosseum-residency-pass-overlay-serial').textContent;
     unmount();
 
+    // A second request (remount) is handed the server's canonical state.
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={snapshot()}
+        store={store}
       />,
     );
     // Already claimed: the resident card is shown, and its control re-opens the
@@ -709,24 +800,21 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     expect(screen.getByTestId('colosseum-residency-pass')).toBeInTheDocument();
     expect(screen.queryByTestId('colosseum-certificate')).toBeNull();
     unmount();
-    window.localStorage.clear();
 
-    // Citizen: the same structure, differing only in the artifact shown.
-    window.localStorage.setItem(
-      'kade.colosseum.progress.v2.resident-layout',
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: '2026-01-01T00:01:00.000Z',
-        residencyPassSerial: 'KADE-RES-ABCD2345',
-      }),
-    );
+    // Citizen: the same structure, differing only in the artifact shown. The
+    // server state carries both the pass and the citizenship.
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey="resident-layout"
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+          residencyPassAt: '2026-01-01T00:01:00.000Z',
+          residencyPassSerial: 'KADE-RES-ABCD2345',
+        })}
       />,
     );
 
@@ -738,19 +826,19 @@ describe('ColosseumResidency — the virtual residency pass', () => {
   });
 
   it('keeps the claimed residency pass when citizenship is later recorded', () => {
+    const { store, snapshot } = memoryStore();
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        store={store}
       />,
     );
     fireEvent.click(
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
-    const claimed = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
-    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
+    const claimed = snapshot();
     fireEvent.keyDown(document, { key: 'Escape' });
 
     act(() => {
@@ -759,30 +847,21 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
     // Recording citizenship must not drop the already-claimed pass fields.
-    const stored = JSON.parse(
-      window.localStorage.getItem(`kade.colosseum.progress.v2.${KEY}`)!,
-    ) as { residencyPassAt: string | null; residencyPassSerial: string | null };
-    expect(stored.residencyPassSerial).toBe(claimed.residencyPassSerial);
-    expect(stored.residencyPassAt).toBe(claimed.residencyPassAt);
+    expect(snapshot().residencyPassSerial).toBe(claimed.residencyPassSerial);
+    expect(snapshot().residencyPassAt).toBe(claimed.residencyPassAt);
   });
 
-  it('opens the full-screen certificate from the inline artifact after a stored citizenship', () => {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
-
+  it('opens the full-screen certificate from the inline artifact after a server-recorded citizenship', () => {
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
 
@@ -839,21 +918,16 @@ describe('ColosseumResidency — the residency pass security print', () => {
   });
 
   it('renders the certificate texture inside its opaque card', () => {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
     fireEvent.click(
@@ -979,21 +1053,16 @@ describe('ColosseumResidency — exactly one reveal light pass', () => {
   });
 
   it('renders exactly one sweep element for the standard certificate', () => {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
     fireEvent.click(
@@ -1031,21 +1100,16 @@ describe('ColosseumResidency — the inline certificate control', () => {
   const KEY = 'app-trigger';
 
   function renderStoredCitizen() {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
     return render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
   }
@@ -1239,22 +1303,16 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
   });
 
   it('does not auto-open for an already-citizen restored state', () => {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
-
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
 
@@ -1267,12 +1325,13 @@ describe('ColosseumResidency — the citizenship certificate reveal timing', () 
 describe('ColosseumResidency — the celebratory citizenship tier', () => {
   const KEY = 'app-celebration';
 
-  function renderResident() {
+  function renderResident(initial: ColosseumProgress = EMPTY_COLOSSEUM_PROGRESS) {
     return render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={initial}
       />,
     );
   }
@@ -1301,17 +1360,13 @@ describe('ColosseumResidency — the celebratory citizenship tier', () => {
   });
 
   it('does not use the celebratory tier for a stored-citizen open', () => {
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
+    renderResident(
+      progress({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: '2026-01-02T00:00:00.000Z',
         passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
       }),
     );
-    renderResident();
 
     fireEvent.click(
       screen.getByRole('button', { name: /open the citizenship certificate full-screen/i }),
@@ -1691,21 +1746,16 @@ describe('ColosseumResidency — the reveal sound', () => {
     const cue = vi.mocked(playCitizenshipCue);
     cue.mockClear();
 
-    window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${KEY}`,
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-02T00:00:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-        residencyPassAt: null,
-        residencyPassSerial: null,
-      }),
-    );
     render(
       <ColosseumResidency
         tier="colosseum"
         checks={checks(facts())}
         profileKey={KEY}
+        initialProgress={progress({
+          residentSince: '2026-01-01T00:00:00.000Z',
+          citizenAt: '2026-01-02T00:00:00.000Z',
+          passportSerial: 'KADE-CL-ABCD2345',
+        })}
       />,
     );
     fireEvent.click(

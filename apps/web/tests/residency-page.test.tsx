@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
   getSessionUser: vi.fn(),
   loadResidencySnapshot: vi.fn(),
   loadShellSafe: vi.fn(),
+  loadColosseumState: vi.fn(),
   stepProps: null as Record<string, unknown> | null,
 }));
 
@@ -25,6 +26,9 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 vi.mock('@/lib/residency/server', () => ({
   loadResidencySnapshot: hoisted.loadResidencySnapshot,
+}));
+vi.mock('@/lib/residency/colosseum-state-server', () => ({
+  loadColosseumState: hoisted.loadColosseumState,
 }));
 vi.mock('@/lib/safe/shell', () => ({
   loadShellSafe: hoisted.loadShellSafe,
@@ -95,6 +99,16 @@ beforeEach(() => {
     status: null,
     explorerUrl: null,
   });
+  hoisted.loadColosseumState.mockResolvedValue({
+    progress: {
+      residentSince: null,
+      citizenAt: null,
+      passportSerial: null,
+      residencyPassAt: null,
+      residencyPassSerial: null,
+    },
+    documentsComplete: false,
+  });
 });
 
 afterEach(() => {
@@ -130,5 +144,29 @@ describe('ResidencyPage', () => {
     expect(hoisted.stepProps?.treasuryAddress).toBe(
       '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A',
     );
+  });
+
+  it('passes the server-read Colosseum state and documents flag to the step', async () => {
+    hoisted.loadColosseumState.mockResolvedValue({
+      progress: {
+        residentSince: '2026-01-01T00:00:00.000Z',
+        citizenAt: '2026-01-01T00:02:00.000Z',
+        passportSerial: 'KADE-CL-ABCD2345',
+        residencyPassAt: null,
+        residencyPassSerial: null,
+      },
+      documentsComplete: true,
+    });
+
+    render((await ResidencyPage()) as ReactElement);
+
+    expect(hoisted.stepProps?.colosseumProgress).toEqual({
+      residentSince: '2026-01-01T00:00:00.000Z',
+      citizenAt: '2026-01-01T00:02:00.000Z',
+      passportSerial: 'KADE-CL-ABCD2345',
+      residencyPassAt: null,
+      residencyPassSerial: null,
+    });
+    expect(hoisted.stepProps?.documentsComplete).toBe(true);
   });
 });

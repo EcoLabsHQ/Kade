@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Hex } from 'viem';
 import { tokens } from '@/components/ui/tokens';
@@ -10,14 +10,23 @@ import { usd, usd2, usdc2 } from '@/lib/wealth/format';
 import type { ResidencySnapshot } from '@/lib/residency/server';
 import type { PermitIssuanceResult } from '@/lib/residency/permit';
 import {
+  becomeColosseumCitizenAction,
+  claimColosseumResidencyAction,
   claimMembershipAction,
+  clearColosseumWindowAction,
   createSelfSessionAction,
   issueResidencyPermitAction,
+  setColosseumDocumentsCompleteAction,
+  startColosseumWindowAction,
   type SelfSessionActionOutcome,
 } from '@/app/residency/actions';
 import { ServiceFeePayment } from './ServiceFeePayment';
 import { ColosseumResidency } from './ColosseumResidency';
-import { documentsFlagKey, readDocumentsComplete, writeDocumentsComplete } from './colosseum-progress';
+import {
+  EMPTY_COLOSSEUM_PROGRESS,
+  type ColosseumProgress,
+  type ColosseumProgressStore,
+} from './colosseum-progress';
 import {
   SelfVerificationModal,
   type SelfModalState,
@@ -28,10 +37,10 @@ import {
  *
  * The header, the readiness pill, the "Before you can start" card and the
  * service-fee card are the reference's. The readiness rows derive their state
- * from the records the server assembled; documents are not tracked in this
- * iteration, so that row mirrors the baseline and Upload is a no-op. The service
- * fee is the real server-resolved amount, payable only once the prerequisites
- * are green.
+ * from the records the server assembled; the documents row is a declared demo
+ * whose flag is read server-side for the account and written through a server
+ * action. The service fee is the real server-resolved amount, payable only once
+ * the prerequisites are green.
  */
 
 export interface ResidencyStepProps {
@@ -45,6 +54,10 @@ export interface ResidencyStepProps {
   readonly chainId: number;
   readonly usdcAddress: string;
   readonly explorerUrl: string;
+  /** The Colosseum demo state, read server-side for this account. */
+  readonly colosseumProgress?: ColosseumProgress;
+  /** The demo "Documents complete" flag, read server-side for this account. */
+  readonly documentsComplete?: boolean;
 }
 
 function toSelfModalState(outcome: SelfSessionActionOutcome): SelfModalState {
@@ -104,24 +117,45 @@ export function ResidencyStep({
   chainId,
   usdcAddress,
   explorerUrl,
+  colosseumProgress = EMPTY_COLOSSEUM_PROGRESS,
+  documentsComplete = false,
 }: ResidencyStepProps) {
   const router = useRouter();
   const [notice, setNotice] = useState<string | null>(null);
   const [selfOpen, setSelfOpen] = useState(false);
   const [selfState, setSelfState] = useState<SelfModalState | null>(null);
   // Demo-only: documents are not collected in this build, so Upload marks the
-  // row complete in local state. The presence flag is persisted (localStorage)
-  // so the Overview tracker can read it too; the count stays session-only.
-  const [documentsUploaded, setDocumentsUploaded] = useState(false);
+  // row complete. The flag is read server-side for the account (passed down) and
+  // written back through a server action, so it follows the account, not the
+  // browser; the count stays session-only.
+  const [documentsUploaded, setDocumentsUploaded] = useState(documentsComplete);
   const { view } = snapshot;
 
-  // The stable key the Colosseum demo progress (and the documents flag) are
-  // stored under — the same `applications.id` the Overview page reads.
+  // The stable key the Colosseum demo clock is scoped under (the recorded
+  // `applications.id`), used only as the section's reset dependency now that the
+  // state itself is server-side.
   const profileKey = snapshot.applicationId ?? null;
 
   useEffect(() => {
-    setDocumentsUploaded(readDocumentsComplete(documentsFlagKey(profileKey)));
-  }, [profileKey]);
+    setDocumentsUploaded(documentsComplete);
+  }, [documentsComplete]);
+
+  // The Colosseum demo writes. Each maps a section transition to its server
+  // action and returns the canonical state; a failed write reports null so the
+  // section keeps its optimistic state rather than losing it.
+  const colosseumStore = useMemo<ColosseumProgressStore>(
+    () => ({
+      startWindow: async () =>
+        (await startColosseumWindowAction())?.progress ?? null,
+      clearWindow: async () =>
+        (await clearColosseumWindowAction())?.progress ?? null,
+      claimResidencyPass: async (_iso, serial) =>
+        (await claimColosseumResidencyAction(serial))?.progress ?? null,
+      becomeCitizen: async (_iso, serial) =>
+        (await becomeColosseumCitizenAction(serial))?.progress ?? null,
+    }),
+    [],
+  );
 
   const identity = view.checks.find((c) => c.id === 'identity');
   const funds = view.checks.find((c) => c.id === 'funds');
@@ -167,7 +201,8 @@ export function ResidencyStep({
     {
       key: 'documents',
       title: 'Documents complete',
-      // Demo-only: Upload marks this row complete in local state for the demo.
+      // Demo-only: Upload marks this row complete for the demo and persists the
+      // flag server-side, per account.
       meta: documentsUploaded
         ? 'Marked complete in the demo · no document is uploaded'
         : '0 of 6 uploaded · hashed & pinned',
@@ -175,7 +210,7 @@ export function ResidencyStep({
       action: 'Upload',
       onClick: () => {
         setDocumentsUploaded(true);
-        writeDocumentsComplete(documentsFlagKey(profileKey), true);
+        void setColosseumDocumentsCompleteAction(true);
       },
     },
     {
@@ -433,6 +468,8 @@ export function ResidencyStep({
         checks={view.checks}
         tier={snapshot.tier}
         profileKey={profileKey}
+        initialProgress={colosseumProgress}
+        store={colosseumStore}
         onClaimMembership={claimMembership}
       />
 

@@ -7,6 +7,7 @@ import { getSessionUser } from '@/lib/supabase/server';
 import { readChainEnv, readWalletConnectProjectId } from '@/lib/env';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadResidencySnapshot } from '@/lib/residency/server';
+import { loadColosseumState } from '@/lib/residency/colosseum-state-server';
 import {
   isResidencyServiceFeeConfigured,
   readResidencyServiceFeeConfig,
@@ -49,6 +50,10 @@ export default async function ResidencyPage() {
     redirect('/onboarding');
   }
 
+  // The Colosseum demo state, read server-side for the account so it follows the
+  // resident across browsers rather than living in one browser's storage.
+  const colosseum = await loadColosseumState(session.userId);
+
   const settlement = activeSettlementChain();
   const network = settlement?.name ?? 'Ethereum Sepolia';
   const feeConfig = readResidencyServiceFeeConfig();
@@ -67,6 +72,8 @@ export default async function ResidencyPage() {
           chainId={feeConfig?.chainId ?? 0}
           usdcAddress={usdcAddress}
           explorerUrl={explorerUrl}
+          colosseumProgress={colosseum.progress}
+          documentsComplete={colosseum.documentsComplete}
         />
       </ContentContainer>
     </WalletProvider>

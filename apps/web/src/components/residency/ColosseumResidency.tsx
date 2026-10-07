@@ -10,12 +10,14 @@ import {
 import {
   claimResidencyPass,
   clearResidentSince,
+  EMPTY_COLOSSEUM_PROGRESS,
   generatePassportSerial,
   generateResidencyPassSerial,
   markCitizen,
   markResidentSince,
-  readColosseumProgress,
+  NOOP_COLOSSEUM_PROGRESS_STORE,
   type ColosseumProgress,
+  type ColosseumProgressStore,
 } from './colosseum-progress';
 import { ResidencyPass, ResidencyPassArtifact } from './ResidencyPass';
 import {
@@ -28,12 +30,13 @@ import {
  *
  * This is a declared demo layer: "Colosseum Resident" / "Colosseum Citizen" and
  * the citizenship certificate confer no real residency, citizenship, legal
- * status or on-chain record. Nothing here writes a table or calls an RPC. The
- * 2-minute clock and the certificate are demo state, persisted per profile
- * through the
- * `localStorage`-backed `./colosseum-progress` store (the same pattern as the
- * nav highlight), so navigating away or reloading does not restart the clock or
- * re-lock "Become a Citizen".
+ * status or on-chain record. Nothing here writes a table or calls an RPC
+ * directly. The 2-minute clock and the certificate are demo state, read
+ * server-side for the account and written back through server actions (see
+ * `@/lib/residency/colosseum-state-server`), so navigating away, reloading or
+ * signing in from another browser does not restart the clock or re-lock "Become
+ * a Citizen". The compliance window is the same
+ * `applications.colosseum_resident_since` the Citizen mint reads.
  *
  * Everything the section says about the resident comes from the real Residency
  * snapshot: the four derived checks (`identity`, `funds`, `review`,
@@ -136,11 +139,25 @@ export interface ColosseumResidencyProps {
    */
   readonly tier: string | null;
   /**
-   * The stable key the demo clock and certificate are stored under (the
+   * The stable key the demo clock and certificate are scoped under (the
    * recorded `applications.id`). Null/absent scopes the demo state under a
    * constant.
    */
   readonly profileKey?: string | null;
+  /**
+   * The demo state read server-side for this account. It is the initial value
+   * the section renders; the section keeps a local mirror and reconciles it with
+   * the canonical state the store returns. Absent means the demo-only surface
+   * (nothing persisted), which is the declared demo default.
+   */
+  readonly initialProgress?: ColosseumProgress;
+  /**
+   * The server write paths. Each transition updates the local mirror
+   * synchronously (so the reveal timing and one-shot guards are unchanged) and
+   * persists through this store. Absent means a no-op store: the demo-only
+   * surface keeps its state for the session but persists nothing.
+   */
+  readonly store?: ColosseumProgressStore;
   /**
    * The claim trigger. Called once, on the first claim of each milestone, with
    * the target the server should mint (`resident` / `citizen`). It returns the
@@ -187,6 +204,8 @@ export function ColosseumResidency({
   checks,
   tier,
   profileKey,
+  initialProgress,
+  store,
   onClaimMembership,
 }: ColosseumResidencyProps) {
   const funds = checks.find((check) => check.id === 'funds');
@@ -200,20 +219,27 @@ export function ColosseumResidency({
   // satisfies it.
   const onColosseumTier = (tier ?? '').trim().toLowerCase() === 'colosseum';
 
-  // The demo clock and certificate, persisted per profile (see
-  // ./colosseum-progress). The state is seeded from storage on the client so a
-  // citizen load shows the certificate immediately and a resident load resumes
-  // the window rather than restarting it. On the server (and the first client
-  // render) the returned snapshot is hidden until hydration, so there is no
-  // mismatch.
+  // The demo clock and certificate, read server-side and passed down (see
+  // ./colosseum-progress and @/lib/residency/colosseum-state-server). The local
+  // mirror is seeded from the server state so a citizen load shows the
+  // certificate immediately and a resident load resumes the window rather than
+  // restarting it; every transition updates the mirror synchronously and then
+  // reconciles with the canonical state the store returns. The store is held in
+  // a ref so a caller that passes a fresh object each render does not re-run the
+  // effects.
+  const storeRef = useRef<ColosseumProgressStore>(
+    store ?? NOOP_COLOSSEUM_PROGRESS_STORE,
+  );
+  storeRef.current = store ?? NOOP_COLOSSEUM_PROGRESS_STORE;
+  const initialProgressRef = useRef<ColosseumProgress>(
+    initialProgress ?? EMPTY_COLOSSEUM_PROGRESS,
+  );
+  initialProgressRef.current = initialProgress ?? EMPTY_COLOSSEUM_PROGRESS;
+
   const [mounted, setMounted] = useState(false);
-  const [progress, setProgress] = useState<ColosseumProgress>({
-    residentSince: null,
-    citizenAt: null,
-    passportSerial: null,
-    residencyPassAt: null,
-    residencyPassSerial: null,
-  });
+  const [progress, setProgress] = useState<ColosseumProgress>(
+    initialProgress ?? EMPTY_COLOSSEUM_PROGRESS,
+  );
   const [now, setNow] = useState(() => Date.now());
   // The two full-screen demo reveals. They are pure presentation: opening or
   // closing them changes no persisted state and blocks nothing once dismissed.
@@ -234,7 +260,7 @@ export function ColosseumResidency({
   );
   // The certificate reveal must fire exactly once, on the *live* transition to
   // citizen — not on a restored citizen load and not again after a dismissal.
-  // `restoredCitizenRef` records whether the progress read at mount/profile
+  // `restoredCitizenRef` records whether the server state at mount/profile
   // change was already a citizen (so it never celebrates a restored state);
   // `celebratedCitizenRef` latches the one live celebration per mount.
   const restoredCitizenRef = useRef(false);
@@ -242,9 +268,9 @@ export function ColosseumResidency({
 
   useEffect(() => {
     setMounted(true);
-    const restored = readColosseumProgress(profileKey ?? null);
+    const restored = initialProgressRef.current;
     setProgress(restored);
-    // Seed from the restored record so only a *new* citizenship celebrates.
+    // Seed from the server state so only a *new* citizenship celebrates.
     restoredCitizenRef.current = restored.citizenAt !== null;
     celebratedCitizenRef.current = false;
     setNow(Date.now());
@@ -256,21 +282,33 @@ export function ColosseumResidency({
     progress.residentSince !== null && secondsRemaining <= 0;
   const citizenEligible = allChecksMet && windowElapsed && !citizen;
 
-  // Keep the persisted clock honest against the real milestone, and tick it only
-  // while the window is live. Runs only after mount so the server render never
-  // writes (or reads) demo state.
+  // Keep the server-side clock honest against the real milestone, and tick it
+  // only while the window is live. The start/clear pair writes the same
+  // `applications.colosseum_resident_since` the Citizen mint reads, so the
+  // displayed countdown and the mint's compliance window are one record. Runs
+  // only after mount so the server render never writes demo state.
   useEffect(() => {
     if (!mounted) return;
     if (!allChecksMet || citizen) {
       // The checks stopped being green before citizenship: the clock resets,
       // matching the existing decay. Once a citizen, the record is kept.
-      if (!citizen) setProgress(clearResidentSince(profileKey ?? null));
+      if (!citizen && progress.residentSince !== null) {
+        setProgress((current) => clearResidentSince(current));
+        void storeRef.current.clearWindow().then((canonical) => {
+          if (canonical) setProgress(canonical);
+        });
+      }
       return;
     }
     if (progress.residentSince === null) {
-      // First time all four checks are green: start the window.
-      setProgress(markResidentSince(profileKey ?? null, new Date().toISOString()));
+      // First time all four checks are green: start the window. The local mirror
+      // updates on the same tick; the server record is the durable one.
+      const iso = new Date().toISOString();
+      setProgress((current) => markResidentSince(current, iso));
       setNow(Date.now());
+      void storeRef.current.startWindow(iso).then((canonical) => {
+        if (canonical) setProgress(canonical);
+      });
       return;
     }
     if (secondsRemaining <= 0) return;
@@ -282,7 +320,6 @@ export function ColosseumResidency({
     citizen,
     progress.residentSince,
     secondsRemaining,
-    profileKey,
   ]);
 
   // The nav highlight is on exactly while "Become a Citizen" is available. It
@@ -328,13 +365,18 @@ export function ColosseumResidency({
   );
 
   const becomeCitizen = useCallback(() => {
-    setProgress(markCitizen(profileKey ?? null, new Date().toISOString(), generatePassportSerial()));
+    const iso = new Date().toISOString();
+    const serial = generatePassportSerial();
+    setProgress((current) => markCitizen(current, iso, serial));
     setColosseumAttention(false);
     // The claim is the trigger: the server re-validates and mints the Citizen
     // credential. The reveal opens from the local transition; the mint outcome
-    // is awaited afterwards.
+    // is awaited afterwards, and the demo state is persisted to the account.
     runClaim('citizen');
-  }, [profileKey, runClaim]);
+    void storeRef.current.becomeCitizen(iso, serial).then((canonical) => {
+      if (canonical) setProgress(canonical);
+    });
+  }, [runClaim]);
 
   // Celebrate the milestone with the full-screen certificate reveal, exactly
   // once, on the live transition to citizen. A restored citizen (already
@@ -356,20 +398,20 @@ export function ColosseumResidency({
     // The mint is triggered only on the *first* claim; re-opening the pass is
     // not a claim and must not call the server again.
     const alreadyClaimed = progress.residencyPassAt !== null;
-    setProgress(
-      claimResidencyPass(
-        profileKey ?? null,
-        new Date().toISOString(),
-        generateResidencyPassSerial(),
-      ),
-    );
+    const iso = new Date().toISOString();
+    const serial = generateResidencyPassSerial();
+    setProgress((current) => claimResidencyPass(current, iso, serial));
     setResidencyPassOpen(true);
     if (!alreadyClaimed) {
       // The reveal is already opening, so the mint never changes its timing; the
-      // outcome is awaited afterwards and reported honestly.
+      // outcome is awaited afterwards and reported honestly. The demo claim is
+      // persisted to the account (idempotent server-side).
       runClaim('resident');
+      void storeRef.current.claimResidencyPass(iso, serial).then((canonical) => {
+        if (canonical) setProgress(canonical);
+      });
     }
-  }, [profileKey, progress.residencyPassAt, runClaim]);
+  }, [progress.residencyPassAt, runClaim]);
 
   const residencyPassClaimed = progress.residencyPassSerial !== null;
   const showCertificate = mounted && citizen;

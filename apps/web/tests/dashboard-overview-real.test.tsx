@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { VaultHoldingRow } from '@/lib/wealth/vault-holdings';
-import { documentsFlagKey } from '@/components/residency/colosseum-progress';
+import { EMPTY_COLOSSEUM_PROGRESS } from '@/components/residency/colosseum-progress';
 
 /**
  * The Overview dashboard over the resident's **real** state (T43).
@@ -29,6 +29,7 @@ const hoisted = vi.hoisted(() => ({
   loadFeePayment: vi.fn(),
   loadIdentityFact: vi.fn(),
   loadResidencyServiceFeePayment: vi.fn(),
+  loadColosseumState: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: hoisted.redirect }));
@@ -46,6 +47,9 @@ vi.mock('@/lib/residency/server', async (importOriginal) => {
 });
 vi.mock('@/lib/residency/service-fee-server', () => ({
   loadResidencyServiceFeePayment: hoisted.loadResidencyServiceFeePayment,
+}));
+vi.mock('@/lib/residency/colosseum-state-server', () => ({
+  loadColosseumState: hoisted.loadColosseumState,
 }));
 vi.mock('@/lib/onboarding/state', () => ({
   hasCompletedOnboarding: hoisted.hasCompletedOnboarding,
@@ -151,6 +155,10 @@ beforeEach(() => {
   hoisted.loadFeePayment.mockResolvedValue({ status: 'none' });
   hoisted.loadIdentityFact.mockResolvedValue(null);
   hoisted.loadResidencyServiceFeePayment.mockResolvedValue({ status: 'none' });
+  hoisted.loadColosseumState.mockResolvedValue({
+    progress: EMPTY_COLOSSEUM_PROGRESS,
+    documentsComplete: false,
+  });
 });
 
 describe('Overview dashboard real state', () => {
@@ -261,11 +269,14 @@ describe('Overview dashboard real state', () => {
     cleanup();
   });
 
-  it('reads the Residency documents flag written under the same application id', async () => {
-    // The Residency Upload action persists under `applications.id`; the route
-    // must hand the OverviewTracker that same key, or the row never turns green
-    // in the same browser.
-    window.localStorage.setItem(documentsFlagKey('app-1'), '1');
+  it('reflects the server-side Residency documents flag for the account', async () => {
+    // The Residency Upload action persists the demo flag server-side, per
+    // account; the route reads the same record, so the row turns green in every
+    // browser — not only the one that uploaded.
+    hoisted.loadColosseumState.mockResolvedValue({
+      progress: EMPTY_COLOSSEUM_PROGRESS,
+      documentsComplete: true,
+    });
 
     render(await OverviewPage());
 
@@ -276,7 +287,6 @@ describe('Overview dashboard real state', () => {
     );
 
     cleanup();
-    window.localStorage.clear();
   });
 
   it('marks the service fee actionable when the real prerequisites are green', async () => {

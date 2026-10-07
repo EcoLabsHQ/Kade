@@ -35,6 +35,7 @@ import {
   residencyFactsFrom,
 } from '@/lib/residency/server';
 import { loadResidencyServiceFeePayment } from '@/lib/residency/service-fee-server';
+import { loadColosseumState } from '@/lib/residency/colosseum-state-server';
 import { deriveResidencyView } from '@/lib/residency/checks';
 
 export const dynamic = 'force-dynamic';
@@ -141,13 +142,17 @@ export default async function OverviewPage() {
   // so they are issued in one stage rather than one after another. The identity
   // and service-fee reads are the **same** sources the Residency step uses, so
   // the tracker's rows cannot disagree with that screen.
-  const [shellSafe, onboarded, reviewState, identityFact, servicePayment] =
+  const [shellSafe, onboarded, reviewState, identityFact, servicePayment, colosseum] =
     await Promise.all([
       loadShellSafe(session.userId),
       hasCompletedOnboarding(session.userId),
       loadReviewStateOrUnknown(session.userId),
       loadIdentityFact(session.userId),
       loadServiceFeeOrUnread(session.userId),
+      // The Colosseum demo state and documents flag, read server-side for the
+      // account. They used to live only in the browser; the Overview and the
+      // Residency step now read the same server record.
+      loadColosseumState(session.userId),
     ]);
 
   // Spec section 8: an authenticated session is not enough to see the account
@@ -218,11 +223,25 @@ export default async function OverviewPage() {
     // as the Residency step gates it.
     serviceFee: servicePayment,
     serviceFeeUnlocked: preapprovalPaid && residencyView.serviceFeeUnlocked,
-    // The persisted documents flag and Colosseum demo progress live only in the
-    // browser; the client `OverviewTracker` reads them and re-derives the rows.
   };
   const overview = buildOverview(overviewInput);
   const badge = demoBadgeLabel(overview);
+
+  // The tracker's input adds the demo state read server-side for the account, so
+  // the Overview and the Residency step show the same rows in every browser. The
+  // page-level badge stays derived from the non-demo `overviewInput` (the
+  // tracker renders its own demo chip), so the two do not duplicate.
+  const trackerInput = {
+    ...overviewInput,
+    documentsComplete: colosseum.documentsComplete,
+    // An empty demo progress is not "progress": passing null keeps the tracker
+    // from rendering (and chipping) two empty demo rows.
+    colosseum:
+      colosseum.progress.residentSince !== null ||
+      colosseum.progress.citizenAt !== null
+        ? colosseum.progress
+        : null,
+  };
 
   return (
     <>
@@ -315,15 +334,12 @@ export default async function OverviewPage() {
             </div>
 
             {/*
-              The Residency "Upload" action writes under `applications.id`
-              (`ResidencyStep`), so the Overview reads the same key — never the
-              auth user id, which differs. Both normalize an absent id the same
-              way inside the persisted store.
+              The demo documents flag and Colosseum state are read server-side
+              and already included in `overviewInput`, so the tracker shows the
+              same rows for the account in every browser — no client storage
+              read, and no key drift between this screen and the Residency step.
             */}
-            <OverviewTracker
-              input={overviewInput}
-              profileKey={reviewState.applicationId}
-            />
+            <OverviewTracker input={trackerInput} />
           </Card>
 
           <div style={{ display: 'grid', gap: '16px' }}>

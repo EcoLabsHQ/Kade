@@ -22,6 +22,14 @@ import {
   type MembershipClaimTarget,
 } from '@/lib/membership/plan';
 import { membershipTransitionStore } from '@/lib/membership/store';
+import {
+  becomeColosseumCitizen,
+  claimColosseumResidencyPass,
+  clearColosseumWindow,
+  setColosseumDocumentsComplete,
+  startColosseumWindow,
+  type ColosseumState,
+} from '@/lib/residency/colosseum-state-server';
 
 /**
  * The Residency step's server actions.
@@ -207,4 +215,102 @@ export async function claimMembershipAction(
     revalidatePath('/residency');
   }
   return { ...outcome, explorerUrl };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Colosseum demo state (server-side, per account)                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The Colosseum demo state's write actions.
+ *
+ * The demo state used to live in the browser; it now follows the account. Each
+ * action re-reads the session server-side and passes only the session's profile
+ * to the store — never a client-supplied key. The serial is a non-sensitive demo
+ * value supplied by the client so the reveal can show the artifact on the same
+ * tick; the server keeps the first one written. A write that fails reports
+ * `null` (the caller keeps its optimistic state) rather than pretending the
+ * state persisted.
+ */
+function warnColosseum(action: string, cause: unknown): void {
+  console.warn(
+    `[kade] the Colosseum demo state could not be ${action}:`,
+    cause instanceof Error ? cause.message : cause,
+  );
+}
+
+function revalidateColosseum(): void {
+  revalidatePath('/residency');
+  revalidatePath('/');
+}
+
+export async function startColosseumWindowAction(): Promise<ColosseumState | null> {
+  const session = await getSessionUser();
+  if (!session) return null;
+  try {
+    const state = await startColosseumWindow(session.userId);
+    revalidateColosseum();
+    return state;
+  } catch (cause) {
+    warnColosseum('started', cause);
+    return null;
+  }
+}
+
+export async function clearColosseumWindowAction(): Promise<ColosseumState | null> {
+  const session = await getSessionUser();
+  if (!session) return null;
+  try {
+    const state = await clearColosseumWindow(session.userId);
+    revalidateColosseum();
+    return state;
+  } catch (cause) {
+    warnColosseum('cleared', cause);
+    return null;
+  }
+}
+
+export async function claimColosseumResidencyAction(
+  serial: string,
+): Promise<ColosseumState | null> {
+  const session = await getSessionUser();
+  if (!session) return null;
+  try {
+    const state = await claimColosseumResidencyPass(session.userId, serial);
+    revalidateColosseum();
+    return state;
+  } catch (cause) {
+    warnColosseum('claimed', cause);
+    return null;
+  }
+}
+
+export async function becomeColosseumCitizenAction(
+  serial: string,
+): Promise<ColosseumState | null> {
+  const session = await getSessionUser();
+  if (!session) return null;
+  try {
+    const state = await becomeColosseumCitizen(session.userId, serial);
+    revalidateColosseum();
+    return state;
+  } catch (cause) {
+    warnColosseum('recorded', cause);
+    return null;
+  }
+}
+
+export async function setColosseumDocumentsCompleteAction(
+  complete: boolean,
+): Promise<boolean | null> {
+  const session = await getSessionUser();
+  if (!session) return null;
+  try {
+    const state = await setColosseumDocumentsComplete(session.userId, complete);
+    revalidateColosseum();
+    return state.documentsComplete;
+  } catch (cause) {
+    warnColosseum('saved', cause);
+    return null;
+  }
 }

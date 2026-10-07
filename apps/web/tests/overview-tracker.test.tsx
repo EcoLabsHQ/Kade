@@ -1,23 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { OverviewTracker } from '@/components/review/OverviewTracker';
-import {
-  documentsFlagKey,
-  writeDocumentsComplete,
-} from '@/components/residency/colosseum-progress';
 import type { OverviewInput } from '@/lib/review/overview';
 
 /**
- * The Overview tracker reads the two facts that live only in the browser — the
- * demo "Documents complete" flag and the Colosseum demo progress — and reflects
- * them through the same pure `buildOverview` the rest of the screen uses. These
- * tests pin that the persisted state surfaces, and that nothing is fabricated
- * when the store is empty.
+ * The Overview tracker renders the demo facts the Overview page reads
+ * server-side — the demo "Documents complete" flag and the Colosseum demo
+ * state — through the same pure `buildOverview` the rest of the screen uses.
+ * These tests pin that the server-provided state surfaces, and that nothing is
+ * fabricated when the state is empty.
+ *
+ * The tracker no longer reads `localStorage`: the state is read on the server
+ * for the account and passed in. The tests below prove the tracker ignores any
+ * stale browser storage and renders only what the server provided.
  */
 
 const PROFILE = 'user-1';
 
-function input(): OverviewInput {
+function input(overrides: Partial<OverviewInput> = {}): OverviewInput {
   return {
     gate: 'pending',
     tier: '3-year',
@@ -30,6 +30,7 @@ function input(): OverviewInput {
     qualified: { status: 'known', usd: 0 },
     preapprovalPaid: false,
     kycUid: null,
+    ...overrides,
   };
 }
 
@@ -42,9 +43,9 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe('OverviewTracker persisted demo state', () => {
-  it('shows the documents row as not started when the flag is absent', () => {
-    render(<OverviewTracker input={input()} profileKey={PROFILE} />);
+describe('OverviewTracker demo state from the server', () => {
+  it('shows the documents row as not started when the server flag is absent', () => {
+    render(<OverviewTracker input={input()} />);
 
     expect(screen.getByText('Documents complete')).toBeInTheDocument();
     expect(screen.getByText(/not marked complete/i)).toBeInTheDocument();
@@ -55,10 +56,8 @@ describe('OverviewTracker persisted demo state', () => {
     expect(screen.queryByTestId('overview-tracker-demo')).toBeNull();
   });
 
-  it('reflects the persisted documents flag from the Residency step store', () => {
-    window.localStorage.setItem(documentsFlagKey(PROFILE), '1');
-
-    render(<OverviewTracker input={input()} profileKey={PROFILE} />);
+  it('reflects the server-side documents flag', () => {
+    render(<OverviewTracker input={input({ documentsComplete: true })} />);
 
     expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
     // The documents row is itself demo state, so the chip turns on.
@@ -67,17 +66,18 @@ describe('OverviewTracker persisted demo state', () => {
     );
   });
 
-  it('reflects the persisted Colosseum progress', () => {
-    window.localStorage.setItem(
-      'kade.colosseum.progress.v2.user-1',
-      JSON.stringify({
-        residentSince: '2026-01-01T00:00:00.000Z',
-        citizenAt: '2026-01-01T00:02:00.000Z',
-        passportSerial: 'KADE-CL-ABCD2345',
-      }),
+  it('reflects the server-side Colosseum state', () => {
+    render(
+      <OverviewTracker
+        input={input({
+          colosseum: {
+            residentSince: '2026-01-01T00:00:00.000Z',
+            citizenAt: '2026-01-01T00:02:00.000Z',
+            passportSerial: 'KADE-CL-ABCD2345',
+          },
+        })}
+      />,
     );
-
-    render(<OverviewTracker input={input()} profileKey={PROFILE} />);
 
     expect(screen.getByText('Colosseum Resident')).toBeInTheDocument();
     expect(screen.getByText('Colosseum Citizen')).toBeInTheDocument();
@@ -90,41 +90,37 @@ describe('OverviewTracker persisted demo state', () => {
 });
 
 /**
- * Regression (review finding F1): the Overview and the Residency step must key
- * the persisted demo state on the SAME identity — `applications.id`, which is
- * what `ResidencyStep` writes and what the Overview page now passes as
- * `profileKey`. This test writes under the application id (the real writer key)
- * and reads it back, pinning that the two surfaces agree.
+ * Regression: the tracker must read ONLY the server-provided state. It used to
+ * read `localStorage` under `applications.id`, which is exactly the dependency
+ * this change removes. These tests seed the old browser keys and prove they have
+ * no effect, so a future re-introduction of a browser read fails here.
  */
-describe('OverviewTracker key agreement with the Residency step', () => {
-  const APPLICATION_ID = 'app-9f3c2b1a-0000-4000-8000-000000000001';
-
-  it('reads documents + Colosseum state persisted under the application id', () => {
-    // Write through the **same helper** `ResidencyStep`'s Upload action uses,
-    // under the same key, so a key drift between the two surfaces is caught.
-    writeDocumentsComplete(documentsFlagKey(APPLICATION_ID), true);
+describe('OverviewTracker ignores browser storage', () => {
+  it('renders nothing demo from stale localStorage keys when the server state is empty', () => {
+    // The old browser keys, written by the pre-server build.
     window.localStorage.setItem(
-      `kade.colosseum.progress.v2.${APPLICATION_ID}`,
+      `kade.colosseum.progress.v2.${PROFILE}`,
       JSON.stringify({
         residentSince: '2026-01-01T00:00:00.000Z',
         citizenAt: null,
         passportSerial: null,
       }),
     );
+    window.localStorage.setItem(
+      `kade.documents.complete.v2.${PROFILE}`,
+      '1',
+    );
 
-    render(<OverviewTracker input={input()} profileKey={APPLICATION_ID} />);
+    render(<OverviewTracker input={input()} />);
 
-    expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
-    expect(screen.getByText('Colosseum Resident')).toBeInTheDocument();
+    // The stale browser state must not surface: the server state is authoritative.
+    expect(screen.getByText(/not marked complete/i)).toBeInTheDocument();
+    expect(screen.queryByText('Colosseum Resident')).toBeNull();
   });
 
-  it('does not read state written under a different identity', () => {
-    // Written under the auth user id (the wrong key), read under the application
-    // id: the tracker must show nothing, so a future key drift is caught.
-    window.localStorage.setItem(documentsFlagKey('a-different-user-id'), '1');
+  it('renders the server state even when no browser key exists', () => {
+    render(<OverviewTracker input={input({ documentsComplete: true })} />);
 
-    render(<OverviewTracker input={input()} profileKey={APPLICATION_ID} />);
-
-    expect(screen.getByText(/not marked complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/marked complete in the demo/i)).toBeInTheDocument();
   });
 });
