@@ -1,0 +1,30 @@
+iteration: demo-feedback-20
+profile: NORMAL
+known_good: fa96834
+candidate: 14ed5e5
+mode: recheck
+reviewed_scopes:
+  database: complete
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: [F3]
+resolved_findings: [F1, F2]
+next_finding_id: F4
+recheck_attempts: {F1: 1, F2: 1, F3: 1}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 14ed5e5
+  recorded_at: 2026-10-07
+  note: "1625/1625. Node v22.17.0 per .nvmrc."
+notes:
+  - "The Colosseum demo state moved from browser localStorage to the server, per account: a colosseum_progress table plus the EXISTING applications.colosseum_resident_since column reused (not duplicated). Six fields moved. Migration applied and verified (table, RLS, 5 functions, 1 policy)."
+  - "F1 (FAIL, resolved at the root in d736a11): the resident-callable start_colosseum_window() let a resident pre-start the 2-minute compliance window before the four checks were green, so the Citizen gate could be pre-satisfied. It is now DROPPED in the migration AND removed from the live database (verified: pg_proc shows it absent), and the window starts only from a server action that re-derives the four checks using the SAME unmetMembershipChecks the mint imports (so the two gates cannot drift), writing through the service-role writer that matches migration 20261006000002's authority."
+  - "clear_colosseum_window was kept resident-callable and verified sound: it is auth.uid()-scoped, blocked once the resident is a citizen, and can only DELAY citizenship, never grant it."
+  - "F2 (WARN, resolved): the nav-highlight hint stays browser-local BY DECISION (it is a derived, transient, cross-page affordance, not account state; moving it would need the shell to derive the residency checks), and its docstring was corrected to say so."
+  - "F3 (WARN): the comments in mint.ts, lib/review/overview.ts and the migration header were corrected. One remaining stale comment in ResidencyStep.tsx:462-466 was fixed by the orchestrator after the recheck."
+  - "vitest.config.ts gained testTimeout: 20000. The mechanical gate failed on vitest's default 5000 ms on four separate runs today under parallel load, while onboarding-flow.test.tsx passes 41/41 in isolation every time. The reviewer JUDGED THE CHANGE LEGITIMATE: no test asserts a wall-clock bound, 20 s still bounds a hang, and no test passes only because of the longer timeout. Residual, recorded: a future genuine slowdown in the 5-20 s band would pass silently."
+  - "The vote path (task/snapshot-vote) is built but NOT integrated: it fails closed because resident Safes are passkey-owned, so the backend signer cannot sign for the voter. The correct fix is the resident signing with their passkey via the existing Safe engine. Awaiting the human's decision."

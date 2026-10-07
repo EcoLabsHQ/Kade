@@ -462,7 +462,8 @@ export function ResidencyStep({
       {/*
         The mocked Colosseum sub-section, anchored to the real "Start Residency"
         milestone. It reuses the four real checks and their derived state; its
-        2-minute clock and certificate are client-side demo state (see the file).
+        2-minute clock and its demo certificate live server-side, per account
+        (see the file).
       */}
       <ColosseumResidency
         checks={view.checks}
