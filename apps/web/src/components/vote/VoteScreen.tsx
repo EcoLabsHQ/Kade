@@ -18,44 +18,67 @@ import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
 /**
  * The Vote screen.
  *
- * The reference layout and copy are unchanged (VOTE-1, declared in
- * `docs/week-3-frozen-delivery-contract.md`), and the eligibility decision is
- * **real code** (`@/lib/vote/eligibility`). The Snapshot source is now the real
- * adapter (`@/lib/vote/adapter`): the page resolves the proposals and voting
- * power on the server and passes them here. An injected `adapter` is still
- * accepted (the tests use it, and the mock stays available), but production
- * renders the server-resolved data.
+ * The card body is the **real Snapshot proposal**: its title, its `body` as the
+ * description, its `choices` in order, its real `scores` / `scores_total` as the
+ * tallies, its real `votes` count as the turnout, and its real `type`. Nothing
+ * on the card is invented: an empty body says the proposal has no description,
+ * a missing field says it could not be read, and zero votes say no votes have
+ * been cast rather than showing a made-up distribution.
+ *
+ * The eligibility decision is **real code** (`@/lib/vote/eligibility`). The
+ * Snapshot source is the real adapter (`@/lib/vote/adapter`): the page resolves
+ * the proposals and voting power on the server and passes them here. An injected
+ * `adapter` is still accepted (the tests use it, and the mock stays available),
+ * but production renders the server-resolved data.
  *
  * When more than one proposal is loaded, a proposal list is shown. A proposal
  * the viewer cannot vote — a Citizens-only proposal for a Resident — is greyed
  * in that list with the exact text "Colosseum Citizens only" and cannot be
  * selected. Citizens vote in everything; a Resident votes the Residents space.
  *
- * The ballot itself is still local demo state: casting increments an in-memory
- * tally and never sends anything. The UI's eligibility block is a **companion to
- * the real rule, never the protection** — the contract and the Snapshot strategy
- * are what actually stop an ineligible vote. This component only reflects the
- * decision.
+ * The ballot itself is still local demo state: casting records locally and never
+ * sends anything. It does not alter the real tallies. The UI's eligibility block
+ * is a **companion to the real rule, never the protection** — the contract and
+ * the Snapshot strategy are what actually stop an ineligible vote. This
+ * component only reflects the decision.
+ *
+ * Only the single-choice vote types (`basic`, `single-choice`) are supported.
+ * Any other real type is surfaced as-is and its ballot is refused honestly,
+ * rather than pretending to be a single choice.
  *
  * States that must exist, and do: disconnected wallet, loading, read error, and
  * closed proposal. On a read error, eligibility is **not** assumed.
  */
 
-interface Choice {
-  readonly label: string;
-  /** The reference's seeded demo tally for this choice. */
-  readonly count: number;
+/** The vote types this screen knows how to present. */
+const SUPPORTED_VOTE_TYPES = new Set(['basic', 'single-choice']);
+
+/** The short month labels used for a proposal's real close date (UTC). */
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/** Format a unix-seconds close time as e.g. `30 Sep`, in UTC so it is stable. */
+function formatCloseDate(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1000);
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()] ?? ''}`;
 }
 
-/** The reference's three choices and their seeded demo tallies. */
-const CHOICES: readonly Choice[] = [
-  { label: 'Housing supply — co-finance 120 affordable units', count: 56 },
-  { label: 'SME credit — first-loss capital for local lenders', count: 38 },
-  { label: 'Split 50 / 50', count: 12 },
-];
-
-/** The reference's demo turnout denominator. */
-const ELIGIBLE_RESIDENTS = 148;
+/** Whether the screen can present this proposal's real vote type as a ballot. */
+function isSupportedVoteType(type: string | undefined): boolean {
+  return type !== undefined && SUPPORTED_VOTE_TYPES.has(type);
+}
 
 const EYEBROW: CSSProperties = {
   fontSize: '11px',
@@ -67,8 +90,6 @@ const EYEBROW: CSSProperties = {
 
 const NOTE_BEFORE =
   'Off-chain signature, no gas. Eligibility checked against your KYC attestation — one resident, one vote.';
-const NOTE_AFTER =
-  'Signed EIP-712 message · stored on IPFS · verifiable at snapshot.org/#/kadeglobal.eth';
 
 export interface VoteScreenProps {
   /**
@@ -102,9 +123,6 @@ export function VoteScreen({
   powers: preloadedPowers,
   error: preloadedError = null,
 }: VoteScreenProps) {
-  const [counts, setCounts] = useState<readonly number[]>(() =>
-    CHOICES.map((choice) => choice.count),
-  );
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [voted, setVoted] = useState(false);
   const [proposals, setProposals] = useState<readonly VoteProposal[]>([]);
@@ -190,31 +208,60 @@ export function VoteScreen({
   // already covers loading, disconnected, closed, citizen-only and no-power.
   const blockedByError = loadError !== null;
 
-  // The demo tally's percentages are derived from the counts every render, so a
-  // cast recomputes all three at once (and the total turnout) rather than
-  // mutating a stored percentage.
-  const total = counts.reduce((sum, count) => sum + count, 0);
-  const percent = (index: number) =>
-    Math.round(((counts[index] ?? 0) / total) * 100);
+  // The proposal's own real fields, rendered honestly. `body` is the hub's
+  // description; an empty one is reported as "no description", and an absent
+  // one as "could not be read" — never reference copy.
+  const body =
+    selected === null
+      ? null
+      : selected.body === undefined
+        ? 'The proposal description could not be read from Snapshot.'
+        : selected.body.trim() === ''
+          ? 'This proposal has no description.'
+          : selected.body;
+
+  const type = selected?.type;
+  const supportedType = isSupportedVoteType(type);
+
+  // The real tallies: `scores` aligned with `choices`, summed by the hub in
+  // `scores_total`. A zero total is no votes, not a distribution.
+  const scores = selected?.scores;
+  const scoresTotal = selected?.scoresTotal;
+  const tallyAvailable = scores !== undefined && scoresTotal !== undefined;
+  const hasVotes = scoresTotal !== undefined && scoresTotal > 0;
+
+  function tallyPercent(index: number): number | null {
+    if (scores === undefined || scoresTotal === undefined || scoresTotal <= 0) {
+      return null;
+    }
+    const score = scores[index];
+    return typeof score === 'number'
+      ? Math.round((score / scoresTotal) * 100)
+      : null;
+  }
+
+  // The real turnout, as the hub reports it.
+  const turnout = selected?.votes ?? null;
 
   const chosenLabel =
     selectedChoice === null
       ? 'Select an option'
-      : (CHOICES[selectedChoice]?.label ?? 'Select an option');
-  const castable = eligibility.eligible && selectedChoice !== null && !voted;
+      : (selected?.choices[selectedChoice]?.label ?? 'Select an option');
+  const castable =
+    eligibility.eligible && supportedType && selectedChoice !== null && !voted;
 
   // The reference's `if (!s.voted)` guard: once cast, further selection is a
   // no-op and the ballot is frozen.
   function pick(index: number) {
-    if (voted || !eligibility.eligible) return;
+    if (voted || !eligibility.eligible || !supportedType) return;
     setSelectedChoice(index);
   }
 
   function castVote() {
-    if (voted || selectedChoice === null || !eligibility.eligible) return;
-    setCounts((prev) =>
-      prev.map((count, index) => (index === selectedChoice ? count + 1 : count)),
-    );
+    if (voted || selectedChoice === null || !eligibility.eligible || !supportedType) {
+      return;
+    }
+    // Local demo state only: no vote is sent, and the real tally is untouched.
     setVoted(true);
   }
 
@@ -228,6 +275,17 @@ export function VoteScreen({
   const eligibilityMessage = blockedByError
     ? 'The consultation could not be read, so eligibility is not assumed.'
     : eligibility.message;
+
+  const title = selected?.title ?? (blockedByError ? 'Proposal unavailable' : 'No proposal loaded');
+  const closeLabel =
+    selected?.state === 'closed'
+      ? 'Closed'
+      : selected?.end !== undefined
+        ? `Open · closes ${formatCloseDate(selected.end)}`
+        : 'Open';
+  const noteAfter = `Signed EIP-712 message · stored on IPFS · verifiable at snapshot.org/#/${
+    selected?.spaceId ?? RESIDENT_SPACE_ID
+  }`;
 
   return (
     <>
@@ -344,7 +402,7 @@ export function VoteScreen({
                 letterSpacing: '-.01em',
               }}
             >
-              {selected?.title ?? 'Programme consultation'}
+              {title}
             </h2>
             <div style={{ fontSize: '13.5px', color: tokens.muted }}>
               Space{' '}
@@ -359,7 +417,7 @@ export function VoteScreen({
             dot
             style={{ fontWeight: 600, padding: '5px 10px' }}
           >
-            {selected?.state === 'closed' ? 'Closed' : 'Open · closes 30 Sep'}
+            {closeLabel}
           </Chip>
         </div>
 
@@ -373,22 +431,52 @@ export function VoteScreen({
           }}
         >
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 600 }}>
-              Should the Local Innovation Fund allocation for 2027 prioritise
-              housing supply or SME credit?
-            </div>
-            <div
-              style={{
-                fontSize: '13px',
-                color: tokens.muted,
-                marginTop: '6px',
-                textWrap: 'pretty',
-              }}
-            >
-              Proposed by the Ministry of Economic Development. 15% of programme
-              fee revenue (≈ $2.1M) is earmarked; residents&apos; vote is advisory
-              and published with the budget.
-            </div>
+            {body !== null ? (
+              <div
+                data-testid="vote-proposal-body"
+                style={{
+                  fontSize: '13.5px',
+                  color: tokens.muted,
+                  textWrap: 'pretty',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.6,
+                }}
+              >
+                {body}
+              </div>
+            ) : null}
+
+            {selected !== null ? (
+              <div
+                data-testid="vote-type"
+                style={{
+                  fontSize: '12px',
+                  color: tokens.muted,
+                  marginTop: '16px',
+                }}
+              >
+                Vote type{' '}
+                <span style={{ color: tokens.ink, fontWeight: 600 }}>
+                  {type ?? 'not reported'}
+                </span>
+              </div>
+            ) : null}
+
+            {selected !== null && !supportedType ? (
+              <div
+                data-testid="vote-type-unsupported"
+                style={{
+                  marginTop: '8px',
+                  fontSize: '12.5px',
+                  color: tokens.muted,
+                  lineHeight: 1.5,
+                }}
+              >
+                {type === undefined
+                  ? 'This proposal did not report a vote type, so this screen cannot present its ballot.'
+                  : `This proposal uses the “${type}” vote type, which this screen does not support yet.`}
+              </div>
+            ) : null}
 
             <div
               style={{
@@ -398,12 +486,13 @@ export function VoteScreen({
                 marginTop: '16px',
               }}
             >
-              {CHOICES.map((choice, index) => {
+              {(selected?.choices ?? []).map((choice, index) => {
                 const isSelected = selectedChoice === index;
-                const disabled = !eligibility.eligible;
+                const disabled = !eligibility.eligible || !supportedType;
+                const pct = tallyPercent(index);
                 return (
                   <button
-                    key={choice.label}
+                    key={choice.id}
                     type="button"
                     onClick={() => pick(index)}
                     aria-pressed={isSelected}
@@ -432,43 +521,64 @@ export function VoteScreen({
                       <span style={{ fontSize: '14px', fontWeight: 600 }}>
                         {choice.label}
                       </span>
-                      <span
-                        style={{
-                          fontSize: '12.5px',
-                          color: tokens.muted,
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                      >
-                        {percent(index)}%
-                      </span>
+                      {pct !== null ? (
+                        <span
+                          style={{
+                            fontSize: '12.5px',
+                            color: tokens.muted,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {pct}%
+                        </span>
+                      ) : null}
                     </div>
-                    <div
-                      style={{
-                        position: 'relative',
-                        height: '6px',
-                        borderRadius: '999px',
-                        background: tokens.border,
-                        marginTop: '8px',
-                      }}
-                    >
+                    {pct !== null ? (
                       <div
                         style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 0,
-                          bottom: 0,
+                          position: 'relative',
+                          height: '6px',
                           borderRadius: '999px',
-                          background: isSelected
-                            ? tokens.action
-                            : tokens.brandPrimary,
-                          width: `${percent(index)}%`,
+                          background: tokens.border,
+                          marginTop: '8px',
                         }}
-                      />
-                    </div>
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            borderRadius: '999px',
+                            background: isSelected
+                              ? tokens.action
+                              : tokens.brandPrimary,
+                            width: `${pct}%`,
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
+
+            {selected !== null ? (
+              <div
+                data-testid="vote-tally-note"
+                style={{
+                  marginTop: '12px',
+                  fontSize: '12px',
+                  color: tokens.muted,
+                }}
+              >
+                {!tallyAvailable
+                  ? 'The tally could not be read from Snapshot.'
+                  : hasVotes
+                    ? 'Totals read from Snapshot.'
+                    : 'No votes have been cast yet.'}
+              </div>
+            ) : null}
           </div>
 
           <Card padding="18px 20px" radius={12} background="#fff">
@@ -480,16 +590,25 @@ export function VoteScreen({
               {chosenLabel}
             </div>
             <div
+              data-testid="vote-power"
               style={{
                 fontSize: '12.5px',
                 color: tokens.muted,
                 marginTop: '4px',
               }}
             >
-              Voting power 1 · strategy{' '}
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                erc721(Colosseum)
-              </span>
+              {selectedPower === null ? (
+                'Reading your voting power…'
+              ) : selectedPower.status === 'known' ? (
+                <>
+                  Voting power{' '}
+                  <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {selectedPower.power.toString()}
+                  </span>
+                </>
+              ) : (
+                'Voting power could not be read.'
+              )}
             </div>
 
             {/* The eligibility decision, rendered honestly: a refusal is shown
@@ -532,7 +651,7 @@ export function VoteScreen({
                 lineHeight: 1.6,
               }}
             >
-              {voted ? NOTE_AFTER : NOTE_BEFORE}
+              {voted ? noteAfter : NOTE_BEFORE}
             </div>
             <div
               style={{
@@ -545,9 +664,15 @@ export function VoteScreen({
               style={{ fontSize: '12px', color: tokens.muted }}
               data-testid="vote-turnout"
             >
-              Turnout{' '}
-              <strong style={{ color: tokens.ink }}>{total}</strong> votes of{' '}
-              {ELIGIBLE_RESIDENTS} eligible residents
+              {turnout === null ? (
+                'Turnout could not be read from Snapshot.'
+              ) : (
+                <>
+                  Turnout{' '}
+                  <strong style={{ color: tokens.ink }}>{turnout}</strong>{' '}
+                  {turnout === 1 ? 'vote' : 'votes'}
+                </>
+              )}
             </div>
           </Card>
         </div>
