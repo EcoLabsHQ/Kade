@@ -326,17 +326,6 @@ export function ColosseumResidency({
         qualifies at a demo-scale {COLOSSEUM_THRESHOLD}.
       </p>
 
-      {/* One progression, always visible: the four milestones the resident moves
-          through, with the current one highlighted. It is what makes the
-          mutually-exclusive states below read as one story rather than five
-          unrelated boxes. */}
-      <PhaseRail
-        fundsMet={fundsMet}
-        allChecksMet={allChecksMet}
-        windowElapsed={windowElapsed}
-        citizen={citizen}
-      />
-
       {/* State A — not eligible yet: the real funds check is below the 10 USDC
           threshold. The figure is the resident's real qualified amount. When the
           resident is on a production tier the real funds check is gated on that
@@ -450,78 +439,6 @@ function StateA({
         </span>
       </div>
     </div>
-  );
-}
-
-/**
- * The four-milestone progression rail. It is rendered for every state so the
- * mutually-exclusive boxes below read as one advancing story. Each phase's
- * `done` flag comes from the same derived state the section already computes;
- * nothing here is a fixture.
- */
-function PhaseRail({
-  fundsMet,
-  allChecksMet,
-  windowElapsed,
-  citizen,
-}: {
-  readonly fundsMet: boolean;
-  readonly allChecksMet: boolean;
-  readonly windowElapsed: boolean;
-  readonly citizen: boolean;
-}) {
-  const phases = [
-    { id: 'threshold', label: 'Threshold', done: fundsMet },
-    { id: 'checks', label: 'Checks', done: allChecksMet },
-    { id: 'compliance', label: 'Compliance', done: windowElapsed || citizen },
-    { id: 'citizen', label: 'Citizen', done: citizen },
-  ];
-  const activeIndex = phases.findIndex((phase) => !phase.done);
-
-  return (
-    <ol
-      data-testid="colosseum-phases"
-      aria-label="Colosseum residency progress"
-      style={phaseRail}
-    >
-      {phases.map((phase, index) => {
-        const state = phase.done
-          ? 'done'
-          : index === activeIndex
-            ? 'active'
-            : 'todo';
-        return (
-          <li
-            key={phase.id}
-            data-testid={`colosseum-phase-${phase.id}`}
-            data-state={state}
-            style={phaseItem}
-          >
-            <span
-              aria-hidden
-              style={{
-                ...phaseDot,
-                ...(phase.done
-                  ? phaseDotDone
-                  : state === 'active'
-                    ? phaseDotActive
-                    : phaseDotTodo),
-              }}
-            >
-              {phase.done ? '✓' : ''}
-            </span>
-            <span
-              style={{
-                ...phaseLabel,
-                ...(state === 'active' ? phaseLabelActive : {}),
-              }}
-            >
-              {phase.label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 
@@ -902,62 +819,6 @@ const secondaryButton = {
   fontSize: '13.5px',
   fontWeight: 600,
   cursor: 'pointer',
-};
-
-/* The four-milestone progression rail. Small dots and labels only: it is a
-   wayfinding device, not a headline. */
-const phaseRail = {
-  display: 'flex',
-  flexWrap: 'wrap' as const,
-  alignItems: 'center',
-  gap: '6px 16px',
-  margin: '14px 0 0',
-  padding: 0,
-  listStyle: 'none' as const,
-};
-
-const phaseItem = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-};
-
-const phaseDot = {
-  width: '16px',
-  height: '16px',
-  borderRadius: '50%',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flex: '0 0 auto',
-  fontSize: '9px',
-  fontWeight: 700,
-  lineHeight: 1,
-};
-
-const phaseDotDone = {
-  background: tokens.brandPrimary,
-  color: '#fff',
-};
-
-const phaseDotActive = {
-  background: tokens.activeNavBg,
-  color: tokens.brandPrimary,
-};
-
-const phaseDotTodo = {
-  background: tokens.chipBg,
-  color: tokens.muted,
-};
-
-const phaseLabel = {
-  fontSize: '11.5px',
-  fontWeight: 600,
-  color: tokens.muted,
-};
-
-const phaseLabelActive = {
-  color: tokens.brandPrimary,
 };
 
 /* State B's inline checklist of the four real checks. */

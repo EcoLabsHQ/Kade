@@ -187,7 +187,12 @@ describe('ColosseumResidency — states', () => {
     ).toHaveAttribute('aria-valuetext', '1:30 remaining');
   });
 
-  it('reads as one progression: the milestone rail advances with the state', () => {
+  it('removed the milestone rail: the state boxes tell the story on their own', () => {
+    // The human removed the four-step rail ("Threshold · Checks · Compliance ·
+    // Citizen") from the Colosseum section: it read as a competing progress
+    // indicator. The state boxes are the only progression now, so the rail
+    // testids must be absent in every state — and must not be replaced by
+    // another progress indicator.
     const { rerender } = render(
       <ColosseumResidency
         tier="colosseum"
@@ -196,11 +201,7 @@ describe('ColosseumResidency — states', () => {
     );
 
     // A — below threshold.
-    expect(screen.getByTestId('colosseum-phases')).toBeInTheDocument();
-    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // B — threshold met, checks pending.
     rerender(
@@ -209,45 +210,21 @@ describe('ColosseumResidency — states', () => {
         checks={checks(facts({ identity: null }))}
       />,
     );
-    expect(screen.getByTestId('colosseum-phase-threshold')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // C — all checks green, window running.
     rerender(<ColosseumResidency tier="colosseum" checks={checks(facts())} />);
-    expect(screen.getByTestId('colosseum-phase-checks')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // D — window elapsed, eligible.
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
-    expect(screen.getByTestId('colosseum-phase-compliance')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
-    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
-      'data-state',
-      'active',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
 
     // E — citizen.
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
-    expect(screen.getByTestId('colosseum-phase-citizen')).toHaveAttribute(
-      'data-state',
-      'done',
-    );
+    expect(screen.queryByTestId('colosseum-phases')).toBeNull();
   });
 
   it('State D: "Become a Citizen" is the only primary action; the claimed pass is a quiet text affordance', () => {
