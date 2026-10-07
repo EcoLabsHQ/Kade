@@ -121,9 +121,12 @@ export function encodeKycAttestationData(fields: KycFields): Hex {
 /**
  * The approval an irreversible identity attestation requires.
  *
- * Mirrors `PermitIssuanceGate` / `RegistrationApproval`: the gate is a single
- * `true` flag. No approver name or timestamp is recorded, so
- * `KADE_KYC_ISSUANCE_APPROVED=true` alone is sufficient.
+ * The gate is a single `true` flag. No approver name or timestamp is recorded,
+ * so `KADE_KYC_ISSUANCE_APPROVED=true` alone is sufficient.
+ *
+ * This deliberately DIFFERS from `PermitIssuanceGate` and
+ * `RegistrationApproval`, which still require an approver and a timestamp. Do
+ * not copy one gate's env shape from the other.
  */
 export interface KycIssuanceGate {
   readonly onchainGateApproved: boolean;

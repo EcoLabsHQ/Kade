@@ -1,8 +1,8 @@
 /**
  * The membership-issuance approval gate.
  *
- * Mirroring `@/lib/residency/kyc-attestation` (and the EAS registration gate),
- * membership changes are irreversible: minting a soulbound credential, promoting
+ * Mirroring `@/lib/residency/kyc-attestation` in its rationale (and sharing it
+ * with the EAS registration gate), membership changes are irreversible: minting a soulbound credential, promoting
  * a Resident to Citizen, or burning a credential cannot be undone without
  * another owner transaction. The repository therefore refuses to prepare a
  * *sendable* plan unless the explicit approval flag is set to `true`.
