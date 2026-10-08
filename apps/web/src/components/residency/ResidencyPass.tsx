@@ -27,6 +27,11 @@ export interface ResidencyPassProps {
   readonly issuedAt: string | null;
   /** The holder's display name; omitted for a neutral placeholder. */
   readonly holderName?: string | null;
+  /**
+   * The one-time residency-claim celebration, used only for the first, live
+   * claim. Every later open (clicking the claimed card) uses the standard tier.
+   */
+  readonly residencyCelebration?: boolean;
 }
 
 const PLACEHOLDER_HOLDER = 'Kade Resident';
@@ -53,6 +58,12 @@ export interface ResidencyPassArtifactProps {
   readonly holderName?: string | null;
   /** `embedded` is the compact inline rendering; `full` is the popup. */
   readonly variant?: 'embedded' | 'full';
+  /**
+   * The pass has not been claimed yet. Renders the same card desaturated and
+   * inactive (grey), clearly distinct from the claimed presentation, so the
+   * resident sees the reward before claiming it. Never used by the popup.
+   */
+  readonly unclaimed?: boolean;
 }
 
 export function ResidencyPassArtifact({
@@ -60,6 +71,7 @@ export function ResidencyPassArtifact({
   issuedAt,
   holderName,
   variant = 'full',
+  unclaimed = false,
 }: ResidencyPassArtifactProps) {
   const full = variant === 'full';
   const idBase = full
@@ -70,7 +82,13 @@ export function ResidencyPassArtifact({
   return (
     <div
       data-testid={idBase}
-      className={full ? 'kade-security-print kade-artifact-card' : 'kade-security-print'}
+      data-unclaimed={unclaimed ? 'true' : undefined}
+      className={[
+        full ? 'kade-security-print kade-artifact-card' : 'kade-security-print',
+        unclaimed ? 'kade-residency-pass-locked' : null,
+      ]
+        .filter(Boolean)
+        .join(' ')}
     >
       {full ? (
         <>
@@ -155,7 +173,7 @@ export function ResidencyPassArtifact({
 
           <div style={header}>
             <div style={org}>Colosseum · Demo Residency Pass</div>
-            <div style={typeChip}>Resident</div>
+            <div style={typeChip}>{unclaimed ? 'Unclaimed' : 'Resident'}</div>
           </div>
 
           <div style={titleRow}>
@@ -186,7 +204,11 @@ export function ResidencyPassArtifact({
             </div>
             <div className="kade-artifact-field" style={field}>
               <dt style={label}>Status</dt>
-              <dd style={value}>Colosseum Resident · demo</dd>
+              <dd style={value}>
+                {unclaimed
+                  ? 'Not claimed yet · demo'
+                  : 'Colosseum Resident · demo'}
+              </dd>
             </div>
           </dl>
 
@@ -211,6 +233,7 @@ export function ResidencyPass({
   serial,
   issuedAt,
   holderName,
+  residencyCelebration = false,
 }: ResidencyPassProps) {
   return (
     <FullScreenReveal
@@ -220,6 +243,7 @@ export function ResidencyPass({
       announcement="Your demo Colosseum residency pass is ready. This is a demo and confers no real status."
       revealClassName="kade-residency-pass-reveal"
       flipClassName="kade-residency-pass-flip"
+      residencyCelebration={residencyCelebration}
     >
       <ResidencyPassArtifact
         variant="full"
