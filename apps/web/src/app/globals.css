@@ -337,6 +337,154 @@ textarea {
   animation: kade-spin .8s linear infinite;
 }
 
+/* ------------------------------------------------------------------------- */
+/* Onboarding wallet connect → sign rail                                      */
+/*                                                                            */
+/* One continuous line with a dot per check. The coloured "lit" layer is the  */
+/* same geometry as the resting layer, clipped from the right to the completed */
+/* fraction, so the line fills smoothly and each dot turns green exactly as   */
+/* the fill crosses it — not a discrete pop per check. The clip transition is */
+/* the only motion; it is switched off under `prefers-reduced-motion: reduce` */
+/* where the end states stay fully legible.                                   */
+/* ------------------------------------------------------------------------- */
+
+.kade-checkrail {
+  position: relative;
+}
+
+.kade-checkrail-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--kade-border);
+}
+
+.kade-checkrail-items {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+
+.kade-checkrail-item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.kade-checkrail-dot {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid var(--kade-border);
+  background: #fff;
+  color: var(--kade-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition:
+    background-color .3s ease,
+    border-color .3s ease,
+    color .3s ease;
+}
+
+.kade-checkrail-dot-active {
+  border-color: var(--kade-action);
+  color: var(--kade-action);
+  box-shadow: 0 0 0 3px rgba(10, 124, 255, .14);
+  animation: kade-checkrail-pulse 1.8s ease-in-out infinite;
+}
+
+.kade-checkrail-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kade-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.kade-checkrail-item[data-state='active'] .kade-checkrail-label {
+  color: var(--kade-ink);
+}
+
+.kade-checkrail-item[data-state='done'] .kade-checkrail-label {
+  color: var(--kade-success);
+}
+
+/* The lit layer: identical geometry, revealed up to the completed fraction. */
+.kade-checkrail-lit {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: clip-path .62s cubic-bezier(.4, 0, .2, 1);
+}
+
+.kade-checkrail-lit .kade-checkrail-items {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.kade-checkrail-lit-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--kade-action), var(--kade-success));
+}
+
+.kade-checkrail-dot-done {
+  border-color: var(--kade-success);
+  background: var(--kade-success);
+  color: #fff;
+}
+
+/* The quiet affirmation once every check is met: a soft confirm on the dots,
+   not a celebration. The panel returns to its resting state on its own. */
+.kade-checkrail-done .kade-checkrail-dot-done {
+  animation: kade-checkrail-confirm .9s ease-out both;
+}
+
+.kade-checkrail-done .kade-checkrail-lit-line {
+  box-shadow: 0 0 0 2px rgba(27, 127, 90, .12);
+}
+
+@keyframes kade-checkrail-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(10, 124, 255, .14);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(10, 124, 255, .05);
+  }
+}
+
+@keyframes kade-checkrail-confirm {
+  0% {
+    box-shadow: 0 0 0 0 rgba(27, 127, 90, .35);
+  }
+  45% {
+    box-shadow: 0 0 0 4px rgba(27, 127, 90, .14);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(27, 127, 90, 0);
+  }
+}
+
 /* The Colosseum demo's nav attention. The mocked 2-minute window has elapsed and
    "Become a Citizen" is available, so the Residency nav item breathes gently
    until the resident acts: its dot softens and recovers, and the tint deepens by
@@ -1032,8 +1180,16 @@ textarea {
   .kade-reveal-flip-celebration,
   .kade-celebration-bloom,
   .kade-celebration-ray,
-  .kade-artifact-card .kade-artifact-field {
+  .kade-artifact-card .kade-artifact-field,
+  .kade-checkrail-dot-active,
+  .kade-checkrail-done .kade-checkrail-dot-done {
     animation: none;
+  }
+
+  /* The rail reaches the same states without the fill sweeping; the met dots
+     and the coloured rail are shown immediately and stay legible. */
+  .kade-checkrail-lit {
+    transition: none;
   }
 
   /* The celebratory overlays never render under reduced motion. */
