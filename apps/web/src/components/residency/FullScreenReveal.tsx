@@ -9,7 +9,7 @@ import type {
 import { createPortal } from 'react-dom';
 import { tokens } from '@/components/ui/tokens';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
-import { playCitizenshipCue } from './reveal-sound';
+import { playCitizenshipCue, playResidencyCue } from './reveal-sound';
 
 /**
  * The page-behind scroll lock.
@@ -94,6 +94,8 @@ function unlockBody(): void {
 const FOIL_POINTER_ARM_MS = 1080;
 /** The celebratory tier runs longer; interaction is enabled at ~1.6s. */
 const CELEBRATION_POINTER_ARM_MS = 1600;
+/** The residency-claim tier runs a touch shorter; interaction is enabled at ~1.5s. */
+const RESIDENCY_POINTER_ARM_MS = 1500;
 /** How quickly the tilt chases the pointer (Reveal 3: 0.14). */
 const FOIL_LERP = 0.14;
 /** Reveal 3 caps the tilt at ±2deg. */
@@ -172,6 +174,15 @@ export interface FullScreenRevealProps {
    * single light sweep. Every subsequent open uses the standard tier.
    */
   readonly celebration?: boolean;
+  /**
+   * The one-time residency-claim tier (the first, live residency reveal). It is
+   * in the same family as {@link celebration} — a deeper backdrop, one fused
+   * document timeline, one light sweep — but visibly distinct: the card rises
+   * with a counter-rotation over a warmer teal bloom and expanding shockwave
+   * rings, and it plays the residency cue instead of the citizenship one. Every
+   * subsequent open of the pass uses the standard tier.
+   */
+  readonly residencyCelebration?: boolean;
   readonly children: ReactNode;
 }
 
@@ -183,6 +194,7 @@ export function FullScreenReveal({
   revealClassName,
   flipClassName,
   celebration = false,
+  residencyCelebration = false,
   children,
 }: FullScreenRevealProps) {
   const titleId = useId();
@@ -284,29 +296,39 @@ export function FullScreenReveal({
     return () => window.removeEventListener('resize', compute);
   }, [open, mounted]);
 
-  // Play the one-time citizenship cue only on the live celebration open. The
-  // standard reveal, a re-open and the residency pass are all silent. A
-  // restored citizen load never opens the reveal, so it never replays.
+  // Play the one-time cue for whichever milestone is being celebrated: the
+  // citizenship cue on the live citizenship celebration, the residency cue on
+  // the live residency claim. The standard reveal and a re-open are silent. A
+  // restored citizen/resident load never opens the reveal, so it never replays.
   // Deliberately independent of `prefers-reduced-motion`: sound is not motion.
   useEffect(() => {
     if (!open) {
       soundPlayedRef.current = false;
       return;
     }
-    if (!celebration || soundPlayedRef.current) return;
+    const cue = celebration
+      ? playCitizenshipCue
+      : residencyCelebration
+        ? playResidencyCue
+        : null;
+    if (!cue || soundPlayedRef.current) return;
     soundPlayedRef.current = true;
-    playCitizenshipCue();
-  }, [open, celebration]);
+    cue();
+  }, [open, celebration, residencyCelebration]);
 
   // Arm the pointer tilt after the one-shot foil pass (640ms + 440ms). Under
   // reduced motion the pointer never drives it.
   useEffect(() => {
     setFoilReady(false);
     if (!open || reducedMotion) return;
-    const armDelay = celebration ? CELEBRATION_POINTER_ARM_MS : FOIL_POINTER_ARM_MS;
+    const armDelay = celebration
+      ? CELEBRATION_POINTER_ARM_MS
+      : residencyCelebration
+        ? RESIDENCY_POINTER_ARM_MS
+        : FOIL_POINTER_ARM_MS;
     const timer = window.setTimeout(() => setFoilReady(true), armDelay);
     return () => window.clearTimeout(timer);
-  }, [open, reducedMotion, celebration]);
+  }, [open, reducedMotion, celebration, residencyCelebration]);
 
   // Stop the smoothing loop and reset the pointer when the reveal closes.
   useEffect(() => {
@@ -410,20 +432,31 @@ export function FullScreenReveal({
   if (!open || !mounted) return null;
 
   const showCelebration = celebration && !reducedMotion;
+  const showResidencyCelebration = residencyCelebration && !reducedMotion;
 
   const backdropClassName = reducedMotion
-    ? 'kade-reveal-backdrop-static'
+    ? celebration
+      ? 'kade-reveal-backdrop-celebration-static'
+      : residencyCelebration
+        ? 'kade-reveal-backdrop-residency-static'
+        : 'kade-reveal-backdrop-static'
     : celebration
       ? 'kade-reveal-backdrop-celebration'
-      : 'kade-reveal-backdrop';
+      : residencyCelebration
+        ? 'kade-reveal-backdrop-residency'
+        : 'kade-reveal-backdrop';
 
   const cardClassName = reducedMotion
     ? celebration
       ? 'kade-reveal-card-celebration-static'
-      : 'kade-reveal-card-static'
+      : residencyCelebration
+        ? 'kade-reveal-card-residency-static'
+        : 'kade-reveal-card-static'
     : celebration
       ? 'kade-reveal-card-celebration kade-celebration'
-      : 'kade-reveal-card';
+      : residencyCelebration
+        ? 'kade-reveal-card-residency kade-residency-celebration'
+        : 'kade-reveal-card';
 
   const tiltClassName = reducedMotion ? undefined : 'kade-foil-tilt';
 
@@ -433,6 +466,7 @@ export function FullScreenReveal({
         revealClassName,
         flipClassName,
         showCelebration ? 'kade-reveal-flip-celebration' : null,
+        showResidencyCelebration ? 'kade-reveal-flip-residency' : null,
       ]
         .filter(Boolean)
         .join(' ');
@@ -490,6 +524,17 @@ export function FullScreenReveal({
                     style={{ '--kade-ray': index } as CSSProperties}
                   />
                 ))}
+              </div>
+            ) : null}
+            {showResidencyCelebration ? (
+              <div
+                aria-hidden="true"
+                className="kade-residency-celebration-stage"
+              >
+                <div className="kade-residency-bloom" />
+                <span className="kade-residency-shockwave" />
+                <span className="kade-residency-shockwave kade-residency-shockwave-late" />
+                <div className="kade-residency-beam" />
               </div>
             ) : null}
             <div className={documentClassName} style={documentWrap}>
