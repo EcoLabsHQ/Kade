@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import type { Address } from 'viem';
 import { getSessionUser } from '@/lib/supabase/server';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
@@ -445,13 +446,24 @@ export async function completeDeposit(input: {
     return { status: 'failed', sent: false, stage: 'resolve', reason: safe.reason };
   }
 
-  return submitResidentSafeOperationFromEnv({
+  const outcome = await submitResidentSafeOperationFromEnv({
     token: input.token,
     assertion: input.assertion,
     signer: context.signer,
     safeAddress: safe.packSafeAddress,
     chainId,
   });
+  // A confirmed receipt changed the Safe's on-chain position, so revalidate the
+  // Invest route exactly once for this completed operation. The revalidation is
+  // what makes the Server Action's response carry the freshly-read position and
+  // rows back to the screen (the route re-reads `loadVaultHoldings`); it is tied
+  // to the confirmed outcome, never to a timer, and a gated or failed operation
+  // revalidates nothing. The screen keeps its own `router.refresh()` for the
+  // client-side case, but this is the server-authoritative half.
+  if (outcome.status === 'sent') {
+    revalidatePath('/invest');
+  }
+  return outcome;
 }
 
 /**
@@ -636,11 +648,18 @@ export async function completeWithdraw(input: {
     return { status: 'failed', sent: false, stage: 'resolve', reason: safe.reason };
   }
 
-  return submitResidentSafeOperationFromEnv({
+  const outcome = await submitResidentSafeOperationFromEnv({
     token: input.token,
     assertion: input.assertion,
     signer: context.signer,
     safeAddress: safe.packSafeAddress,
     chainId,
   });
+  // A confirmed receipt changed the Safe's on-chain position, so revalidate the
+  // Invest route exactly once for this completed operation, exactly as the
+  // deposit does. A gated or failed un-allocate revalidates nothing.
+  if (outcome.status === 'sent') {
+    revalidatePath('/invest');
+  }
+  return outcome;
 }

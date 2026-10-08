@@ -30,11 +30,13 @@ const hoisted = vi.hoisted(() => ({
   checkSafeDepositFunding: vi.fn(),
   buildResidentSafeBatchFromEnv: vi.fn(),
   submitResidentSafeOperationFromEnv: vi.fn(),
+  revalidatePath: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
 }));
+vi.mock('next/cache', () => ({ revalidatePath: hoisted.revalidatePath }));
 vi.mock('@/app/account/passkey-actions', () => ({
   loadPasskeyCredential: hoisted.loadPasskeyCredential,
 }));

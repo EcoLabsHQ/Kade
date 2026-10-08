@@ -27,11 +27,13 @@ const hoisted = vi.hoisted(() => ({
   checkSafeDepositFunding: vi.fn(),
   buildResidentSafeBatchFromEnv: vi.fn(),
   submitResidentSafeOperationFromEnv: vi.fn(),
+  revalidatePath: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
   getSessionUser: hoisted.getSessionUser,
 }));
+vi.mock('next/cache', () => ({ revalidatePath: hoisted.revalidatePath }));
 vi.mock('@/app/account/passkey-actions', () => ({
   loadPasskeyCredential: hoisted.loadPasskeyCredential,
 }));
@@ -58,7 +60,7 @@ vi.mock('@/lib/safe/execute-safe-4337-env', () => ({
   submitResidentSafeOperationFromEnv: hoisted.submitResidentSafeOperationFromEnv,
 }));
 
-import { beginDeposit, completeDeposit } from '@/app/invest/actions';
+import { beginDeposit, completeDeposit, completeWithdraw } from '@/app/invest/actions';
 
 const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address;
 const OTHER_SAFE = '0x9999999999999999999999999999999999999999';
@@ -564,5 +566,76 @@ describe('completeDeposit', () => {
     }
     expect(hoisted.submitResidentSafeOperationFromEnv).not.toHaveBeenCalled();
     expect(hoisted.deriveAccountFromPasskey).not.toHaveBeenCalled();
+  });
+
+  it('revalidates the Invest route only for a confirmed receipt', async () => {
+    // The human's defect: after a confirmed deposit the screen did not re-read
+    // the Safe's position. The route is force-dynamic, but a Server Action's
+    // response only carries the fresh render when the action revalidates the
+    // path; `router.refresh()` alone did not update it. The revalidation is
+    // tied to the confirmed `sent` outcome.
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result.status).toBe('sent');
+    expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+  });
+
+  it('does not revalidate when the operation was not confirmed', async () => {
+    // A refusal is not a completed operation: nothing changed on chain, so the
+    // route must not be re-read and no success may be implied.
+    hoisted.submitResidentSafeOperationFromEnv.mockResolvedValue({
+      status: 'failed',
+      sent: false,
+      stage: 'sign',
+      reason: 'The passkey attached no signature to the operation.',
+    });
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result).toMatchObject({ status: 'failed', sent: false });
+    expect(hoisted.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('does not revalidate for a reverted receipt', async () => {
+    // A reverted user operation reached the bundler (`sent: true`) but did not
+    // change the position, so it must not trigger the confirmed-state refresh.
+    hoisted.submitResidentSafeOperationFromEnv.mockResolvedValue({
+      status: 'failed',
+      sent: true,
+      stage: 'receipt',
+      reason: 'The user operation reverted.',
+    });
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result).toMatchObject({ status: 'failed', sent: true });
+    expect(hoisted.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeWithdraw', () => {
+  it('revalidates the Invest route only for a confirmed receipt', async () => {
+    // The inverse direction is the same flow through the same seam, so it must
+    // re-read the position on the same confirmed-receipt condition.
+    const result = await completeWithdraw({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result.status).toBe('sent');
+    expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+  });
+
+  it('does not revalidate when the un-allocate was not confirmed', async () => {
+    hoisted.submitResidentSafeOperationFromEnv.mockResolvedValue({
+      status: 'failed',
+      sent: true,
+      stage: 'receipt',
+      reason: 'The user operation reverted.',
+    });
+
+    const result = await completeWithdraw({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result).toMatchObject({ status: 'failed', sent: true });
+    expect(hoisted.revalidatePath).not.toHaveBeenCalled();
   });
 });
