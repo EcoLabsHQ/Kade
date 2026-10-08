@@ -1053,6 +1053,13 @@ function ClaimableNotice({
  * credential on the membership chain's explorer (the issuance transaction and
  * the holder account) and repeats the serial/state the app already knows.
  *
+ * The credential it names is resolved from the outcome's `operation` (the
+ * membership transition the hash belongs to), never from the client's claim
+ * target, so the displayed hash is always the hash of the action the label
+ * describes. A resident-pass serial is only repeated when the confirmed
+ * transition is the residency credential the section is showing; otherwise the
+ * demo serial is omitted rather than asserted for the wrong transaction.
+ *
  * While the mint is in flight it says so; a failed/blocked/unconfigured claim
  * says the credential was NOT issued and shows the reason. It is session state:
  * a reload falls back to the artifact's own serial/state.
@@ -1068,11 +1075,30 @@ function MintReceipt({
   readonly outcome: ClaimOutcomeView | null;
   readonly serial: string | null;
 }) {
+  // The credential this receipt describes is resolved from the **confirmed
+  // membership transition** (`outcome.operation`) rather than from the
+  // client-side claim target. The target says which claim the resident made; the
+  // outcome says what the server actually minted. Binding to the outcome is what
+  // stops a transaction hash from being shown under a label that does not
+  // describe it — the reported defect where the residency transaction appeared
+  // under the citizenship claim. While the mint is pending or was refused there
+  // is no operation yet, so the requested target is the honest fallback.
+  const credential: MembershipClaimTarget =
+    outcome?.operation === 'issue-resident'
+      ? 'resident'
+      : outcome?.operation === 'promote-to-citizen'
+        ? 'citizen'
+        : target;
   const noun =
-    target === 'resident'
+    credential === 'resident'
       ? 'Colosseum Resident credential'
       : 'Colosseum Citizen credential';
-  const state = target === 'resident' ? 'Resident' : 'Citizen';
+  const state = credential === 'resident' ? 'Resident' : 'Citizen';
+  // The demo artifact serial belongs to the credential the section is
+  // displaying (the resident pass or the certificate). When the confirmed
+  // transition is a different credential, the serial cannot be asserted for that
+  // transaction, so it is omitted rather than mislabelled.
+  const receiptSerial = credential === target ? serial : null;
 
   if (pending) {
     return (
@@ -1096,7 +1122,7 @@ function MintReceipt({
 
   return (
     <div
-      data-testid={`colosseum-mint-${target}`}
+      data-testid={`colosseum-mint-${credential}`}
       data-state={outcome.status}
       style={mintReceiptBox}
     >
@@ -1107,7 +1133,7 @@ function MintReceipt({
           </p>
           <p style={mintMeta}>
             Status: {state}
-            {serial ? ` · Serial ${serial}` : ''}
+            {receiptSerial ? ` · Serial ${receiptSerial}` : ''}
           </p>
           {outcome.safeDeployment === 'deployed' ? (
             <p style={mintMeta}>
