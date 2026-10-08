@@ -1,0 +1,63 @@
+iteration: demo-feedback-27
+profile: NORMAL
+known_good: d26756b
+candidate: e7cf777
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: incomplete
+  tests: incomplete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+findings:
+  - id: F1
+    severity: WARN
+    scope: tests
+    title: "Regression evidence lives in apps/web/tests, not tests/regressions/"
+    evidence: "vitest.regressions.config.ts (environment 'node'); apps/web/vitest.config.ts:24; tests/regressions/README.md"
+    failure_mode: "The evidence is real and gate-executed via npm test, but not discoverable in the canonical regression directory."
+    materiality: "Non-gating. AGENTS.md says regression tests belong in tests/regressions/, but docs/DEVELOPMENT_CONTRACT.md:976-980 qualifies it with 'when compatible with the repository's testing conventions'; the node-only harness cannot render the Modal. The worker stated this plainly and refused to add a no-op file."
+    status: open
+  - id: F2
+    severity: WARN
+    scope: tests
+    title: "3 of the 13 new tests also pass against the pre-fix code"
+    evidence: "apps/web/tests/modal-focus-management.test.tsx:147,166,341; pre-fix git show d26756b:apps/web/src/components/ui/Modal.tsx"
+    failure_mode: "A future reader may over-read the suite as '13 tests prove the fix' when only 10 discriminate; the orchestrator's own session note said '13 assertions' which is loose (13 test cases)."
+    materiality: "Non-gating. The suite IS genuine: 10/13 only pass because the trap calls .focus() (jsdom does not implement Tab movement), and all four restore paths plus the containment wraps fail on d26756b. The three non-discriminating ones assert properties that already held and are valid guards."
+    status: open
+  - id: F3
+    severity: WARN
+    scope: frontend
+    title: "isFocusable comment overstates coverage of a style-based ancestor display:none"
+    evidence: "apps/web/src/components/ui/Modal.tsx:78-90; InvestScreen.tsx:1248,1515"
+    failure_mode: "The comment says the [hidden] check observes a display:none on an ANCESTOR, which is only true for the UA [hidden] rule; a descendant's own computed display is not 'none' when an ancestor is style-hidden. A future dialog hiding a subtree with style={{display:'none'}} would have its controls treated as focusable and the wrap endpoints could be wrong."
+    materiality: "Non-gating and NOT reachable today: a grep found no style-based display:none or visibility:hidden anywhere under apps/web/src, so the trap is correct for every current caller."
+    status: open
+notes_append:
+  - "THIRD INSTANCE OF THE SAME PATTERN in this session: documentation/comment asserting more than the code guarantees. (1) demo-feedback-26 F1 — eligibility.ts docs still said 'the votable set' while the screen had been relabelled by eligibility. (2) demo-feedback-27 F3 — the isFocusable comment claims ancestor display:none coverage it does not have. (3) demo-feedback-25 F3 — the shared Modal's doc implied a focus contract it did not implement. This is now a candidate CLASS of defect rather than three anecdotes, and the honest closing move is to sweep the comments of the touched modules rather than fix them one at a time as they surface."
+  - "The reviewer independently confirmed: no openDialogs stack leak (balanced push/remove on close, unmount and dep change); the recomputation claim is real for every mechanism this app uses; the MoveToVaultDialog fix is a genuine pre-existing-bug fix with no focus jump elsewhere (its mounted flips BEFORE open); and the ColosseumResidency confirm taking the main fallback is an improvement over the previous drop to <body>."
+  - "Reviewer-declared limitation: an independent subreviewer pass could not be launched (subagent depth limit reached), so the findings are the review lead's own."
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: e7cf777
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate e7cf777. Node v22.17.0 per .nvmrc."
+notes:
+  - "Fixes demo-feedback-25 finding F3, deferred to its own task because it affects EVERY dialog in the app: the shared apps/web/src/components/ui/Modal.tsx moved focus into the dialog but (1) did not CONTAIN it, so Tab past the last control moved focus to elements BEHIND the dialog, and (2) did not RESTORE it, dropping focus to <body> on close so a keyboard user lost their place."
+  - "Fix, contained entirely in Modal.tsx plus a new test file: (1) Containment — the existing document keydown listener now intercepts Tab/Shift+Tab for the TOPMOST open dialog using a module-level openDialogs stack, so only the topmost traps and nested or sibling dialogs cannot contend. Forward from the last focusable wraps to the first, backward from the first wraps to the last, and from the card itself forward enters at the first and backward at the last. The focusable set is RECOMPUTED ON EVERY TAB, so content that changes while open cannot leave a stale node and a focused node that is removed re-enters at the correct end. A dialog with no focusable nodes holds focus on the card. No listener exists while closed. (2) Restoration — document.activeElement is captured at open (treating <body>/<html> as no opener) and restored on cleanup, covering Escape, backdrop, close button, a caller's own action, and unmount. If the opener is gone, disabled or hidden, focus falls back to the first focusable control in the page's main landmark, then to the main element itself, with <body> as the documented last resort."
+  - "Byte-for-byte unchanged: role=dialog, aria-modal, aria-labelledby, Escape, backdrop dismiss, click-stop-propagation, the card's overflow:auto / maxHeight:86vh, and the fadeUp entrance. Initial focus still lands on the card (tabIndex=-1) — deliberate and non-destructive."
+  - "The worker read ALL SIX consumers and needed to change none: InvestScreen, ColosseumResidency (ClaimableNotice — the exact F3 dialog), FeeStep, MoveToVaultDialog, WealthStep, BankScreen. Per-consumer reasoning was supplied for each."
+  - "OUT-OF-CONTRACT DISCOVERY, a pre-existing bug fixed as a direct consequence: MoveToVaultDialog mounts with open already true, and the pre-existing focus effect keyed on [open] alone never ran once mounted flipped, so THAT DIALOG NEVER RECEIVED INITIAL FOCUS. Adding mounted to the dependency list fixes it. No test had covered it; it is now covered. The worker flagged it rather than absorbing it silently."
+  - "The worker CORRECTED an assumption in the orchestrator's brief: the brief required 'body scroll restored as it is today', but the shared Modal does NOT lock body scroll at all today — only FullScreenReveal does, via data-overlay-open. The worker left body scroll entirely untouched and said plainly that adding a body-scroll lock to Modal would be a scope addition it did not make. The orchestrator's assumption was wrong."
+  - "The worker REFUSED to write a no-op regression file: the root tests/regressions/ harness is node-only (environment 'node', no DOM) and cannot render the Modal or fire key/focus events, so it stated a faithful regression test there is impossible and placed the real DOM assertions in apps/web/tests/modal-focus-management.test.tsx instead (13 assertions)."
+  - "Worker verification: the new focus suite 13/13; a 29-file batch covering every test that touches Modal or a consumer, 337/337; a 4-file page-level batch, 21/21; onboarding-flow.test.tsx 41/41 isolated (known load-sensitive flake, did not reproduce); root regressions 7 files / 33 passed; typecheck exit 0; lint exit 0, 0 errors, 17 pre-existing warnings none in changed files."
+  - "Worker-declared risk to judge: restoring focus to a gone trigger now lands on the main landmark's first focusable rather than <body>. In the real app every routed page is inside AppShell's <main>, so the target exists; a unit test rendering a consumer without a main falls to <body>, the documented last resort."
+  - "Scope check by the orchestrator before integration: exactly 2 files, Modal.tsx and its new test; nothing under packages/**, supabase/**, no lockfile, no dependency."
+  - "Operational note: the network dropped three times during this session (opencode.ai, and github.com twice). One push failed with 'Could not resolve host: github.com' AFTER the review-state commit and the local known-good tag had been created, leaving 3 unpushed commits with the local tag ahead of the remote. The orchestrator detected the divergence by comparing local HEAD, origin/main, known-good and the unpushed count, and a clean retry reconciled it with no loss."
