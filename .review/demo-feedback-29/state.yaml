@@ -1,0 +1,51 @@
+iteration: demo-feedback-29
+profile: NORMAL
+known_good: e5dfad9
+candidate: bd0cd02
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+findings:
+  - id: F1
+    severity: WARN
+    scope: frontend
+    title: "aria-current='page' on the Resident link on routes other than /"
+    evidence: "ResidentSwitchControl.tsx:36; Sidebar.tsx:149; SidebarFooter.tsx:59"
+    failure_mode: "residentActive = !adminActive, so on /holdings, /invest etc. the Resident link (href='/') announces itself as the current page. A screen reader hears 'Resident, current page' for a link that navigates elsewhere."
+    materiality: "Cosmetic/semantic only; non-blocking. Mirrors the Admin pattern."
+    status: open
+    introduced_by: bd0cd02
+class_analysis:
+  - "SETTLED ON CORRECTED FACTS. The orchestrator's property-5 premise — that /vault/withdraw 'passes no safeCard — the same latent gap' as /admin — was INACCURATE, and the reviewer independently flagged the same discrepancy in its first pass. /vault/withdraw DOES supply safeAddress/safeDeployed/safeStatus/explorerUrl (page.tsx:49-57), so Sidebar takes its value-prop branch and the address renders. The /admin bug passed NEITHER the slot NOR the value props, so safeAddress fell to the null default."
+  - "The reviewer ENUMERATED every production AppShell mount from code rather than assuming: (resident)/layout.tsx:85 (slot), admin/page.tsx:85 (slot, added by this candidate), vault/withdraw/page.tsx:49 (value props). ZERO production mounts pass neither slot nor value props. The loading.tsx files only MENTION AppShell in comments. The remaining <AppShell> JSX sites are test fixtures, which are not user-visible surfaces."
+  - "CONCLUSION: the user-visible Safe-address defect had exactly ONE production instance, /admin, and bd0cd02 closes it. No bounded follow-up is required for the class. SetupSidebar.tsx:107-120 keeps a static Resident span on the pre-registration surface, where the Admin half is deliberately aria-disabled and the docstring states the switch is presentation-only — a different, deliberate surface, not the /admin defect."
+  - "Reviewer confirmation of the other properties: AdminPage reuses the cache-wrapped ShellSafeCard/loadShellSafe path with no second Safe read, and the Suspense fallback is a neutral aria-hidden shape that never flashes 'no account yet'; ResidentSwitchControl is a real Link with the accessible name 'Resident', keyboard focusable, with background and aria-current driven by residentActive = !adminActive; the resident layout and its streamed slots are untouched; the 8/8 pre-fix failure claim is credible from the assertions (undefined safeCard -> placeholder, span -> no role=link); scope is 7 files with no dependency or lockfile change."
+  - "PROCESS NOTE, recorded rather than dropped: this is the SECOND orchestrator-premise correction of the session. (1) The 'Motion is used for animations' premise was wrong and was corrected by two independent workers. (2) The property-5 claim about /vault/withdraw was wrong and was corrected by the orchestrator's own re-read and independently by the reviewer. In both cases the correction strengthened the outcome rather than weakening it."
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: bd0cd02
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate bd0cd02. Node v22.17.0 per .nvmrc."
+notes:
+  - "Live-demo defect reported by the human: 'Cuando entro a admin la navbar falla, es decir, el resident no funciona, no aparece la direccion del usuario y atels'. The last word was garbled and never clarified; reconnaissance found no third distinct failure beyond the two below."
+  - "DIAGNOSIS, established by a read-only reconnaissance pass before any code: 'admin mode' is NOT a toggle. It is the /admin route, which lives OUTSIDE the (resident) route group and renders its OWN AppShell (apps/web/src/app/admin/page.tsx:36-70). Two concrete defects followed."
+  - "Cause 1 — the address never appears because it is NEVER FETCHED. admin/page.tsx:70 rendered <AppShell email nav isReviewer /> with no safeCard and no safeAddress; AppShell defaults safeAddress = null (AppShell.tsx:90) and safeCard is undefined, so Sidebar took its value-prop fallback (Sidebar.tsx:134-145) and SafeAddressCard rendered the placeholder (0x… / 'no account yet'). loadShellSafe was called NOWHERE under apps/web/src/app/admin/. This was a DATA OMISSION, not a throw and not a swallowed catch — the component rendered correctly, with null."
+  - "Cause 2 — the 'Resident' half of the Resident/Admin switch was INERT IN EVERY MODE. SidebarFooter.tsx:52-65 hardcoded a static <span> with no href and no onClick, and its white 'active' background made it look like the live current mode while the Admin half was highlighted. That is literally the human's 'el resident no funciona'."
+  - "NOT A REGRESSION, verified against history: the admin page has never passed Safe data (checked in a5aa921 and 1830f51) and the static span predates the recent shell refactor (present since the original shell commit 4507c89). The Oct 5 streamed-slot refactor only changed the RESIDENT shell. This is a latent gap the demo made visible, not a break introduced this session."
+  - "NO TEST COVERED IT: no test imported @/app/admin/page, and none rendered the admin AppShell/Sidebar with admin nav and asserted the Safe card or the Resident switch. That is why it survived every review — adversarial review examines the diff, and this was never in a diff."
+  - "Fix: (1) AdminPage now passes the SAME streamed slot the resident layout uses — <Suspense><ShellSafeCard userId network/></Suspense> — reusing loadShellSafe rather than adding a second read; no record still degrades to the existing 'no account yet' placeholder. (2) A new ResidentSwitchControl replaces the hardcoded span: a real <Link href='/'> , keyboard focusable, accessible name 'Resident', background '#fff' only when residentActive = !adminActive, with aria-current='page' on whichever half is the live mode; the Admin half got the matching aria-current. The resident layout, its streamed slots and resident-mode Sidebar markup are otherwise untouched. activeSettlementChainLabel was exported from AppShell instead of adding a third copy of the helper."
+  - "REGRESSION EVIDENCE supplied by the worker: stashing apps/web/src and running the two new test files produced 8/8 FAILURES against the pre-fix code — the safeCard assertion failed because it was undefined and the placeholder rendered, and getByRole('link', { name: 'Resident' }) found nothing because it was a span. Documented in the test file header."
+  - "Worker verification: sidebar/admin/resident-layout/shell batch 10 files / 47 passed; root regressions 7 files / 33 passed; typecheck clean; lint 0 errors / 17 pre-existing warnings none in changed files; onboarding-flow.test.tsx 41/41 isolated; an extra 4-file batch on the shared Sidebar/AppShell surfaces 22 passed."
+  - "CLASS QUESTION the reviewer must settle: the worker reported TWO more instances of the same class OUT OF SCOPE and did not fix them. (a) apps/web/src/app/vault/withdraw/page.tsx renders its OWN AppShell and likewise passes no safeCard — the same latent gap. (b) apps/web/src/components/shell/SetupSidebar.tsx also renders a static Resident <span> (a pre-registration surface where Admin is deliberately disabled). The question is whether this iteration should have fixed the CLASS — every AppShell mount that omits the safe card — rather than only /admin. The orchestrator deliberately did not expand scope unilaterally mid-demo and is passing the question to the reviewer."
+  - "Environment note: the worktree needed a git-ignored apps/web/node_modules symlink to run vitest; the worker REMOVED it before finishing so nothing can write through it, and the worktree is clean."
+  - "Scope check by the orchestrator before integration: 7 files, all under src/app/admin, src/components/shell and tests; nothing under packages/**, supabase/**, no lockfile, no dependency."
