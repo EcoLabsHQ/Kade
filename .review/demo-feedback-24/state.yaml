@@ -1,0 +1,38 @@
+iteration: demo-feedback-24
+profile: NORMAL
+known_good: 1455640
+candidate: f6ce7bb
+mode: recheck
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: complete
+  tests: complete
+active_findings: []
+resolved_findings: [F1, F2]
+next_finding_id: F3
+recheck_attempts: {F1: 1, F2: 1}
+review_complete: true
+verdict: review_passed
+recheck_notes:
+  - "RECHECK of the two blockers against d564f55...f6ce7bb. F1 RESOLVED: the window start is now a re-satisfiable declarative condition (colosseumWindowAction) owned by the effect and gated on the claimed pass, so decay, a failed/never-written start and reload all repair; with passClaimed=false the policy returns idle, so the pre-claim auto-start genuinely did NOT creep back — the reviewer checked BOTH directions. The server gate files are untouched by the corrective diff and remain the sole, re-deriving write path; the client only requests, the server decides."
+  - "F2 RESOLVED: every canonical now goes through the forward-only mergeColosseumProgress, so a pre-pass read cannot un-record the pass; the claim handler no longer applies the startWindow canonical directly and lets the effect start the window. A synchronous claimInFlightRef plus the committed serial guard prevent a double click from replaying the reveal, the cue or the mint."
+  - "The author's declared inverse hazard — a stale non-null canonical re-asserting a window a concurrent decay just cleared — was checked and CONVERGES: progress.residentSince is an effect dependency and !eligible re-drives clear; a null canonical cannot clear locally, and clearResidentSince is a no-op when already null, so there is no oscillation and no stick."
+  - "Adjacent invariants re-verified: the citizen reveal still fires exactly once on the live transition; the grey unclaimed card still cannot appear for a claimed pass; no existing test weakened, deleted or skipped; the two removed no-op act() wrappers dropped no assertion; the previously declared tests/regressions gap is closed by residency-window-lifecycle.test.ts."
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: f6ce7bb
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the corrective candidate f6ce7bb. Node v22.17.0 per .nvmrc."
+notes:
+  - "Feature request from the live demo, for the Colosseum residency claim: (a) a grey resident card before claiming, a Claim affordance with a showy animation when claimable; (b) claiming animates in the same family as the citizenship reveal but visibly distinct, with sound; (c) the 2-minute compliance counter starts when the residency is claimed and stays visually quiet."
+  - "The ordering question was resolved by EVIDENCE: startColosseumWindow (colosseum-state-server.ts:150-173) gates only on the four derived checks being met, which is exactly the precondition for the claim, so starting the window at claim time weakens nothing. The server remained the sole write path throughout."
+  - "DISCOVERY on d564f55 FAILED with two blocking findings, both in ColosseumResidency.tsx. F1: removing the pre-claim auto-start made the window start a one-shot event while its clear stayed a recurring state-derived condition, so after the supported and tested decay path the window could never restart and 'Become a Citizen' became permanently unreachable; a reload reproduced the dead end, and a failed first window write produced it too. F2: startWindow's canonical is a read taken BEFORE the pass exists, and applying it before claimResidencyPass reverted the claim for one round trip, re-enabling the Claim button and letting a second click replay the reveal, the cue and runClaim('resident') again."
+  - "Orchestrator validated both findings against the code before acting, then diagnosed the shared root cause: the window's lifecycle was modelled twice and inconsistently — an event-shaped start against a state-shaped clear, so the start was strictly weaker than the clear."
+  - "Corrective round (candidate f6ce7bb), root-cause fix rather than two patches: (1) colosseumWindowAction({eligible, citizen, hasWindow, passClaimed}) is now a pure policy and the single source of the window lifecycle; the start condition became the RE-SATISFIABLE invariant 'eligible AND claimed AND windowless', so the normal claim->window flow and the repair path are the same code path, and the claim is still the gate because passClaimed must be true; startWindow and startColosseumWindow remain the sole write path and still re-derive the four checks server-side. (2) mergeColosseumProgress(current, canonical) applies every canonical FORWARD ONLY — a canonical can add or confirm state but can never REGRESS a recorded milestone — and it is applied to all canonical applications (start, clear, pass, citizen), hardening the citizenship path too. (3) claimInFlightRef latches synchronously so the one-shot guard holds for the whole round trip independent of React's async state commit."
+  - "Regression coverage added: root tests/regressions/residency-window-lifecycle.test.ts (7 tests) locks the argument-free invariant — eligible+claimed+windowless implies start, again and again; unclaimed implies idle, so no pre-claim clock; a citizen keeps its window; and the forward-only merge cannot un-record a pass or a window while a decay clear still holds. Component tests in apps/web assert that a claimed-but-windowless resident gets a window on load and the Citizen button after 2 minutes, that the window restarts after a decay, and that a pre-pass canonical cannot revert the claim or re-run the mint. Both suites fail against the pre-fix code."
+  - "Worker verification: root regressions 7 files / 33 tests passed; residency 17 files / 229 passed; typecheck OK; lint 0 errors / 17 pre-existing warnings; root tsconfig.tests.json typecheck OK. No existing test weakened, deleted or skipped. No dependency added."
+  - "Worker-disclosed choice to keep visible: the repair is AUTOMATIC (effect-driven), matching the pre-existing decay semantics where the clock resets and is reachable again. The normal flow is still claim -> window; only the GATE moved from 'the claim event' to 'the claimed pass'. If the product would prefer an explicit affordance instead, the invariant still holds and the policy change is localised."
+  - "Out-of-contract discovery, VERIFIED BY THE ORCHESTRATOR: the worker briefly wrote the regression file into the integration workspace path by mistake. The orchestrator checked its own tree before integrating — the stray file does not exist there and tests/regressions/README.md is unmodified — so the worker's self-correction holds and the integration workspace is intact."
+  - "Still open, NOT in this candidate: the grey-card reading in states A/B (the worker shows the grey preview in the CLAIMABLE state and asked whether A/B should show it too); and the human's follow-up task d, the navbar red dot plus citizenship prompt, which depends on this candidate."
