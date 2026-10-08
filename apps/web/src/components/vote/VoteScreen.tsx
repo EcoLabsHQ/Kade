@@ -38,12 +38,14 @@ import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
  * in that list with the exact text "Colosseum Citizens only" and cannot be
  * selected. Citizens vote in everything; a Resident votes the Residents space.
  *
- * The ballot is now **real**: casting calls the `castVote` server action, which
- * signs the Snapshot `Vote` typed data through the owner Safe and POSTs it to
- * the sequencer. `success` is shown only when the sequencer accepted the vote;
- * every refusal names what failed and states plainly that the vote was **not**
- * recorded. The UI's eligibility block is a **companion to the real rule, never
- * the protection** — the server re-derives every precondition before it signs.
+ * The ballot is now **real**, and the resident authorises it: casting asks the
+ * server to validate the vote and return the canonical typed data, has the
+ * resident's **passkey** sign it in the browser, and submits that signature to
+ * the Snapshot sequencer. The backend never signs. `success` is shown only when
+ * the sequencer accepted the vote; every refusal names what failed and states
+ * plainly that the vote was **not** recorded. The UI's eligibility block is a
+ * **companion to the real rule, never the protection** — the server re-derives
+ * every precondition before the resident is asked to sign.
  *
  * Only the single-choice vote types (`basic`, `single-choice`) are supported.
  * Any other real type is surfaced as-is and its ballot is refused honestly,
@@ -111,9 +113,10 @@ export interface VoteScreenProps {
   /** A server-side load failure, or null. */
   readonly error?: string | null;
   /**
-   * The real cast: the server action in production, a fake in tests. It is the
-   * only thing that sends a vote, and it returns the real outcome. When absent
-   * the screen cannot cast and says so rather than pretending.
+   * The real cast: in production the resident-authorised flow (server validates
+   * → passkey signs in the browser → server submits); in tests a fake. It is the
+   * only thing that sends a vote, and it returns the real outcome. When absent,
+   * the screen uses the real flow rather than pretending it cannot vote.
    */
   readonly castVote?: (input: {
     readonly spaceId: string;
@@ -121,6 +124,18 @@ export interface VoteScreenProps {
     readonly choice: number;
   }) => Promise<SnapshotVoteResult>;
 }
+
+/**
+ * The real cast, loaded on demand.
+ *
+ * The orchestration imports the vote server actions (and the browser Safe SDK
+ * through them); importing it lazily keeps the server-only modules and the SDK
+ * out of the screen's module graph until the resident actually casts.
+ */
+const defaultCastVote: NonNullable<VoteScreenProps['castVote']> = async (input) => {
+  const { castVoteWithPasskey } = await import('@/lib/vote/cast-client');
+  return castVoteWithPasskey(input);
+};
 
 export function VoteScreen({
   wallet = null,
@@ -287,20 +302,13 @@ export function VoteScreen({
     ) {
       return;
     }
-    if (castVote === undefined) {
-      setResult({
-        status: 'failed',
-        submitted: false,
-        reason: 'Voting is not available on this screen.',
-      });
-      return;
-    }
+    const cast = castVote ?? defaultCastVote;
     const choice = selectedChoice;
     const proposal = selected;
     setCasting(true);
     setResult(null);
     try {
-      const outcome = await castVote({
+      const outcome = await cast({
         spaceId: proposal.spaceId,
         proposalId: proposal.proposalId,
         choice,

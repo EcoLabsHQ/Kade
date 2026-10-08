@@ -5,7 +5,6 @@ import { getSessionUser } from '@/lib/supabase/server';
 import { loadShellSafe } from '@/lib/safe/shell';
 import { loadVoteData, loadVoteViewerMembership } from '@/lib/vote/server';
 import { CITIZEN_SPACE_ID, RESIDENT_SPACE_ID } from '@/lib/vote/spaces';
-import { castVoteAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,10 +23,10 @@ export const dynamic = 'force-dynamic';
  *
  * The Snapshot source is real (`@/lib/vote/server`): the page loads the
  * proposals for both spaces and the viewer's voting power through the real
- * adapter, then hands the screen serialisable data. Casting is the real server
- * action (`./actions`), passed to the screen as a prop so the browser never
- * imports the signer or the sequencer; the hub client, the read-only chain
- * client and the owner-Safe signer all stay on the server.
+ * adapter, then hands the screen serialisable data. Casting is the resident's
+ * own: the screen's default cast runs the two server actions and the browser
+ * passkey ceremony (`@/lib/vote/cast-client`), so the page does not pass a cast
+ * prop.
  */
 export default async function VotePage() {
   const session = await getSessionUser();
@@ -50,7 +49,6 @@ export default async function VotePage() {
         proposals={voteData.proposals}
         powers={voteData.powers}
         error={voteData.error}
-        castVote={castVoteAction}
       />
     </ContentContainer>
   );
