@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
- * The Vote screen presents exactly the proposals the viewer can vote on.
+ * The Vote screen presents proposals by the eligibility derivation.
  *
- * A proposal is available only when the viewer can effectively vote on it: it is
- * open, the category is allowed, the wallet is connected and the voting power is
- * known and strictly greater than zero. Everything else stays reachable in a
- * clearly separated, non-actionable group carrying the eligibility derivation's
- * honest reason — and the default selection never lands on a non-votable
- * proposal when a votable one exists.
+ * A proposal is available when the viewer is eligible for it: it is open, the
+ * category is allowed, the wallet is connected and the voting power is known
+ * and strictly greater than zero. Eligibility is not the same as this screen
+ * being able to present a ballot, so an eligible proposal with an unsupported
+ * vote type stays visible in the "Eligible to you" group and states its type.
+ * Everything else stays reachable in a clearly separated, non-actionable group
+ * carrying the eligibility derivation's honest reason — and the default
+ * selection never lands on a non-eligible proposal when an eligible one exists.
  */
 
 vi.mock('next/navigation', () => ({
@@ -210,6 +212,54 @@ describe('VoteScreen available set', () => {
     expect(zeroEntry).toBeDisabled();
     expect(zeroEntry).toHaveAttribute('data-available', 'false');
     expect(zeroEntry).toHaveTextContent('You hold no voting power for this proposal.');
+    cleanup();
+  });
+
+  it('labels the eligible group by eligibility, not votability, when the vote type is unsupported', async () => {
+    // Both proposals are open, category-allowed and have known power, so both
+    // are eligibility-eligible. The first uses a real vote type this screen
+    // cannot present as a ballot.
+    const supported = proposal({
+      proposalId: 'p-supported',
+      title: 'Basic consultation',
+    });
+    const unsupported = proposal({
+      proposalId: 'p-unsupported',
+      title: 'Ranked consultation',
+      type: 'ranked-choice',
+    });
+
+    render(
+      <VoteScreen
+        wallet={WALLET}
+        membership="resident"
+        adapter={adapterFor([supported, unsupported], {
+          'p-supported': known(1n),
+          'p-unsupported': known(1n),
+        })}
+        spaceIds={[RESIDENT_SPACE_ID]}
+      />,
+    );
+
+    await screen.findByTestId('vote-proposal-list');
+
+    // Both are in the first group, which is the eligibility set, not the
+    // votable set.
+    const availableGroup = screen.getByTestId('vote-proposal-list');
+    const unsupportedEntry = screen.getByTestId('vote-proposal-p-unsupported');
+    expect(availableGroup).toContainElement(unsupportedEntry);
+
+    // The label must not claim votability: the unsupported type cannot be voted
+    // here. It names eligibility instead.
+    expect(screen.getByText(/^Eligible to you · 2$/)).toBeInTheDocument();
+    expect(screen.queryByText(/open to you/i)).toBeNull();
+
+    // The proposal is not hidden: it stays selectable and states the honest
+    // reason its ballot cannot be presented.
+    expect(unsupportedEntry).toBeEnabled();
+    fireEvent.click(unsupportedEntry);
+    const reason = await screen.findByTestId('vote-type-unsupported');
+    expect(reason).toHaveTextContent(/ranked-choice/);
     cleanup();
   });
 });

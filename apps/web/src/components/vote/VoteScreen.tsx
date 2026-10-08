@@ -86,7 +86,7 @@ const EYEBROW: CSSProperties = {
   color: tokens.muted,
 };
 
-/** The label above a proposal-list group ("Open to you" / "Not open to you"). */
+/** The label above a proposal-list group ("Eligible to you" / "Not eligible to you"). */
 const GROUP_LABEL: CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
@@ -225,10 +225,14 @@ export function VoteScreen({
     };
   }, [adapter, wallet, spaceIds, preloadedProposals, preloadedPowers, preloadedError]);
 
-  // The available set is exactly the votable set: a proposal the viewer cannot
-  // vote on is never presented as available, and the default selection never
-  // lands on one when a votable proposal exists. The unavailable set keeps the
-  // rest reachable with their honest refusal reasons.
+  // The available set is the eligibility-eligible set: a proposal the viewer
+  // cannot vote for an eligibility reason is never presented as available, and
+  // the default selection never lands on one when an eligible proposal exists.
+  // Eligibility is not the same as this screen being able to present a ballot:
+  // an eligible proposal with a vote type the screen does not support stays in
+  // this set (selectable, with its type stated) rather than being hidden, which
+  // is why the group label names eligibility, not votability. The unavailable
+  // set keeps the rest reachable with their honest refusal reasons.
   const availability = deriveVoteProposalAvailability({
     wallet,
     membership,
@@ -455,12 +459,15 @@ export function VoteScreen({
         <Card padding="16px 18px" radius={12} style={{ marginBottom: '16px' }}>
           <div style={EYEBROW}>Proposals · {proposals.length}</div>
 
-          {/* The votable set. A proposal appears here only when the viewer can
-              effectively vote on it; the rest stay below, non-actionable. */}
+          {/* The eligibility-eligible set. A proposal appears here when the
+              viewer is eligible for it. Eligibility is not votability: an
+              eligible proposal whose vote type this screen cannot present stays
+              here, selectable, and states its type; the rest stay below,
+              non-actionable. */}
           {availableProposals.length > 0 ? (
             <div style={{ marginTop: '10px' }}>
               <div style={GROUP_LABEL}>
-                Open to you · {availableProposals.length}
+                Eligible to you · {availableProposals.length}
               </div>
               <div
                 data-testid="vote-proposal-list"
@@ -485,7 +492,7 @@ export function VoteScreen({
               }}
             >
               <div style={GROUP_LABEL}>
-                Not open to you · {unavailableProposals.length}
+                Not eligible to you · {unavailableProposals.length}
               </div>
               <div
                 data-testid="vote-proposal-list-unavailable"
