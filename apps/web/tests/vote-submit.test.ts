@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAddress, type Address, type Hex } from 'viem';
 import type { SnapshotAdapter } from '@/lib/vote/adapter';
 import { createVoteDuplicateGuard } from '@/lib/vote/duplicate-guard';
@@ -8,8 +8,10 @@ import type {
   SnapshotVoteEnvelope,
 } from '@/lib/vote/sequencer';
 import {
+  abandonSnapshotVote,
   beginSnapshotVote,
   completeSnapshotVote,
+  RETAINED_VOTE_TTL_MS,
   type SnapshotVoteDependencies,
 } from '@/lib/vote/submit';
 import { RESIDENT_SPACE_ID, VOTE_CHAIN_ID } from '@/lib/vote/spaces';
@@ -111,6 +113,11 @@ function baseDeps(overrides: Partial<SnapshotVoteDependencies> = {}): SnapshotVo
     ...overrides,
   };
 }
+
+// The expiry test drives the clock with fake timers; always restore them.
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('beginSnapshotVote — the resident is handed the canonical typed data', () => {
   it('returns the canonical Vote typed data for the selected choice and signs nothing', async () => {
@@ -287,11 +294,12 @@ describe('beginSnapshotVote — preconditions refuse before anything is signed',
 });
 
 describe('duplicates and failures', () => {
-  it('does not hand out a second vote for the same (space, proposal, voter)', async () => {
+  const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
+
+  it('does not hand out a second vote after a genuine submission, and says a vote exists', async () => {
     const { sequencer, envelopes } = sequencerWith(ACCEPTED);
     const duplicateGuard = createVoteDuplicateGuard();
     const deps = baseDeps({ sequencer, duplicateGuard });
-    const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
 
     const first = await beginSnapshotVote(input, deps);
     if (first.status !== 'ready') throw new Error('expected ready');
@@ -304,7 +312,28 @@ describe('duplicates and failures', () => {
     const second = await beginSnapshotVote(input, deps);
     expect(second.status).toBe('blocked');
     expect(second.submitted).toBe(false);
+    if (second.status === 'blocked') {
+      // The refusal is TRUE: a vote genuinely exists.
+      expect(second.reason).toMatch(/already exists/);
+    }
     expect(envelopes).toHaveLength(1);
+  });
+
+  it('refuses a concurrent attempt as in-progress, never as an existing vote', async () => {
+    const { sequencer } = sequencerWith(ACCEPTED);
+    const duplicateGuard = createVoteDuplicateGuard();
+    const deps = baseDeps({ sequencer, duplicateGuard });
+
+    const first = await beginSnapshotVote(input, deps);
+    expect(first.status).toBe('ready');
+
+    const second = await beginSnapshotVote(input, deps);
+    expect(second.status).toBe('blocked');
+    if (second.status === 'blocked') {
+      expect(second.reason).toMatch(/already being signed/);
+      // No vote exists yet, so the "a vote already exists" claim must not appear.
+      expect(second.reason).not.toMatch(/already exists/);
+    }
   });
 
   it('surfaces a sequencer rejection honestly and allows a retry', async () => {
@@ -350,5 +379,93 @@ describe('duplicates and failures', () => {
     expect(outcome.submitted).toBe(false);
     expect(outcome.status).toBe('blocked');
     expect(envelopes).toHaveLength(0);
+  });
+});
+
+describe('an abandoned attempt releases the reservation so a retry is immediate', () => {
+  const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
+
+  it('lets the resident try again after an explicit abandon (dismissed prompt)', async () => {
+    const { sequencer, envelopes } = sequencerWith(ACCEPTED);
+    const duplicateGuard = createVoteDuplicateGuard();
+    const deps = baseDeps({ sequencer, duplicateGuard });
+
+    const first = await beginSnapshotVote(input, deps);
+    if (first.status !== 'ready') throw new Error('expected ready');
+
+    // The browser signing failed / was dismissed: the client abandons the token
+    // and never calls complete.
+    await abandonSnapshotVote(first.token, { duplicateGuard });
+
+    // The resident can immediately try again and actually cast the vote.
+    const second = await beginSnapshotVote(input, deps);
+    expect(second.status).toBe('ready');
+    if (second.status !== 'ready') throw new Error('expected ready');
+    const submitted = await completeSnapshotVote(
+      { token: second.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard },
+    );
+    expect(submitted.submitted).toBe(true);
+    expect(envelopes).toHaveLength(1);
+  });
+
+  it('self-releases an abandoned reservation after its bounded lifetime', async () => {
+    const { sequencer } = sequencerWith(ACCEPTED);
+    let now = 1_000;
+    const duplicateGuard = createVoteDuplicateGuard({
+      now: () => now,
+      ttlMs: 30_000,
+    });
+    const deps = baseDeps({ sequencer, duplicateGuard });
+
+    const first = await beginSnapshotVote(input, deps);
+    expect(first.status).toBe('ready');
+
+    // No complete and no abandon: while the claim is live it is reported honestly
+    // as in progress, never as an existing vote.
+    const whileLive = await beginSnapshotVote(input, deps);
+    expect(whileLive.status).toBe('blocked');
+    if (whileLive.status === 'blocked') {
+      expect(whileLive.reason).toMatch(/already being signed/);
+    }
+
+    // Past the lifetime it self-releases, so the resident can try again.
+    now += 30_001;
+    const retry = await beginSnapshotVote(input, deps);
+    expect(retry.status).toBe('ready');
+  });
+
+  it('releases the reservation when the retained vote expires before signing', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    const { sequencer } = sequencerWith(ACCEPTED);
+    // A guard lifetime longer than the retained-vote lifetime, so it is the
+    // explicit release on expiry (not the guard's own TTL) that frees the claim.
+    const duplicateGuard = createVoteDuplicateGuard({
+      ttlMs: RETAINED_VOTE_TTL_MS * 10,
+    });
+    const deps = baseDeps({ sequencer, duplicateGuard, now: () => Date.now() });
+
+    const first = await beginSnapshotVote(input, deps);
+    if (first.status !== 'ready') throw new Error('expected ready');
+
+    vi.setSystemTime(1_000_000 + RETAINED_VOTE_TTL_MS + 1);
+    const outcome = await completeSnapshotVote(
+      { token: first.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard },
+    );
+    expect(outcome).toMatchObject({ status: 'failed', submitted: false });
+    if (outcome.status === 'failed') {
+      expect(outcome.reason).toMatch(/expired/);
+    }
+
+    // The expired attempt released the claim, so a retry is immediately possible.
+    expect(
+      await duplicateGuard.reserve({
+        spaceId: RESIDENT_SPACE_ID,
+        proposalId: PROPOSAL_ID,
+        voter: VOTER,
+      }),
+    ).toEqual({ status: 'reserved' });
   });
 });
