@@ -10,11 +10,13 @@ import {
 import {
   claimResidencyPass,
   clearResidentSince,
+  colosseumWindowAction,
   EMPTY_COLOSSEUM_PROGRESS,
   generatePassportSerial,
   generateResidencyPassSerial,
   markCitizen,
   markResidentSince,
+  mergeColosseumProgress,
   NOOP_COLOSSEUM_PROGRESS_STORE,
   type ColosseumProgress,
   type ColosseumProgressStore,
@@ -279,6 +281,10 @@ export function ColosseumResidency({
   // `celebratedCitizenRef` latches the one live celebration per mount.
   const restoredCitizenRef = useRef(false);
   const celebratedCitizenRef = useRef(false);
+  // Latches synchronously on the first residency claim so a double click (or any
+  // re-entry before the pass state commits) cannot replay the claim's reveal,
+  // sound and mint. Reset when the account/profile changes.
+  const claimInFlightRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -287,45 +293,69 @@ export function ColosseumResidency({
     // Seed from the server state so only a *new* citizenship celebrates.
     restoredCitizenRef.current = restored.citizenAt !== null;
     celebratedCitizenRef.current = false;
+    claimInFlightRef.current = false;
     setNow(Date.now());
   }, [profileKey]);
 
   const citizen = progress.citizenAt !== null;
+  const residencyPassClaimed = progress.residencyPassSerial !== null;
   const secondsRemaining = secondsRemainingFrom(progress.residentSince, now);
   const windowElapsed =
     progress.residentSince !== null && secondsRemaining <= 0;
   const citizenEligible = allChecksMet && windowElapsed && !citizen;
 
-  // Keep the server-side clock honest and tick it only while the window is live.
-  // The window is started by `claimResidency`, not here: the human's flow is
-  // claim-first, then the 2-minute compliance window. This effect only clears
-  // the window on decay (the checks stopped being green before citizenship) and
-  // advances the displayed clock. The start/clear pair writes the same
-  // `applications.colosseum_resident_since` the Citizen mint reads, so the
-  // displayed countdown and the mint's compliance window are one record. Runs
+  // The compliance window's whole lifecycle — start, decay and tick — lives
+  // here, as a declarative consequence of the demo state, not as a
+  // one-shot event. `colosseumWindowAction` is the single source of the policy:
+  // an eligible resident who has claimed the pass and has no live window gets
+  // one, again and again if needed. That is what stops the old asymmetry where
+  // the window could only ever be started once but could be cleared many times
+  // (which dead-ended a claimed resident after a decay). The start is gated on
+  // the claimed pass, so an unclaimed resident never gets a pre-claim clock; the
+  // server still re-derives the four real checks inside `startWindow` (the sole
+  // write path), so the gate is not weakened. The start/clear pair writes the
+  // same `applications.colosseum_resident_since` the Citizen mint reads. Runs
   // only after mount so the server render never writes demo state.
   useEffect(() => {
     if (!mounted) return;
-    if (!allChecksMet || citizen) {
+    const action = colosseumWindowAction({
+      eligible: allChecksMet,
+      citizen,
+      hasWindow: progress.residentSince !== null,
+      passClaimed: residencyPassClaimed,
+    });
+    if (action === 'clear') {
       // The checks stopped being green before citizenship: the clock resets,
       // matching the existing decay. Once a citizen, the record is kept.
-      if (!citizen && progress.residentSince !== null) {
-        setProgress((current) => clearResidentSince(current));
-        void storeRef.current.clearWindow().then((canonical) => {
-          if (canonical) setProgress(canonical);
-        });
-      }
+      setProgress((current) => clearResidentSince(current));
+      void storeRef.current.clearWindow().then((canonical) => {
+        if (canonical) {
+          setProgress((current) => mergeColosseumProgress(current, canonical));
+        }
+      });
       return;
     }
-    // No window yet: nothing to tick. It starts on the claim.
-    if (progress.residentSince === null) return;
-    if (secondsRemaining <= 0) return;
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
+    if (action === 'start') {
+      const iso = new Date().toISOString();
+      setProgress((current) => markResidentSince(current, iso));
+      setNow(Date.now());
+      void storeRef.current.startWindow(iso).then((canonical) => {
+        if (canonical) {
+          setProgress((current) => mergeColosseumProgress(current, canonical));
+        }
+      });
+      return;
+    }
+    if (action === 'tick') {
+      if (secondsRemaining <= 0) return;
+      const interval = window.setInterval(() => setNow(Date.now()), 1000);
+      return () => window.clearInterval(interval);
+    }
   }, [
     mounted,
     allChecksMet,
     citizen,
+    residencyPassClaimed,
     progress.residentSince,
     secondsRemaining,
   ]);
@@ -382,7 +412,9 @@ export function ColosseumResidency({
     // is awaited afterwards, and the demo state is persisted to the account.
     runClaim('citizen');
     void storeRef.current.becomeCitizen(iso, serial).then((canonical) => {
-      if (canonical) setProgress(canonical);
+      if (canonical) {
+        setProgress((current) => mergeColosseumProgress(current, canonical));
+      }
     });
   }, [runClaim]);
 
@@ -400,47 +432,38 @@ export function ColosseumResidency({
     setCertificateOpen(true);
   }, [mounted, citizen]);
 
-  // Claiming the residency pass records a demo serial/instant once, starts the
-  // 2-minute compliance window, and reveals the pass full-screen with the
-  // residency celebration (distinct motion + sound). Re-opening an already
-  // claimed pass shows the same artifact in the standard tier and neither
-  // re-starts the window nor re-mints.
+  // Claiming the residency pass records a demo serial/instant once and reveals
+  // the pass full-screen with the residency celebration (distinct motion +
+  // sound). It does NOT start the window itself: setting the pass unlocks the
+  // window in the lifecycle effect above, which is the single declarative owner
+  // of the window (so the normal claim -> window flow and the repair path are
+  // one code path, not two). Re-opening an already claimed pass goes through the
+  // card's own control, not this handler, so this is strictly the first claim.
   const claimResidency = useCallback(() => {
-    // The mint and the window start are triggered only on the *first* claim;
-    // re-opening the pass is not a claim and must not call the server again.
-    const alreadyClaimed = progress.residencyPassSerial !== null;
+    // `claimInFlightRef` is set synchronously; the pass state that would also
+    // guard this is a render behind, so a double click could otherwise replay
+    // the claim before it commits.
+    if (claimInFlightRef.current || progress.residencyPassSerial !== null) return;
+    claimInFlightRef.current = true;
     const iso = new Date().toISOString();
     const serial = generateResidencyPassSerial();
     setProgress((current) => claimResidencyPass(current, iso, serial));
-    setResidencyCelebration(!alreadyClaimed);
+    setResidencyCelebration(true);
     setResidencyPassOpen(true);
-    if (!alreadyClaimed) {
-      // The claim starts the compliance window. The server re-derives the four
-      // real checks before recording `applications.colosseum_resident_since`
-      // (the same gate as before, now invoked at the human's claim-first
-      // moment), so the server gate is not weakened. The local mirror updates on
-      // the same tick; the server record is the durable one.
-      setProgress((current) => markResidentSince(current, iso));
-      setNow(Date.now());
-      // Start the window, then record the pass, in order. The pass write's
-      // canonical state is read after the window is durable, so applying it
-      // cannot erase the window the start just recorded.
-      void storeRef.current
-        .startWindow(iso)
-        .then((canonical) => {
-          if (canonical) setProgress(canonical);
-          return storeRef.current.claimResidencyPass(iso, serial);
-        })
-        .then((canonical) => {
-          if (canonical) setProgress(canonical);
-        });
-      // The reveal is already opening, so the mint never changes its timing; the
-      // outcome is awaited afterwards and reported honestly.
-      runClaim('resident');
-    }
+    // Record the pass server-side. Merging the canonical snapshot forward means
+    // it can never regress the pass we just recorded (the concurrent window
+    // start's snapshot predates it), so the one-shot guard holds for the whole
+    // duration of the claim.
+    void storeRef.current.claimResidencyPass(iso, serial).then((canonical) => {
+      if (canonical) {
+        setProgress((current) => mergeColosseumProgress(current, canonical));
+      }
+    });
+    // The reveal is already opening, so the mint never changes its timing; the
+    // outcome is awaited afterwards and reported honestly.
+    runClaim('resident');
   }, [progress.residencyPassSerial, runClaim]);
 
-  const residencyPassClaimed = progress.residencyPassSerial !== null;
   const showCertificate = mounted && citizen;
   // Once the resident has claimed their residency pass, the section shows the
   // same inline artifact treatment a citizen gets — the resident card instead of
