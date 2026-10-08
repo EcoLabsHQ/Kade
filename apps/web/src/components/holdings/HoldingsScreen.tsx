@@ -1,6 +1,8 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
+import { EthGlyph } from '@/components/icons/EthGlyph';
+import { UsdcGlyph } from '@/components/icons/UsdcGlyph';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { LockedAction } from '@/components/ui/LockedAction';
@@ -319,6 +321,22 @@ const MORPHO_COLOR = '#2470FF';
 
 /** The reference's native asset is named "Ethereum"; ours are symbol-first. */
 const NATIVE_ASSET_NAMES: Record<string, string> = { ETH: 'Ether' };
+
+/**
+ * The asset mark for a row's symbol, or the symbol text when no mark exists.
+ *
+ * `ETH` and `USDC` are the two real assets the balance read produces that have a
+ * permissively-licensed mark (see `EthGlyph` / `UsdcGlyph`). Every other symbol
+ * — the `—` of an unread row, the `EVM` of a wallet with nothing readable, the
+ * `MM` of a MetaMorpho vault instrument — keeps its text glyph rather than
+ * inventing an icon for it. The mark is decorative: the row's `name` beside it
+ * carries the accessible name, and the enclosing circle is already `aria-hidden`.
+ */
+function assetGlyph(symbol: string): ReactNode {
+  if (symbol === 'ETH') return <EthGlyph size={18} />;
+  if (symbol === 'USDC') return <UsdcGlyph size={18} />;
+  return symbol;
+}
 
 interface ChainTotal {
   readonly chainId: number;
@@ -866,7 +884,7 @@ export function HoldingsScreen({
                     aria-hidden
                     style={{ ...assetCircle, background: vaultCircleColor(row) }}
                   >
-                    {row.symbol}
+                    {assetGlyph(row.symbol)}
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <div style={assetName}>{row.name}</div>
@@ -929,7 +947,7 @@ export function HoldingsScreen({
                     aria-hidden
                     style={{ ...assetCircle, background: row.circleColor }}
                   >
-                    {row.symbol}
+                    {assetGlyph(row.symbol)}
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <div style={assetName}>{row.name}</div>
