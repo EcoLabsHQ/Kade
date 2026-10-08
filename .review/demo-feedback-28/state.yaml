@@ -1,0 +1,44 @@
+iteration: demo-feedback-28
+profile: QUICKFIX
+known_good: 6a09eb0
+candidate: 102ace9
+mode: targeted
+reviewed_scopes:
+  quickfix: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+findings:
+  - id: F1
+    severity: WARN
+    scope: quickfix
+    title: "Top-of-file 'rules, in order' list omits the loading guard and states the citizen-only text unqualified"
+    evidence: "apps/web/src/lib/vote/eligibility.ts:11-19 vs the real order at :69-75 (loading guard) preceding :89 (category); contrast the corrected in-body comment at :85-88"
+    failure_mode: "A reader treating the header as exhaustive would expect 'Colosseum Citizens only' on a Citizen proposal before the power read settles; the code returns the transient 'Checking your eligibility…'. No ballot is offered in either state."
+    materiality: "Same defect class as the sweep, but NON-BLOCKING and arguably NOT a defect to fix: it is accurate for every SETTLED state, it mirrors the frozen contract's own enumeration verbatim (docs/week-4-frozen-delivery-contract.md:235-240), and the deviation is confined to the transient power===null window. Correcting it would deviate from the frozen contract's wording. Disclosed by the worker rather than silently ignored."
+    status: open
+    introduced_by: null
+targeted_notes:
+  - "Comments-only was PROVEN INDEPENDENTLY by the reviewer, more strongly than the worker did: (1) its own diff filter over known-good...HEAD yields zero non-comment changed lines; (2) it transpiled both revisions with the repo's TypeScript using removeComments and compared the emitted JavaScript, which is BYTE-IDENTICAL — sha256 5bef0b61... for eligibility.ts and 94248c49... for Modal.tsx. No executable line changed."
+  - "The new wording was validated against the code, and the Modal.tsx disclaimer was validated EMPIRICALLY in jsdom rather than by reasoning: a button under an ancestor with inline display:none has closest('[hidden]') === null and its own computed display is 'inline-block', so it IS still reported focusable, while a button under a [hidden] ancestor is excluded. The Invest disclosures do use the hidden attribute, so the positive claim also holds."
+  - "Judgment on the out-of-contract discovery: the loading-before-category ordering is PRE-EXISTING and unchanged in known-good, so it is not a regression introduced or exposed by this candidate; it is transient, it offers no ballot either way, the eligibility decision is identical (eligible: false), and the frozen contract does not specify behaviour while the power read is in flight, so it is not a contract violation. The worker's decision to correct the comment and not the code was the right call. At most an optional small product/UX follow-up."
+  - "The anticipated risk of this change — that a wrong 'correction' would be worse than the original over-claim, because it carries the authority of looking reviewed — did not materialise: every corrected statement was checked against the code, and the one that could not be made true without a code change was reported instead of rewritten."
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 102ace9
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate 102ace9. Node v22.17.0 per .nvmrc."
+notes:
+  - "QUICKFIX profile, human-directed ('Bárrelo rápido... promueve'). The human asked to skip verification and promote straight to known-good; the orchestrator declined to move the tag to an unverified commit, citing docs/iteration-profiles.md section 6 ('The exact HEAD being promoted must pass ./scripts/verify.sh', marked mandatory) and section 3 ('It is not a shortcut past verification or review'), and proposed the QUICKFIX profile instead. Section 3.1 lists 'incorrect copy' as an eligible example, which is exactly this change."
+  - "CLASS-LEVEL SWEEP, not instance patching. Adversarial review had surfaced the SAME defect class three times this session: documentation that asserts more than the code guarantees. Instance A (demo-feedback-26 F1): eligibility.ts docs still called the set 'the votable set' after the screen was relabelled by eligibility. Instance B (demo-feedback-27 F3): the isFocusable comment claimed to observe a style-based ancestor display:none. Instance C (demo-feedback-25 F3): the shared Modal's doc implied a focus contract it did not implement. The orchestrator recorded the class rather than fixing instances as they surfaced, and this iteration sweeps the two modules that carry the confirmed inaccuracies."
+  - "The sweep corrected 5 sites in apps/web/src/lib/vote/eligibility.ts, not the 4 the orchestrator listed — plus a 6th the worker found by shape: the citizen-only comment claimed the exact refusal text fires 'even if the power read has not settled', but power === null returns reason 'loading' BEFORE the category check, so the claim was false. The worker CORRECTED THE COMMENT and reported the ordering itself as an out-of-contract discovery rather than changing code, which is the boundary the task set: a comment must describe the code as it is, not as it should be."
+  - "The 5 eligibility.ts corrections now state that available mirrors VoteEligibility.eligible and does NOT consider the vote type, so a proposal with an unsupported type stays available and is refused later by the ballot's supportedType rule — i.e. eligible is not castable. The Modal.tsx comment now states what the [hidden] check does and does NOT cover, including that an ancestor hidden by inline display:none is still reported focusable."
+  - "Comments-only was PROVEN two independent ways by the worker: (1) diff-level — every added and removed line, after stripping the hunk headers, is a comment line; (2) source-level — comments stripped from HEAD and from the working copy with a state machine respecting string and template literals, then compared, giving IDENTICAL for both files. The orchestrator independently re-ran the diff-level filter before integrating: zero non-comment lines."
+  - "Old-string grep: no test or other file asserts on any changed string. tests/vote-availability.test.tsx:247 mentions 'the votable set' only in its own prose comment."
+  - "Worker verification: tests/vote-availability.test.tsx and tests/modal-focus-management.test.tsx 2 files / 18 tests passed; typecheck exit 0; lint exit 0 with 0 errors and 17 pre-existing warnings, none in the changed files. One commit. Scope exactly 2 files."
+  - "OUT-OF-CONTRACT DISCOVERY to judge (adjacent, not repository-wide): in evaluateVoteEligibility, power === null returns reason 'loading' before the category check, so a Resident viewing a Citizen proposal while the power read is in flight sees 'Checking your eligibility…' rather than the exact 'Colosseum Citizens only' text. The old comment asserted the exact text fired regardless. Whether the ORDERING is intended is a product/code question the sweep deliberately did not act on. The orchestrator should decide whether it warrants its own task; it is transient (the read settles) and no ballot is offered either way."
+  - "The worker also declined to rewrite the top-of-file 'rules, in order' list, judging it incomplete (it omits the loading guard) but not inaccurate — and said so rather than silently editing or silently ignoring it."
