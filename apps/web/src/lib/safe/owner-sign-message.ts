@@ -2,7 +2,12 @@ import { hashTypedData, type Address, type Hex } from 'viem';
 import { deriveSignerAddress } from './owner-execute';
 
 /**
- * Signing an EIP-712 message through an owner Safe.
+ * Signing an EIP-712 message through an owner Safe, with a server-held key.
+ *
+ * **Not the resident vote path.** The resident authorises their own Snapshot
+ * vote with their passkey in the browser (`./passkey-sign-message`); this module
+ * signs with a **server-held owner key** and is retained as a generic operator
+ * utility. It is deliberately not imported by `@/lib/vote`.
  *
  * This is the **message-signing analogue** of `./owner-execute`. That module
  * builds, signs and executes a Safe *transaction*; this one builds and signs a
@@ -170,8 +175,9 @@ function redact(message: string, secret: string): string {
 }
 
 /**
- * The executor seam the vote path depends on: it already carries the secrets, so
- * the vote module never sees them.
+ * A generic seam for a server-held owner-key message signer: it already carries
+ * the secrets, so a caller never sees them. It is **not** used by the resident
+ * vote path — the resident signs with their passkey (`./passkey-sign-message`).
  */
 export type SafeMessageSigner = (input: {
   readonly chainId: number;
@@ -181,7 +187,7 @@ export type SafeMessageSigner = (input: {
 /**
  * Bind the environment-resolved secrets into a {@link SafeMessageSigner}.
  *
- * The vote path receives the bound signer, so it never handles the key. The
+ * A caller receives the bound signer, so it never handles the key. The
  * low-level `sign` seam is injectable for tests. Any error the signer throws is
  * **redacted**, so a message that happened to contain the key (for example from
  * an SDK that echoes its input) is returned without it.

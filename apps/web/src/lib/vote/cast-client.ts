@@ -74,7 +74,7 @@ export async function castVoteWithPasskey(input: {
     return {
       status: 'failed',
       submitted: false,
-      reason: `Your passkey did not authorise the vote: ${describe(cause)}`,
+      reason: `Signing the vote with your passkey failed, so nothing was submitted: ${describe(cause)}`,
     };
   }
 
