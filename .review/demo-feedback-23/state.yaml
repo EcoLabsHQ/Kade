@@ -1,0 +1,44 @@
+iteration: demo-feedback-23
+profile: NORMAL
+known_good: 3024714
+candidate: 8f7d7e4
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: complete
+  tests: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 8f7d7e4
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate 8f7d7e4; consumed by review, not re-run. Node v22.17.0 per .nvmrc."
+findings:
+  - id: F1
+    severity: WARN
+    scope: frontend
+    title: "The rail's done -> verified equivalence rests on an external invariant"
+    evidence: "apps/web/src/components/wallet/useConnectPersistSign.ts:222-227, apps/web/src/components/wallet/ConnectedWalletPanel.tsx:692,129-133"
+    failure_mode: "useConnectPersistSign sets phase 'done' with verified:false when !canSign. ConnectedWalletPanel:692 treats every 'done' as signSucceeded. A future caller that rendered the rail with signMessageAsync defined but onBegin/onComplete absent would mark sign verified without any verification."
+    materiality: "Latent coupling only. Unreachable on this candidate: ConnectedWalletOwnership requires onBegin/onComplete (ConnectedWalletPanel:129-133) and OnboardingFlow.tsx:169 constructs ownership only when both exist, so the rail always has canSign === true."
+    status: open
+    introduced_by: 8f7d7e4
+    resolved_by: null
+    recheck_attempts: 0
+notes:
+  - "Problem being fixed, reported from the live demo of the onboarding connect -> sign step: 'when you sign, the sign check doesn't get marked and nothing happens — it feels broken'. The human asked for the sign check to be marked on success, a subtle affirmation, then a return to the honest resting state (no checks marked, because the wallet disconnects); and for the checks to fill as a GRADIENT rather than on/off — one continuous line with a dot per check, filling fluidly and semi-continuously like a loading bar, not in discrete steps."
+  - "Diagnosis CORRECTED the orchestrator's hypothesis and the reviewer verified the correction against the removed hunk. The disconnect was NOT the cause and there was never a mark to clear: useConnectPersistSign does reach setPhase('done') and returns {persisted:true, verified:true}, but the old StepProgress had NO done state for step 2 — it keyed signStepActive = phase === 'awaiting-sign' || 'signing', so on 'done' step 2 dropped to 'upcoming' and step 1 to 'active'. A verified signature was simply unrepresented. A presentational defect, not a state-machine defect."
+  - "Implementation: a new presentational apps/web/src/components/onboarding/ConnectSignRail.tsx — one continuous rail, one dot per check. A 'lit' layer with the SAME geometry (gradient action -> success) is clipped from the right with clip-path inset() to the completed fraction, so the line fills smoothly and each dot turns green exactly as the fill crosses it, because the dot is part of the clipped layer rather than an independent pop. Active checks render as a pulsing ring, never a filled dot, so progress never fakes a success that does not exist."
+  - "Reviewer confirmed all nine required properties for this candidate: sign marked only on phase 'done'; skip and signer-rejection and persist-failure paths all settle to 'idle' and cannot reach 'done'; the beat is a single bounded setTimeout keyed to signPhase with cleanup that clears it on unmount; a done dot at index i is revealed only when done >= i+1 and checks are prefix-shaped so no hole can light; kade-checkrail-done requires done === total; reduced motion uses only the existing @media (prefers-reduced-motion: reduce) block and no state is conveyed by motion alone; 'done' is read only by the rail and the beat (no other consumer, so resetAttempt cannot mask a failure or break a retry); no lockfile or dependency change; no existing test deleted, skipped or weakened (0 deletions in the test diff)."
+  - "Settled fact for every remaining animation task, established by this iteration and independently by a reconnaissance pass: Motion (motion/react) is NOT a dependency of this repo and is imported nowhere. The orchestrator's brief wrongly asserted it was; the worker correctly refused to add a dependency and used the established CSS keyframes. The reference vocabulary is CSS @keyframes in apps/web/src/app/globals.css (375-1095), a manual requestAnimationFrame tilt loop, and synthesised Web Audio in residency/reveal-sound.ts. There is no Lottie and no audio asset anywhere."
+  - "Second scope correction from the worker: the connect -> sign step lives in apps/web/src/components/wallet/ConnectedWalletPanel.tsx, not under components/onboarding/**. Editing it was unavoidable (it owns the phase, the sign/skip controls and the old strip); the new presentational surface was kept at onboarding/ConnectSignRail.tsx."
+  - "Hygiene: the worktree's npm install rewrote package-lock.json as a side effect; the worker reverted it. No dependency or lockfile change is part of this candidate."
+  - "F1 is a cheap, non-blocking follow-up: key the sign mark off the returned verified flag rather than the phase alone, so the invariant is enforced locally instead of resting on a distant caller's construction."
+  - "Explicitly outside this candidate: the residency claim flow (task/residency-claim-flow, in flight) and the vote layer already promoted in demo-feedback-22."
