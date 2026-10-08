@@ -709,3 +709,129 @@ describe('ConnectedWalletPanel signs a connected wallet when asked', () => {
     expect(await screen.findByText(ADDRESS)).toBeInTheDocument();
   });
 });
+
+/**
+ * The rail's own state: one dot per check, a fill that only ever reaches a met
+ * check, a mark on a verified signature, the quiet beat that follows it, and the
+ * honest return to "nothing checked" once the wallet is torn down.
+ *
+ * These read the resting layer directly. The coloured layer is decoration
+ * clipped to the same fraction, so it carries no accessible state of its own.
+ */
+function railItems(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll(
+      '.kade-checkrail > .kade-checkrail-items > .kade-checkrail-item',
+    ),
+  );
+}
+
+function railStates(container: HTMLElement): (string | null)[] {
+  return railItems(container).map((item) => item.getAttribute('data-state'));
+}
+
+function railFill(container: HTMLElement): string {
+  return (
+    container.querySelector<HTMLElement>('.kade-checkrail-lit')?.style
+      .clipPath ?? ''
+  );
+}
+
+describe('ConnectedWalletPanel marks the connect → sign checks on a fluid rail', () => {
+  it('shows one dot per check and withholds the fill until a check is met', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const { container } = render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: true })}
+      />,
+    );
+
+    // While the connect step is still in flight the sign check is only pending,
+    // so the rail fills to the connect milestone and no further.
+    await screen.findByRole('button', { name: 'Sign to verify' });
+
+    expect(railItems(container)).toHaveLength(2);
+    expect(railStates(container)).toEqual(['done', 'active']);
+    expect(railFill(container)).toBe('inset(0 50% 0 0)');
+  });
+
+  it('marks sign when the signature verifies, holds a quiet beat, then returns to rest', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const { container } = render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: true })}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
+    );
+
+    // The signature verified: both checks are met and the rail is fully filled.
+    await waitFor(() =>
+      expect(railStates(container)).toEqual(['done', 'done']),
+    );
+    expect(
+      container.querySelector('.kade-checkrail')?.className,
+    ).toContain('kade-checkrail-done');
+    expect(railFill(container)).toBe('inset(0 0% 0 0)');
+
+    // The beat is finite: once the wallet is torn down the rail settles back to
+    // nothing checked rather than leaving a stale success on screen.
+    await waitFor(
+      () => expect(railStates(container)).toEqual(['upcoming', 'upcoming']),
+      { timeout: 3000 },
+    );
+    expect(
+      container.querySelector('.kade-checkrail')?.className,
+    ).not.toContain('kade-checkrail-done');
+    expect(railFill(container)).toBe('inset(0 100% 0 0)');
+  });
+
+  it('never marks sign when the signature fails', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    hoisted.signMessageAsync.mockRejectedValue(new Error('User rejected'));
+    const { container } = render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: true })}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Sign to verify' }),
+    );
+    await waitFor(() =>
+      expect(hoisted.disconnect).toHaveBeenCalledWith({ connector: META_MASK }),
+    );
+
+    // A rejected signature is not a met check: the rail returns to rest and the
+    // fill never reaches the sign dot.
+    await waitFor(() =>
+      expect(railStates(container)).toEqual(['upcoming', 'upcoming']),
+    );
+    expect(
+      container.querySelector('.kade-checkrail')?.className,
+    ).not.toContain('kade-checkrail-done');
+    expect(railFill(container)).toBe('inset(0 100% 0 0)');
+  });
+
+  it('never marks sign when the signature is skipped', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    const { container } = render(
+      <SigningAddressesHarness
+        onBegin={async (address) => ({ message: `challenge:${address}` })}
+        onComplete={async () => ({ ok: true })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
+
+    await waitFor(() =>
+      expect(railStates(container)).toEqual(['upcoming', 'upcoming']),
+    );
+    expect(railFill(container)).toBe('inset(0 100% 0 0)');
+  });
+});
