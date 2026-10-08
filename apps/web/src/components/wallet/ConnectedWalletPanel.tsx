@@ -403,6 +403,7 @@ function ConfiguredWalletPanel({
   // never auto-fired the instant a wallet connects.
   const {
     phase: signPhase,
+    verified: signVerified,
     activeAddress,
     run: runAttempt,
     skip: skipSignature,
@@ -689,18 +690,27 @@ function ConfiguredWalletPanel({
   // The sign step is offered only when the page supplied the signer, which it
   // does exactly when it supplied the ownership callbacks.
   const signingAvailable = signMessageAsync !== undefined;
-  const signSucceeded = signPhase === 'done';
+  // The attempt has settled. This covers both a verified signature and the
+  // persist-only path (no proof callbacks), which settles `done` without
+  // signing anything.
+  const attemptDone = signPhase === 'done';
+  // The sign mark follows the attempt's `verified` flag, not the phase name:
+  // `done` alone also covers the persist-only attempt above, so keying on the
+  // phase would mark a signature the app never established.
+  const signSucceeded = signVerified;
   const signActive = signPhase === 'awaiting-sign' || signPhase === 'signing';
   const connectActive =
     signPhase === 'connecting' || signPhase === 'persisting';
   // The two checks the rail marks, in order. `connect` is met once the address
-  // is persisted (the attempt pauses in `awaiting-sign`), so it stays met while
-  // the signature is requested; `sign` is met only by a real verification. A
-  // failed or skipped signature settles to `idle`, so neither check lingers.
+  // is persisted (the attempt pauses in `awaiting-sign`, or settles `done`), so
+  // it stays met while the signature is requested; `sign` is met only by a real
+  // server verification, so a persist-only `done`, a failure or a skip never
+  // marks it. A failed or skipped signature settles to `idle`, so neither check
+  // lingers.
   const checks: readonly ConnectSignCheck[] = [
     {
       label: 'Step 1 · Connect',
-      state: signActive || signSucceeded
+      state: attemptDone || signActive
         ? 'done'
         : connectActive
           ? 'active'

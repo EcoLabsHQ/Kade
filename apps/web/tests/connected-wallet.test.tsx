@@ -55,6 +55,7 @@ vi.mock('@/app/onboarding/wallet-actions', () => ({
 }));
 
 import { ConnectedWalletPanel } from '@/components/wallet/ConnectedWalletPanel';
+import type { ConnectedWalletOwnership } from '@/components/wallet/ConnectedWalletPanel';
 
 const ADDRESS = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
 const ADDRESS_2 = '0x2222222222222222222222222222222222222222';
@@ -833,5 +834,37 @@ describe('ConnectedWalletPanel marks the connect → sign checks on a fluid rail
       expect(railStates(container)).toEqual(['upcoming', 'upcoming']),
     );
     expect(railFill(container)).toBe('inset(0 100% 0 0)');
+  });
+
+  it('never marks sign when a persist-only attempt settles done without verification', async () => {
+    hoisted.connections = [{ connector: META_MASK, accounts: [ADDRESS] }];
+    // A caller that rendered the rail with a signer available but with no proof
+    // callbacks: the shared attempt persists the address and settles `done` with
+    // `verified: false`. The mark must follow the returned flag, not the phase
+    // name, so the sign check stays pending even though the phase is `done`.
+    const ownershipWithoutProof = {
+      onBegin: undefined,
+      onComplete: undefined,
+    } as unknown as ConnectedWalletOwnership;
+    const { container } = render(
+      <ConnectedWalletPanel
+        configured
+        onChange={() => {}}
+        onSaveConnectedWallet={async (address) => {
+          await hoisted.addConnectedWallet(address);
+        }}
+        ownership={ownershipWithoutProof}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(hoisted.addConnectedWallet).toHaveBeenCalledWith(ADDRESS),
+    );
+
+    // The connect check is met (the address was persisted), but nothing was
+    // verified, so the sign check must never light.
+    await waitFor(() => expect(railStates(container)[0]).toBe('done'));
+    expect(railStates(container)).toEqual(['done', 'upcoming']);
+    expect(railFill(container)).toBe('inset(0 50% 0 0)');
   });
 });

@@ -98,6 +98,14 @@ export interface UseConnectPersistSignOptions {
 
 export interface ConnectPersistSignController {
   readonly phase: ConnectPersistSignPhase;
+  /**
+   * True only when the last attempt's signature was accepted by the server and
+   * `verified_at` was set. It is false for a persist-only attempt (no proof
+   * callbacks), a skip, or a failure, and is cleared by `beginConnecting` and
+   * `reset`. This is what a caller must key a "signed" mark on, because
+   * `phase === 'done'` also covers the persist-only path that signs nothing.
+   */
+  readonly verified: boolean;
   readonly error: string | null;
   readonly busy: boolean;
   /** The address whose signature is currently being requested, if any. */
@@ -147,6 +155,7 @@ export function useConnectPersistSign(
 ): ConnectPersistSignController {
   const { disconnect } = useDisconnect();
   const [phase, setPhase] = useState<ConnectPersistSignPhase>('idle');
+  const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeAddress, setActiveAddress] = useState<string | null>(null);
 
@@ -175,12 +184,16 @@ export function useConnectPersistSign(
     skipRef.current = null;
     confirmRef.current = null;
     setPhase('idle');
+    setVerified(false);
     setError(null);
     setActiveAddress(null);
   }, []);
 
   const beginConnecting = useCallback(() => {
     setError(null);
+    // A new attempt starts unverified: a previous verification's beat must not
+    // survive into the next connect.
+    setVerified(false);
     setPhase('connecting');
   }, []);
 
@@ -199,6 +212,7 @@ export function useConnectPersistSign(
 
       setError(null);
       setActiveAddress(null);
+      setVerified(false);
 
       // 1. Persist first. An address that is not already stored becomes a row
       //    before any signature, so the row can always carry `verified_at`.
@@ -278,6 +292,7 @@ export function useConnectPersistSign(
             );
           }
           onLinked?.();
+          setVerified(true);
           setPhase('done');
           return { persisted: true, verified: true, skipped: false, error: null };
         } catch (cause) {
@@ -308,6 +323,7 @@ export function useConnectPersistSign(
 
   return {
     phase,
+    verified,
     error,
     busy:
       phase === 'connecting' ||
