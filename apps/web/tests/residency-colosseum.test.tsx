@@ -131,6 +131,34 @@ function claimResidencyAndDismiss(): void {
   fireEvent.keyDown(document, { key: 'Escape' });
 }
 
+/**
+ * A store whose window-start canonical is a snapshot read *before* the pass
+ * write (the pass is absent) and whose pass canonical is read before the window
+ * (the window is absent) — the concurrent-write race the monotonic merge must
+ * survive. Used to prove a started window's canonical can never un-record a
+ * claimed pass.
+ */
+function racingStore(): ColosseumProgressStore {
+  return {
+    async startWindow(iso) {
+      return { ...EMPTY_COLOSSEUM_PROGRESS, residentSince: iso };
+    },
+    async clearWindow() {
+      return null;
+    },
+    async claimResidencyPass(iso, serial) {
+      return {
+        ...EMPTY_COLOSSEUM_PROGRESS,
+        residencyPassAt: iso,
+        residencyPassSerial: serial,
+      };
+    },
+    async becomeCitizen() {
+      return null;
+    },
+  };
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   window.localStorage.clear();
@@ -604,7 +632,7 @@ describe('ColosseumResidency — server-backed demo progress', () => {
     expect(decay.snapshot().residentSince).toBeNull();
   });
 
-  it('starts the window on the claim, and records it through the store', async () => {
+  it('starts the window on the claim, and records it through the store', () => {
     const store = spyStore();
     render(
       <ColosseumResidency
@@ -624,12 +652,10 @@ describe('ColosseumResidency — server-backed demo progress', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
-    // The window start is invoked on the claim; the pass write follows once the
-    // window write has resolved (so its canonical state includes the window).
-    expect(store.startWindow).toHaveBeenCalledTimes(1);
-    await act(async () => {});
-    expect(store.startWindow).toHaveBeenCalledTimes(1);
+    // The claim records the pass; setting the pass unlocks the window in the
+    // lifecycle effect, so both fire from the one click.
     expect(store.claimResidencyPass).toHaveBeenCalledTimes(1);
+    expect(store.startWindow).toHaveBeenCalledTimes(1);
   });
 
   it('scopes the demo state per account (server-read, not a shared browser key)', () => {
@@ -699,6 +725,140 @@ describe('ColosseumResidency — server-backed demo progress', () => {
   });
 });
 
+describe('ColosseumResidency — the window lifecycle is claim-gated and repairable', () => {
+  const KEY = 'app-window-lifecycle';
+
+  it('never starts the window for an unclaimed resident', () => {
+    const store = spyStore();
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey={KEY}
+        store={store}
+      />,
+    );
+
+    // Claimable, but the claim is the trigger: time alone starts nothing.
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(store.startWindow).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('colosseum-countdown')).toBeNull();
+    expect(screen.getByTestId('colosseum-residency-pass')).toHaveAttribute(
+      'data-unclaimed',
+      'true',
+    );
+  });
+
+  it('repairs a claimed-but-windowless resident on load (a claimed pass with no window gets one)', () => {
+    const store = spyStore();
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-window-repair"
+        store={store}
+        initialProgress={progress({
+          residencyPassAt: '2026-03-01T00:00:00.000Z',
+          residencyPassSerial: 'KADE-RES-ABCD2345',
+        })}
+      />,
+    );
+
+    // The dead end the bug produced: eligible and claimed, but no window. The
+    // lifecycle effect must start one rather than leaving the resident stuck.
+    expect(store.startWindow).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('colosseum-state-resident')).toBeInTheDocument();
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(
+      screen.getByRole('button', { name: /become a citizen/i }),
+    ).toBeEnabled();
+  });
+
+  it('restarts the window after a decay once the checks are green again', () => {
+    const store = spyStore();
+    const { rerender } = render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-window-decay-recover"
+        store={store}
+      />,
+    );
+
+    // Claim: the window starts (claim -> window, one code path).
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(store.startWindow).toHaveBeenCalledTimes(1);
+
+    // A check goes not-green: the window decays (cleared).
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts({ review: 'pending' }))}
+        profileKey="app-window-decay-recover"
+        store={store}
+      />,
+    );
+    expect(store.clearWindow).toHaveBeenCalledTimes(1);
+
+    // Green again: the eligible, claimed resident gets a fresh window instead of
+    // being dead-ended, and the Citizen claim is reachable once it elapses.
+    rerender(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-window-decay-recover"
+        store={store}
+      />,
+    );
+    expect(store.startWindow).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(120_000);
+    });
+    expect(
+      screen.getByRole('button', { name: /become a citizen/i }),
+    ).toBeEnabled();
+  });
+
+  it('does not let a window-start canonical regress a just-claimed pass (one-shot guard holds)', async () => {
+    const onClaimMembership = vi.fn();
+    render(
+      <ColosseumResidency
+        tier="colosseum"
+        checks={checks(facts())}
+        profileKey="app-window-race"
+        store={racingStore()}
+        onClaimMembership={onClaimMembership}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    // Both the pass and the window-start canonicals resolve; the pass canonical
+    // predates the window and the window canonical predates the pass.
+    await act(async () => {});
+
+    // The claim must stay claimed: no revert to the grey card, no re-armed
+    // claim button, and the mint ran exactly once.
+    expect(screen.getByTestId('colosseum-state-resident')).toBeInTheDocument();
+    expect(screen.queryByTestId('colosseum-state-c')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /claim colosseum residency/i }),
+    ).toBeNull();
+    expect(screen.getByTestId('colosseum-countdown')).toHaveTextContent('2:00');
+    expect(onClaimMembership).toHaveBeenCalledTimes(1);
+  });
+});
+
 /* -------------------------------------------------------------------------- */
 /* Full-screen reveals: the virtual residency pass, the certificate, reduced motion */
 /* -------------------------------------------------------------------------- */
@@ -719,7 +879,7 @@ function mockMatchMedia(matches: boolean): void {
 describe('ColosseumResidency — the virtual residency pass', () => {
   const KEY = 'app-pass';
 
-  it('claims the pass from the resident state, reveals it full-screen, and persists the demo serial', async () => {
+  it('claims the pass from the resident state, reveals it full-screen, and persists the demo serial', () => {
     const { store, snapshot } = memoryStore();
     render(
       <ColosseumResidency
@@ -733,7 +893,6 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
-    await act(async () => {});
 
     const overlay = screen.getByTestId('colosseum-residency-pass-overlay');
     expect(
@@ -800,7 +959,7 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     expect(screen.queryByTestId('colosseum-residency-pass-overlay')).toBeNull();
   });
 
-  it('re-opens the same persisted pass after a reload rather than minting a new one', async () => {
+  it('re-opens the same persisted pass after a reload rather than minting a new one', () => {
     const { store, snapshot } = memoryStore();
     const { unmount } = render(
       <ColosseumResidency
@@ -813,7 +972,6 @@ describe('ColosseumResidency — the virtual residency pass', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /claim colosseum residency/i }),
     );
-    await act(async () => {});
     const serial = within(
       screen.getByTestId('colosseum-residency-pass-overlay'),
     ).getByTestId('colosseum-residency-pass-overlay-serial').textContent;
