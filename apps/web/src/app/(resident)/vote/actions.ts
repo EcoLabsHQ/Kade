@@ -15,6 +15,7 @@ import { createSnapshotSequencerClient } from '@/lib/vote/sequencer';
 import { serverVoteDuplicateGuard } from '@/lib/vote/guard';
 import type { SnapshotVoteTypedData } from '@/lib/vote/snapshot';
 import {
+  abandonSnapshotVote,
   beginSnapshotVote,
   completeSnapshotVote,
   type SnapshotVoteResult,
@@ -187,4 +188,22 @@ export async function completeVoteAction(input: {
       duplicateGuard: serverVoteDuplicateGuard(),
     },
   );
+}
+
+/**
+ * Release the reservation for a vote the resident abandoned.
+ *
+ * Called by the client when the passkey prompt is dismissed, when signing
+ * throws, or when a submit is refused for an expired session, so the resident
+ * can try again immediately instead of being told a vote already exists. It is
+ * keyed by the unguessable, single-use token from the build phase; an unknown or
+ * already-used token is a no-op. Best-effort: it never throws, so a cleanup
+ * failure cannot mask the outcome the resident sees.
+ */
+export async function abandonVoteAction(input: {
+  readonly token: string;
+}): Promise<void> {
+  await abandonSnapshotVote(input.token, {
+    duplicateGuard: serverVoteDuplicateGuard(),
+  });
 }
