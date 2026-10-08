@@ -1,5 +1,12 @@
 import { createPublicClient, getAddress, http, type Address } from 'viem';
-import { readRpcUrlForChain } from '@/lib/env';
+import {
+  readChainEnv,
+  readMembershipChainId,
+  readMembershipManagerAddress,
+  readRpcUrlFor,
+  readRpcUrlForChain,
+} from '@/lib/env';
+import { readMembership } from '@/lib/membership/chain';
 import {
   createRealSnapshotAdapter,
   type SnapshotAdapter,
@@ -7,6 +14,7 @@ import {
 } from './adapter';
 import { createSnapshotHubClient } from './hub';
 import { VOTE_CHAIN_ID } from './spaces';
+import type { VoteViewerMembership } from './eligibility';
 import type { VoteProposal, VotingPowerRead } from './types';
 
 /**
@@ -115,4 +123,30 @@ export async function loadVoteData(input: {
       error: cause instanceof Error ? cause.message : 'The Snapshot read failed.',
     };
   }
+}
+
+/**
+ * The signed-in viewer's membership, as the vote layer needs it.
+ *
+ * Reads the manager when it is configured; an unconfigured or unreadable
+ * membership is `none`, so the Citizen-only rule fails closed rather than
+ * assuming a Citizen. Shared by the Vote page (to render) and the vote action
+ * (to re-derive the rule server-side, since the client cannot be trusted with
+ * it).
+ */
+export async function loadVoteViewerMembership(
+  account: string | null,
+): Promise<VoteViewerMembership> {
+  if (account === null) return 'none';
+  const managerAddress = readMembershipManagerAddress();
+  const chainId = readMembershipChainId();
+  const rpcUrl = readRpcUrlFor(readChainEnv());
+  if (managerAddress === null || chainId === null || rpcUrl === null) return 'none';
+  const read = await readMembership({
+    publicClient: createPublicClient({ transport: http(rpcUrl) }),
+    managerAddress,
+    account,
+  });
+  // Fail closed: an unread membership is not a Citizen for the citizen-only rule.
+  return read.status === 'known' ? read.membership : 'none';
 }

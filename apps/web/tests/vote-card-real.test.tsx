@@ -190,7 +190,7 @@ describe('Vote card — real proposal content', () => {
     );
     // The ballot is refused rather than pretending to be a single choice.
     expect(screen.getByTestId('vote-choice-0')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Record this choice' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cast vote' })).toBeDisabled();
     cleanup();
   });
 
