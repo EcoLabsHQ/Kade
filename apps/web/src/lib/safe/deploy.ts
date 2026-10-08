@@ -5,7 +5,7 @@ import {
   type Hex,
   type PublicClient,
 } from 'viem';
-import { SAFE_THRESHOLD } from '@kade/shared';
+import { CHAIN_IDS, SAFE_THRESHOLD, rpcEnvVarForChain } from '@kade/shared';
 import {
   activeSafeDeployment,
   predictedSafeAddress,
@@ -14,7 +14,7 @@ import {
 import { safeInitializer } from './derive';
 
 /**
- * Deploy a resident's counterfactual Safe on Ethereum Sepolia.
+ * Deploy a resident's counterfactual Safe on a supported chain.
  *
  * The resident's Safe is a `SafeProxy` created by
  * `SafeProxyFactory.createProxyWithNonce(singleton, initializer, saltNonce)` at
@@ -45,7 +45,8 @@ import { safeInitializer } from './derive';
  *
  * Nothing here broadcasts on its own: the signer and clients are injected by the
  * caller. `deployResidentSafeFromEnv` is the environment wiring; it reads the
- * payer key from `SEPOLIA_DEPLOYER_PRIVATE_KEY` and never fabricates an account.
+ * payer key and RPC for the requested chain (Sepolia by default, Arbitrum One
+ * for the membership chain) and never fabricates an account.
  */
 
 /** `SafeProxyFactory.createProxyWithNonce(address,bytes,uint256)`. */
@@ -94,11 +95,31 @@ const SAFE_ABI = [
   },
 ] as const;
 
-/** The payer's key. Server-only; never `NEXT_PUBLIC_`. */
+/** The payer's key for the default (Sepolia) deployment. Server-only. */
 export const PAYER_PRIVATE_KEY_ENV = 'SEPOLIA_DEPLOYER_PRIVATE_KEY';
 
 /** The Sepolia JSON-RPC endpoint, as used by `./signer-actions`. */
 export const RPC_URL_ENV = 'SEPOLIA_RPC_URL';
+
+/**
+ * The funded deployer key per chain.
+ *
+ * The engine is EOA-payer based (it sends `createProxyWithNonce` from a funded
+ * account), not sponsored: it does not use Pimlico. A deployment on a new chain
+ * therefore needs a deployer key funded on that chain. Sepolia keeps its
+ * historical variable; Arbitrum One gets its own, named for the chain like the
+ * RPC variables. A chain absent here cannot be deployed by this engine and the
+ * caller is told so precisely rather than sent to a key that does not exist.
+ */
+export const PAYER_PRIVATE_KEY_ENV_BY_CHAIN: Readonly<Record<number, string>> = {
+  [CHAIN_IDS.sepolia]: 'SEPOLIA_DEPLOYER_PRIVATE_KEY',
+  [CHAIN_IDS.arbitrum]: 'ARBITRUM_DEPLOYER_PRIVATE_KEY',
+};
+
+/** The deployer-key variable for `chainId`, or null when the engine has none. */
+export function payerPrivateKeyEnvForChain(chainId: number): string | null {
+  return PAYER_PRIVATE_KEY_ENV_BY_CHAIN[chainId] ?? null;
+}
 
 /**
  * The inputs the resident's address was predicted from, plus the expected
@@ -595,7 +616,27 @@ export async function deployResidentSafe(
 export function readPayerPrivateKey(
   env: SafeDeployEnv = process.env,
 ): Hex | null {
-  const raw = env[PAYER_PRIVATE_KEY_ENV]?.trim();
+  return readKeyFromEnv(PAYER_PRIVATE_KEY_ENV, env);
+}
+
+/**
+ * Read the payer key for `chainId`, or null when the chain has no key variable
+ * or the value is absent/malformed. Never falls back to another chain's key: a
+ * deployment on Arbitrum must not be paid from a Sepolia-configured account by
+ * accident.
+ */
+export function readPayerPrivateKeyForChain(
+  chainId: number,
+  env: SafeDeployEnv = process.env,
+): Hex | null {
+  const name = payerPrivateKeyEnvForChain(chainId);
+  if (!name) return null;
+  return readKeyFromEnv(name, env);
+}
+
+/** Read a well-formed 32-byte key from `name`, or null. */
+function readKeyFromEnv(name: string, env: SafeDeployEnv): Hex | null {
+  const raw = env[name]?.trim();
   if (!raw) return null;
   if (!/^0x[0-9a-fA-F]{64}$/.test(raw)) return null;
   return raw as Hex;
@@ -604,45 +645,92 @@ export function readPayerPrivateKey(
 /**
  * Environment wiring for `deployResidentSafe`.
  *
- * Reads the payer key from `SEPOLIA_DEPLOYER_PRIVATE_KEY` and the endpoint from
- * `SEPOLIA_RPC_URL`. If either is missing (or the key is malformed) it returns
- * `not-configured`; it never falls back to a fabricated account and never
- * throws an opaque error for absent configuration.
+ * Reads the payer key and the endpoint for `chainId` (Sepolia by default, so
+ * existing callers are unchanged). The RPC variable is resolved through the
+ * shared `rpcEnvVarForChain` table and the payer key through
+ * {@link payerPrivateKeyEnvForChain}, so the membership chain (Arbitrum One)
+ * cannot accidentally be deployed from the Sepolia configuration. If either is
+ * missing (or the key is malformed) it returns `not-configured` with the exact
+ * variable that is absent; it never falls back to a fabricated account, another
+ * chain's key, and never throws an opaque error for absent configuration.
  *
- * `.env.example` declares the same name, so there is no divergence to track.
+ * The engine's core (`deployResidentSafe`) is chain-agnostic: the factory,
+ * singleton and fallback handler are canonical addresses deployed on Arbitrum
+ * One as well as Sepolia, and the factory's `proxyCreationCode()` is `pure`, so
+ * the derived address is identical on both. What a deployment on Arbitrum One
+ * needs is therefore only the two chain-scoped environment values:
+ * `ARBITRUM_RPC_URL` and a funded `ARBITRUM_DEPLOYER_PRIVATE_KEY`. There is no
+ * Pimlico/paymaster dependency in this path.
+ *
+ * `.env.example` declares the same names, so there is no divergence to track.
  */
 export async function deployResidentSafeFromEnv(
   request: SafeDeployRequest,
   env: SafeDeployEnv = process.env,
+  chainId: number = CHAIN_IDS.sepolia,
 ): Promise<SafeDeployResult> {
-  const privateKey = readPayerPrivateKey(env);
-  if (!privateKey) {
+  const rpcVariable = rpcEnvVarForChain(chainId);
+  if (!rpcVariable) {
     return {
       status: 'not-configured',
-      reason: `${PAYER_PRIVATE_KEY_ENV} is not set (or is not a 32-byte hex key), so no payer account exists.`,
+      reason:
+        `chain ${chainId} has no JSON-RPC variable in the shared registry, so the ` +
+        'deployment cannot reach it.',
     };
   }
 
-  const rpcUrl = env[RPC_URL_ENV]?.trim();
+  const privateKey = readPayerPrivateKeyForChain(chainId, env);
+  if (!privateKey) {
+    const keyVariable = payerPrivateKeyEnvForChain(chainId);
+    return {
+      status: 'not-configured',
+      reason: keyVariable
+        ? `${keyVariable} is not set (or is not a 32-byte hex key), so no payer account exists on chain ${chainId}.`
+        : `chain ${chainId} has no deployer-key variable, so no payer account exists.`,
+    };
+  }
+
+  const rpcUrl = env[rpcVariable]?.trim();
   if (!rpcUrl) {
     return {
       status: 'not-configured',
-      reason: `${RPC_URL_ENV} is not set, so the deployment cannot reach Ethereum Sepolia.`,
+      reason: `${rpcVariable} is not set, so the deployment cannot reach chain ${chainId}.`,
     };
   }
 
   const { createPublicClient, createWalletClient, http } = await import('viem');
   const { privateKeyToAccount } = await import('viem/accounts');
-  const { sepolia } = await import('viem/chains');
+  const chain = await viemChainFor(chainId);
+  if (!chain) {
+    return {
+      status: 'not-configured',
+      reason: `chain ${chainId} has no viem chain definition, so the deployment cannot be signed.`,
+    };
+  }
 
   const account = privateKeyToAccount(privateKey);
   const transport = http(rpcUrl);
-  const publicClient = createPublicClient({ chain: sepolia, transport });
-  const walletClient = createWalletClient({ account, chain: sepolia, transport });
+  const publicClient = createPublicClient({ chain, transport });
+  const walletClient = createWalletClient({ account, chain, transport });
 
   return deployResidentSafe(request, {
     publicClient,
     walletClient: walletClient as unknown as SafeDeployWalletClient,
     account,
   });
+}
+
+/**
+ * The viem chain object for a chain the engine can deploy on, or null.
+ *
+ * Only the chains this repository actually deploys on are mapped. Returning
+ * null (rather than a chainless client) makes an unsupported chain an explicit
+ * `not-configured` refusal instead of a send against an endpoint whose chain id
+ * nobody checked.
+ */
+async function viemChainFor(chainId: number) {
+  const chains = await import('viem/chains');
+  if (chainId === CHAIN_IDS.sepolia) return chains.sepolia;
+  if (chainId === CHAIN_IDS.arbitrum) return chains.arbitrum;
+  return null;
 }

@@ -7,7 +7,9 @@ import {
   RPC_URL_ENV,
   deployResidentSafe,
   deployResidentSafeFromEnv,
+  payerPrivateKeyEnvForChain,
   readPayerPrivateKey,
+  readPayerPrivateKeyForChain,
   type SafeDeployDependencies,
   type SafeDeployRequest,
 } from '@/lib/safe/deploy';
@@ -314,6 +316,66 @@ describe('deployResidentSafeFromEnv', () => {
     expect(result.status).toBe('not-configured');
     if (result.status !== 'not-configured') throw new Error('expected not-configured');
     expect(result.reason).toMatch(/SEPOLIA_RPC_URL/);
+  });
+
+  it('targets the membership chain: names ARBITRUM_RPC_URL and ARBITRUM_DEPLOYER_PRIVATE_KEY', async () => {
+    // The engine is pointed at Arbitrum One with the chain id, and each missing
+    // value is reported by its own name — never the Sepolia variable, and never
+    // another chain's key.
+    const noKey = await deployResidentSafeFromEnv(
+      REQUEST,
+      { ARBITRUM_RPC_URL: 'http://127.0.0.1:8545' },
+      42161,
+    );
+    expect(noKey.status).toBe('not-configured');
+    if (noKey.status !== 'not-configured') throw new Error('expected not-configured');
+    expect(noKey.reason).toMatch(/ARBITRUM_DEPLOYER_PRIVATE_KEY/);
+
+    const noRpc = await deployResidentSafeFromEnv(
+      REQUEST,
+      { ARBITRUM_DEPLOYER_PRIVATE_KEY: FABRICATED_KEY },
+      42161,
+    );
+    expect(noRpc.status).toBe('not-configured');
+    if (noRpc.status !== 'not-configured') throw new Error('expected not-configured');
+    expect(noRpc.reason).toMatch(/ARBITRUM_RPC_URL/);
+  });
+
+  it('refuses a chain with no deployer-key variable rather than reusing Sepolia', async () => {
+    const result = await deployResidentSafeFromEnv(
+      REQUEST,
+      {
+        [PAYER_PRIVATE_KEY_ENV]: FABRICATED_KEY,
+        SEPOLIA_RPC_URL: 'http://127.0.0.1:8545',
+      },
+      8453,
+    );
+
+    expect(result.status).toBe('not-configured');
+    if (result.status !== 'not-configured') throw new Error('expected not-configured');
+    expect(result.reason).toMatch(/8453/);
+  });
+});
+
+describe('payer key resolution per chain', () => {
+  it('maps Sepolia and Arbitrum One to their own variables', () => {
+    expect(payerPrivateKeyEnvForChain(11155111)).toBe(PAYER_PRIVATE_KEY_ENV);
+    expect(payerPrivateKeyEnvForChain(42161)).toBe('ARBITRUM_DEPLOYER_PRIVATE_KEY');
+    expect(payerPrivateKeyEnvForChain(8453)).toBeNull();
+  });
+
+  it('reads only the key for the requested chain', () => {
+    const sepolia = `0x${'11'.repeat(32)}`;
+    const arbitrum = `0x${'22'.repeat(32)}`;
+    const env = {
+      [PAYER_PRIVATE_KEY_ENV]: sepolia,
+      ARBITRUM_DEPLOYER_PRIVATE_KEY: arbitrum,
+    };
+
+    expect(readPayerPrivateKeyForChain(11155111, env)).toBe(sepolia);
+    expect(readPayerPrivateKeyForChain(42161, env)).toBe(arbitrum);
+    // A chain with no variable never borrows another chain's key.
+    expect(readPayerPrivateKeyForChain(8453, env)).toBeNull();
   });
 });
 
