@@ -176,3 +176,72 @@ export function claimResidencyPass(
     residencyPassSerial: current.residencyPassSerial ?? serial,
   };
 }
+
+/**
+ * Merge a canonical server snapshot into the local mirror **monotonically**: a
+ * field from the canonical state is taken when it carries a value, otherwise
+ * the local value is kept.
+ *
+ * The demo milestones are written by independent server actions that a single
+ * claim dispatches concurrently, and each action's canonical state is a full
+ * snapshot read *after its own* write. A snapshot taken before a concurrent
+ * write can therefore be missing that write's field. Replacing the local state
+ * with such a snapshot would transiently un-record a milestone — most visibly,
+ * reverting a just-claimed residency pass to null, which re-enabled the claim
+ * and replayed its one-shot reveal/sound/mint. Merging only forward means a
+ * canonical snapshot can add or confirm state but can never regress a recorded
+ * one.
+ *
+ * The window's one legitimate clear (the decay, when the checks stop being
+ * green) is applied optimistically first via {@link clearResidentSince}, so by
+ * the time the clear's canonical snapshot is merged the local value is already
+ * null and this merge keeps it null.
+ */
+export function mergeColosseumProgress(
+  current: ColosseumProgress,
+  canonical: ColosseumProgress,
+): ColosseumProgress {
+  return {
+    residentSince: canonical.residentSince ?? current.residentSince,
+    citizenAt: canonical.citizenAt ?? current.citizenAt,
+    passportSerial: canonical.passportSerial ?? current.passportSerial,
+    residencyPassAt: canonical.residencyPassAt ?? current.residencyPassAt,
+    residencyPassSerial:
+      canonical.residencyPassSerial ?? current.residencyPassSerial,
+  };
+}
+
+/**
+ * The action the compliance window needs for the current demo state.
+ *
+ * The window's lifecycle is **declarative**, not tied to the one-shot claim
+ * event: it belongs to an *eligible resident who has claimed the pass*. Reading
+ * the policy in one pure place is what guarantees the invariant the claim-first
+ * flow needs — whenever a resident is eligible, has claimed, and has no window,
+ * the policy says `start`, so the window can always be (re)started and the
+ * Citizen claim stays reachable (after a decay, a failed start write, or a
+ * reload).
+ *
+ * - `clear` — a check stopped being green before citizenship and a window is
+ *   live: the clock resets.
+ * - `start` — eligible, not a citizen, the pass is claimed, and no window is
+ *   live. This is the normal claim-time start *and* the repair path.
+ * - `tick` — eligible with a live window: advance the displayed clock.
+ * - `idle` — nothing to do: an unclaimed resident never gets a pre-claim clock,
+ *   and a citizen keeps its recorded window.
+ */
+export type ColosseumWindowAction = 'clear' | 'start' | 'tick' | 'idle';
+
+export function colosseumWindowAction(input: {
+  readonly eligible: boolean;
+  readonly citizen: boolean;
+  readonly hasWindow: boolean;
+  readonly passClaimed: boolean;
+}): ColosseumWindowAction {
+  const { eligible, citizen, hasWindow, passClaimed } = input;
+  if (!eligible || citizen) {
+    return !citizen && hasWindow ? 'clear' : 'idle';
+  }
+  if (hasWindow) return 'tick';
+  return passClaimed ? 'start' : 'idle';
+}
