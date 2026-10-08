@@ -44,7 +44,9 @@ import type { SnapshotSequencerClient } from './sequencer';
  *      configured;
  *   2. the choice index is a non-negative integer;
  *   3. the proposal exists (read from Snapshot, never asserted by the client);
- *   4. the space is configured and its network equals the voter Safe's chain;
+ *   4. the space is configured on the network the app votes on — the space's
+ *      configured chain must equal the app's `VOTE_CHAIN_ID` (the voter Safe's
+ *      own deployment is verified by the Safe SDK at signing time);
  *   5. the proposal is `active`;
  *   6. the proposal's vote type is supported (`basic` / `single-choice`);
  *   7. the choice index is within the proposal's real `choices`;
@@ -139,6 +141,11 @@ export interface CompleteSnapshotVoteDependencies {
   readonly duplicateGuard: VoteDuplicateGuard | null;
 }
 
+/** The deps the abandon phase needs: only the guard to release. */
+export interface AbandonSnapshotVoteDependencies {
+  readonly duplicateGuard: VoteDuplicateGuard | null;
+}
+
 export interface CastSnapshotVoteInput {
   readonly spaceId: string;
   readonly proposalId: string;
@@ -209,13 +216,22 @@ function retainVote(context: SnapshotVoteContext, now: number): string {
   return token;
 }
 
-/** Consume a token and return its retained vote, or `null`. Single-use. */
-function consumeVote(token: string, now: number): SnapshotVoteContext | null {
+/**
+ * Consume a token and return its retained vote plus whether it had expired, or
+ * `null` when the token is unknown. Single-use.
+ *
+ * The context is returned even when expired, so the caller can release the
+ * duplicate reservation for the abandoned attempt; an expired vote is never
+ * submitted.
+ */
+function takeVote(
+  token: string,
+  now: number,
+): { readonly context: SnapshotVoteContext; readonly expired: boolean } | null {
   const entry = retainedVotes.get(token);
   if (entry === undefined) return null;
   retainedVotes.delete(token);
-  if (entry.expiresAt <= now) return null;
-  return entry.context;
+  return { context: entry.context, expired: entry.expiresAt <= now };
 }
 
 /**
@@ -287,15 +303,19 @@ export async function beginSnapshotVote(
     );
   }
 
-  // 4. The space's network must match the voter Safe's chain.
+  // 4. The space's configured network must be the one the app votes on. The app
+  //    has a single vote chain (`VOTE_CHAIN_ID`, passed by the caller), so this
+  //    refuses a space configured on any other network. The voter Safe's own
+  //    deployment on the vote chain is verified by the Safe SDK at signing time,
+  //    not here.
   const config = voteSpaceConfigById(input.spaceId);
   if (config === null) {
     return blocked(`The space "${input.spaceId}" is not configured, so nothing was signed.`);
   }
   if (config.chainId !== chainId) {
     return blocked(
-      `The space "${input.spaceId}" is on chain ${config.chainId} but the voter Safe ` +
-        `is on chain ${chainId}, so nothing was signed.`,
+      `The space "${input.spaceId}" is configured on chain ${config.chainId} but ` +
+        `the app votes on chain ${chainId}, so nothing was signed.`,
     );
   }
 
@@ -327,17 +347,25 @@ export async function beginSnapshotVote(
     return blocked(CITIZEN_ONLY_REFUSAL);
   }
 
-  // 9. Duplicate guard, before the resident is asked to sign.
+  // 9. Duplicate guard, before the resident is asked to sign. The refusal says
+  //    which case it is, so it never claims a vote exists when an attempt merely
+  //    is in progress.
   try {
-    const reserved = await guard.reserve({
+    const reservation = await guard.reserve({
       spaceId: input.spaceId,
       proposalId: input.proposalId,
       voter,
     });
-    if (!reserved) {
+    if (reservation.status === 'already-voted') {
       return blocked(
         'A vote for this proposal already exists for this credential, so nothing ' +
           'was signed.',
+      );
+    }
+    if (reservation.status === 'in-progress') {
+      return blocked(
+        'A vote for this proposal is already being signed, so nothing was signed. ' +
+          'Try again once that attempt finishes.',
       );
     }
   } catch (cause) {
@@ -405,25 +433,37 @@ export async function beginSnapshotVote(
  * The client supplies only `{ token, signature }`. The typed data that is
  * submitted is the server-retained one, never the client's; the signature must
  * therefore match it or the sequencer rejects it. A failure releases the
- * duplicate reservation so the resident may retry.
+ * duplicate reservation so the resident may retry; an acceptance commits it, so
+ * a retry reports `already-voted` truthfully.
  */
 export async function completeSnapshotVote(
   input: { readonly token: string; readonly signature: string },
   deps: CompleteSnapshotVoteDependencies,
 ): Promise<SnapshotVoteOutcome> {
-  const context = consumeVote(input.token, Date.now());
-  if (context === null) {
+  const taken = takeVote(input.token, Date.now());
+  if (taken === null) {
     return failed(
-      'The vote request is unknown, already used, or expired, so nothing was sent. ' +
+      'The vote request is unknown or already used, so nothing was sent. ' +
         'Start again and sign a fresh vote.',
     );
   }
 
+  const { context } = taken;
   const key = {
     spaceId: context.spaceId,
     proposalId: context.proposalId,
     voter: context.voter,
   };
+
+  // An attempt that expired before it was signed releases its reservation so the
+  // resident can try again; the expired vote itself is never submitted.
+  if (taken.expired) {
+    if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
+    return failed(
+      'The vote request expired before it was signed, so nothing was sent. ' +
+        'Start again and sign a fresh vote.',
+    );
+  }
 
   if (deps.sequencer === null) {
     if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
@@ -462,7 +502,9 @@ export async function completeSnapshotVote(
     return failed(result.reason);
   }
 
-  // Accepted. The reservation stays claimed so a retry is refused.
+  // Accepted. The reservation is committed, so a retry reports that a vote
+  // exists rather than that an attempt is in progress.
+  if (deps.duplicateGuard) await deps.duplicateGuard.commit(key);
   return {
     status: 'submitted',
     submitted: true,
@@ -474,4 +516,27 @@ export async function completeSnapshotVote(
     voteId: result.id,
     ipfsHash: result.ipfsHash,
   };
+}
+
+/**
+ * Release the duplicate reservation for a vote the resident abandoned.
+ *
+ * Called by the client when the passkey prompt is dismissed, when signing
+ * throws, or when a submit is refused for an expired session, so the resident
+ * can try again immediately instead of being told a vote exists. The token is
+ * the unguessable, single-use capability from the build phase; an unknown token
+ * is a no-op. Best-effort: an already-consumed token releases nothing.
+ */
+export async function abandonSnapshotVote(
+  token: string,
+  deps: AbandonSnapshotVoteDependencies,
+): Promise<void> {
+  const taken = takeVote(token, Date.now());
+  if (taken === null) return;
+  if (deps.duplicateGuard === null) return;
+  await deps.duplicateGuard.release({
+    spaceId: taken.context.spaceId,
+    proposalId: taken.context.proposalId,
+    voter: taken.context.voter,
+  });
 }

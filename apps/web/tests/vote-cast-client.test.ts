@@ -11,19 +11,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *   - a build refusal short-circuits **without touching the passkey**;
  *   - a ready build signs exactly the returned typed data and submits exactly
  *     that signature;
- *   - a failed or dismissed passkey prompt is reported and **nothing is
- *     submitted**.
+ *   - a failed or dismissed passkey prompt is reported, **nothing is submitted**,
+ *     and the reservation is **abandoned** so the resident can try again;
+ *   - a submit refused for an expired session is abandoned too.
  */
 
 const hoisted = vi.hoisted(() => ({
   beginVoteAction: vi.fn(),
   completeVoteAction: vi.fn(),
+  abandonVoteAction: vi.fn(),
   signSafeMessageWithPasskey: vi.fn(),
 }));
 
 vi.mock('@/app/(resident)/vote/actions', () => ({
   beginVoteAction: hoisted.beginVoteAction,
   completeVoteAction: hoisted.completeVoteAction,
+  abandonVoteAction: hoisted.abandonVoteAction,
 }));
 
 vi.mock('@/lib/safe/passkey-sign-message', () => ({
@@ -50,7 +53,7 @@ const READY = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 describe('castVoteWithPasskey', () => {
@@ -67,6 +70,7 @@ describe('castVoteWithPasskey', () => {
     expect(outcome).toBe(refusal);
     expect(hoisted.signSafeMessageWithPasskey).not.toHaveBeenCalled();
     expect(hoisted.completeVoteAction).not.toHaveBeenCalled();
+    expect(hoisted.abandonVoteAction).not.toHaveBeenCalled();
   });
 
   it('signs the returned typed data with the passkey and submits the signature', async () => {
@@ -96,9 +100,11 @@ describe('castVoteWithPasskey', () => {
       token: 'token-1',
       signature: '0xsig',
     });
+    // A real submission keeps the reservation.
+    expect(hoisted.abandonVoteAction).not.toHaveBeenCalled();
   });
 
-  it('reports a dismissed passkey prompt and submits nothing', async () => {
+  it('reports a dismissed passkey prompt, submits nothing, and abandons the reservation', async () => {
     hoisted.beginVoteAction.mockResolvedValue(READY);
     hoisted.signSafeMessageWithPasskey.mockRejectedValue(
       new Error('The passkey prompt was dismissed.'),
@@ -111,5 +117,34 @@ describe('castVoteWithPasskey', () => {
       expect(outcome.reason).toContain('dismissed');
     }
     expect(hoisted.completeVoteAction).not.toHaveBeenCalled();
+    // The reservation is released, so the resident can immediately try again.
+    expect(hoisted.abandonVoteAction).toHaveBeenCalledWith({ token: 'token-1' });
+  });
+
+  it('abandons the reservation when the submit is refused for an expired session', async () => {
+    hoisted.beginVoteAction.mockResolvedValue(READY);
+    hoisted.signSafeMessageWithPasskey.mockResolvedValue('0xsig');
+    const unauthenticated = {
+      status: 'unauthenticated' as const,
+      submitted: false as const,
+      reason: 'Your session expired. Sign in again to vote.',
+    };
+    hoisted.completeVoteAction.mockResolvedValue(unauthenticated);
+
+    const outcome = await castVoteWithPasskey(INPUT);
+
+    expect(outcome).toBe(unauthenticated);
+    expect(hoisted.abandonVoteAction).toHaveBeenCalledWith({ token: 'token-1' });
+  });
+
+  it('abandons the reservation when the submit call itself throws', async () => {
+    hoisted.beginVoteAction.mockResolvedValue(READY);
+    hoisted.signSafeMessageWithPasskey.mockResolvedValue('0xsig');
+    hoisted.completeVoteAction.mockRejectedValue(new Error('server unreachable'));
+
+    const outcome = await castVoteWithPasskey(INPUT);
+
+    expect(outcome).toMatchObject({ status: 'failed', submitted: false });
+    expect(hoisted.abandonVoteAction).toHaveBeenCalledWith({ token: 'token-1' });
   });
 });

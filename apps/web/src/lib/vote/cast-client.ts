@@ -1,6 +1,10 @@
 import type { Address, Hex } from 'viem';
 import type { SnapshotVoteResult } from '@/lib/vote/submit';
-import { beginVoteAction, completeVoteAction } from '@/app/(resident)/vote/actions';
+import {
+  abandonVoteAction,
+  beginVoteAction,
+  completeVoteAction,
+} from '@/app/(resident)/vote/actions';
 import {
   signSafeMessageWithPasskey,
   type PasskeySignerArg,
@@ -22,6 +26,16 @@ import {
  * `submitted: true` appears only when the sequencer accepted the signature; a
  * refusal — including a dismissed passkey prompt — is reported honestly and
  * never claims the vote was recorded.
+ *
+ * ## An abandoned attempt releases its reservation
+ *
+ * The build phase reserves the `(space, proposal, voter)` key. If the resident
+ * dismisses the prompt, signing throws, or the submit is refused without
+ * consuming the vote (an expired session), this module calls `abandonVoteAction`
+ * so the reservation is released and the resident can try again **immediately**
+ * rather than being told a vote already exists. The abandon is best-effort: a
+ * cleanup failure cannot mask the real outcome, and the reservation also
+ * self-releases after its bounded lifetime.
  */
 
 /**
@@ -36,6 +50,15 @@ export const VOTE_SIGNING_RPC_URL =
 
 function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/** Best-effort abandon: a cleanup failure must never mask the real outcome. */
+async function abandonQuietly(token: string): Promise<void> {
+  try {
+    await abandonVoteAction({ token });
+  } catch {
+    // Ignored: the reservation also self-releases after its bounded lifetime.
+  }
 }
 
 /**
@@ -70,7 +93,9 @@ export async function castVoteWithPasskey(input: {
       message: begin.typedData,
     });
   } catch (cause) {
-    // A dismissed or failed passkey prompt must say so; nothing is submitted.
+    // A dismissed or failed passkey prompt must say so, and must release the
+    // reservation so the resident can try again immediately.
+    await abandonQuietly(begin.token);
     return {
       status: 'failed',
       submitted: false,
@@ -78,5 +103,23 @@ export async function castVoteWithPasskey(input: {
     };
   }
 
-  return completeVoteAction({ token: begin.token, signature });
+  let result: SnapshotVoteResult;
+  try {
+    result = await completeVoteAction({ token: begin.token, signature });
+  } catch (cause) {
+    await abandonQuietly(begin.token);
+    return {
+      status: 'failed',
+      submitted: false,
+      reason: `The vote could not be submitted: ${describe(cause)}`,
+    };
+  }
+
+  if (result.status !== 'submitted') {
+    // The submit did not accept a vote. If it did not consume the token (an
+    // expired session), release the reservation; if it already did, this is a
+    // harmless no-op.
+    await abandonQuietly(begin.token);
+  }
+  return result;
 }

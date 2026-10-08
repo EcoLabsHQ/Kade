@@ -113,6 +113,13 @@ export interface ClaimOutcomeView {
   readonly account?: string | null;
   readonly operation?: string | null;
   readonly explorerUrl?: string | null;
+  /**
+   * What the server did to the resident Safe before minting: `deployed` when
+   * this claim deployed it on the membership chain, `already-deployed` when it
+   * was already live. Absent when the server did not report it, in which case
+   * the receipt says nothing rather than guessing.
+   */
+  readonly safeDeployment?: 'deployed' | 'already-deployed' | null;
 }
 
 export interface ColosseumResidencyProps {
@@ -995,6 +1002,16 @@ function MintReceipt({
             Status: {state}
             {serial ? ` · Serial ${serial}` : ''}
           </p>
+          {outcome.safeDeployment === 'deployed' ? (
+            <p style={mintMeta}>
+              Your Safe was deployed on chain before the credential was issued.
+            </p>
+          ) : outcome.safeDeployment === 'already-deployed' ? (
+            <p style={mintMeta}>
+              Your Safe was already deployed on chain; the credential was issued
+              to it.
+            </p>
+          ) : null}
           {txLink || accountLink ? (
             <ul style={mintLinks}>
               {txLink ? (
