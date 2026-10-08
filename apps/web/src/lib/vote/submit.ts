@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { getAddress, type Address } from 'viem';
 import type { SnapshotAdapter } from './adapter';
 import type { VoteDuplicateGuard } from './duplicate-guard';
@@ -9,49 +10,61 @@ import {
   buildSnapshotVoteTypedData,
   isSupportedVoteType,
   SNAPSHOT_VOTE_APP,
+  type SnapshotVoteTypedData,
 } from './snapshot';
 import { voteSpaceConfigById } from './spaces';
 import type { SnapshotSequencerClient } from './sequencer';
-import type { SafeMessageSigner } from '@/lib/safe/owner-sign-message';
 
 /**
- * Casting a Snapshot vote, server-side.
+ * Casting a Snapshot vote, server-side, in two phases.
  *
- * The resident clicks; the **backend signs through the owner Safe** and the
- * click is the authorisation. Nothing is trusted from the client except the
- * three identifiers that name *what* to vote on: the space, the proposal and the
- * choice. The voter (the Safe whose credential counts), the signer and the
- * sequencer are all resolved server-side.
+ * The **resident authorises**; the backend only validates and submits. The
+ * passkey lives in the browser, so the signature cannot be produced on the
+ * server. The flow is therefore split:
  *
- * The consequences of that authorisation model are stated plainly rather than
- * hidden: whoever holds the backend signer key can cast a vote with any
- * credential the signer owns. The key is the authorisation; the click only
- * selects the ballot.
+ *   1. `beginSnapshotVote` — server, no signing. Runs every precondition and,
+ *      only when they all hold, builds the canonical `Vote` typed data and
+ *      retains it under a one-time token. It returns the typed data for the
+ *      resident to sign with their passkey; it never signs and never sends.
+ *   2. `completeSnapshotVote` — server, after the browser signs. Takes the
+ *      client's EIP-1271 signature, looks up the retained typed data (so the
+ *      client cannot substitute what is submitted) and POSTs the signed envelope
+ *      to the Snapshot sequencer.
  *
- * ## Every precondition is checked before anything is signed
+ * The backend holds **no voting power**: it cannot sign, and the only signature
+ * it can submit is one the resident's passkey produced over the retained typed
+ * data. Nothing is trusted from the client except the signature, and the
+ * sequencer verifies that against the voter Safe's EIP-1271 `isValidSignature`.
  *
- * In order, each failing closed with a reason and **no signature**:
+ * ## Every precondition is checked before the resident is asked to sign
  *
- *   1. the signer, the sequencer, the voter Safe and the chain are configured;
- *   2. the proposal exists (read from Snapshot, never asserted by the client);
- *   3. the space is configured and its network equals the voter Safe's chain;
- *   4. the proposal is `active`;
- *   5. the proposal's vote type is supported (`basic` / `single-choice`);
- *   6. the choice index is within the proposal's real `choices`;
- *   7. a Citizen-only proposal is refused to a non-Citizen, with the exact text;
- *   8. no vote already exists for `(space, proposal, voter)`;
- *   9. voting power is **known** and strictly greater than zero at the
+ * In order, each failing closed with a reason and **no typed data returned**:
+ *
+ *   1. the sequencer, the voter Safe, the chain and the duplicate guard are
+ *      configured;
+ *   2. the choice index is a non-negative integer;
+ *   3. the proposal exists (read from Snapshot, never asserted by the client);
+ *   4. the space is configured and its network equals the voter Safe's chain;
+ *   5. the proposal is `active`;
+ *   6. the proposal's vote type is supported (`basic` / `single-choice`);
+ *   7. the choice index is within the proposal's real `choices`;
+ *   8. a Citizen-only proposal is refused to a non-Citizen, with the exact text;
+ *   9. no vote already exists for `(space, proposal, voter)`;
+ *  10. voting power is **known** and strictly greater than zero at the
  *      proposal's `snapshot` block.
  *
- * Only then is the canonical `Vote` typed data built, signed through the Safe
- * and POSTed to the sequencer. `submitted: true` appears only for a sequencer
- * acceptance; a refusal is a `blocked` / `failed` outcome that names the stage.
+ * Only then is the canonical `Vote` typed data built and retained.
+ * `submitted: true` appears only for a sequencer acceptance of the resident's
+ * signature; a refusal is a `blocked` / `failed` outcome that names the stage.
  */
 
-export type SnapshotVoteOutcome =
+export type SnapshotVoteRefusal =
   | { readonly status: 'not-configured'; readonly submitted: false; readonly reason: string }
   | { readonly status: 'blocked'; readonly submitted: false; readonly reason: string }
-  | { readonly status: 'failed'; readonly submitted: false; readonly reason: string }
+  | { readonly status: 'failed'; readonly submitted: false; readonly reason: string };
+
+export type SnapshotVoteOutcome =
+  | SnapshotVoteRefusal
   | {
       readonly status: 'submitted';
       readonly submitted: true;
@@ -80,6 +93,24 @@ export type SnapshotVoteResult =
       readonly reason: string;
     };
 
+/**
+ * The result of the build phase: the typed data to sign, or a refusal. The
+ * `ready` variant is deliberately **not** a `submitted` outcome — nothing has
+ * been signed or sent yet.
+ */
+export type BeginSnapshotVoteOutcome =
+  | {
+      readonly status: 'ready';
+      readonly submitted: false;
+      /** A cryptographically random, single-use token for the retained vote. */
+      readonly token: string;
+      /** The canonical Snapshot `Vote` typed data the resident must sign. */
+      readonly typedData: SnapshotVoteTypedData;
+      /** The voter Safe the sequencer will verify against. */
+      readonly voter: Address;
+    }
+  | SnapshotVoteRefusal;
+
 export interface SnapshotVoteDependencies {
   /** The real Snapshot adapter: proposals and voting power are read through it. */
   readonly adapter: SnapshotAdapter;
@@ -92,8 +123,6 @@ export interface SnapshotVoteDependencies {
   readonly safeAddress: Address | null;
   /** The viewer's membership, for the Citizen-only rule. */
   readonly membership: VoteViewerMembership;
-  /** The bound owner-Safe signer; `null` when the signer/config is absent. */
-  readonly signer: SafeMessageSigner | null;
   /** The sequencer client; `null` when unconfigured. */
   readonly sequencer: SnapshotSequencerClient | null;
   /** The duplicate guard; `null` when unconfigured. */
@@ -102,6 +131,12 @@ export interface SnapshotVoteDependencies {
   readonly app?: string;
   /** Injected for tests; defaults to `Date.now()`. */
   readonly now?: () => number;
+}
+
+/** The deps the submit phase needs: the sequencer and the guard to release. */
+export interface CompleteSnapshotVoteDependencies {
+  readonly sequencer: SnapshotSequencerClient | null;
+  readonly duplicateGuard: VoteDuplicateGuard | null;
 }
 
 export interface CastSnapshotVoteInput {
@@ -115,32 +150,85 @@ function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-const notConfigured = (reason: string): SnapshotVoteOutcome => ({
+const notConfigured = (reason: string): SnapshotVoteRefusal => ({
   status: 'not-configured',
   submitted: false,
   reason,
 });
-const blocked = (reason: string): SnapshotVoteOutcome => ({
+const blocked = (reason: string): SnapshotVoteRefusal => ({
   status: 'blocked',
   submitted: false,
   reason,
 });
-const failed = (reason: string): SnapshotVoteOutcome => ({
+const failed = (reason: string): SnapshotVoteRefusal => ({
   status: 'failed',
   submitted: false,
   reason,
 });
 
+/** A retained vote: the exact typed data the resident is signing. */
+interface SnapshotVoteContext {
+  readonly spaceId: string;
+  readonly proposalId: string;
+  readonly voter: Address;
+  /** The 1-based choice Snapshot records. */
+  readonly choice: number;
+  readonly typedData: SnapshotVoteTypedData;
+}
+
+interface RetainedVote {
+  readonly context: SnapshotVoteContext;
+  readonly expiresAt: number;
+}
+
+/** How long a retained vote may be signed and submitted before it expires. */
+export const RETAINED_VOTE_TTL_MS = 5 * 60_000;
+
 /**
- * Validate the preconditions and, if they all hold, sign and submit the vote.
+ * The retained votes awaiting the resident's signature, keyed by token.
+ *
+ * ## Limits (read before scaling)
+ *
+ * Like the resident-Safe engine's retained operations, this store is
+ * **per-process, in memory**. It does not survive a restart and is not shared
+ * across instances, so a build handled by one process cannot be completed by
+ * another; the client simply starts again and signs a fresh typed data. The
+ * token is cryptographically random and single-use, so a replay cannot reach the
+ * same retained vote twice, and an unknown or expired token is refused honestly
+ * rather than treated as a signed vote.
+ */
+const retainedVotes = new Map<string, RetainedVote>();
+
+function retainVote(context: SnapshotVoteContext, now: number): string {
+  // Drop votes that were never signed, so the map cannot grow without bound.
+  for (const [key, entry] of retainedVotes) {
+    if (entry.expiresAt <= now) retainedVotes.delete(key);
+  }
+  const token = randomBytes(32).toString('base64url');
+  retainedVotes.set(token, { context, expiresAt: now + RETAINED_VOTE_TTL_MS });
+  return token;
+}
+
+/** Consume a token and return its retained vote, or `null`. Single-use. */
+function consumeVote(token: string, now: number): SnapshotVoteContext | null {
+  const entry = retainedVotes.get(token);
+  if (entry === undefined) return null;
+  retainedVotes.delete(token);
+  if (entry.expiresAt <= now) return null;
+  return entry.context;
+}
+
+/**
+ * Validate every precondition and, if they all hold, build and retain the
+ * canonical `Vote` typed data for the resident to sign.
  *
  * Never throws for an expected refusal: every refusal is a discriminated
- * outcome. The signer is called only after every check has passed.
+ * outcome. Nothing is signed and nothing is sent here.
  */
-export async function castSnapshotVote(
+export async function beginSnapshotVote(
   input: CastSnapshotVoteInput,
   deps: SnapshotVoteDependencies,
-): Promise<SnapshotVoteOutcome> {
+): Promise<BeginSnapshotVoteOutcome> {
   const now = deps.now ?? Date.now;
 
   // 1. Configuration.
@@ -161,17 +249,9 @@ export async function castSnapshotVote(
       "The resident's Safe address is malformed, so nothing was signed.",
     );
   }
-  if (deps.signer === null) {
-    return notConfigured(
-      'No owner-Safe signer is configured (the signer key is absent), so nothing ' +
-        'was signed.',
-    );
-  }
-  const signer = deps.signer;
   if (deps.sequencer === null) {
     return notConfigured('No Snapshot sequencer is configured, so nothing was sent.');
   }
-  const sequencer = deps.sequencer;
   if (deps.duplicateGuard === null) {
     return notConfigured('No duplicate guard is configured, so nothing was signed.');
   }
@@ -247,7 +327,7 @@ export async function castSnapshotVote(
     return blocked(CITIZEN_ONLY_REFUSAL);
   }
 
-  // 9. Duplicate guard, before signing.
+  // 9. Duplicate guard, before the resident is asked to sign.
   try {
     const reserved = await guard.reserve({
       spaceId: input.spaceId,
@@ -301,21 +381,72 @@ export async function castSnapshotVote(
     app: deps.app ?? SNAPSHOT_VOTE_APP,
   });
 
-  // 12. Sign through the owner Safe.
-  let signature;
-  try {
-    signature = await signer({ chainId, message: typedData });
-  } catch (cause) {
-    await guard.release({ spaceId: input.spaceId, proposalId: input.proposalId, voter });
-    return failed(`The vote could not be signed through the owner Safe: ${describe(cause)}`);
+  // 12. Retain the exact typed data the resident will sign, under a one-time
+  //     token, so the client cannot substitute what is submitted.
+  const token = retainVote(
+    {
+      spaceId: input.spaceId,
+      proposalId: input.proposalId,
+      voter,
+      choice: input.choice + 1,
+      typedData,
+    },
+    // The TTL is wall-clock, not the injected timestamp clock, so a test that
+    // pins `now` for the signed timestamp still completes promptly.
+    Date.now(),
+  );
+
+  return { status: 'ready', submitted: false, token, typedData, voter };
+}
+
+/**
+ * Submit the resident's signature for a retained vote.
+ *
+ * The client supplies only `{ token, signature }`. The typed data that is
+ * submitted is the server-retained one, never the client's; the signature must
+ * therefore match it or the sequencer rejects it. A failure releases the
+ * duplicate reservation so the resident may retry.
+ */
+export async function completeSnapshotVote(
+  input: { readonly token: string; readonly signature: string },
+  deps: CompleteSnapshotVoteDependencies,
+): Promise<SnapshotVoteOutcome> {
+  const context = consumeVote(input.token, Date.now());
+  if (context === null) {
+    return failed(
+      'The vote request is unknown, already used, or expired, so nothing was sent. ' +
+        'Start again and sign a fresh vote.',
+    );
   }
 
-  // 13. Submit to the sequencer. `primaryType` is not part of the wire body.
+  const key = {
+    spaceId: context.spaceId,
+    proposalId: context.proposalId,
+    voter: context.voter,
+  };
+
+  if (deps.sequencer === null) {
+    if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
+    return notConfigured('No Snapshot sequencer is configured, so nothing was sent.');
+  }
+
+  // The signature is the only client input. An empty or malformed value is not a
+  // signed vote and must not be sent as one.
+  if (
+    typeof input.signature !== 'string' ||
+    !input.signature.startsWith('0x') ||
+    input.signature.length <= 2
+  ) {
+    if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
+    return failed('The vote was not signed, so nothing was sent.');
+  }
+
+  const typedData = context.typedData;
   let result;
   try {
-    result = await sequencer.submitVote({
-      address: voter,
-      sig: signature.signature,
+    result = await deps.sequencer.submitVote({
+      address: context.voter,
+      sig: input.signature,
       data: {
         domain: typedData.domain,
         types: typedData.types,
@@ -323,23 +454,23 @@ export async function castSnapshotVote(
       },
     });
   } catch (cause) {
-    await guard.release({ spaceId: input.spaceId, proposalId: input.proposalId, voter });
+    if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
     return failed(`The Snapshot sequencer could not be reached: ${describe(cause)}`);
   }
   if (!result.ok) {
-    await guard.release({ spaceId: input.spaceId, proposalId: input.proposalId, voter });
+    if (deps.duplicateGuard) await deps.duplicateGuard.release(key);
     return failed(result.reason);
   }
 
-  // 14. Accepted. The reservation stays claimed so a retry is refused.
+  // Accepted. The reservation stays claimed so a retry is refused.
   return {
     status: 'submitted',
     submitted: true,
     reason: 'The Snapshot sequencer accepted the vote.',
-    spaceId: input.spaceId,
-    proposalId: input.proposalId,
-    voter,
-    choice: input.choice + 1,
+    spaceId: context.spaceId,
+    proposalId: context.proposalId,
+    voter: context.voter,
+    choice: context.choice,
     voteId: result.id,
     ipfsHash: result.ipfsHash,
   };

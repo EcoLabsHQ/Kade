@@ -2,32 +2,40 @@ import { describe, expect, it } from 'vitest';
 import { getAddress, type Address, type Hex } from 'viem';
 import type { SnapshotAdapter } from '@/lib/vote/adapter';
 import { createVoteDuplicateGuard } from '@/lib/vote/duplicate-guard';
-import type { SafeMessageSigner } from '@/lib/safe/owner-sign-message';
-import { ownerSafeMessageSigner } from '@/lib/safe/owner-sign-message';
 import type {
   SnapshotSequencerClient,
   SnapshotSequencerResult,
   SnapshotVoteEnvelope,
 } from '@/lib/vote/sequencer';
 import {
-  castSnapshotVote,
+  beginSnapshotVote,
+  completeSnapshotVote,
   type SnapshotVoteDependencies,
 } from '@/lib/vote/submit';
 import { RESIDENT_SPACE_ID, VOTE_CHAIN_ID } from '@/lib/vote/spaces';
 import type { VoteProposal, VotingPowerRead } from '@/lib/vote/types';
 
 /**
- * The vote cast path.
+ * The resident-authorised vote path.
  *
- * Every precondition is proven to refuse **without signing**: an inactive
- * proposal, an unsupported type, an out-of-range choice, a different network and
- * zero (or unreadable) power each stop before the signer is called. A duplicate
- * is not re-submitted; a sequencer error is surfaced honestly; and the signer
- * key never appears in the outcome.
+ * The server validates every precondition and returns the canonical typed data;
+ * the **resident's** signature (produced elsewhere, in the browser) is the only
+ * thing submitted. These tests prove that:
+ *
+ *   - the build phase returns the exact canonical `Vote` typed data and signs
+ *     nothing;
+ *   - every precondition refuses before the typed data is returned, so the
+ *     resident is never asked to sign an ineligible vote;
+ *   - the submit phase sends the resident's signature over the **retained**
+ *     typed data, and a refusal releases the duplicate guard for a retry;
+ *   - the backend holds no signer at all: there is no key to leak.
  */
 
 const VOTER = getAddress('0x1111111111111111111111111111111111111111') as Address;
 const PROPOSAL_ID = '0xproposal';
+
+/** A signature as the passkey would return it (opaque bytes to the server). */
+const SIGNATURE = `0x${'ab'.repeat(65)}` as Hex;
 
 const PROPOSAL: VoteProposal = {
   spaceId: RESIDENT_SPACE_ID,
@@ -73,22 +81,6 @@ function adapterWith(overrides: {
   };
 }
 
-function signerWith(): {
-  signer: SafeMessageSigner;
-  calls: Array<{ chainId: number; message: unknown }>;
-} {
-  const calls: Array<{ chainId: number; message: unknown }> = [];
-  const signer: SafeMessageSigner = async (input) => {
-    calls.push(input);
-    return {
-      signature: `0x${'ab'.repeat(65)}` as Hex,
-      messageHash: `0x${'cd'.repeat(32)}` as Hex,
-      signer: VOTER,
-    };
-  };
-  return { signer, calls };
-}
-
 function sequencerWith(result: SnapshotSequencerResult): {
   sequencer: SnapshotSequencerClient;
   envelopes: SnapshotVoteEnvelope[];
@@ -113,7 +105,6 @@ function baseDeps(overrides: Partial<SnapshotVoteDependencies> = {}): SnapshotVo
     chainId: VOTE_CHAIN_ID,
     safeAddress: VOTER,
     membership: 'resident',
-    signer: signerWith().signer,
     sequencer: sequencerWith(ACCEPTED).sequencer,
     duplicateGuard: createVoteDuplicateGuard(),
     now: () => 1_791_382_034_000,
@@ -121,14 +112,53 @@ function baseDeps(overrides: Partial<SnapshotVoteDependencies> = {}): SnapshotVo
   };
 }
 
-describe('castSnapshotVote — the real path', () => {  it('signs and submits the canonical Vote typed data for the selected choice', async () => {
-    const { signer, calls } = signerWith();
+describe('beginSnapshotVote — the resident is handed the canonical typed data', () => {
+  it('returns the canonical Vote typed data for the selected choice and signs nothing', async () => {
     const { sequencer, envelopes } = sequencerWith(ACCEPTED);
-    const deps = baseDeps({ signer, sequencer });
+    const deps = baseDeps({ sequencer });
 
-    const outcome = await castSnapshotVote(
+    const outcome = await beginSnapshotVote(
       { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 1 },
       deps,
+    );
+
+    expect(outcome.status).toBe('ready');
+    if (outcome.status !== 'ready') throw new Error('expected ready');
+
+    expect(outcome.voter).toBe(VOTER);
+    expect(outcome.typedData.domain).toEqual({ name: 'snapshot', version: '0.1.4' });
+    expect(outcome.typedData.primaryType).toBe('Vote');
+    expect(outcome.typedData.message).toEqual({
+      from: VOTER,
+      space: RESIDENT_SPACE_ID,
+      proposal: PROPOSAL_ID,
+      // 0-based index 1 → Snapshot's 1-based choice 2.
+      choice: 2,
+      timestamp: 1_791_382_034,
+      reason: '',
+      app: 'kade',
+      metadata: '{}',
+    });
+
+    // Nothing was sent by the build phase.
+    expect(envelopes).toHaveLength(0);
+  });
+});
+
+describe('completeSnapshotVote — the resident’s signature is submitted', () => {
+  it('submits the resident’s signature over the retained typed data', async () => {
+    const { sequencer, envelopes } = sequencerWith(ACCEPTED);
+    const deps = baseDeps({ sequencer });
+
+    const begin = await beginSnapshotVote(
+      { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 1 },
+      deps,
+    );
+    if (begin.status !== 'ready') throw new Error('expected ready');
+
+    const outcome = await completeSnapshotVote(
+      { token: begin.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard: deps.duplicateGuard },
     );
 
     expect(outcome).toEqual({
@@ -143,26 +173,58 @@ describe('castSnapshotVote — the real path', () => {  it('signs and submits th
       ipfsHash: 'QmHash',
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.chainId).toBe(VOTE_CHAIN_ID);
-    const message = (
-      calls[0]?.message as { message: { from: string; space: string; proposal: string; choice: number; timestamp: number } }
-    ).message;
-    expect(message.from).toBe(VOTER);
-    expect(message.space).toBe(RESIDENT_SPACE_ID);
-    expect(message.proposal).toBe(PROPOSAL_ID);
-    // 0-based index 1 → Snapshot's 1-based choice 2.
-    expect(message.choice).toBe(2);
-    expect(message.timestamp).toBe(1_791_382_034);
-
     expect(envelopes).toHaveLength(1);
     expect(envelopes[0]?.address).toBe(VOTER);
-    expect(envelopes[0]?.sig).toBe(`0x${'ab'.repeat(65)}`);
-    expect(envelopes[0]?.data.message.from).toBe(VOTER);
+    // The signature is the resident's, used verbatim.
+    expect(envelopes[0]?.sig).toBe(SIGNATURE);
+    // The typed data submitted is the server-retained one, not anything the
+    // client could have supplied.
+    expect(envelopes[0]?.data.message).toEqual(begin.typedData.message);
+  });
+
+  it('refuses an unknown or already-used token without sending', async () => {
+    const { sequencer, envelopes } = sequencerWith(ACCEPTED);
+    const deps = baseDeps({ sequencer });
+    const begin = await beginSnapshotVote(
+      { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
+      deps,
+    );
+    if (begin.status !== 'ready') throw new Error('expected ready');
+
+    // First completion consumes the token.
+    await completeSnapshotVote(
+      { token: begin.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard: deps.duplicateGuard },
+    );
+    const replay = await completeSnapshotVote(
+      { token: begin.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard: deps.duplicateGuard },
+    );
+
+    expect(replay).toMatchObject({ status: 'failed', submitted: false });
+    expect(envelopes).toHaveLength(1);
+  });
+
+  it('refuses an empty signature without sending', async () => {
+    const { sequencer, envelopes } = sequencerWith(ACCEPTED);
+    const deps = baseDeps({ sequencer });
+    const begin = await beginSnapshotVote(
+      { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
+      deps,
+    );
+    if (begin.status !== 'ready') throw new Error('expected ready');
+
+    const outcome = await completeSnapshotVote(
+      { token: begin.token, signature: '0x' },
+      { sequencer, duplicateGuard: deps.duplicateGuard },
+    );
+
+    expect(outcome).toMatchObject({ status: 'failed', submitted: false });
+    expect(envelopes).toHaveLength(0);
   });
 });
 
-describe('castSnapshotVote — preconditions refuse without signing', () => {
+describe('beginSnapshotVote — preconditions refuse before anything is signed', () => {
   const cases: Array<{
     readonly name: string;
     readonly input?: { spaceId: string; proposalId: string; choice: number };
@@ -194,17 +256,17 @@ describe('castSnapshotVote — preconditions refuse without signing', () => {
 
   for (const testCase of cases) {
     it(`refuses ${testCase.name}`, async () => {
-      const { signer, calls } = signerWith();
       const { sequencer, envelopes } = sequencerWith(ACCEPTED);
-      const deps = baseDeps({ ...testCase.deps, signer, sequencer });
-      const outcome = await castSnapshotVote(
+      const deps = baseDeps({ ...testCase.deps, sequencer });
+      const outcome = await beginSnapshotVote(
         testCase.input ?? { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
         deps,
       );
-      expect(outcome.submitted).toBe(false);
       expect(outcome.status).toBe('blocked');
-      expect(calls).toHaveLength(0);
+      expect(outcome.submitted).toBe(false);
+      // Nothing was sent, and the resident was handed nothing to sign.
       expect(envelopes).toHaveLength(0);
+      expect('typedData' in outcome).toBe(false);
     });
   }
 
@@ -212,11 +274,10 @@ describe('castSnapshotVote — preconditions refuse without signing', () => {
     for (const override of [
       { chainId: null },
       { safeAddress: null },
-      { signer: null },
       { sequencer: null },
       { duplicateGuard: null },
     ] satisfies Array<Partial<SnapshotVoteDependencies>>) {
-      const outcome = await castSnapshotVote(
+      const outcome = await beginSnapshotVote(
         { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
         baseDeps(override),
       );
@@ -225,101 +286,69 @@ describe('castSnapshotVote — preconditions refuse without signing', () => {
   });
 });
 
-describe('castSnapshotVote — duplicates and failures', () => {
-  it('does not submit a second vote for the same (space, proposal, voter)', async () => {
-    const { signer, calls } = signerWith();
+describe('duplicates and failures', () => {
+  it('does not hand out a second vote for the same (space, proposal, voter)', async () => {
     const { sequencer, envelopes } = sequencerWith(ACCEPTED);
     const duplicateGuard = createVoteDuplicateGuard();
-    const deps = baseDeps({ signer, sequencer, duplicateGuard });
+    const deps = baseDeps({ sequencer, duplicateGuard });
     const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
 
-    const first = await castSnapshotVote(input, deps);
-    const second = await castSnapshotVote(input, deps);
+    const first = await beginSnapshotVote(input, deps);
+    if (first.status !== 'ready') throw new Error('expected ready');
+    const submitted = await completeSnapshotVote(
+      { token: first.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard },
+    );
+    expect(submitted.submitted).toBe(true);
 
-    expect(first.submitted).toBe(true);
-    expect(second.submitted).toBe(false);
+    const second = await beginSnapshotVote(input, deps);
     expect(second.status).toBe('blocked');
-    // The signer and the sequencer were each reached exactly once.
-    expect(calls).toHaveLength(1);
+    expect(second.submitted).toBe(false);
     expect(envelopes).toHaveLength(1);
   });
 
   it('surfaces a sequencer rejection honestly and allows a retry', async () => {
-    const { signer, calls } = signerWith();
     const { sequencer, envelopes } = sequencerWith({
       ok: false,
       reason: 'The Snapshot sequencer rejected the vote (400): invalid signature',
     });
     const duplicateGuard = createVoteDuplicateGuard();
-    const deps = baseDeps({ signer, sequencer, duplicateGuard });
+    const deps = baseDeps({ sequencer, duplicateGuard });
     const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
 
-    const outcome = await castSnapshotVote(input, deps);
+    const first = await beginSnapshotVote(input, deps);
+    if (first.status !== 'ready') throw new Error('expected ready');
+    const outcome = await completeSnapshotVote(
+      { token: first.token, signature: SIGNATURE },
+      { sequencer, duplicateGuard },
+    );
     expect(outcome).toMatchObject({
       status: 'failed',
       submitted: false,
       reason: 'The Snapshot sequencer rejected the vote (400): invalid signature',
     });
 
-    // The failed attempt released the guard, so a retry signs again.
-    await castSnapshotVote(input, deps);
-    expect(calls).toHaveLength(2);
-    expect(envelopes).toHaveLength(2);
-  });
-
-  it('surfaces a signing failure and allows a retry', async () => {
-    const { sequencer } = sequencerWith(ACCEPTED);
-    const duplicateGuard = createVoteDuplicateGuard();
-    const signer: SafeMessageSigner = async () => {
-      throw new Error('signer unavailable');
-    };
-    const deps = baseDeps({ signer, sequencer, duplicateGuard });
-    const input = { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 };
-
-    const outcome = await castSnapshotVote(input, deps);
-    expect(outcome).toMatchObject({ status: 'failed', submitted: false });
-    if (outcome.status === 'failed') {
-      expect(outcome.reason).toContain('signer unavailable');
-    }
-    // The failed attempt released the guard, so a retry is attempted.
-    const retry = await castSnapshotVote(input, deps);
-    expect(retry.status).toBe('failed');
+    // The failed attempt released the guard, so a retry is handed a fresh vote.
+    const retry = await beginSnapshotVote(input, deps);
+    expect(retry.status).toBe('ready');
+    expect(envelopes).toHaveLength(1);
   });
 
   it('fails closed when the duplicate lookup cannot be read', async () => {
-    const { signer, calls } = signerWith();
+    const { sequencer, envelopes } = sequencerWith(ACCEPTED);
     const duplicateGuard = createVoteDuplicateGuard({
       lookup: async () => {
         throw new Error('hub down');
       },
     });
-    const deps = baseDeps({ signer, duplicateGuard });
+    const deps = baseDeps({ sequencer, duplicateGuard });
 
-    const outcome = await castSnapshotVote(
+    const outcome = await beginSnapshotVote(
       { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
       deps,
     );
     expect(outcome.submitted).toBe(false);
-    expect(calls).toHaveLength(0);
-  });
-
-  it('never leaks the signer key into the outcome', async () => {
-    const key = `0x${'11'.repeat(32)}`;
-    const signer = ownerSafeMessageSigner({
-      rpcUrl: 'https://arb.example',
-      safeAddress: VOTER,
-      privateKey: key,
-      sign: async () => {
-        throw new Error(`SDK echoed ${key}`);
-      },
-    });
-    const deps = baseDeps({ signer });
-
-    const outcome = await castSnapshotVote(
-      { spaceId: RESIDENT_SPACE_ID, proposalId: PROPOSAL_ID, choice: 0 },
-      deps,
-    );
-    expect(JSON.stringify(outcome)).not.toContain(key);
-    expect(outcome.submitted).toBe(false);
+    expect(outcome.status).toBe('blocked');
+    expect(envelopes).toHaveLength(0);
   });
 });
