@@ -1,0 +1,41 @@
+iteration: demo-feedback-26
+profile: NORMAL
+known_good: 76c87e3
+candidate: 43da644
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: incomplete
+  tests: incomplete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+findings:
+  - id: F1
+    severity: WARN
+    scope: frontend
+    title: "eligibility.ts still documents `available` as the 'votable' set"
+    evidence: "apps/web/src/lib/vote/eligibility.ts:123, :131, :135, :142"
+    failure_mode: "A future reader trusts deriveVoteProposalAvailability's doc and assumes `available` already excludes unsupported vote types, re-deriving the exact over-promise the label rename just removed. No runtime effect."
+    materiality: "Documentation only, and PRE-EXISTING (not introduced by this candidate). Non-gating. Recorded because the orchestrator's session note claimed all 'votable set' comments were corrected, which the reviewer showed is true only of VoteScreen.tsx — the orchestrator over-generalised its own record, and the reviewer caught it by comparing the claim against the code."
+    status: open
+    introduced_by: null
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 43da644
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate 43da644. Node v22.17.0 per .nvmrc."
+notes:
+  - "Deliberate paydown of two non-blocking WARN findings that adversarial review had raised and the orchestrator deferred, rather than allowing them to rot as footnotes."
+  - "WARN 1 (from demo-feedback-23 F1): the onboarding sign mark rested on an EXTERNAL invariant. useConnectPersistSign sets phase 'done' with verified:false when !canSign, while ConnectedWalletPanel treated every 'done' as verified. It was safe only because ConnectedWalletOwnership requires onBegin/onComplete, so the rail always has canSign === true. A future caller rendering the rail with signMessageAsync but without those callbacks would have marked sign verified WITHOUT any verification. FIX: the hook now surfaces its returned verified flag as ConnectPersistSignController.verified, set true only on the server-accepted path and cleared by run, beginConnecting and reset; the panel drives the sign check from signVerified, not from signPhase === 'done'. The invariant now lives locally in the hook rather than in how a distant owner builds its dependencies. The connect check now keys on the settled phase (attemptDone || signActive), which the worker states is behaviour-identical to the old signActive || signSucceeded on every reachable path, so skipped-never-marks and failed-never-marks are unchanged. ConnectSignRail itself was not edited."
+  - "WARN 2 (from demo-feedback-22 W1): the group label 'Open to you' over-promised. An open, category-allowed proposal with a known power but an UNSUPPORTED vote type satisfies eligibility.eligible, so it landed in the available group labelled 'Open to you' while its ballot was refused by the existing supportedType rule. FIX: both labels now name the eligibility decision they encode — 'Eligible to you · N' and 'Not eligible to you · N' — matching the screen's own eligibility vocabulary. evaluateVoteEligibility, deriveVoteProposalAvailability, the fail-closed behaviour and the grouping are untouched; the eligible-but-unsupported proposal stays visible, selectable, data-available=true, and still states its real reason (vote-type-unsupported). Code and comments that claimed the set was 'the votable set' were corrected."
+  - "REGESSION EVIDENCE: the worker confirmed BOTH new tests fail against the pre-fix code — the WARN 1 test against signPhase === 'done' yielded ['done','done'] where ['done','upcoming'] was expected, and the WARN 2 test failed the 'Eligible to you' label assertion."
+  - "Worker verification: 24 files / 225 tests passed; onboarding-flow.test.tsx 41/41 isolated AND inside the parallel sweep; root regressions 7 files / 33 passed unchanged; typecheck exit 0; lint exit 0 with 0 errors and 17 pre-existing warnings, none in changed files. No lockfile change, no new dependency."
+  - "Scope check by the orchestrator before integration: 5 files, none under packages/**, supabase/**, no lockfile, and none in components/residency, components/shell, or the shared ui/Modal (a sibling task owns Modal)."
+  - "Worker disclosed an environment detail worth recording: npm ci warned that jsdom@30.1.0 declares ^22.22.2 while the installed Node 22 patch is v22.17.0. All suites still pass; pre-existing dependency metadata, not caused by these changes."
+  - "Concurrently in flight and NOT in this candidate: task/modal-focus-trap, which fixes the shared Modal's focus containment and restoration (demo-feedback-25 F3) and touches only apps/web/src/components/ui/Modal.tsx."
