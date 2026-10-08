@@ -485,11 +485,13 @@ textarea {
   }
 }
 
-/* The Colosseum demo's nav attention. The mocked 2-minute window has elapsed and
-   "Become a Citizen" is available, so the Residency nav item breathes gently
-   until the resident acts: its dot softens and recovers, and the tint deepens by
-   a hair. There is no halo and no heavy glow — it reads as "there is something
-   to do" without shouting on repeat. Inline styles cannot express keyframes. */
+/* The Colosseum claim notice in the nav. Once the mocked 2-minute window has
+   elapsed and citizenship is claimable, the Residency nav item's dot turns red
+   (inline, see `NavItem`) and breathes gently so it reads as "there is
+   something to do" — replacing the old blue brand highlight and background
+   shimmer entirely. There is no halo and no heavy glow. Inline styles cannot
+   express keyframes, so the breathe lives here; the red is static and stays
+   legible when the animation is switched off under reduced motion. */
 @keyframes kade-nav-breathe {
   0%,
   100% {
@@ -502,22 +504,25 @@ textarea {
   }
 }
 
-@keyframes kade-nav-shimmer {
-  0%,
-  100% {
-    background-color: #e6f1fe;
-  }
-  50% {
-    background-color: #f1f7ff;
-  }
-}
-
-.kade-nav-attention {
-  animation: kade-nav-shimmer 3.4s ease-in-out infinite;
-}
-
 .kade-nav-attention .kade-nav-dot {
   animation: kade-nav-breathe 3.4s ease-in-out infinite;
+}
+
+/* The residency view's claim notice: a gentle pulse on its red dot. The dot is
+   static unless this class is present, and the class is only applied when the
+   user has not asked for reduced motion (see `ClaimableNotice`). */
+@keyframes kade-claimable-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.kade-claimable-dot-pulse {
+  animation: kade-claimable-pulse 2.4s ease-in-out infinite;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1470,8 +1475,8 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kade-nav-attention,
   .kade-nav-attention .kade-nav-dot,
+  .kade-claimable-dot-pulse,
   .kade-reveal-backdrop,
   .kade-reveal-card,
   .kade-passport-reveal,
