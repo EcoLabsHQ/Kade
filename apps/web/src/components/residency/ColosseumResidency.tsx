@@ -24,6 +24,7 @@ import {
   CertificateArtifact,
   CitizenshipCertificate,
 } from './CitizenshipCertificate';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 /**
  * The Colosseum flow, rendered as a mocked sub-section INSIDE the Residency step.
@@ -255,6 +256,12 @@ export function ColosseumResidency({
   // The first, live citizenship reveal uses the celebratory tier; every later
   // open uses the standard one.
   const [certificateCelebration, setCertificateCelebration] = useState(false);
+  // The first, live residency claim uses its own celebration tier (distinct
+  // motion and its own sound); every later open uses the standard one.
+  const [residencyCelebration, setResidencyCelebration] = useState(false);
+  // Reduced motion suppresses the claim affordance's entrance animation, so the
+  // button is simply present and legible rather than arriving with motion.
+  const reducedMotion = usePrefersReducedMotion();
   // The mint outcome per claim target, so the section can report honestly
   // whether the on-chain credential was issued (feedback 1). Session state only:
   // it is not persisted, and it is cleared for a target while a fresh claim is
@@ -289,8 +296,11 @@ export function ColosseumResidency({
     progress.residentSince !== null && secondsRemaining <= 0;
   const citizenEligible = allChecksMet && windowElapsed && !citizen;
 
-  // Keep the server-side clock honest against the real milestone, and tick it
-  // only while the window is live. The start/clear pair writes the same
+  // Keep the server-side clock honest and tick it only while the window is live.
+  // The window is started by `claimResidency`, not here: the human's flow is
+  // claim-first, then the 2-minute compliance window. This effect only clears
+  // the window on decay (the checks stopped being green before citizenship) and
+  // advances the displayed clock. The start/clear pair writes the same
   // `applications.colosseum_resident_since` the Citizen mint reads, so the
   // displayed countdown and the mint's compliance window are one record. Runs
   // only after mount so the server render never writes demo state.
@@ -307,17 +317,8 @@ export function ColosseumResidency({
       }
       return;
     }
-    if (progress.residentSince === null) {
-      // First time all four checks are green: start the window. The local mirror
-      // updates on the same tick; the server record is the durable one.
-      const iso = new Date().toISOString();
-      setProgress((current) => markResidentSince(current, iso));
-      setNow(Date.now());
-      void storeRef.current.startWindow(iso).then((canonical) => {
-        if (canonical) setProgress(canonical);
-      });
-      return;
-    }
+    // No window yet: nothing to tick. It starts on the claim.
+    if (progress.residentSince === null) return;
     if (secondsRemaining <= 0) return;
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
@@ -399,37 +400,60 @@ export function ColosseumResidency({
     setCertificateOpen(true);
   }, [mounted, citizen]);
 
-  // Claiming the residency pass records a demo serial/instant once, then reveals
-  // it full-screen. Claiming again (re-opening) shows the same artifact.
+  // Claiming the residency pass records a demo serial/instant once, starts the
+  // 2-minute compliance window, and reveals the pass full-screen with the
+  // residency celebration (distinct motion + sound). Re-opening an already
+  // claimed pass shows the same artifact in the standard tier and neither
+  // re-starts the window nor re-mints.
   const claimResidency = useCallback(() => {
-    // The mint is triggered only on the *first* claim; re-opening the pass is
-    // not a claim and must not call the server again.
-    const alreadyClaimed = progress.residencyPassAt !== null;
+    // The mint and the window start are triggered only on the *first* claim;
+    // re-opening the pass is not a claim and must not call the server again.
+    const alreadyClaimed = progress.residencyPassSerial !== null;
     const iso = new Date().toISOString();
     const serial = generateResidencyPassSerial();
     setProgress((current) => claimResidencyPass(current, iso, serial));
+    setResidencyCelebration(!alreadyClaimed);
     setResidencyPassOpen(true);
     if (!alreadyClaimed) {
+      // The claim starts the compliance window. The server re-derives the four
+      // real checks before recording `applications.colosseum_resident_since`
+      // (the same gate as before, now invoked at the human's claim-first
+      // moment), so the server gate is not weakened. The local mirror updates on
+      // the same tick; the server record is the durable one.
+      setProgress((current) => markResidentSince(current, iso));
+      setNow(Date.now());
+      // Start the window, then record the pass, in order. The pass write's
+      // canonical state is read after the window is durable, so applying it
+      // cannot erase the window the start just recorded.
+      void storeRef.current
+        .startWindow(iso)
+        .then((canonical) => {
+          if (canonical) setProgress(canonical);
+          return storeRef.current.claimResidencyPass(iso, serial);
+        })
+        .then((canonical) => {
+          if (canonical) setProgress(canonical);
+        });
       // The reveal is already opening, so the mint never changes its timing; the
-      // outcome is awaited afterwards and reported honestly. The demo claim is
-      // persisted to the account (idempotent server-side).
+      // outcome is awaited afterwards and reported honestly.
       runClaim('resident');
-      void storeRef.current.claimResidencyPass(iso, serial).then((canonical) => {
-        if (canonical) setProgress(canonical);
-      });
     }
-  }, [progress.residencyPassAt, runClaim]);
+  }, [progress.residencyPassSerial, runClaim]);
 
   const residencyPassClaimed = progress.residencyPassSerial !== null;
   const showCertificate = mounted && citizen;
   // Once the resident has claimed their residency pass, the section shows the
   // same inline artifact treatment a citizen gets — the resident card instead of
-  // the certificate (feedback 3). State C/D remain the pre-claim affordances.
+  // the certificate (feedback 3).
   const showResident = mounted && allChecksMet && !citizen && residencyPassClaimed;
-  const showStateD =
-    mounted && allChecksMet && !citizen && windowElapsed && !residencyPassClaimed;
-  const showStateC =
-    mounted && allChecksMet && !citizen && !windowElapsed && !residencyPassClaimed;
+  // The claimable state: all four checks green and the pass not yet claimed. The
+  // resident card is shown greyed out (inactive) with the Claim affordance;
+  // claiming starts the 2-minute window and reveals the pass. The window cannot
+  // be running here in the normal flow — it starts on the claim — but a legacy
+  // persisted window (started before this flow) is still counted down at the
+  // bottom of the section.
+  const showClaimState =
+    mounted && allChecksMet && !citizen && !residencyPassClaimed;
 
   return (
     <section data-testid="colosseum-section" style={card}>
@@ -466,23 +490,14 @@ export function ColosseumResidency({
           section already receives; there is no detour dialog. */}
       {fundsMet && !allChecksMet ? <StateB checks={checks} /> : null}
 
-      {/* State C — all four checks green; the persisted countdown is running.
-          "Claim Colosseum Residency" is the single primary action. */}
-      {showStateC ? (
-        <StateC
-          residencyPassClaimed={residencyPassClaimed}
+      {/* State C — all four checks green and the pass not yet claimed: the
+          resident card is previewed greyed out (unclaimed) and the Claim
+          affordance animates in. Claiming starts the 2-minute window and opens
+          the residency reveal. */}
+      {showClaimState ? (
+        <StateClaim
+          reducedMotion={reducedMotion}
           onClaimResidency={claimResidency}
-        />
-      ) : null}
-
-      {/* State D — the 2-minute window has elapsed. "Become a Citizen" is the
-          single primary action; the residency pass drops to a quiet text
-          affordance so the two claims never compete. */}
-      {showStateD ? (
-        <StateD
-          residencyPassClaimed={residencyPassClaimed}
-          onClaimResidency={claimResidency}
-          onBecomeCitizen={becomeCitizen}
         />
       ) : null}
 
@@ -500,6 +515,7 @@ export function ColosseumResidency({
           mintPending={mintPending === 'resident'}
           mintOutcome={mintOutcomes.resident ?? null}
           onOpenFullScreen={() => {
+            setResidencyCelebration(false);
             setResidencyPassOpen(true);
           }}
           onBecomeCitizen={becomeCitizen}
@@ -525,9 +541,13 @@ export function ColosseumResidency({
       {/* Full-screen demo reveals. Both are dismissible and block nothing. */}
       <ResidencyPass
         open={residencyPassOpen}
-        onClose={() => setResidencyPassOpen(false)}
+        onClose={() => {
+          setResidencyPassOpen(false);
+          setResidencyCelebration(false);
+        }}
         serial={progress.residencyPassSerial}
         issuedAt={progress.residencyPassAt}
+        residencyCelebration={residencyCelebration}
       />
       <CitizenshipCertificate
         open={certificateOpen}
@@ -717,80 +737,58 @@ function ComplianceProgress({
 }
 
 /**
- * The residency-pass affordance. It is a real button in both states (the human
- * confirmed the residency is claimed with a button), but in state D, where
- * "Become a Citizen" is the primary action, it renders as a quiet text
- * affordance so the two claims never compete.
+ * State C — all four checks green and the residency pass not yet claimed.
+ *
+ * The resident card is previewed desaturated and inactive (grey) so the reward
+ * is visible before it is claimed, and the Claim affordance animates in when
+ * the claim becomes possible. Claiming is the human's deliberate first step:
+ * it starts the 2-minute compliance window and opens the residency reveal.
+ * Under reduced motion the entrance is skipped and the button is simply
+ * present and legible.
  */
-function residencyPassLabel(claimed: boolean): string {
-  return claimed ? 'View residency pass' : 'Claim Colosseum Residency';
-}
-
-/** State C — all four checks green: congrats, the running window and the pass. */
-function StateC({
-  residencyPassClaimed,
+function StateClaim({
+  reducedMotion,
   onClaimResidency,
 }: {
-  readonly residencyPassClaimed: boolean;
+  readonly reducedMotion: boolean;
   readonly onClaimResidency: () => void;
 }) {
   return (
     <div data-testid="colosseum-state-c" style={stateBox}>
       <h3 style={stateTitle}>You&rsquo;re a Colosseum Resident</h3>
-      <ul style={perks}>
-        <li>A Colosseum Resident status on this demo surface.</li>
-        <li>The Colosseum residency demo walkthrough.</li>
-        <li>A citizenship certificate after 2 compliant minutes.</li>
-      </ul>
-      <p style={{ ...body, fontWeight: 600 }}>
-        Remain a compliant resident for 2 minutes to be eligible to become a
-        Colosseum Citizen.
-      </p>
-      <button
-        type="button"
-        data-variant={residencyPassClaimed ? 'secondary' : 'primary'}
-        onClick={onClaimResidency}
-        style={residencyPassClaimed ? secondaryButton : primaryButton}
-      >
-        {residencyPassLabel(residencyPassClaimed)}
-      </button>
-    </div>
-  );
-}
-
-/** State D — the 2-minute window elapsed; "Become a Citizen" is the action. */
-function StateD({
-  residencyPassClaimed,
-  onClaimResidency,
-  onBecomeCitizen,
-}: {
-  readonly residencyPassClaimed: boolean;
-  readonly onClaimResidency: () => void;
-  readonly onBecomeCitizen: () => void;
-}) {
-  return (
-    <div data-testid="colosseum-state-d" style={stateBox}>
-      <h3 style={stateTitle}>You&rsquo;re eligible to become a citizen</h3>
       <p style={body}>
-        You have remained a compliant resident for 2 minutes. Become a
-        Colosseum Citizen to receive your citizenship certificate.
+        All four residency checks are green. Claim your virtual residency pass —
+        the 2-minute compliance window starts when you do.
       </p>
-      <button
-        type="button"
-        data-variant="primary"
-        onClick={onBecomeCitizen}
-        style={{ ...primaryButton, width: '100%' }}
+      <div
+        className={
+          reducedMotion
+            ? 'kade-claim-stage'
+            : 'kade-claim-stage kade-claim-animated'
+        }
       >
-        Become a Citizen
-      </button>
-      <button
-        type="button"
-        data-variant="quiet"
-        onClick={onClaimResidency}
-        style={quietAction}
-      >
-        {residencyPassLabel(residencyPassClaimed)}
-      </button>
+        <div className="kade-claim-card" data-testid="colosseum-claim-card">
+          {/* The unclaimed preview: the same pass artifact, greyed out and
+              marked "Not claimed yet", so the claimed presentation is a
+              deliberate change of state rather than the first time it appears. */}
+          <ResidencyPassArtifact
+            variant="embedded"
+            unclaimed
+            serial={null}
+            issuedAt={null}
+          />
+        </div>
+        <button
+          type="button"
+          data-variant="primary"
+          data-testid="colosseum-claim-button"
+          onClick={onClaimResidency}
+          className="kade-claim-button"
+          style={{ ...primaryButton, width: '100%' }}
+        >
+          Claim Colosseum Residency
+        </button>
+      </div>
     </div>
   );
 }
@@ -1148,14 +1146,6 @@ const metricValue = {
   fontVariantNumeric: 'tabular-nums',
 };
 
-const perks = {
-  margin: '12px 0',
-  paddingLeft: '18px',
-  fontSize: '13.5px',
-  lineHeight: 1.7,
-  color: tokens.chipFg,
-};
-
 // The pill button hugs its label, so it needs real horizontal padding: without
 // it the `border-radius: 999px` end-caps have no room and the glyphs render
 // over the curved ends. `minHeight` (not a fixed `height`) lets the label wrap
@@ -1179,20 +1169,6 @@ const primaryButton = {
   cursor: 'pointer',
   maxWidth: '100%',
   boxSizing: 'border-box' as const,
-};
-
-const secondaryButton = {
-  marginTop: '10px',
-  height: '38px',
-  padding: '0 16px',
-  border: `1px solid ${tokens.border}`,
-  borderRadius: '999px',
-  background: '#fff',
-  color: tokens.brandPrimary,
-  fontFamily: 'inherit',
-  fontSize: '13.5px',
-  fontWeight: 600,
-  cursor: 'pointer',
 };
 
 /* State B's inline checklist of the four real checks. */
@@ -1294,24 +1270,6 @@ const complianceTime = {
   fontWeight: 600,
   fontVariantNumeric: 'tabular-nums',
   color: tokens.muted,
-};
-
-/* The quiet, text-only residency-pass affordance used in state D so it never
-   competes with "Become a Citizen". It is still a real button. */
-const quietAction = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  marginTop: '12px',
-  padding: '2px 0',
-  border: 0,
-  background: 'transparent',
-  color: tokens.brandPrimary,
-  fontFamily: 'inherit',
-  fontSize: '12.5px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  textDecoration: 'underline',
-  textUnderlineOffset: '3px',
 };
 
 /* The honest mint receipt shown under the resident/citizen artifact. */
