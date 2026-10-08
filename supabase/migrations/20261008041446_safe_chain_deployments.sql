@@ -21,11 +21,16 @@
 --   already predicted, and can only belong to the resident whose prediction it
 --   is — the same guarantee `safe_pre_deposits` relies on.
 --
--- NOT APPLIED
---   This migration is written but deliberately not applied in the task that
---   introduced it. It is a schema change requiring review. Until it is applied,
---   the readiness guard still deploys and verifies the Safe on chain; the only
---   thing missing is the persisted per-chain row.
+-- APPLIED
+--   The orchestrator applied this migration; the table, its constraints, its
+--   RLS policy and every column comment are present in the live database.
+--   NOTE: the first apply ran a draft of this file that omitted the `comment
+--   on column` statements; those were applied separately afterwards, so the
+--   live schema and this file now agree.
+--
+--   The readiness guard does not depend on this table: it reads real bytecode
+--   on the membership chain. The row here is the audit record of the
+--   deployment, not the gate.
 --
 -- Security
 --   Row level security with owner-only read, matching `safe_deployments`. The
