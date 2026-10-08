@@ -1,0 +1,35 @@
+iteration: demo-feedback-21
+profile: NORMAL
+known_good: e9db364
+candidate: 2ffaf2b
+mode: discovery
+reviewed_scopes:
+  database: complete
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 2ffaf2b
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate 2ffaf2b; not re-run by review. Node v22.17.0 per .nvmrc."
+notes:
+  - "Problem fixed: the residency mint was blocked in the live demo because ensureResidentSafeDeployed refused — the guard derived 0x45dc2d9948B5202Ab5b5bb58F06a9061CF0451ed while the resident's passkey owns 0x60b70Ae000a0E3372c3468e4A3446363a921DEf7."
+  - "Root cause: the repository held TWO independent derivations of the same account. Onboarding (relay-kit Safe4337Pack, pinned in execute-safe-4337-env.ts) and the guard (account.ts predictedSafeAddress) disagreed on six inputs at once: Safe version (1.4.1 vs 1.5.0), singleton (L1 0x41675C09... vs SafeL2 0xEdd160fE...), fallback handler (4337 module 0x75cf1146... vs compatibility 0x3EfCBb83...), owner set ([p256Verifier, SafeWebAuthnSharedSigner] vs [signer]), setup to/data (multiSend+enableModules vs empty), and saltNonce ('0' vs keccak256(userId)). Both derivations are individually chain-independent, so the defect was never Arbitrum-specific — the recorded address is 0x60b70Ae0... on BOTH 11155111 and 42161."
+  - "Corroborating on-chain evidence: Basescan tx 0x548522f263ac1e1250d3e348a939b19b5ab7a424e6c6e33109da302c56301ff6 created a real counterfactual account through the onboarding path; its calldata carries factory 0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 and singleton 0x41675C099F32341bf84BFc5382aF534df5C7461a (both v1.4.1) and not the v1.5.0 constants."
+  - "The fix refuses the shortcut: hardcoding v1.4.1, or moving only the salt, would NOT reproduce the recorded address — with the singleton and owner set also differing, a salt-only change yields a THIRD address. The guard now re-derives through the onboarding path and hands the engine the account's own SDK-predicted inputs (getPredictedSafe()), so the deployment cannot drift from the derivation again."
+  - "Reviewer confirmed the required properties hold: refusal on address disagreement, missing passkey, credential-read failure and missing SDK prediction; byte-exact initializer reconstruction against the committed vector; owner-set verification sound (Safe getOwners() preserves setup-array order); the signer read matches onboarding's inputs exactly (same parseP256PublicKey + String(x)/String(y) + toPasskeySigner(rawId)); no test deleted, skipped or weakened."
+  - "F1 (WARN, open): deploymentInputsFromPredicted is called at ensure-deployed.ts:228 OUTSIDE the try that only wraps deps.deploy (:229-241), and predicted-safe.ts:97-105 deliberately throws for an unknown safeVersion. So a future protocol-kit version bump would throw instead of returning refused, contradicting the module's documented 'never thrown' invariant. NOT unsafe — mint.ts:432 wraps the guard and turns any throw into a blocked mint — but it degrades diagnostic precision."
+  - "F2 (WARN, open): safe-predicted-deployment.test.ts:70-75 is tautological — expect(deploymentInputsFromPredicted(RECORDED_CONFIG)).toEqual(deploymentInputsFromPredicted(RECORDED_CONFIG)) asserts a function equals itself, so it can never fail and provides false confidence about chain independence. The meaningful vector test is at :44-58."
+  - "F3 (WARN, open, informational): onboarding/deploy-actions.ts:204 still writes owner: signerAddress through recordPrediction on the untouched v1.5.0 create2 path. Pre-existing, outside this diff; belongs to the sibling safe-owner-source task which drops the column."
+  - "F1 and F2 are small and should be corrected in a follow-up bounded iteration. F3 is resolved by integrating safe-owner-source."
+  - "Sibling task NOT in this candidate: task/safe-owner-source (head 966bf5e) drops safe_deployments.owner and points the owner at passkey_credentials.signer_address. It overlaps store.ts with this candidate (both rewrite the resident-signer read) and will need a rebase; its migration 20261008050000_safe_deployments_drop_owner.sql must be applied AFTER its app changes are deployed."
+  - "Live demo state reset by the orchestrator for profile 4fc540b4-144c-4665-a9ac-653058396973 (joseluismanco37@gmail.com): colosseum_progress.residency_pass_at/residency_pass_serial/citizen_at/passport_serial nulled and applications.colosseum_resident_since nulled. On-chain membershipOf() is 0 for both the recorded and derived addresses."
+  - "Open operational risk: the Arbitrum deployer 0xc0bBeB90953033fF4B9021A1743DFdfF870eE714 holds 0.000214 ETH, roughly 2x the estimated Safe-deployment cost. Top-up recommended before the live demo."
