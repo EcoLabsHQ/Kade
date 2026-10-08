@@ -82,6 +82,13 @@ export type ColosseumWindowRead =
  */
 export interface MembershipClaimStore extends MembershipTransitionStore {
   /**
+   * The passkey signer (the Safe's only owner) recorded for the resident, or
+   * null. It is the one derivation input the deploy engine needs to re-derive
+   * and deploy the recorded address on a chain where the Safe has no code yet.
+   * Never supplied by the client.
+   */
+  residentSafeOwner(profileId: string): Promise<Address | null>;
+  /**
    * The latest transition row for the account and operation, or null. Used as a
    * second duplicate guard beside the on-chain `membershipOf` read: a retry
    * whose event was already confirmed is refused even if the chain read lags.
@@ -140,6 +147,21 @@ export function createMembershipTransitionStore(
         throw new Error(`loading the resident Safe failed: ${error.message}`);
       }
       return data ? getAddress((data as { safe_address: string }).safe_address) : null;
+    },
+
+    async residentSafeOwner(profileId) {
+      const supabase = await client();
+      const { data, error } = await supabase
+        .from('safe_deployments')
+        .select('owner')
+        .eq('profile_id', profileId)
+        .order('predicted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        throw new Error(`loading the resident Safe owner failed: ${error.message}`);
+      }
+      return data ? getAddress((data as { owner: string }).owner) : null;
     },
 
     async recordIntent(input) {

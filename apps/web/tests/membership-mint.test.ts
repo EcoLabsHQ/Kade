@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, type Address, type Hex } from 'viem';
 import {
   COLOSSEUM_COMPLIANCE_WINDOW_MS,
@@ -21,6 +21,7 @@ import type {
   SafeOwnerExecutionResult,
   SafeOwnerExecutor,
 } from '@/lib/safe/owner-execute';
+import type { SafeReadinessOutcome } from '@/lib/safe/ensure-deployed';
 
 /**
  * The claim-triggered mint.
@@ -35,6 +36,7 @@ import type {
 
 const MANAGER = '0x2222222222222222222222222222222222222222';
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
+const SAFE_OWNER = '0x4444444444444444444444444444444444444444' as Address;
 const PROFILE = '11111111-1111-1111-1111-111111111111';
 const CHAIN_ID = 42161;
 const TX_HASH = `0x${'ab'.repeat(32)}` as Hex;
@@ -127,6 +129,9 @@ function makeStore(options: StoreOptions = {}, order: string[] = []) {
     async residentAccount() {
       return ACCOUNT;
     },
+    async residentSafeOwner() {
+      return SAFE_OWNER;
+    },
     async recordIntent(input: MembershipIntentInput) {
       if (options.failIntent) throw new Error('write failed');
       intents.push(input);
@@ -194,6 +199,14 @@ function deps(
     readClient: readClient(0),
     logClient: logClient(0, 1),
     executor: makeExecutor().executor,
+    // The Safe is already deployed on the membership chain in the tests that are
+    // not about the deployment gate; the gate has its own describe block.
+    ensureSafeDeployed: async () => ({
+      status: 'deployed',
+      safeAddress: ACCOUNT,
+      txHash: null,
+      deployedNow: false,
+    }),
     gate: APPROVED,
     now: () => NOW,
     ...overrides,
@@ -458,6 +471,159 @@ describe('mintMembershipForClaim — the mint', () => {
     });
     expect(outcome.status).toBe('sent');
     expect(store.getSince()).not.toBeNull();
+  });
+});
+
+describe('mintMembershipForClaim — the Safe deployment gate', () => {
+  /**
+   * The finding this gate fixes: a credential was minted to a resident Safe
+   * address that had **no code** on the membership chain. The guard must run
+   * before the mint, deploy an undeployed Safe, skip a deployed one, and refuse
+   * the mint when the Safe cannot be brought on chain.
+   */
+  it('confirms the resident Safe on the membership chain before minting', async () => {
+    const guard = vi.fn().mockResolvedValue({
+      status: 'deployed',
+      safeAddress: ACCOUNT,
+      txHash: null,
+      deployedNow: false,
+    } satisfies SafeReadinessOutcome);
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        executor: executor.executor,
+        ensureSafeDeployed: guard,
+      }),
+    });
+
+    expect(guard).toHaveBeenCalledWith({
+      profileId: PROFILE,
+      account: ACCOUNT,
+      chainId: CHAIN_ID,
+    });
+    expect(outcome.status).toBe('sent');
+    if (outcome.status !== 'sent') throw new Error('expected sent');
+    expect(outcome.safeDeployment).toBe('already-deployed');
+    expect(executor.calls).toHaveLength(1);
+  });
+
+  it('reports a Safe deployed by this claim as "deployed"', async () => {
+    const guard = vi.fn().mockResolvedValue({
+      status: 'deployed',
+      safeAddress: ACCOUNT,
+      txHash: TX_HASH,
+      deployedNow: true,
+    } satisfies SafeReadinessOutcome);
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        executor: executor.executor,
+        ensureSafeDeployed: guard,
+      }),
+    });
+
+    expect(outcome.status).toBe('sent');
+    if (outcome.status !== 'sent') throw new Error('expected sent');
+    expect(outcome.safeDeployment).toBe('deployed');
+    expect(executor.calls).toHaveLength(1);
+  });
+
+  it('refuses the mint with the reason when the Safe cannot be deployed', async () => {
+    const guard = vi.fn().mockResolvedValue({
+      status: 'refused',
+      safeAddress: ACCOUNT,
+      reason: 'the deployment payer holds 1 wei but the deployment needs 1000 wei',
+    } satisfies SafeReadinessOutcome);
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        executor: executor.executor,
+        ensureSafeDeployed: guard,
+      }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(outcome.sent).toBe(false);
+    expect(outcome.reason).toMatch(/is not deployed on chain 42161/i);
+    expect(outcome.reason).toMatch(/holds 1 wei/);
+    // Nothing was minted and no intent was recorded.
+    expect(executor.calls).toHaveLength(0);
+    expect(store.intents).toHaveLength(0);
+  });
+
+  it('refuses when no guard is configured, minting nothing', async () => {
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        executor: executor.executor,
+        ensureSafeDeployed: null,
+      }),
+    });
+
+    expect(outcome.status).toBe('not-configured');
+    expect(outcome.sent).toBe(false);
+    expect(executor.calls).toHaveLength(0);
+    expect(store.intents).toHaveLength(0);
+  });
+
+  it('treats a thrown guard as a block, never a mint', async () => {
+    const guard = vi.fn().mockRejectedValue(new Error('RPC down'));
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        executor: executor.executor,
+        ensureSafeDeployed: guard,
+      }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(executor.calls).toHaveLength(0);
+    expect(store.intents).toHaveLength(0);
+  });
+
+  it('does not deploy a Safe when an earlier refusal already blocks the mint', async () => {
+    const guard = vi.fn();
+    const store = makeStore();
+    const executor = makeExecutor();
+
+    const outcome = await mintMembershipForClaim({
+      profileId: PROFILE,
+      target: 'resident',
+      deps: deps({
+        store: store.store,
+        checks: async () => checks(facts({ review: 'pending' })),
+        executor: executor.executor,
+        ensureSafeDeployed: guard,
+      }),
+    });
+
+    expect(outcome.status).toBe('blocked');
+    expect(guard).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,10 @@
 import { createPublicClient, http, type Address, type Hex } from 'viem';
 import { ownerSafeExecutor, type SafeOwnerExecutor } from '@/lib/safe/owner-execute';
 import type {
+  SafeDeploymentGuard,
+  SafeReadinessOutcome,
+} from '@/lib/safe/ensure-deployed';
+import type {
   ResidencyCheck,
   ResidencyCheckId,
   ResidencyCheckState,
@@ -40,6 +44,16 @@ import type { MembershipClaimStore } from './store';
  * the Residency step derives them (`@/lib/residency/checks`). A claim with any
  * unmet check mints nothing. This is the server-side re-validation; the client
  * cannot assert a check.
+ *
+ * ## The Safe must be deployed on the mint chain
+ *
+ * The credential is minted to the resident's Safe address, which is
+ * counterfactual and identical on every chain. Before the mint, the path
+ * confirms the address has **code** on the membership chain (a real
+ * `getBytecode`, not the `safe_deployments` record) and, when it does not,
+ * deploys the Safe with the existing engine. An undeployed address mints
+ * nothing: a credential there would be uncontrollable and Snapshot's
+ * `isValidSignature` could never verify it. See `@/lib/safe/ensure-deployed`.
  *
  * ## Duplicate protection
  *
@@ -147,6 +161,14 @@ export type MembershipMintOutcome =
       readonly txHash: Hex;
       readonly blockNumber: bigint;
       readonly eventKey: string;
+      /**
+       * What the readiness check did to the Safe before minting: `deployed`
+       * when this claim deployed it on the membership chain, `already-deployed`
+       * when it was already live. Additive, so existing consumers are
+       * unaffected; the UI reports it so "minted" is never confused with
+       * "deployed and minted".
+       */
+      readonly safeDeployment?: 'deployed' | 'already-deployed';
     };
 
 export interface MembershipClaimDependencies {
@@ -162,6 +184,14 @@ export interface MembershipClaimDependencies {
   readonly logClient: MembershipLogClient | null;
   /** The bound owner-Safe executor; null when no signer/config is present. */
   readonly executor: SafeOwnerExecutor | null;
+  /**
+   * Confirms the resident Safe has code on the membership chain, deploying it
+   * first when it does not. The credential is minted to this address, so an
+   * undeployed address must never receive one. Null when the environment cannot
+   * check or deploy; the mint then refuses rather than assuming the address is
+   * live.
+   */
+  readonly ensureSafeDeployed: SafeDeploymentGuard | null;
   /** Injected for tests; defaults to the server environment gate. */
   readonly gate?: MembershipIssuanceGate | null;
   /** Injected for tests; defaults to `Date.now()`. */
@@ -381,6 +411,40 @@ export async function mintMembershipForClaim(input: {
     );
   }
 
+  // 7b. The resident Safe must be a **deployed contract** on the membership
+  //     chain before the credential is minted to it. The address is
+  //     counterfactual and the same on every chain, so a credential minted on a
+  //     chain where the Safe has no code is one nobody can control and Snapshot
+  //     can never verify. The guard reads the chain's own code (not the
+  //     `safe_deployments` record) and, when it is absent, deploys the Safe with
+  //     the existing engine. Only confirmed code lets the mint proceed; a
+  //     failure to deploy refuses with the precise reason and mints nothing.
+  if (deps.ensureSafeDeployed === null) {
+    return notConfigured(
+      'no Safe deployment guard is configured, so the resident Safe cannot be ' +
+        'confirmed deployed on the membership chain and no credential is minted.',
+    );
+  }
+  let readiness: SafeReadinessOutcome;
+  try {
+    readiness = await deps.ensureSafeDeployed({
+      profileId: input.profileId,
+      account,
+      chainId,
+    });
+  } catch (cause) {
+    return blocked(
+      `the resident Safe's deployment could not be confirmed: ${describe(cause)}`,
+    );
+  }
+  if (readiness.status === 'refused') {
+    return blocked(
+      `the resident's Safe at ${readiness.safeAddress} is not deployed on chain ` +
+        `${chainId} and could not be deployed, so no credential is minted: ` +
+        readiness.reason,
+    );
+  }
+
   // 8. Build the exact owner-Safe call and record the intent before sending.
   let plan;
   try {
@@ -479,6 +543,7 @@ export async function mintMembershipForClaim(input: {
     txHash: execution.txHash,
     blockNumber: execution.blockNumber,
     eventKey: confirmed.eventKey ?? '',
+    safeDeployment: readiness.deployedNow ? 'deployed' : 'already-deployed',
   };
 }
 
@@ -504,6 +569,7 @@ export interface MembershipClaimEnvOverrides {
   readonly readClient?: MembershipReadClient | null;
   readonly logClient?: MembershipLogClient | null;
   readonly executor?: SafeOwnerExecutor | null;
+  readonly ensureSafeDeployed?: SafeDeploymentGuard | null;
   readonly gate?: MembershipIssuanceGate | null;
   readonly now?: () => number;
 }
@@ -532,33 +598,30 @@ export async function mintMembershipForClaimFromEnv(
   } = await import('@/lib/env');
   const managerAddress = readMembershipManagerAddress();
   const chainId = readMembershipChainId();
+  const rpcUrl = chainId === null ? null : readRpcUrlForChain(chainId);
+  const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
 
   let readClient = overrides.readClient;
   let logClient = overrides.logClient;
   let executor = overrides.executor;
 
-  if (readClient === undefined || logClient === undefined || executor === undefined) {
-    const rpcUrl = chainId === null ? null : readRpcUrlForChain(chainId);
-
-    const client = rpcUrl ? createPublicClient({ transport: http(rpcUrl) }) : null;
-    if (readClient === undefined) {
-      readClient = client as unknown as MembershipReadClient | null;
-    }
-    if (logClient === undefined) {
-      logClient = client as unknown as MembershipLogClient | null;
-    }
-    if (executor === undefined) {
-      const privateKey = readMembershipSignerPrivateKey();
-      const ownerSafe = readMembershipOwnerSafeAddress();
-      executor =
-        privateKey !== null && ownerSafe !== null && rpcUrl !== null
-          ? ownerSafeExecutor({
-              rpcUrl,
-              safeAddress: ownerSafe as Address,
-              privateKey,
-            })
-          : null;
-    }
+  if (readClient === undefined) {
+    readClient = client as unknown as MembershipReadClient | null;
+  }
+  if (logClient === undefined) {
+    logClient = client as unknown as MembershipLogClient | null;
+  }
+  if (executor === undefined) {
+    const privateKey = readMembershipSignerPrivateKey();
+    const ownerSafe = readMembershipOwnerSafeAddress();
+    executor =
+      privateKey !== null && ownerSafe !== null && rpcUrl !== null
+        ? ownerSafeExecutor({
+            rpcUrl,
+            safeAddress: ownerSafe as Address,
+            privateKey,
+          })
+        : null;
   }
 
   const store = overrides.store ?? (await import('./store')).membershipTransitionStore();
@@ -569,6 +632,28 @@ export async function mintMembershipForClaimFromEnv(
       const snapshot = await loadResidencySnapshot(id);
       return snapshot?.view.checks ?? [];
     });
+
+  // The Safe readiness guard: a real `getBytecode` on the membership chain, and
+  // the existing deployment engine bound to that chain when code is absent. It
+  // is built only when the chain's RPC is configured; otherwise it is null and
+  // the mint refuses rather than assuming the Safe is live. The engine's own
+  // configuration (a funded deployer key for the chain) is checked when it is
+  // actually asked to deploy, so an already-deployed Safe needs no key.
+  let ensureSafeDeployed = overrides.ensureSafeDeployed;
+  if (ensureSafeDeployed === undefined) {
+    if (client !== null && chainId !== null) {
+      const { ensureResidentSafeDeployed } = await import('@/lib/safe/ensure-deployed');
+      const { deployResidentSafeFromEnv } = await import('@/lib/safe/deploy');
+      ensureSafeDeployed = (input) =>
+        ensureResidentSafeDeployed(input, {
+          codeClient: client,
+          readOwner: (id) => store.residentSafeOwner(id),
+          deploy: (request) => deployResidentSafeFromEnv(request, process.env, chainId),
+        });
+    } else {
+      ensureSafeDeployed = null;
+    }
+  }
 
   return mintMembershipForClaim({
     profileId,
@@ -581,6 +666,7 @@ export async function mintMembershipForClaimFromEnv(
       readClient: readClient ?? null,
       logClient: logClient ?? null,
       executor: executor ?? null,
+      ensureSafeDeployed: ensureSafeDeployed ?? null,
       gate: overrides.gate,
       now: overrides.now,
     },
