@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { tokens } from '@/components/ui/tokens';
 import { AdminSwitchControl } from './AdminSwitchControl';
+import { ResidentSwitchControl } from './ResidentSwitchControl';
 
 export interface SidebarFooterProps {
   readonly isReviewer?: boolean;
@@ -27,6 +28,12 @@ export interface SidebarFooterProps {
  * to the Safe card (the resident's account), not to a second, avatar-only
  * trigger down here, so the footer renders no account control of its own.
  *
+ * Both halves of the Resident/Admin switch are now real links: the Resident half
+ * (`ResidentSwitchControl`) goes to `/`, so `/admin` has a way back to the
+ * resident view, and the Admin half (`AdminSwitchControl`) goes to `/admin`.
+ * `adminActive` decides which half is highlighted, so the switch cannot show the
+ * wrong mode as live.
+ *
  * The review-state notice is **not** rendered here: the MVP reference puts it
  * above the Safe card, so `Sidebar` renders it there from the one review value
  * it already shares with the top banner.
@@ -49,20 +56,7 @@ export function SidebarFooter({
           marginTop: '12px',
         }}
       >
-        <span
-          style={{
-            flex: 1,
-            padding: '8px 6px',
-            borderRadius: '9px',
-            fontSize: '12.5px',
-            fontWeight: 600,
-            textAlign: 'center',
-            background: '#fff',
-            color: tokens.brandPrimary,
-          }}
-        >
-          Resident
-        </span>
+        <ResidentSwitchControl residentActive={!adminActive} />
         {admin ?? (
           <AdminSwitchControl
             isReviewer={isReviewer}

@@ -1,6 +1,11 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { AppShell } from '@/components/shell/AppShell';
+import { AppShell, activeSettlementChainLabel } from '@/components/shell/AppShell';
 import { ContentContainer } from '@/components/shell/ContentContainer';
+import {
+  ShellSafeCard,
+  ShellSafeCardFallback,
+} from '@/components/shell/ShellSafeCard';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { ReviewQueue } from '@/components/admin/ReviewQueue';
@@ -22,6 +27,14 @@ export const dynamic = 'force-dynamic';
  *
  * The nav passed to the shell is local to this route — `nav.ts` is owned by the
  * integration front and is not edited here.
+ *
+ * The shell here is the same `AppShell` the resident routes render, but this
+ * page sits outside the `(resident)` layout and so must supply its own shell
+ * slots. It reuses the resident mechanism rather than a second read: the Safe
+ * card is the same `ShellSafeCard` streamed through `<Suspense>` (the resident
+ * layout's pattern), resolved from `loadShellSafe` for the signed-in user, so
+ * the address here cannot drift from the resident shell's. With no deployment
+ * record the card degrades to its existing "no account yet" placeholder.
  */
 const ADMIN_NAV: readonly NavGroupConfig[] = [
   {
@@ -66,8 +79,20 @@ export default async function AdminPage() {
     }
   }
 
+  const network = activeSettlementChainLabel();
+
   return (
-    <AppShell email={session.email} nav={ADMIN_NAV} isReviewer={isReviewer}>
+    <AppShell
+      email={session.email}
+      network={network}
+      nav={ADMIN_NAV}
+      isReviewer={isReviewer}
+      safeCard={
+        <Suspense fallback={<ShellSafeCardFallback />}>
+          <ShellSafeCard userId={session.userId} network={network} />
+        </Suspense>
+      }
+    >
       <ContentContainer>
         <h1
           style={{

@@ -72,8 +72,12 @@ export interface AppShellProps {
  * The label for the active settlement chain, resolved from KADE_CHAIN_ENV and
  * the shared chain registry rather than hard-coded, so switching to the mainnet
  * configuration is a config change with no code edit (ADR 0005).
+ *
+ * Exported so a route that renders its own shell slots (the Admin page, which
+ * has no `(resident)` layout) names the same chain on the Safe card as the
+ * `NetworkChip` this shell resolves by default.
  */
-function activeSettlementChainLabel(): string {
+export function activeSettlementChainLabel(): string {
   const chains = chainsForEnv(readChainEnv());
   const ethereum =
     chains.find((chain) => chain.key === 'ethereum') ?? chains[0];

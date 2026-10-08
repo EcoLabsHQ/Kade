@@ -17,6 +17,10 @@ export interface AdminSwitchControlProps {
  * disabled, non-interactive placeholder.
  *
  * `isReviewer` is display-only: RLS is the real gate on the Admin surface.
+ *
+ * When the route is under `/admin` the link is the current mode: it is
+ * highlighted and carries `aria-current="page"`, so the active half is announced
+ * as well as shown (the Resident half does the same in the opposite mode).
  */
 export function AdminSwitchControl({
   isReviewer = false,
@@ -27,6 +31,7 @@ export function AdminSwitchControl({
       <Link
         href='/admin'
         title='Open the review queue.'
+        aria-current={adminActive ? 'page' : undefined}
         style={{
           flex: 1,
           padding: '8px 6px',
