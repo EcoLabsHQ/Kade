@@ -1,5 +1,6 @@
 import {
   getAddress,
+  keccak256,
   type Account,
   type Address,
   type Hex,
@@ -11,7 +12,8 @@ import {
   predictedSafeAddress,
   residentSaltNonce,
 } from './account';
-import { safeInitializer } from './derive';
+import { predictSafeAddress, safeInitializer } from './derive';
+import type { SafeDeploymentInputs } from './predicted-safe';
 
 /**
  * Deploy a resident's counterfactual Safe on a supported chain.
@@ -137,10 +139,22 @@ export function payerPrivateKeyEnvForChain(chainId: number): string | null {
  */
 export interface SafeDeployRequest {
   readonly userId: string;
-  /** The passkey signer: the Safe's only owner. */
-  readonly signerAddress: Address;
+  /**
+   * The passkey signer: the Safe's only owner on the Kade-create2 path. Not used
+   * when {@link deployment} carries the account's own inputs; it may then be
+   * omitted.
+   */
+  readonly signerAddress?: Address;
   /** The counterfactual address the resident's Safe must have. */
   readonly expectedSafeAddress: Address;
+  /**
+   * The account's own predicted deployment (from Safe's SDK). When present the
+   * engine deploys **exactly** these inputs and verifies the recorded owner set;
+   * when absent it falls back to the frozen Kade-create2 inputs. This is how the
+   * guard reproduces the onboarding-derived address instead of a second,
+   * disagreeing derivation.
+   */
+  readonly deployment?: SafeDeploymentInputs;
 }
 
 /**
@@ -304,13 +318,20 @@ function hasReason(
   return 'reason' in state;
 }
 
-/** `true` when `owners` is exactly the single passkey signer and threshold is 1. */
-function isPasskeyOnly(state: SafeState, signer: Address): boolean {
+/** `true` when the deployed Safe reports exactly the expected owners and threshold. */
+function isExpectedOwnership(
+  state: SafeState,
+  owners: readonly Address[],
+  threshold: number,
+): boolean {
   return (
-    state.threshold === SAFE_THRESHOLD &&
-    state.owners.length === 1 &&
-    state.owners[0] !== undefined &&
-    sameAddress(state.owners[0], signer)
+    state.threshold === threshold &&
+    state.owners.length === owners.length &&
+    owners.every(
+      (owner, index) =>
+        state.owners[index] !== undefined &&
+        sameAddress(state.owners[index] as Address, owner),
+    )
   );
 }
 
@@ -337,12 +358,61 @@ export async function deployResidentSafe(
   request: SafeDeployRequest,
   deps: SafeDeployDependencies,
 ): Promise<SafeDeployResult> {
-  const deployment = activeSafeDeployment();
-  const factory = getAddress(deployment.safeProxyFactory.value);
-  const singleton = getAddress(deployment.safeL2.value);
-  const fallbackHandler = getAddress(deployment.compatibilityFallbackHandler.value);
-  const signer = getAddress(request.signerAddress);
+  const frozen = activeSafeDeployment();
   const expected = getAddress(request.expectedSafeAddress);
+
+  // The account's own predicted deployment when the caller supplied it (the
+  // onboarding/SDK path); otherwise the frozen Kade-create2 inputs. The address
+  // is always re-derived from the factory's own creation code, so a wrong input
+  // can only refuse — it can never deploy a different Safe.
+  const explicit = request.deployment;
+  const factory = getAddress(
+    explicit ? explicit.factory : frozen.safeProxyFactory.value,
+  );
+  const singleton = getAddress(
+    explicit ? explicit.singleton : frozen.safeL2.value,
+  );
+  const signer =
+    request.signerAddress !== undefined
+      ? getAddress(request.signerAddress)
+      : undefined;
+  const expectedOwners =
+    explicit !== undefined
+      ? explicit.owners.map((owner) => getAddress(owner))
+      : signer !== undefined
+        ? [signer]
+        : undefined;
+  const expectedThreshold = explicit !== undefined ? explicit.threshold : SAFE_THRESHOLD;
+
+  if (signer === undefined && explicit === undefined) {
+    return {
+      status: 'failed',
+      safeAddress: expected,
+      stage: 'derive',
+      reason:
+        'no signer was supplied and no predicted deployment was given, so the ' +
+        'account cannot be re-derived.',
+    };
+  }
+  if (expectedOwners === undefined) {
+    return {
+      status: 'failed',
+      safeAddress: expected,
+      stage: 'derive',
+      reason: 'the expected owner set is empty, so the account cannot be verified.',
+    };
+  }
+
+  const initializer =
+    explicit !== undefined
+      ? explicit.initializer
+      : safeInitializer({
+          owners: [signer as Address],
+          threshold: SAFE_THRESHOLD,
+          fallbackHandler: getAddress(frozen.compatibilityFallbackHandler.value),
+        });
+  const saltNonce =
+    explicit !== undefined ? explicit.saltNonce : residentSaltNonce(request.userId);
 
   // --- 1. Derive from the factory's own creation code and compare. ----------
   let proxyCreationCode: Hex;
@@ -361,11 +431,20 @@ export async function deployResidentSafe(
     };
   }
 
-  const derived = predictedSafeAddress({
-    userId: request.userId,
-    signerAddress: signer,
-    proxyCreationCode,
-  });
+  const derived =
+    explicit !== undefined
+      ? predictSafeAddress({
+          factory,
+          singleton,
+          initializerHash: keccak256(initializer),
+          saltNonce,
+          proxyCreationCode,
+        })
+      : predictedSafeAddress({
+          userId: request.userId,
+          signerAddress: signer as Address,
+          proxyCreationCode,
+        });
   if (!sameAddress(derived, expected)) {
     return mismatch(
       expected,
@@ -375,12 +454,6 @@ export async function deployResidentSafe(
     );
   }
 
-  const initializer = safeInitializer({
-    owners: [signer],
-    threshold: SAFE_THRESHOLD,
-    fallbackHandler,
-  });
-  const saltNonce = residentSaltNonce(request.userId);
   const deployArgs = [singleton, initializer, saltNonce] as const;
 
   // --- 2. Idempotency: never send a second transaction. ---------------------
@@ -583,15 +656,15 @@ export async function deployResidentSafe(
       txHash,
     };
   }
-  if (!isPasskeyOnly(state, signer)) {
+  if (!isExpectedOwnership(state, expectedOwners, expectedThreshold)) {
     return {
       status: 'failed',
       safeAddress: expected,
       stage: 'verify',
       reason:
-        `the deployed Safe does not match the frozen ownership: expected exactly one owner ` +
-        `${signer} at threshold ${SAFE_THRESHOLD}, found ${state.owners.length} owner(s) at ` +
-        `threshold ${state.threshold}.`,
+        `the deployed Safe does not match the frozen ownership: expected ${expectedOwners.length} owner(s) ` +
+        `[${expectedOwners.join(', ')}] at threshold ${expectedThreshold}, found ` +
+        `${state.owners.length} owner(s) at threshold ${state.threshold}.`,
       txHash,
     };
   }

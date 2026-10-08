@@ -644,10 +644,17 @@ export async function mintMembershipForClaimFromEnv(
     if (client !== null && chainId !== null) {
       const { ensureResidentSafeDeployed } = await import('@/lib/safe/ensure-deployed');
       const { deployResidentSafeFromEnv } = await import('@/lib/safe/deploy');
+      const { deriveAccountFromPasskey } = await import('@/lib/safe/derive-account');
       ensureSafeDeployed = (input) =>
         ensureResidentSafeDeployed(input, {
           codeClient: client,
-          readOwner: (id) => store.residentSafeOwner(id),
+          readSigner: (id) => store.residentSigner(id),
+          // The guard derives through the **onboarding** path, so the address it
+          // verifies and deploys is the one the resident's account was recorded
+          // with. Re-deriving through a second implementation is what produced a
+          // disagreement the guard (correctly) refused.
+          derive: (signer, derivedChainId) =>
+            deriveAccountFromPasskey(signer, { chainId: derivedChainId }),
           deploy: (request) => deployResidentSafeFromEnv(request, process.env, chainId),
         });
     } else {

@@ -1,4 +1,7 @@
 import { getAddress, type Address, type Hex } from 'viem';
+import type { PasskeySigner } from '@/lib/safe/passkey-signer';
+import type { DerivedAccount } from '@/lib/safe/derive-account';
+import { deploymentInputsFromPredicted } from '@/lib/safe/predicted-safe';
 import type { SafeDeployRequest, SafeDeployResult } from './deploy';
 
 /**
@@ -61,8 +64,18 @@ export interface SafeCodeClient {
 export interface EnsureSafeDeployedDependencies {
   /** Reads the chain's bytecode at the resident Safe address. */
   readonly codeClient: SafeCodeClient;
-  /** The recorded passkey signer (Safe owner) for the resident, or null. */
-  readonly readOwner: (profileId: string) => Promise<Address | null>;
+  /**
+   * The resident's passkey signer, or null when none is recorded. It is the one
+   * input the address was derived from, so the guard derives through the same
+   * path onboarding used rather than a second, disagreeing implementation.
+   */
+  readonly readSigner: (profileId: string) => Promise<PasskeySigner | null>;
+  /**
+   * The onboarding derivation (Safe's SDK). Injected so the guard proves its
+   * branch offline and so the address can never be re-derived by a different
+   * implementation than the one that recorded it.
+   */
+  readonly derive: (signer: PasskeySigner, chainId: number) => Promise<DerivedAccount>;
   /** The existing deployment engine, bound to the membership chain. */
   readonly deploy: (request: SafeDeployRequest) => Promise<SafeDeployResult>;
 }
@@ -90,6 +103,11 @@ function refused(safeAddress: Address, reason: string): SafeReadinessOutcome {
 /** Whether a bytecode read reports a contract (non-empty code). */
 function hasCode(code: Hex | undefined): boolean {
   return code !== undefined && code !== '0x';
+}
+
+/** Case-insensitive address equality. */
+function sameAccount(a: Address, b: Address): boolean {
+  return a.toLowerCase() === b.toLowerCase();
 }
 
 /**
@@ -124,9 +142,9 @@ function deploymentRefusalReason(
  * The order is deliberate: the on-chain code read is the first and the last
  * thing checked, so a `deployed` outcome always means code was observed at the
  * address (either before the call, or after the engine reported success). Every
- * failure mode — an unreadable code read, no recorded owner, a refused or failed
- * deployment — is returned as `refused` with a reason, never thrown, so the mint
- * can refuse precisely.
+ * failure mode — an unreadable code read, no recorded passkey, a derivation that
+ * disagrees with the record, a refused or failed deployment — is returned as
+ * `refused` with a reason, never thrown, so the mint can refuse precisely.
  */
 export async function ensureResidentSafeDeployed(
   input: {
@@ -158,34 +176,63 @@ export async function ensureResidentSafeDeployed(
     };
   }
 
-  // 2. The owner is the passkey signer the address was derived from. Without it
-  //    the engine cannot re-derive (and therefore cannot safely deploy) the
-  //    recorded address.
-  let owner: Address | null;
+  // 2. Re-derive the account from the resident's passkey, through the **same**
+  //    path onboarding used. The address is chain-independent by construction, so
+  //    the derivation must equal the recorded address before anything is built;
+  //    a disagreement is a refusal, never a second Safe.
+  let signer: PasskeySigner | null;
   try {
-    owner = await deps.readOwner(input.profileId);
+    signer = await deps.readSigner(input.profileId);
   } catch (cause) {
     return refused(
       account,
-      `the owner of the resident Safe could not be read: ${describe(cause)}`,
+      `the passkey for the resident Safe could not be read: ${describe(cause)}`,
     );
   }
-  if (owner === null) {
+  if (signer === null) {
     return refused(
       account,
-      `the resident Safe has no recorded owner, so it cannot be deployed.`,
+      `the resident Safe has no recorded passkey, so its address cannot be ` +
+        're-derived and it cannot be deployed.',
     );
   }
 
-  // 3. Deploy with the existing engine. It re-derives the address from the
-  //    frozen inputs and the factory's own creation code, simulates the create,
-  //    and verifies code + ownership on chain before reporting success.
+  let derived: DerivedAccount;
+  try {
+    derived = await deps.derive(signer, input.chainId);
+  } catch (cause) {
+    return refused(
+      account,
+      `the resident Safe could not be derived on chain ${input.chainId}: ${describe(cause)}`,
+    );
+  }
+  if (!sameAccount(derived.safeAddress, account)) {
+    return refused(
+      account,
+      `the passkey derives ${derived.safeAddress} on chain ${input.chainId}, not the ` +
+        `recorded ${account}. Deploying would create a Safe the resident does not control.`,
+    );
+  }
+  if (derived.predicted === undefined) {
+    return refused(
+      account,
+      'the account\'s own predicted deployment is unavailable, so the recorded ' +
+        'address cannot be reproduced for deployment.',
+    );
+  }
+
+  // 3. Deploy with the existing engine, handing it the account's own predicted
+  //    inputs. It re-derives the address from them and the factory's own creation
+  //    code, simulates the create, and verifies code + ownership on chain before
+  //    reporting success — so a wrong input still refuses.
+  const deployment = deploymentInputsFromPredicted(derived.predicted);
   let result: SafeDeployResult;
   try {
     result = await deps.deploy({
       userId: input.profileId,
-      signerAddress: getAddress(owner),
+      signerAddress: deployment.owners[0],
       expectedSafeAddress: account,
+      deployment,
     });
   } catch (cause) {
     return refused(

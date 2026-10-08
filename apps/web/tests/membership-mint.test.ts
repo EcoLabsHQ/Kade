@@ -36,7 +36,6 @@ import type { SafeReadinessOutcome } from '@/lib/safe/ensure-deployed';
 
 const MANAGER = '0x2222222222222222222222222222222222222222';
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
-const SAFE_OWNER = '0x4444444444444444444444444444444444444444' as Address;
 const PROFILE = '11111111-1111-1111-1111-111111111111';
 const CHAIN_ID = 42161;
 const TX_HASH = `0x${'ab'.repeat(32)}` as Hex;
@@ -129,8 +128,14 @@ function makeStore(options: StoreOptions = {}, order: string[] = []) {
     async residentAccount() {
       return ACCOUNT;
     },
-    async residentSafeOwner() {
-      return SAFE_OWNER;
+    async residentSigner() {
+      // The guard derives through this signer from the passkey credential; the
+      // mint tests fake the guard, so only the shape matters here.
+      return {
+        rawId: 'aa',
+        coordinates: { x: '1', y: '2' },
+        verifierAddress: '0x0000000000000000000000000000000000000000' as Address,
+      };
     },
     async recordIntent(input: MembershipIntentInput) {
       if (options.failIntent) throw new Error('write failed');

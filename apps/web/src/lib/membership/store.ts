@@ -1,5 +1,7 @@
 import { getAddress, type Address } from 'viem';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { parseP256PublicKey } from '@/lib/passkey/public-key';
+import { toPasskeySigner, type PasskeySigner } from '@/lib/safe/passkey-signer';
 import type { Membership } from './abi';
 import type { MembershipOperation } from './plan';
 
@@ -82,12 +84,12 @@ export type ColosseumWindowRead =
  */
 export interface MembershipClaimStore extends MembershipTransitionStore {
   /**
-   * The passkey signer (the Safe's only owner) recorded for the resident, or
-   * null. It is the one derivation input the deploy engine needs to re-derive
-   * and deploy the recorded address on a chain where the Safe has no code yet.
+   * The resident's passkey signer, or null when none is recorded. It is the one
+   * input the Safe address was derived from, so the guard re-derives through the
+   * same path onboarding used rather than a second, disagreeing implementation.
    * Never supplied by the client.
    */
-  residentSafeOwner(profileId: string): Promise<Address | null>;
+  residentSigner(profileId: string): Promise<PasskeySigner | null>;
   /**
    * The latest transition row for the account and operation, or null. Used as a
    * second duplicate guard beside the on-chain `membershipOf` read: a retry
@@ -111,6 +113,11 @@ export interface MembershipStoreClients {
 interface SafeRow {
   readonly safe_address: string;
   readonly profile_id: string;
+}
+
+interface PasskeyRow {
+  readonly credential_id: string;
+  readonly public_key: string;
 }
 
 export function createMembershipTransitionStore(
@@ -149,19 +156,28 @@ export function createMembershipTransitionStore(
       return data ? getAddress((data as { safe_address: string }).safe_address) : null;
     },
 
-    async residentSafeOwner(profileId) {
+    async residentSigner(profileId) {
       const supabase = await client();
       const { data, error } = await supabase
-        .from('safe_deployments')
-        .select('owner')
+        .from('passkey_credentials')
+        .select('credential_id, public_key')
         .eq('profile_id', profileId)
-        .order('predicted_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) {
-        throw new Error(`loading the resident Safe owner failed: ${error.message}`);
+        throw new Error(`loading the resident passkey failed: ${error.message}`);
       }
-      return data ? getAddress((data as { owner: string }).owner) : null;
+      if (!data) return null;
+      const row = data as PasskeyRow;
+      // The stored public key is the base64 SPKI Safe's SDK consumes; the
+      // credential id is base64url, which `toPasskeySigner` converts to the hex
+      // `rawId` the SDK expects.
+      const { x, y } = parseP256PublicKey(row.public_key);
+      return toPasskeySigner({
+        rawId: row.credential_id,
+        coordinates: { x: String(x), y: String(y) },
+      });
     },
 
     async recordIntent(input) {

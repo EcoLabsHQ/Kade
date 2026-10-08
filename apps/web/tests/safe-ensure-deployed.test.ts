@@ -5,43 +5,85 @@ import {
   type EnsureSafeDeployedDependencies,
 } from '@/lib/safe/ensure-deployed';
 import type { SafeDeployResult } from '@/lib/safe/deploy';
+import type { PasskeySigner } from '@/lib/safe/passkey-signer';
+import type { DerivedAccount } from '@/lib/safe/derive-account';
+import {
+  deploymentInputsFromPredicted,
+  type PredictedSafeConfig,
+} from '@/lib/safe/predicted-safe';
 
 /**
  * The readiness guard's whole job is to answer one question with the chain, not
  * with a record: does the resident Safe have **code** on the membership chain?
  *
  * These tests pin that the check is a real `getBytecode` on the injected client,
- * that an undeployed Safe triggers the existing deployment engine before the
- * guard reports ready, that a deployed Safe skips the engine, and that every way
- * the deployment can fail becomes a precise refusal — so the mint can never
- * proceed to an address with no contract. No network, no key, no chain.
+ * that the address is re-derived through the **onboarding** path (Safe's SDK)
+ * and must agree with the record before anything is built, that an undeployed
+ * Safe triggers the existing deployment engine with the account's own predicted
+ * inputs, that a deployed Safe skips the engine, and that every way the
+ * deployment can fail becomes a precise refusal — so the mint can never proceed
+ * to an address with no contract. No network, no key, no chain.
  */
 
 const PROFILE = '11111111-1111-1111-1111-111111111111';
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address;
+const OTHER_ACCOUNT = '0x9999999999999999999999999999999999999999' as Address;
 const OWNER = '0x2222222222222222222222222222222222222222' as Address;
 const CHAIN_ID = 42161;
 const TX_HASH = `0x${'ab'.repeat(32)}` as Hex;
 const CODE = '0x6001600055' as Hex;
 
+/** The passkey the account was recorded from. */
+const SIGNER: PasskeySigner = {
+  rawId: 'aa',
+  coordinates: { x: '1', y: '2' },
+  verifierAddress: getAddress(OWNER),
+};
+
+/**
+ * The SDK's predicted config for this account, in the shape the onboarding path
+ * reports. The deployment engine must receive exactly the inputs this produces.
+ */
+const PREDICTED: PredictedSafeConfig = {
+  safeVersion: '1.4.1',
+  saltNonce: '0',
+  owners: [getAddress(OWNER), '0x94a4F6affBd8975951142c3999aEAB7ecee555c2'],
+  threshold: 1,
+  to: '0x38869bf66a61cF6bDB996A6aE40D5853Fd43B526',
+  data: '0x1234' as Hex,
+  fallbackHandler: '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
+};
+const DEPLOYMENT = deploymentInputsFromPredicted(PREDICTED);
+
+const DERIVED: DerivedAccount = {
+  safeAddress: getAddress(ACCOUNT),
+  deployed: false,
+  chainId: CHAIN_ID,
+  predicted: PREDICTED,
+};
+
 interface Mocks {
   readonly getBytecode: ReturnType<typeof vi.fn>;
-  readonly readOwner: ReturnType<typeof vi.fn>;
+  readonly readSigner: ReturnType<typeof vi.fn>;
+  readonly derive: ReturnType<typeof vi.fn>;
   readonly deploy: ReturnType<typeof vi.fn>;
   readonly deps: EnsureSafeDeployedDependencies;
 }
 
 function makeMocks(): Mocks {
   const getBytecode = vi.fn().mockResolvedValue(undefined);
-  const readOwner = vi.fn().mockResolvedValue(getAddress(OWNER));
+  const readSigner = vi.fn().mockResolvedValue(SIGNER);
+  const derive = vi.fn().mockResolvedValue(DERIVED);
   const deploy = vi.fn();
   return {
     getBytecode,
-    readOwner,
+    readSigner,
+    derive,
     deploy,
     deps: {
       codeClient: { getBytecode },
-      readOwner,
+      readSigner,
+      derive,
       deploy,
     },
   };
@@ -71,8 +113,9 @@ describe('ensureResidentSafeDeployed — the code check', () => {
       txHash: null,
       deployedNow: false,
     });
-    // The check is a real chain read, and nothing was sent.
+    // The check is a real chain read, and nothing is derived or sent.
     expect(mocks.getBytecode).toHaveBeenCalledWith({ address: getAddress(ACCOUNT) });
+    expect(mocks.derive).not.toHaveBeenCalled();
     expect(mocks.deploy).not.toHaveBeenCalled();
   });
 
@@ -88,22 +131,68 @@ describe('ensureResidentSafeDeployed — the code check', () => {
     expect(mocks.deploy).not.toHaveBeenCalled();
   });
 
-  it('refuses when the resident has no recorded owner, sending nothing', async () => {
+  it('refuses when the resident has no recorded passkey, sending nothing', async () => {
     const mocks = makeMocks();
     mocks.getBytecode.mockResolvedValue(undefined);
-    mocks.readOwner.mockResolvedValue(null);
+    mocks.readSigner.mockResolvedValue(null);
 
     const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
 
     expect(result.status).toBe('refused');
     if (result.status !== 'refused') throw new Error('expected refused');
-    expect(result.reason).toMatch(/no recorded owner/i);
+    expect(result.reason).toMatch(/no recorded passkey/i);
+    expect(mocks.deploy).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the passkey cannot be derived, sending nothing', async () => {
+    const mocks = makeMocks();
+    mocks.getBytecode.mockResolvedValue(undefined);
+    mocks.derive.mockRejectedValue(new Error('bundler down'));
+
+    const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
+
+    expect(result.status).toBe('refused');
+    if (result.status !== 'refused') throw new Error('expected refused');
+    expect(result.reason).toMatch(/could not be derived/i);
+    expect(mocks.deploy).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the derived address is not the recorded one', async () => {
+    const mocks = makeMocks();
+    mocks.getBytecode.mockResolvedValue(undefined);
+    mocks.derive.mockResolvedValue({
+      ...DERIVED,
+      safeAddress: getAddress(OTHER_ACCOUNT),
+    });
+
+    const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
+
+    expect(result.status).toBe('refused');
+    if (result.status !== 'refused') throw new Error('expected refused');
+    expect(result.reason).toMatch(/does not control/i);
+    expect(mocks.deploy).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the SDK reported no predicted configuration', async () => {
+    const mocks = makeMocks();
+    mocks.getBytecode.mockResolvedValue(undefined);
+    mocks.derive.mockResolvedValue({
+      safeAddress: getAddress(ACCOUNT),
+      deployed: false,
+      chainId: CHAIN_ID,
+    });
+
+    const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
+
+    expect(result.status).toBe('refused');
+    if (result.status !== 'refused') throw new Error('expected refused');
+    expect(result.reason).toMatch(/predicted deployment is unavailable/i);
     expect(mocks.deploy).not.toHaveBeenCalled();
   });
 });
 
 describe('ensureResidentSafeDeployed — deploying an undeployed Safe', () => {
-  it('deploys through the existing engine and reports code observed after', async () => {
+  it('deploys through the existing engine with the account owner inputs', async () => {
     const mocks = makeMocks();
     // First read: no code. Second read (after deploy): code present.
     mocks.getBytecode.mockResolvedValueOnce(undefined).mockResolvedValueOnce(CODE);
@@ -112,8 +201,8 @@ describe('ensureResidentSafeDeployed — deploying an undeployed Safe', () => {
       safeAddress: ACCOUNT,
       txHash: TX_HASH,
       blockNumber: 42n,
-      owners: [getAddress(OWNER)],
-      threshold: 1,
+      owners: [...DEPLOYMENT.owners],
+      threshold: DEPLOYMENT.threshold,
     } satisfies SafeDeployResult);
 
     const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
@@ -124,12 +213,13 @@ describe('ensureResidentSafeDeployed — deploying an undeployed Safe', () => {
       txHash: TX_HASH,
       deployedNow: true,
     });
-    // The engine is asked to deploy exactly the recorded address from the
-    // recorded passkey owner, on the same profile.
+    // The engine is asked to deploy the **account's own** predicted inputs, not
+    // a second derivation, and from the same profile.
     expect(mocks.deploy).toHaveBeenCalledWith({
       userId: PROFILE,
-      signerAddress: getAddress(OWNER),
+      signerAddress: DEPLOYMENT.owners[0],
       expectedSafeAddress: getAddress(ACCOUNT),
+      deployment: DEPLOYMENT,
     });
     // The check is the chain's code, before and after.
     expect(mocks.getBytecode).toHaveBeenCalledTimes(2);
@@ -141,8 +231,8 @@ describe('ensureResidentSafeDeployed — deploying an undeployed Safe', () => {
     mocks.deploy.mockResolvedValue({
       status: 'already-deployed',
       safeAddress: ACCOUNT,
-      owners: [getAddress(OWNER)],
-      threshold: 1,
+      owners: [...DEPLOYMENT.owners],
+      threshold: DEPLOYMENT.threshold,
     } satisfies SafeDeployResult);
 
     const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
@@ -163,8 +253,8 @@ describe('ensureResidentSafeDeployed — deploying an undeployed Safe', () => {
       safeAddress: ACCOUNT,
       txHash: TX_HASH,
       blockNumber: 42n,
-      owners: [getAddress(OWNER)],
-      threshold: 1,
+      owners: [...DEPLOYMENT.owners],
+      threshold: DEPLOYMENT.threshold,
     } satisfies SafeDeployResult);
 
     const result = await ensureResidentSafeDeployed(REQUEST, mocks.deps);
