@@ -4,6 +4,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAppKit, useAppKitState } from '@reown/appkit/react';
 import { useConnections, useDisconnect, useSignMessage } from 'wagmi';
 import { readAddressBalances } from '@/app/onboarding/wallet-actions';
+import {
+  ConnectSignRail,
+  type ConnectSignCheck,
+} from '@/components/onboarding/ConnectSignRail';
 import { Card } from '@/components/ui/Card';
 import { tokens } from '@/components/ui/tokens';
 import { WalletConnectGlyph } from '@/components/icons/WalletConnectGlyph';
@@ -197,6 +201,14 @@ function dedupeByAddress(entries: readonly WalletEntry[]): WalletEntry[] {
   }
   return distinct;
 }
+
+/**
+ * How long the rail holds the all-met state after a signature verifies. The
+ * connection is torn down in the same settle, so without a beat the mark would
+ * appear and vanish in one frame. Long enough to read as an affirmation, short
+ * enough that the resting state returns before it outstays the truth.
+ */
+const SIGN_SUCCESS_BEAT_MS = 1200;
 
 export function ConnectedWalletPanel({
   configured,
@@ -440,6 +452,21 @@ function ConfiguredWalletPanel({
     if (signPhase !== 'connecting') setPendingRow(null);
   }, [signPhase]);
 
+  // The success beat. A completed signature moves the attempt to `done`, but the
+  // connection is torn down in the same settle and the row is removed, so
+  // without a beat the met state would vanish the instant it appeared. Hold it
+  // for one quiet moment, then return the attempt to `idle`: the rail settles
+  // back to "nothing checked" the moment the wallet is gone, while the resident
+  // still saw the signature land. A signature that fails or is skipped never
+  // reaches `done`, so this only ever runs on a real verification.
+  useEffect(() => {
+    if (signPhase !== 'done') return;
+    const timer = window.setTimeout(() => {
+      resetAttempt();
+    }, SIGN_SUCCESS_BEAT_MS);
+    return () => window.clearTimeout(timer);
+  }, [signPhase, resetAttempt]);
+
   // Addresses already saved this session, keyed by connector and address, so a
   // connector wagmi still reports cannot be saved or shown a second time.
   const storedKeys = useRef(new Set<string>());
@@ -662,8 +689,28 @@ function ConfiguredWalletPanel({
   // The sign step is offered only when the page supplied the signer, which it
   // does exactly when it supplied the ownership callbacks.
   const signingAvailable = signMessageAsync !== undefined;
-  const signStepActive =
-    signPhase === 'awaiting-sign' || signPhase === 'signing';
+  const signSucceeded = signPhase === 'done';
+  const signActive = signPhase === 'awaiting-sign' || signPhase === 'signing';
+  const connectActive =
+    signPhase === 'connecting' || signPhase === 'persisting';
+  // The two checks the rail marks, in order. `connect` is met once the address
+  // is persisted (the attempt pauses in `awaiting-sign`), so it stays met while
+  // the signature is requested; `sign` is met only by a real verification. A
+  // failed or skipped signature settles to `idle`, so neither check lingers.
+  const checks: readonly ConnectSignCheck[] = [
+    {
+      label: 'Step 1 · Connect',
+      state: signActive || signSucceeded
+        ? 'done'
+        : connectActive
+          ? 'active'
+          : 'upcoming',
+    },
+    {
+      label: 'Step 2 · Sign (optional)',
+      state: signSucceeded ? 'done' : signActive ? 'active' : 'upcoming',
+    },
+  ];
   const attemptInFlight =
     signPhase === 'connecting' ||
     signPhase === 'persisting' ||
@@ -676,7 +723,7 @@ function ConfiguredWalletPanel({
 
   return (
     <div style={{ display: 'grid', gap: '10px' }}>
-      {signingAvailable ? <StepProgress active={signStepActive} /> : null}
+      {signingAvailable ? <ConnectSignRail checks={checks} /> : null}
 
       {ROWS.map((row) => {
         const rowWalletConnect = row.key === 'walletconnect';
@@ -863,61 +910,6 @@ function ConfiguredWalletPanel({
   );
 }
 
-/**
- * The two-step progress strip. It lives inline above the connection rows, never
- * as an overlay, so AppKit's own modal remains the only modal in the flow.
- */
-function StepProgress({ active }: Readonly<{ active: boolean }>) {
-  return (
-    <div style={stepBar}>
-      <StepChip
-        index={1}
-        label="Step 1 · Connect"
-        state={active ? 'done' : 'active'}
-      />
-      <span aria-hidden style={stepConnector} />
-      <StepChip
-        index={2}
-        label="Step 2 · Sign (optional)"
-        state={active ? 'active' : 'upcoming'}
-      />
-    </div>
-  );
-}
-
-function StepChip({
-  index,
-  label,
-  state,
-}: Readonly<{
-  index: number;
-  label: string;
-  state: 'active' | 'done' | 'upcoming';
-}>) {
-  return (
-    <span
-      style={{
-        ...stepChip,
-        ...(state === 'active' ? stepChipActive : null),
-        ...(state === 'done' ? stepChipDone : null),
-      }}
-      aria-current={state === 'active' ? 'step' : undefined}
-    >
-      <span
-        aria-hidden
-        style={{
-          ...stepDot,
-          ...(state === 'active' ? stepDotActive : null),
-          ...(state === 'done' ? stepDotDone : null),
-        }}
-      >
-        {state === 'done' ? '✓' : index}
-      </span>
-      {label}
-    </span>
-  );
-}
-
 /** An inline progress affordance for a row whose attempt is in flight. */
 function BusyAction({ label }: Readonly<{ label: string }>) {
   return (
@@ -978,67 +970,6 @@ const walletNote: React.CSSProperties = {
   fontSize: '11.5px',
   color: tokens.danger,
   lineHeight: 1.5,
-};
-
-const stepBar: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  padding: '0 2px 2px',
-};
-
-const stepChip: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  fontSize: '11.5px',
-  fontWeight: 600,
-  color: tokens.muted,
-  whiteSpace: 'nowrap',
-};
-
-const stepChipActive: React.CSSProperties = {
-  color: tokens.ink,
-};
-
-const stepChipDone: React.CSSProperties = {
-  color: tokens.success,
-};
-
-const stepDot: React.CSSProperties = {
-  width: '16px',
-  height: '16px',
-  borderRadius: '999px',
-  borderWidth: '1px',
-  borderStyle: 'solid',
-  borderColor: tokens.border,
-  background: '#fff',
-  color: tokens.muted,
-  fontSize: '9.5px',
-  fontWeight: 700,
-  lineHeight: 1,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flex: '0 0 auto',
-};
-
-const stepDotActive: React.CSSProperties = {
-  borderColor: tokens.action,
-  background: tokens.action,
-  color: '#fff',
-};
-
-const stepDotDone: React.CSSProperties = {
-  borderColor: tokens.success,
-  background: tokens.success,
-  color: '#fff',
-};
-
-const stepConnector: React.CSSProperties = {
-  flex: '0 0 14px',
-  height: '1px',
-  background: tokens.border,
 };
 
 const actionGroup: React.CSSProperties = {
