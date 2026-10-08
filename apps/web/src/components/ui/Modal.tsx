@@ -81,9 +81,14 @@ function isFocusable(element: HTMLElement): boolean {
   // part of the trap either. `closest` covers the element itself and ancestors.
   if (element.closest('[aria-hidden="true"]') !== null) return false;
   // An element in a `hidden` subtree is not focusable. `closest` covers the
-  // element itself and every ancestor, which is how `display: none` on an
-  // ancestor is observed; jsdom has no layout, so this is what excludes the
-  // collapsed disclosure content inside the Invest dialog.
+  // element itself and every ancestor carrying the `hidden` attribute (the UA
+  // `[hidden]` rule), and the computed-style check below covers the element's
+  // own `display`/`visibility`. Together these exclude the collapsed disclosure
+  // content inside the Invest dialog, since jsdom has no layout.
+  //
+  // They do NOT cover an ancestor hidden with `display: none` by inline style
+  // or a non-`[hidden]` stylesheet rule: a descendant's own computed `display`
+  // is unchanged, so such a subtree is still reported focusable.
   if (element.closest('[hidden]') !== null) return false;
   const style = window.getComputedStyle(element);
   if (style.display === 'none' || style.visibility === 'hidden') return false;

@@ -82,9 +82,10 @@ export function evaluateVoteEligibility(input: {
     };
   }
 
-  // The category rule is real policy and independent of the power read: a
-  // Resident is refused a Citizen proposal with the exact required text, even if
-  // the power read has not settled.
+  // The category rule is real policy, independent of the power read's result: a
+  // Resident is refused a Citizen proposal with the exact required text rather
+  // than a power-based refusal. It is checked before the power status below;
+  // the loading guard above still wins while the read is in flight.
   if (proposal.category === 'citizen' && membership !== 'citizen') {
     return {
       eligible: false,
@@ -120,33 +121,41 @@ export interface VoteProposalAvailability {
   readonly proposal: VoteProposal;
   readonly eligibility: VoteEligibility;
   /**
-   * True when the viewer can effectively vote on this proposal: the eligibility
+   * True when the viewer is eligible for this proposal: the eligibility
    * derivation holds (wallet connected, open, category allowed, voting power
    * known and strictly greater than zero). A failed or unread power read is
    * never available.
+   *
+   * Eligible is not castable: this mirrors {@link VoteEligibility.eligible} and
+   * does not consider the vote type, so a proposal whose type is unsupported is
+   * still available here and is refused later by the ballot's own rule.
    */
   readonly available: boolean;
 }
 
-/** The viewer's proposals, partitioned into the votable set and the rest. */
+/** The viewer's proposals, partitioned into the eligible set and the rest. */
 export interface VoteProposalPartition {
   /** Every proposal, in the source order, each with its eligibility decision. */
   readonly all: readonly VoteProposalAvailability[];
-  /** The votable set: exactly the proposals the viewer can vote on. */
+  /** The eligible set: exactly the proposals the eligibility derivation accepts. */
   readonly available: readonly VoteProposalAvailability[];
-  /** The rest, each carrying the honest reason it is not votable. */
+  /** The rest, each carrying the honest eligibility refusal it failed. */
   readonly unavailable: readonly VoteProposalAvailability[];
 }
 
 /**
- * Derive, for every proposal, whether the viewer can effectively vote on it.
+ * Derive, for every proposal, the viewer's eligibility decision for it.
  *
  * Availability is exactly {@link evaluateVoteEligibility}'s `eligible` decision:
  * open, category-allowed, connected and with known power strictly greater than
  * zero. A proposal whose power read failed or has not settled is therefore not
- * available, and a caller must never present it as one. The unavailable set
- * keeps every proposal reachable with its honest refusal message, so nothing is
- * silently deleted.
+ * available, and a caller must never present it as one.
+ *
+ * "Eligible" is not "castable": this function does not consider the vote type,
+ * so a proposal with an unsupported type stays available here and is refused
+ * later by the ballot's `supportedType` rule. The unavailable set keeps every
+ * proposal reachable with its honest refusal message, so nothing is silently
+ * deleted.
  */
 export function deriveVoteProposalAvailability(input: {
   readonly wallet: string | null;
