@@ -1,0 +1,36 @@
+iteration: demo-feedback-22
+profile: NORMAL
+known_good: 738ae7c
+candidate: 1f3fdcd
+mode: discovery
+reviewed_scopes:
+  database: complete
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: []
+resolved_findings: []
+next_finding_id: F1
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 1f3fdcd
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate 1f3fdcd; not re-run by review. Node v22.17.0 per .nvmrc."
+notes:
+  - "Problem being fixed, reported from the live demo: a resident who IS a Colosseum Citizen was refused the citizen-only Snapshot proposal with 'Colosseum Citizens only', and the Vote screen did not limit its available set to the proposals the viewer could actually vote on."
+  - "Root cause, established before implementation and confirmed on chain: apps/web/src/lib/vote/server.ts loadVoteViewerMembership read the manager address on the chain from readMembershipChainId() (42161, Arbitrum One) but resolved the RPC endpoint through readRpcUrlFor(readChainEnv()) — KADE_CHAIN_ENV='testnet' and therefore SEPOLIA_RPC_URL. The chain id and the endpoint came from two disagreeing sources. Membership was verified on chain: membershipOf(0x60b70Ae000a0E3372c3468e4A3446363a921DEf7) == 2 (citizen) on Arbitrum One."
+  - "An inventory of every membership read in apps/web/src found exactly ONE defective site; the other three already used readRpcUrlForChain(chainId). It was a localized slip, not a distributed defect class."
+  - "Fix verified: server.ts resolves readRpcUrlForChain(chainId) with the SAME chain id it reads the manager on. readRpcUrlFor/readChainEnv are no longer imported and readRpcUrlFor( now appears nowhere in apps/web/src. createServerVoteAdapter already used readRpcUrlForChain(VOTE_CHAIN_ID=42161), and rpcEnvVarForChain(42161) -> ARBITRUM_RPC_URL."
+  - "Fail-closed preserved: unreadable membership still returns 'none'; unreadable power (error/unknown) still refuses; power <= 0n still refuses. Core evaluateVoteEligibility is untouched; CITIZEN_ONLY_MESSAGE is still exactly 'Colosseum Citizens only'."
+  - "Available set is exactly availability.eligible (connected + open + category-allowed + known power > 0). Unavailable proposals remain RENDERED, disabled, carrying their honest reason in a separated group — nothing silently hidden, no ballot offered. Default selection is availableProposals[0] and only falls back to proposals[0] when nothing is votable, which then shows its refusal with a locked ballot."
+  - "Regression proof is real and falsifiable: tests/regressions/vote-membership-chain-rpc.test.ts asserts the source invariant and fails on the pre-fix text; apps/web/tests/vote-membership-rpc.test.ts proves BEHAVIOUR by mocking @/lib/env and asserting rpcCalls === ['chain:42161'] and an Arbitrum client — a reverted readRpcUrlFor(readChainEnv()) yields ['env:testnet'] and Sepolia and fails. The worker additionally proved the regression fails against the pre-fix source."
+  - "No existing test deleted, skipped or weakened. No migration, schema, contract or @kade/shared change; packages/contracts/** and packages/shared/** untouched."
+  - "WARN W1 (declared limit 1, open): an open + category-allowed proposal with an UNSUPPORTED vote type satisfies eligibility.eligible, so it lands in the 'Open to you' group with data-available=true, and its ballot is then refused by the existing supportedType rule. Judged NON-BLOCKING: no ballot is offered and the unsupported type is stated plainly; only the GROUP LABEL overstates relative to the interface doc's 'can effectively vote on'. Candidate follow-up: rename the group to 'Eligible' or gate the label on votability."
+  - "WARN W2 (declared limit 2, open): when NO proposal is votable the card shows proposals[0] with its refusal rather than emptying. Judged NON-BLOCKING: the refusal is honest, no ballot is offered, and the single-proposal states are preserved."
+  - "WARN W3 (open, informational): the gate-visible tests/regressions test is a SOURCE-SHAPE assertion (the regressions suite runs in a Node env with only @kade/shared aliased and cannot import server.ts). The behavioural proof lives in apps/web/tests/. Together they satisfy the requirement, but the gate alone only guarantees the resolver name/argument did not change, not behaviour."
+  - "Integration: two worker commits (b684606, 5640526) cherry-picked onto main as 3fe5e5d and 1f3fdcd; 7 files, all inside the declared scope."
+  - "To be deployed after promotion: the Vercel Git integration auto-deploys on push to main."
