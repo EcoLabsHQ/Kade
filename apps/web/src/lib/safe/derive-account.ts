@@ -1,6 +1,10 @@
 import { CHAIN_IDS } from '@kade/shared';
 import type { Address } from 'viem';
 import type { PasskeySigner } from '@/lib/safe/passkey-signer';
+import {
+  normalizePredictedSafe,
+  type PredictedSafeConfig,
+} from '@/lib/safe/predicted-safe';
 
 /**
  * The resident's account address, from Safe's own SDK.
@@ -30,6 +34,13 @@ export interface DerivedAccount {
   readonly deployed: boolean;
   /** The chain the address was derived for. */
   readonly chainId: number;
+  /**
+   * The SDK's own predicted `setup` inputs, when it predicted a counterfactual
+   * account. Present for the create path and absent for an existing Safe. It is
+   * what lets the deployment engine reproduce the recorded address instead of
+   * re-deriving it through a second, disagreeing implementation.
+   */
+  readonly predicted?: PredictedSafeConfig;
 }
 
 /**
@@ -47,6 +58,8 @@ export interface Safe4337AddressReader {
     readonly protocolKit: {
       getAddress(): Promise<string>;
       isSafeDeployed(): Promise<boolean>;
+      /** The SDK's predicted config, present only for a counterfactual Safe. */
+      getPredictedSafe?(): unknown;
     };
   }>;
 }
@@ -78,10 +91,20 @@ export async function deriveAccountFromPasskey(
     pack.protocolKit.isSafeDeployed(),
   ]);
 
+  // The SDK's own predicted config, when it composed a counterfactual account.
+  // It is reported unmodified so the deployment engine can rebuild the exact
+  // initializer the address commits to; a missing config stays absent rather
+  // than being reconstructed by hand.
+  const predicted =
+    typeof pack.protocolKit.getPredictedSafe === 'function'
+      ? normalizePredictedSafe(pack.protocolKit.getPredictedSafe())
+      : undefined;
+
   return {
     safeAddress: address as Address,
     deployed,
     chainId,
+    ...(predicted ? { predicted } : {}),
   };
 }
 
