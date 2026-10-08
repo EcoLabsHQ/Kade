@@ -1,18 +1,24 @@
 'use client';
 
 /**
- * The citizenship celebration sound, synthesized with the Web Audio API.
+ * The Colosseum reveal sounds, synthesized with the Web Audio API.
  *
- * There is no audio asset, no dependency and no licensing question: the cue is
- * built from oscillators. It is deliberately the ONLY reveal sound — it plays
- * on the one-time, live citizenship claim (the celebratory tier) and never on
- * the standard reveal, a re-open, or the residency pass.
+ * There is no audio asset, no dependency and no licensing question: each cue is
+ * built from oscillators. There are two of them, one per one-time milestone:
  *
- * It is a short musical gesture shaped to the reveal's phases, not a blip: a
- * rising arpeggio that climbs with the card, a soft sustained root/fifth under
- * the bloom, two high sparkles as the light crosses, and a C-major triad that
- * resolves and rings out as the card settles. Everything is low-gain (per-note
- * peak 0.05–0.11, master 0.7), with a soft attack and an exponential release.
+ *   - {@link playCitizenshipCue} — the first, live citizenship claim (the
+ *     celebratory tier). A bright C-major ascent.
+ *   - {@link playResidencyCue} — the first, live residency claim. A warmer,
+ *     lower G-major gesture, deliberately distinct from the citizenship cue
+ *     while staying in the same synthesised family.
+ *
+ * Neither plays on a standard reveal or a re-open.
+ *
+ * Each is a short musical gesture shaped to its reveal's phases, not a blip:
+ * a rising arpeggio that climbs with the card, a soft sustained pad under the
+ * bloom, a high sparkle as the light crosses, and a triad that resolves and
+ * rings out as the card settles. Everything is low-gain (per-note peak
+ * 0.045–0.11, master 0.7), with a soft attack and an exponential release.
  *
  * Failure is always silent. If Web Audio is missing, the context is blocked by
  * the browser's autoplay policy, or any node throws, the reveal is completely
@@ -88,6 +94,33 @@ const CELEBRATION_NOTES: readonly Note[] = [
   { frequency: 783.99, start: 1.65, duration: 0.95, peak: 0.09 },
 ];
 
+/**
+ * The residency-claim gesture, shaped to the ~2.2s residency reveal:
+ *   - ascent (0–0.8s): a warm G-major arpeggio (G4–B4–D5–G5) that climbs with
+ *     the card, deliberately lower and rounder than the citizenship cue;
+ *   - bloom (0.1–1.3s): a soft sustained G3/D4 pad under the ascent;
+ *   - foil (0.9–1.5s): one bright D6 lift as the security light crosses;
+ *   - settle (1.5–2.6s): a G-major triad that resolves and rings out.
+ * Frequencies: G4 392.0, B4 493.88, D5 587.33, G5 783.99, D6 1174.66,
+ * G3 196.0, D4 293.66.
+ */
+const RESIDENCY_NOTES: readonly Note[] = [
+  // Ascent.
+  { frequency: 392.0, start: 0.0, duration: 0.5, peak: 0.1 },
+  { frequency: 493.88, start: 0.13, duration: 0.5, peak: 0.1 },
+  { frequency: 587.33, start: 0.26, duration: 0.55, peak: 0.11 },
+  { frequency: 783.99, start: 0.4, duration: 0.6, peak: 0.1 },
+  // Bloom pad.
+  { frequency: 196.0, start: 0.08, duration: 1.2, peak: 0.06, type: 'triangle' },
+  { frequency: 293.66, start: 0.18, duration: 1.1, peak: 0.05, type: 'triangle' },
+  // Foil lift.
+  { frequency: 1174.66, start: 0.9, duration: 0.5, peak: 0.045 },
+  // Settle.
+  { frequency: 392.0, start: 1.5, duration: 0.95, peak: 0.09 },
+  { frequency: 493.88, start: 1.56, duration: 0.95, peak: 0.09 },
+  { frequency: 587.33, start: 1.62, duration: 1.0, peak: 0.09 },
+];
+
 function scheduleNotes(context: AudioContext, notes: readonly Note[]): void {
   const now = context.currentTime;
   const master = context.createGain();
@@ -135,13 +168,31 @@ function scheduleNotes(context: AudioContext, notes: readonly Note[]): void {
  * unaffected.
  */
 export function playCitizenshipCue(): void {
+  playNotes(CELEBRATION_NOTES);
+}
+
+/**
+ * Play the one-time residency-claim cue. The same contract as
+ * {@link playCitizenshipCue}: safe to call unconditionally, a no-op when Web
+ * Audio is unavailable, and it never throws into the reveal.
+ *
+ * The claim click is the user gesture that opens the reveal, so the page has
+ * sticky activation by the time this runs and the context resume normally
+ * succeeds.
+ */
+export function playResidencyCue(): void {
+  playNotes(RESIDENCY_NOTES);
+}
+
+/** Shared, failure-silent playback for one cue. */
+function playNotes(notes: readonly Note[]): void {
   try {
     const context = getAudioContext();
     if (!context) return;
     if (context.state === 'suspended') {
       void context.resume().catch(() => {});
     }
-    scheduleNotes(context, CELEBRATION_NOTES);
+    scheduleNotes(context, notes);
   } catch {
     // Audio must never break the reveal.
   }
