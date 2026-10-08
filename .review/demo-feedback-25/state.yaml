@@ -1,0 +1,55 @@
+iteration: demo-feedback-25
+profile: NORMAL
+known_good: 9eca71f
+candidate: c67fe64
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: incomplete
+  tests: incomplete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {}
+review_complete: true
+verdict: review_passed
+findings:
+  - id: F1
+    severity: WARN
+    scope: frontend
+    title: "The browser-local bridge can show the red dot for a state that is not true"
+    evidence: "colosseum-attention.ts:30,57-61; NavItem.tsx:130; ColosseumResidency.tsx:370-372"
+    failure_mode: "A stale mirrored true read on mount on a non-residency route — a fresh session, or after signing out and back in as a citizen account in the same browser — shows 'citizenship can now be claimed' for a resident who is not claimable, until /residency mounts and reconciles."
+    materiality: "Pre-existing and human-accepted cost of the browser-local bridge; the module docstring now states the limitation honestly. Non-gating."
+    status: open
+  - id: F2
+    severity: WARN
+    scope: frontend
+    title: "A legacy window without a claimed pass makes the nav dot and the residency view disagree"
+    evidence: "ColosseumResidency.tsx:304-306,480-481,941-946; colosseum-state-server.ts:150-173"
+    failure_mode: "A persisted window with no residency pass — pre-reshape data, or a failed pass write racing a successful window write — sets the nav dot while the view shows only the grey claim card and no notice."
+    materiality: "NOT reachable in the promoted flow: the window start is pass-gated by colosseumWindowAction and residency-window-lifecycle.test.ts forbids a pre-claim clock. Worker-declared and bounded. Non-gating."
+    status: open
+  - id: F3
+    severity: WARN
+    scope: frontend
+    title: "The claim dialog does not contain or restore focus"
+    evidence: "apps/web/src/components/ui/Modal.tsx:57-65; ColosseumResidency.tsx:1004-1013"
+    failure_mode: "Tab escapes the dialog, and on Escape/backdrop/confirm focus is dropped to body instead of returning to the trigger."
+    materiality: "A PRE-EXISTING limitation of the shared Modal, newly exposed by this dialog. The affordance is still a real button, keyboard reachable and operable, announced, and the dialog has role=dialog, aria-modal, a name, Escape and backdrop close. Non-gating HERE, but the shared Modal affects every dialog in the app and deserves its own task."
+    status: open
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: c67fe64
+  recorded_at: 2026-10-08
+  note: "Mechanical gate green on the exact candidate c67fe64. Node v22.17.0 per .nvmrc."
+notes:
+  - "Final piece of the residency block, from the live demo: (d) when the 2-minute compliance counter finishes, the navbar shows a RED DOT instead of going blue, and the residency view offers a small button that, when clicked, says citizenship can now be claimed (modal or tooltip); confirming runs the EXISTING citizen animation."
+  - "The human explicitly chose to REUSE the existing browser-local localStorage bridge (components/shell/colosseum-attention.ts, key 'kade.colosseum.attention') rather than move the claimable signal server-side. This was a deliberate decision against the orchestrator's recommendation, and the cost is real and must stay documented: the writer only runs while /residency is mounted, so the signal can be stale across sessions and devices."
+  - "Implementation: (1) NavItem keeps its EXISTING .kade-nav-dot, grows it to 8px, colours it tokens.danger #B42318 with a static ring, and DROPS the #E6F1FE background / brand text — the ordinary active background (tokens.activeNavBg #EAF2FC) is preserved as the normal 'you are here' state, so only the notification highlight is replaced. Contrast reported ~7:1 inactive and ~8:1 active, and the accessible name announces the claimable state. (2) A real <button> 'Citizenship can now be claimed' (danger-toned pill + dot, aria-haspopup=dialog), keyboard-reachable, opening the shared Modal (role=dialog, aria-modal, named heading, Escape/backdrop close). A modal was chosen over a tooltip because the flow ends in an explicit confirm. (3) Confirm calls the SAME becomeCitizen the primary button uses, so the existing celebratedCitizenRef one-shot guard means the reveal fires once; the test asserts playCitizenshipCue called once and a single .kade-celebration-bloom for a resident who opened the prompt and then confirmed. (4) The bridge docstring now states it is written only while /residency is mounted, can be stale across sessions/devices, never means 'citizen'; a same-browser storage listener syncs sibling tabs; it is cleared on becoming a citizen. (5) Reduced motion gates the notice dot pulse via usePrefersReducedMotion and the nav breathe is disabled by the existing CSS media query."
+  - "Worker verification: 26 residency/shell test files / 283 tests passed; root regressions 7 files / 33 passed INCLUDING tests/regressions/residency-window-lifecycle.test.ts (7 passed, unchanged) — the invariant promoted in demo-feedback-24 is intact; typecheck OK; lint 0 errors / 17 pre-existing warnings in untouched files; no lockfile change."
+  - "Worker-declared risk to judge: a LEGACY persisted window without a claimed pass can set the nav dot while the residency view still shows the claim card and no notice. The normal claim-first flow is unaffected and the server gate is unchanged, but the two surfaces can disagree in that legacy state."
+  - "3 commits: f39f305 shell red dot, f672815 residency claim notice + modal, c67fe64 tests."
+  - "Scope check by the orchestrator before integration: 7 files, none under packages/**, supabase/**, no lockfile, none in lib/vote, components/vote, components/onboarding or components/wallet."
