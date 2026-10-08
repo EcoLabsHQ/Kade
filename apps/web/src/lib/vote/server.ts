@@ -1,9 +1,7 @@
 import { createPublicClient, getAddress, http, type Address } from 'viem';
 import {
-  readChainEnv,
   readMembershipChainId,
   readMembershipManagerAddress,
-  readRpcUrlFor,
   readRpcUrlForChain,
 } from '@/lib/env';
 import { readMembership } from '@/lib/membership/chain';
@@ -140,8 +138,13 @@ export async function loadVoteViewerMembership(
   if (account === null) return 'none';
   const managerAddress = readMembershipManagerAddress();
   const chainId = readMembershipChainId();
-  const rpcUrl = readRpcUrlFor(readChainEnv());
-  if (managerAddress === null || chainId === null || rpcUrl === null) return 'none';
+  if (managerAddress === null || chainId === null) return 'none';
+  // Resolve the RPC through the **same** chain id the manager is read on. The
+  // manager is deployed on Arbitrum One, so reading it over the active chain
+  // environment's endpoint (Sepolia under `KADE_CHAIN_ENV=testnet`) finds
+  // nothing and fails closed — refusing a viewer who is genuinely a Citizen.
+  const rpcUrl = readRpcUrlForChain(chainId);
+  if (rpcUrl === null) return 'none';
   const read = await readMembership({
     publicClient: createPublicClient({ transport: http(rpcUrl) }),
     managerAddress,
