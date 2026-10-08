@@ -117,9 +117,16 @@ describe('ColosseumResidency — claim triggers the mint', () => {
       />,
     );
 
+    // The residency pass must be claimed first; the window starts on that claim.
+    fireEvent.click(
+      screen.getByRole('button', { name: /claim colosseum residency/i }),
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
     act(() => {
       vi.advanceTimersByTime(120_000);
     });
+
+    onClaimMembership.mockClear();
     fireEvent.click(screen.getByRole('button', { name: /become a citizen/i }));
 
     expect(onClaimMembership).toHaveBeenCalledTimes(1);
