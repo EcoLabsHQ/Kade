@@ -114,3 +114,58 @@ export function evaluateVoteEligibility(input: {
 
 /** The exact citizen-only refusal text, exported so callers cannot drift. */
 export const CITIZEN_ONLY_REFUSAL = CITIZEN_ONLY_MESSAGE;
+
+/** A proposal paired with the viewer's eligibility decision for it. */
+export interface VoteProposalAvailability {
+  readonly proposal: VoteProposal;
+  readonly eligibility: VoteEligibility;
+  /**
+   * True when the viewer can effectively vote on this proposal: the eligibility
+   * derivation holds (wallet connected, open, category allowed, voting power
+   * known and strictly greater than zero). A failed or unread power read is
+   * never available.
+   */
+  readonly available: boolean;
+}
+
+/** The viewer's proposals, partitioned into the votable set and the rest. */
+export interface VoteProposalPartition {
+  /** Every proposal, in the source order, each with its eligibility decision. */
+  readonly all: readonly VoteProposalAvailability[];
+  /** The votable set: exactly the proposals the viewer can vote on. */
+  readonly available: readonly VoteProposalAvailability[];
+  /** The rest, each carrying the honest reason it is not votable. */
+  readonly unavailable: readonly VoteProposalAvailability[];
+}
+
+/**
+ * Derive, for every proposal, whether the viewer can effectively vote on it.
+ *
+ * Availability is exactly {@link evaluateVoteEligibility}'s `eligible` decision:
+ * open, category-allowed, connected and with known power strictly greater than
+ * zero. A proposal whose power read failed or has not settled is therefore not
+ * available, and a caller must never present it as one. The unavailable set
+ * keeps every proposal reachable with its honest refusal message, so nothing is
+ * silently deleted.
+ */
+export function deriveVoteProposalAvailability(input: {
+  readonly wallet: string | null;
+  readonly membership: VoteViewerMembership;
+  readonly proposals: readonly VoteProposal[];
+  readonly powers: Readonly<Record<string, VotingPowerRead>>;
+}): VoteProposalPartition {
+  const all = input.proposals.map((proposal) => {
+    const eligibility = evaluateVoteEligibility({
+      wallet: input.wallet,
+      membership: input.membership,
+      proposal,
+      power: input.powers[proposal.proposalId] ?? null,
+    });
+    return { proposal, eligibility, available: eligibility.eligible };
+  });
+  return {
+    all,
+    available: all.filter((entry) => entry.available),
+    unavailable: all.filter((entry) => !entry.available),
+  };
+}

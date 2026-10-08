@@ -8,8 +8,9 @@ import { Chip } from '@/components/ui/Chip';
 import { tokens } from '@/components/ui/tokens';
 import type { SnapshotAdapter } from '@/lib/vote/adapter';
 import {
-  CITIZEN_ONLY_REFUSAL,
+  deriveVoteProposalAvailability,
   evaluateVoteEligibility,
+  type VoteProposalAvailability,
   type VoteViewerMembership,
 } from '@/lib/vote/eligibility';
 import { isSupportedVoteType } from '@/lib/vote/snapshot';
@@ -78,6 +79,15 @@ function formatCloseDate(unixSeconds: number): string {
 }
 
 const EYEBROW: CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '.08em',
+  textTransform: 'uppercase',
+  color: tokens.muted,
+};
+
+/** The label above a proposal-list group ("Open to you" / "Not open to you"). */
+const GROUP_LABEL: CSSProperties = {
   fontSize: '11px',
   fontWeight: 700,
   letterSpacing: '.08em',
@@ -171,7 +181,6 @@ export function VoteScreen({
       const loaded = preloadedProposals ?? [];
       setProposals(loaded);
       setPowers(preloadedPowers ?? {});
-      setSelectedId(loaded[0]?.proposalId ?? null);
       setLoadError(preloadedError);
       return () => {
         cancelled = true;
@@ -191,7 +200,6 @@ export function VoteScreen({
         }
         if (cancelled) return;
         setProposals(loaded);
-        setSelectedId(loaded[0]?.proposalId ?? null);
         if (wallet === null) return;
         const reads: Record<string, VotingPowerRead> = {};
         for (const proposal of loaded) {
@@ -217,8 +225,22 @@ export function VoteScreen({
     };
   }, [adapter, wallet, spaceIds, preloadedProposals, preloadedPowers, preloadedError]);
 
+  // The available set is exactly the votable set: a proposal the viewer cannot
+  // vote on is never presented as available, and the default selection never
+  // lands on one when a votable proposal exists. The unavailable set keeps the
+  // rest reachable with their honest refusal reasons.
+  const availability = deriveVoteProposalAvailability({
+    wallet,
+    membership,
+    proposals,
+    powers,
+  });
+  const availableProposals = availability.available;
+  const unavailableProposals = availability.unavailable;
+
   const selected =
     proposals.find((proposal) => proposal.proposalId === selectedId) ??
+    availableProposals[0]?.proposal ??
     proposals[0] ??
     null;
   const selectedPower =
@@ -327,10 +349,62 @@ export function VoteScreen({
   }
 
   function selectProposal(proposalId: string) {
-    if (proposalId === selectedId) return;
+    if (proposalId === selected?.proposalId) return;
     setSelectedId(proposalId);
     setSelectedChoice(null);
     setResult(null);
+  }
+
+  /**
+   * One row in the proposal list. An available proposal is selectable; an
+   * unavailable one is non-actionable and carries the derivation's honest
+   * refusal message, so it stays reachable without being presented as votable.
+   */
+  function renderProposalEntry(entry: VoteProposalAvailability) {
+    const candidate = entry.proposal;
+    const { available } = entry;
+    const isSelected = candidate.proposalId === selected?.proposalId;
+    return (
+      <button
+        key={candidate.proposalId}
+        type="button"
+        data-testid={`vote-proposal-${candidate.proposalId}`}
+        data-refused={available ? 'false' : 'true'}
+        data-available={available ? 'true' : 'false'}
+        aria-pressed={isSelected}
+        disabled={!available}
+        onClick={() => selectProposal(candidate.proposalId)}
+        style={{
+          textAlign: 'left',
+          background: '#fff',
+          border: `1.5px solid ${isSelected ? tokens.action : tokens.border}`,
+          borderRadius: '10px',
+          padding: '10px 12px',
+          fontFamily: 'inherit',
+          cursor: available ? 'pointer' : 'not-allowed',
+          opacity: available ? 1 : 0.55,
+          color: available ? tokens.ink : tokens.muted,
+        }}
+      >
+        <div style={{ fontSize: '14px', fontWeight: 600 }}>{candidate.title}</div>
+        <div style={{ fontSize: '12px', color: tokens.muted, marginTop: '2px' }}>
+          {candidate.spaceId}
+          {candidate.state === 'closed' ? ' · Closed' : ''}
+        </div>
+        {!available && entry.eligibility.message !== null ? (
+          <div
+            data-testid={`vote-proposal-refusal-${candidate.proposalId}`}
+            style={{
+              fontSize: '12.5px',
+              color: tokens.muted,
+              marginTop: '6px',
+            }}
+          >
+            {entry.eligibility.message}
+          </div>
+        ) : null}
+      </button>
+    );
   }
 
   const eligibilityMessage = blockedByError
@@ -380,68 +454,52 @@ export function VoteScreen({
       {proposals.length > 1 ? (
         <Card padding="16px 18px" radius={12} style={{ marginBottom: '16px' }}>
           <div style={EYEBROW}>Proposals · {proposals.length}</div>
-          <div
-            data-testid="vote-proposal-list"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              marginTop: '10px',
-            }}
-          >
-            {proposals.map((candidate) => {
-              const entry = evaluateVoteEligibility({
-                wallet,
-                membership,
-                proposal: candidate,
-                power: powers[candidate.proposalId] ?? null,
-              });
-              const refused = entry.reason === 'citizen-only';
-              const isSelected = candidate.proposalId === selected?.proposalId;
-              return (
-                <button
-                  key={candidate.proposalId}
-                  type="button"
-                  data-testid={`vote-proposal-${candidate.proposalId}`}
-                  data-refused={refused ? 'true' : 'false'}
-                  aria-pressed={isSelected}
-                  disabled={refused}
-                  onClick={() => selectProposal(candidate.proposalId)}
-                  style={{
-                    textAlign: 'left',
-                    background: '#fff',
-                    border: `1.5px solid ${isSelected ? tokens.action : tokens.border}`,
-                    borderRadius: '10px',
-                    padding: '10px 12px',
-                    fontFamily: 'inherit',
-                    cursor: refused ? 'not-allowed' : 'pointer',
-                    opacity: refused ? 0.55 : 1,
-                    color: refused ? tokens.muted : tokens.ink,
-                  }}
-                >
-                  <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                    {candidate.title}
-                  </div>
-                  <div style={{ fontSize: '12px', color: tokens.muted, marginTop: '2px' }}>
-                    {candidate.spaceId}
-                    {candidate.state === 'closed' ? ' · Closed' : ''}
-                  </div>
-                  {refused ? (
-                    <div
-                      data-testid={`vote-proposal-refusal-${candidate.proposalId}`}
-                      style={{
-                        fontSize: '12.5px',
-                        color: tokens.muted,
-                        marginTop: '6px',
-                      }}
-                    >
-                      {CITIZEN_ONLY_REFUSAL}
-                    </div>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
+
+          {/* The votable set. A proposal appears here only when the viewer can
+              effectively vote on it; the rest stay below, non-actionable. */}
+          {availableProposals.length > 0 ? (
+            <div style={{ marginTop: '10px' }}>
+              <div style={GROUP_LABEL}>
+                Open to you · {availableProposals.length}
+              </div>
+              <div
+                data-testid="vote-proposal-list"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  marginTop: '8px',
+                }}
+              >
+                {availableProposals.map(renderProposalEntry)}
+              </div>
+            </div>
+          ) : null}
+
+          {/* The rest, clearly separated and non-actionable, each with the
+              honest reason the eligibility derivation produced. */}
+          {unavailableProposals.length > 0 ? (
+            <div
+              style={{
+                marginTop: availableProposals.length > 0 ? '16px' : '10px',
+              }}
+            >
+              <div style={GROUP_LABEL}>
+                Not open to you · {unavailableProposals.length}
+              </div>
+              <div
+                data-testid="vote-proposal-list-unavailable"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  marginTop: '8px',
+                }}
+              >
+                {unavailableProposals.map(renderProposalEntry)}
+              </div>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
