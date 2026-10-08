@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tokens } from '@/components/ui/tokens';
+import { Modal } from '@/components/ui/Modal';
 import { tierMinimumUsdc, type ResidencyCheckId } from '@/lib/residency/checks';
 import type { MembershipClaimTarget } from '@/lib/membership/plan';
 import {
@@ -360,11 +361,12 @@ export function ColosseumResidency({
     secondsRemaining,
   ]);
 
-  // The nav highlight is on exactly while "Become a Citizen" is available. It
-  // is deliberately NOT cleared on unmount, so the highlight persists when the
+  // The nav claim notice is on exactly while "Become a Citizen" is available
+  // (all checks green, the window elapsed, not yet a citizen). It is
+  // deliberately NOT cleared on unmount, so the notice persists when the
   // resident navigates away from /residency and can guide them back; returning
   // re-evaluates it against the persisted window, and becoming a citizen clears
-  // it explicitly.
+  // it explicitly. It never means "citizen" — see ./shell/colosseum-attention.
   useEffect(() => {
     setColosseumAttention(citizenEligible);
   }, [citizenEligible]);
@@ -535,6 +537,7 @@ export function ColosseumResidency({
           serial={progress.residencyPassSerial}
           issuedAt={progress.residencyPassAt}
           windowElapsed={windowElapsed}
+          reducedMotion={reducedMotion}
           mintPending={mintPending === 'resident'}
           mintOutcome={mintOutcomes.resident ?? null}
           onOpenFullScreen={() => {
@@ -904,14 +907,17 @@ function StateE({
  * layout as the citizen state (State E), rendering the residency pass artifact
  * instead of the certificate (feedback 3). The artifact is the control that
  * opens the full-screen reveal on demand. Once the compliance window has
- * elapsed, becoming a citizen is the single primary action; before that the
- * resident is told to remain compliant. The testing-only counter sits at the
- * very bottom of the section, outside this state.
+ * elapsed, the residency view raises its small claim notice (a keyboard-reachable
+ * button that opens a short confirm dialog) and becoming a citizen is the single
+ * primary action; before that the resident is told to remain compliant. The
+ * testing-only counter sits at the very bottom of the section, outside this
+ * state.
  */
 function StateResident({
   serial,
   issuedAt,
   windowElapsed,
+  reducedMotion,
   mintPending,
   mintOutcome,
   onOpenFullScreen,
@@ -920,6 +926,7 @@ function StateResident({
   readonly serial: string | null;
   readonly issuedAt: string | null;
   readonly windowElapsed: boolean;
+  readonly reducedMotion: boolean;
   readonly mintPending: boolean;
   readonly mintOutcome: ClaimOutcomeView | null;
   readonly onOpenFullScreen: () => void;
@@ -927,6 +934,16 @@ function StateResident({
 }) {
   return (
     <div data-testid="colosseum-state-resident" style={certificateStage}>
+      {/* The counter has finished: the small, discoverable "citizenship can now
+          be claimed" notice sits above the artifact. Confirming it runs the
+          exact same citizenship claim (and therefore the same one-shot reveal)
+          as the primary button below. */}
+      {windowElapsed ? (
+        <ClaimableNotice
+          reducedMotion={reducedMotion}
+          onConfirm={onBecomeCitizen}
+        />
+      ) : null}
       <ArtifactStage
         artifact="residency-pass"
         serial={serial}
@@ -954,6 +971,75 @@ function StateResident({
           Colosseum Citizen.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The residency view's small claim notice, shown once the compliance window has
+ * elapsed.
+ *
+ * It is a real, keyboard-reachable button (not a hover-only tooltip), named
+ * "Citizenship can now be claimed", that opens a small modal stating the claim
+ * is available and offering the one confirm action. Confirming calls the same
+ * `onConfirm` handler the primary button uses, so the existing full-screen
+ * citizenship reveal runs exactly once and no second claim path or reveal is
+ * introduced. The dot is a static red (with a ring) under
+ * `prefers-reduced-motion`; only its gentle pulse is dropped there.
+ */
+function ClaimableNotice({
+  reducedMotion,
+  onConfirm,
+}: {
+  readonly reducedMotion: boolean;
+  readonly onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div data-testid="colosseum-claimable" style={claimableWrap}>
+      <button
+        type="button"
+        data-testid="colosseum-claimable-notice"
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+        style={claimableButton}
+      >
+        <span
+          aria-hidden
+          data-testid="colosseum-claimable-dot"
+          className={reducedMotion ? undefined : 'kade-claimable-dot-pulse'}
+          style={claimableDot}
+        />
+        Citizenship can now be claimed
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        eyebrow="Colosseum"
+        title="Colosseum citizenship is ready to claim"
+      >
+        <div style={claimableModalBody}>
+          <p style={claimableModalText}>
+            Your 2-minute compliance window has elapsed. You can claim your
+            Colosseum citizenship now — the same certificate reveal will play
+            when you confirm.
+          </p>
+          <button
+            type="button"
+            data-testid="colosseum-claimable-confirm"
+            data-variant="primary"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+            style={{ ...primaryButton, width: '100%' }}
+          >
+            Become a Citizen
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1328,4 +1414,49 @@ const mintLink = {
 
 const certificateStage = {
   marginTop: '14px',
+};
+
+/* The residency view's claim notice. A small danger-toned pill with a red dot,
+   matching the app's status-chip vocabulary (Chip/ReviewStatusChip) rather than
+   inventing a new one. */
+const claimableWrap = {
+  marginBottom: '12px',
+};
+
+const claimableButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '7px 12px',
+  border: '1px solid rgba(180, 35, 24, 0.25)',
+  borderRadius: '999px',
+  background: '#FEF3F2',
+  color: tokens.danger,
+  fontFamily: 'inherit',
+  fontSize: '12.5px',
+  fontWeight: 600,
+  lineHeight: 1.3,
+  textAlign: 'left' as const,
+  cursor: 'pointer',
+  maxWidth: '100%',
+};
+
+const claimableDot = {
+  width: '8px',
+  height: '8px',
+  borderRadius: '50%',
+  background: tokens.danger,
+  boxShadow: '0 0 0 3px rgba(180, 35, 24, 0.16)',
+  flex: '0 0 auto',
+};
+
+const claimableModalBody = {
+  padding: '16px 22px 22px',
+};
+
+const claimableModalText = {
+  margin: '0 0 4px',
+  fontSize: '13.5px',
+  lineHeight: 1.7,
+  color: tokens.chipFg,
 };
