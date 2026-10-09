@@ -61,6 +61,7 @@ vi.mock('@/lib/safe/execute-safe-4337-env', () => ({
 }));
 
 import { beginDeposit, completeDeposit, completeWithdraw } from '@/app/invest/actions';
+import { READ_SOURCE_CATCHUP_TOTAL_TIMEOUT_MS } from '@/lib/invest/read-source-catchup';
 
 const SAFE = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' as Address;
 const OTHER_SAFE = '0x9999999999999999999999999999999999999999';
@@ -656,6 +657,40 @@ describe('completeDeposit', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       const result = await pending;
 
+      expect(result.status).toBe('sent');
+      expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
+      expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds a hung read endpoint and still revalidates the confirmed fill', async () => {
+    // The read endpoint accepts the connection and never answers. Without a
+    // per-attempt timeout the action's promise would sit until the transport's
+    // default timeout (minutes) and the resident would wait on a transaction
+    // that already succeeded. With it, the attempt is abandoned, the total
+    // deadline ends the wait, and the confirmed action still returns.
+    vi.useFakeTimers();
+    try {
+      process.env.ETHEREUM_RPC_URL = 'https://read.example';
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+
+      const pending = completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+
+      // Still bounded-waiting, not resolved and not hung past the ceiling.
+      await vi.advanceTimersByTimeAsync(100);
+      expect(settled).toBe(false);
+
+      // The total deadline ends the wait; the confirmed action resolves.
+      await vi.advanceTimersByTimeAsync(READ_SOURCE_CATCHUP_TOTAL_TIMEOUT_MS + 1_000);
+      const result = await pending;
+
+      expect(settled).toBe(true);
       expect(result.status).toBe('sent');
       expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
       expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');

@@ -132,6 +132,33 @@ describe('waitForReadSourceToSeeTransaction', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('abandons a hung endpoint per attempt and in total, then reports "not-seen"', async () => {
+    // The endpoint accepts the connection and never answers. Without a ceiling
+    // the await would sit until undici's default timeout (~300 s); with it, each
+    // attempt is abandoned and the whole call returns inside the total budget.
+    const fetchImpl = vi.fn(() => new Promise<Response>(() => {}));
+    const { sleep } = makeSleep();
+    const started = Date.now();
+
+    const outcome = await waitForReadSourceToSeeTransaction(
+      { chainId: 1, transactionHash: TX },
+      {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        sleep,
+        rpcUrl: 'https://read.example',
+        attemptTimeoutMs: 10,
+        totalTimeoutMs: 60,
+      },
+    );
+
+    const elapsed = Date.now() - started;
+    expect(outcome).toBe('not-seen');
+    // Finite and close to the ceiling, not the transport default.
+    expect(elapsed).toBeLessThan(1_000);
+    // Each attempt was abandoned by its own ceiling, so more than one was tried.
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('is "unavailable" with no transaction hash, and never polls', async () => {
     const fetchImpl = vi.fn();
 
