@@ -22,6 +22,7 @@ import {
   morphoChainName,
 } from '@/lib/invest/morpho-config';
 import { checkSafeDepositFunding } from '@/lib/invest/safe-usdc-balance';
+import { waitForReadSourceToSeeTransaction } from '@/lib/invest/read-source-catchup';
 import {
   buildResidentSafeBatchFromEnv,
   submitResidentSafeOperationFromEnv,
@@ -454,13 +455,21 @@ export async function completeDeposit(input: {
     chainId,
   });
   // A confirmed receipt changed the Safe's on-chain position, so revalidate the
-  // Invest route exactly once for this completed operation. The revalidation is
-  // what makes the Server Action's response carry the freshly-read position and
-  // rows back to the screen (the route re-reads `loadVaultHoldings`); it is tied
-  // to the confirmed outcome, never to a timer, and a gated or failed operation
-  // revalidates nothing. The screen keeps its own `router.refresh()` for the
-  // client-side case, but this is the server-authoritative half.
+  // Invest route exactly once for this completed operation. The confirmation
+  // came from the bundler, while the route's position read (`loadVaultHoldings`)
+  // uses the chain's own — possibly load-balanced — RPC, which can still be a
+  // block behind at this instant. Revalidating immediately therefore re-renders
+  // the pre-deposit position: the refresh fires and the screen still shows no
+  // change. Wait for the **read source** to serve the confirmed transaction
+  // before revalidating, so the re-render reflects the write. The wait is
+  // bounded; a source that never catches up still revalidates, because the
+  // screen keeps its own `router.refresh()` and a manual reload as fallbacks.
+  // A gated or failed operation revalidates nothing.
   if (outcome.status === 'sent') {
+    await waitForReadSourceToSeeTransaction({
+      chainId,
+      transactionHash: outcome.transactionHash,
+    });
     revalidatePath('/invest');
   }
   return outcome;
@@ -657,8 +666,14 @@ export async function completeWithdraw(input: {
   });
   // A confirmed receipt changed the Safe's on-chain position, so revalidate the
   // Invest route exactly once for this completed operation, exactly as the
-  // deposit does. A gated or failed un-allocate revalidates nothing.
+  // deposit does: wait for the route's read source to serve the confirmed
+  // transaction first, so the re-render is not the pre-withdraw position. A
+  // gated or failed un-allocate revalidates nothing.
   if (outcome.status === 'sent') {
+    await waitForReadSourceToSeeTransaction({
+      chainId,
+      transactionHash: outcome.transactionHash,
+    });
     revalidatePath('/invest');
   }
   return outcome;
