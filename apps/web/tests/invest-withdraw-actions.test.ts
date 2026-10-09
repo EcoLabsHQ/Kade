@@ -153,9 +153,18 @@ function seedContext(): void {
   });
 }
 
+/**
+ * The read endpoints the confirmed-receipt catch-up helper resolves. Cleared so
+ * no un-allocate test reaches the network: with no endpoint the wait is
+ * `unavailable` and revalidates immediately. The wait's own mechanism is covered
+ * by `invest-read-source-catchup.test.ts` and the deposit action tests.
+ */
+const READ_RPC_ENV = ['ETHEREUM_RPC_URL', 'BASE_RPC_URL', 'ARBITRUM_RPC_URL'] as const;
+
 beforeEach(() => {
   vi.clearAllMocks();
   seedContext();
+  for (const key of READ_RPC_ENV) delete process.env[key];
 });
 
 describe('beginWithdraw', () => {

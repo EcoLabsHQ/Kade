@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Address, Hex } from 'viem';
 
 /**
@@ -157,9 +157,21 @@ const BEGIN_INPUT = {
   chainId: 1,
 } as const;
 
+/** The read endpoints the catch-up helper resolves; cleared so no test polls. */
+const READ_RPC_ENV = ['ETHEREUM_RPC_URL', 'BASE_RPC_URL', 'ARBITRUM_RPC_URL'] as const;
+
 beforeEach(() => {
   vi.clearAllMocks();
   seedHappyPath();
+  // No test may reach the network: with no read endpoint the catch-up helper is
+  // `unavailable` and revalidates immediately, exactly as before. The one test
+  // that exercises the wait sets the endpoint and stubs `fetch` itself.
+  for (const key of READ_RPC_ENV) delete process.env[key];
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  for (const key of READ_RPC_ENV) delete process.env[key];
 });
 
 describe('beginDeposit', () => {
@@ -569,16 +581,87 @@ describe('completeDeposit', () => {
   });
 
   it('revalidates the Invest route only for a confirmed receipt', async () => {
-    // The human's defect: after a confirmed deposit the screen did not re-read
-    // the Safe's position. The route is force-dynamic, but a Server Action's
-    // response only carries the fresh render when the action revalidates the
-    // path; `router.refresh()` alone did not update it. The revalidation is
-    // tied to the confirmed `sent` outcome.
+    // The revalidation is the server-authoritative half of the refresh (the
+    // screen also calls `router.refresh()`), and it is tied to the confirmed
+    // `sent` outcome. What the human actually saw was the *other* half of the
+    // bug: the revalidation fired before the route's read source had the
+    // deposit, so it re-rendered the pre-deposit position. See the catch-up
+    // tests below.
     const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
 
     expect(result.status).toBe('sent');
     expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
     expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+  });
+
+  it("waits for the route's read source to serve the confirmed transaction before revalidating", async () => {
+    // The real defect: the confirmation comes from the bundler, while the
+    // route's position read (`loadVaultHoldings`) uses the chain's own
+    // load-balanced RPC, which can still be a block behind. Revalidating
+    // immediately re-renders the pre-deposit position — the refresh fires and
+    // the screen shows no change. The action must wait for the read source to
+    // serve the confirmed transaction first. A source that is already caught up
+    // pays one poll; a lagging one is polled until it catches up.
+    process.env.ETHEREUM_RPC_URL = 'https://read.example';
+    const events: string[] = [];
+    let receiptPolls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        events.push('poll');
+        const body = JSON.parse(String(init?.body)) as { method: string };
+        expect(body.method).toBe('eth_getTransactionReceipt');
+        receiptPolls += 1;
+        return {
+          ok: true,
+          json: async () => ({
+            result: receiptPolls >= 2 ? { blockNumber: '0x10' } : null,
+          }),
+        } as unknown as Response;
+      }),
+    );
+    hoisted.revalidatePath.mockImplementation(() => {
+      events.push('revalidate');
+    });
+
+    const result = await completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+
+    expect(result.status).toBe('sent');
+    expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
+    expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+    // The source lagged one poll, and the revalidation came only after the
+    // second poll had served the transaction — never before any poll, as the
+    // pre-fix action did.
+    expect(receiptPolls).toBeGreaterThanOrEqual(2);
+    const revalidateAt = events.indexOf('revalidate');
+    expect(events.slice(0, revalidateAt).filter((event) => event === 'poll')).toHaveLength(2);
+  });
+
+  it('still revalidates when the read source never catches up, so success cannot hang', async () => {
+    // The wait is bounded. A source that never serves the transaction must not
+    // hold the confirmed screen forever: the action revalidates anyway, and the
+    // screen's own `router.refresh()` plus a manual reload remain the fallback.
+    vi.useFakeTimers();
+    try {
+      process.env.ETHEREUM_RPC_URL = 'https://read.example';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          json: async () => ({ result: null }),
+        } as unknown as Response)),
+      );
+
+      const pending = completeDeposit({ token: TOKEN, assertion: ASSERTION, chainId: 1 });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await pending;
+
+      expect(result.status).toBe('sent');
+      expect(hoisted.revalidatePath).toHaveBeenCalledTimes(1);
+      expect(hoisted.revalidatePath).toHaveBeenCalledWith('/invest');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not revalidate when the operation was not confirmed', async () => {
