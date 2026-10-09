@@ -462,9 +462,13 @@ export async function completeDeposit(input: {
   // the pre-deposit position: the refresh fires and the screen still shows no
   // change. Wait for the **read source** to serve the confirmed transaction
   // before revalidating, so the re-render reflects the write. The wait is
-  // bounded; a source that never catches up still revalidates, because the
-  // screen keeps its own `router.refresh()` and a manual reload as fallbacks.
-  // A gated or failed operation revalidates nothing.
+  // bounded on both axes — each poll by
+  // `READ_SOURCE_CATCHUP_ATTEMPT_TIMEOUT_MS`, the whole wait by
+  // `READ_SOURCE_CATCHUP_TOTAL_TIMEOUT_MS` (8 s), so even an endpoint that
+  // accepts the connection and never answers cannot hold this confirmed action.
+  // A source that never catches up still revalidates, because the screen keeps
+  // its own `router.refresh()` and a manual reload as fallbacks. A gated or
+  // failed operation revalidates nothing.
   if (outcome.status === 'sent') {
     await waitForReadSourceToSeeTransaction({
       chainId,
@@ -667,8 +671,10 @@ export async function completeWithdraw(input: {
   // A confirmed receipt changed the Safe's on-chain position, so revalidate the
   // Invest route exactly once for this completed operation, exactly as the
   // deposit does: wait for the route's read source to serve the confirmed
-  // transaction first, so the re-render is not the pre-withdraw position. A
-  // gated or failed un-allocate revalidates nothing.
+  // transaction first, so the re-render is not the pre-withdraw position. The
+  // wait is bounded per attempt and in total (8 s) exactly as the deposit's is,
+  // so a hung endpoint cannot hold the confirmed un-allocate either. A gated or
+  // failed un-allocate revalidates nothing.
   if (outcome.status === 'sent') {
     await waitForReadSourceToSeeTransaction({
       chainId,
