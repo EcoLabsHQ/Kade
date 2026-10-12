@@ -14,12 +14,14 @@ import { FeePayment } from './FeePayment';
 /**
  * Step 4 — pay the pre-approval fee.
  *
- * The payment is a real on-chain USDC transfer to the Kade treasury on Ethereum
- * Sepolia, made from a connected wallet and verified from the receipt on the
- * server (contract section 8.9 / v1.9). The screen builds no amount and names
- * no recipient: both are resolved on the server and passed down. When the
- * environment is not configured for payment it says so rather than rendering a
- * button that could only fail.
+ * The payment is a real on-chain USDC transfer to the Kade treasury on the
+ * active settlement chain (`KADE_CHAIN_ENV`): testnet funds on Ethereum Sepolia
+ * under `testnet`, real USDC on Ethereum under `mainnet`. It is made from a
+ * connected wallet and verified from the receipt on the server (contract
+ * section 8.9 / v1.9). The screen builds no amount and names no recipient: both
+ * are resolved on the server and passed down. When the environment is not
+ * configured for payment it says so rather than rendering a button that could
+ * only fail.
  */
 export interface FileRow {
   readonly label: string;
@@ -39,8 +41,12 @@ export interface FeeStepProps {
   readonly paymentConfigured: boolean;
   /** The Kade treasury, resolved on the server; null when unconfigured. */
   readonly treasuryAddress: string | null;
-  /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
+  /** USDC on the active settlement chain, from `@kade/shared`. */
   readonly usdcAddress: string;
+  /** The chain the server resolved for the rail. */
+  readonly chainId: number;
+  /** The settlement chain's display name; all copy names it. */
+  readonly chainName: string;
   readonly explorerUrl: string;
   readonly onPaid: (txHash: Hex) => void;
   readonly onEnter: () => void;
@@ -98,6 +104,8 @@ export function FeeStep({
   paymentConfigured,
   treasuryAddress,
   usdcAddress,
+  chainId,
+  chainName,
   explorerUrl,
   onPaid,
   onEnter,
@@ -212,9 +220,10 @@ export function FeeStep({
                   </span>
                 </div>
                 <p style={{ margin: '10px 0 0', fontSize: '12px', color: tokens.muted }}>
-                  This is the configured pre-approval fee for your household.
-                  Payment is an on-chain USDC transfer on Ethereum Sepolia,
-                  verified from the transaction receipt.
+                  This is the configured pre-approval fee for your household.{' '}
+                  {chainId === 1
+                    ? `Payment is a real on-chain USDC transfer on ${chainName}, verified from the transaction receipt.`
+                    : `Payment is an on-chain USDC transfer on ${chainName}, verified from the transaction receipt. Testnet funds only.`}
                 </p>
               </>
             ) : (
@@ -252,7 +261,9 @@ export function FeeStep({
             }}
           >
             <div style={darkEyebrow}>Your pre-approval</div>
-            <span style={demoTagDark}>Testnet payment</span>
+            <span style={demoTagDark}>
+              {chainId === 1 ? 'Mainnet payment' : 'Testnet payment'}
+            </span>
           </div>
           <p
             style={{
@@ -330,9 +341,12 @@ export function FeeStep({
         >
           <div style={{ padding: '0 24px 24px' }}>
             <p style={modalLead}>
-              Send the fee to the Kade deposit address below on Ethereum
-              Sepolia. The amount is resolved on the server and verified from
-              the transaction receipt.
+              Send the fee to the Kade deposit address below on {chainName}. The
+              amount is resolved on the server and verified from the transaction
+              receipt.{' '}
+              {chainId === 1
+                ? 'This is a real USDC transfer on Ethereum mainnet.'
+                : 'Testnet funds only.'}
             </p>
 
             {/*
@@ -348,7 +362,7 @@ export function FeeStep({
                 </div>
                 <div style={detailRow}>
                   <dt style={detailLabel}>Network</dt>
-                  <dd style={detailValue}>Ethereum Sepolia</dd>
+                  <dd style={detailValue}>{chainName}</dd>
                 </div>
                 <div style={detailRow}>
                   <dt style={detailLabel}>Token</dt>
@@ -377,6 +391,8 @@ export function FeeStep({
                   amountUsdc={String(breakdown.totalUsdc)}
                   treasuryAddress={treasuryAddress as `0x${string}`}
                   usdcAddress={usdcAddress as `0x${string}`}
+                  chainId={chainId}
+                  chainName={chainName}
                   explorerUrl={explorerUrl}
                   onPaid={onPaid}
                   onEnter={onEnter}

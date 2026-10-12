@@ -1,17 +1,17 @@
 import { redirect } from 'next/navigation';
 import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { WalletProvider } from '@/components/wallet/WalletProvider';
-import { CHAIN_IDS, chainByChainId, chainsForEnv } from '@kade/shared';
+import { chainsForEnv } from '@kade/shared';
 import { getSessionUser } from '@/lib/supabase/server';
 import {
   isAuthConfigured,
   readAuthEnv,
   readChainEnv,
   readFeeMode,
-  readTreasuryAddress,
   readWalletConnectProjectId,
 } from '@/lib/env';
 import { isFeePaymentConfigured, loadFeePayment } from '@/lib/payments/server';
+import { readFeeSettlementRail } from '@/lib/payments/settlement';
 import { loadPasskeyCredential } from '@/app/account/passkey-actions';
 import { listBitcoinAddresses } from '@/app/onboarding/wealth-actions';
 import { listWalletAddresses } from '@/app/onboarding/wallet-actions';
@@ -28,7 +28,7 @@ import type { BitcoinAddressRecord, EvmAddressRecord } from '@/lib/wealth/types'
 
 export const dynamic = 'force-dynamic';
 
-/** The chain the flow is actually running on: Sepolia while testing. */
+/** The chain the flow is actually running on, from the active chain env. */
 function activeNetworkLabel(): string {
   const chains = chainsForEnv(readChainEnv());
   const ethereum = chains.find((chain) => chain.key === 'ethereum') ?? chains[0];
@@ -124,8 +124,8 @@ export default async function OnboardingPage() {
   }
 
   // The pre-approval fee payment state, re-derived from the recorded hash and
-  // the Sepolia receipt. A failed read degrades to "nothing recorded" so the
-  // step offers the payment rather than claiming it already happened.
+  // the settlement-chain receipt. A failed read degrades to "nothing recorded"
+  // so the step offers the payment rather than claiming it already happened.
   let initialPayment: FeePaymentState = { status: 'none' };
   if (configured) {
     try {
@@ -139,14 +139,18 @@ export default async function OnboardingPage() {
   }
 
   // The wallet modal and the fee rail are both configuration. The rail's own
-  // check includes the RPC verifier, so a missing SEPOLIA_RPC_URL disables the
-  // payment rather than letting a resident send funds the server cannot verify.
-  const treasuryAddress = readTreasuryAddress();
+  // check includes the RPC verifier, so a missing settlement RPC (SEPOLIA_RPC_URL
+  // under testnet, ETHEREUM_RPC_URL under mainnet) disables the payment rather
+  // than letting a resident send funds the server cannot verify.
+  const rail = readFeeSettlementRail();
   const walletConfigured = readWalletConnectProjectId() !== null;
   const paymentConfigured = walletConfigured && isFeePaymentConfigured();
-  const sepolia = chainByChainId(CHAIN_IDS.sepolia);
-  const usdcAddress = sepolia?.usdcAddress.value ?? '';
-  const explorerUrl = sepolia?.explorerUrl ?? 'https://sepolia.etherscan.io';
+  const network = activeNetworkLabel();
+  const treasuryAddress = rail?.treasury ?? null;
+  const usdcAddress = rail?.token ?? '';
+  const explorerUrl = rail?.explorerUrl ?? 'https://sepolia.etherscan.io';
+  const chainId = rail?.chainId ?? 0;
+  const chainName = rail?.chainName ?? network;
 
   return (
     <WalletProvider>
@@ -163,9 +167,11 @@ export default async function OnboardingPage() {
         paymentConfigured={paymentConfigured}
         treasuryAddress={treasuryAddress}
         usdcAddress={usdcAddress}
+        chainId={chainId}
+        chainName={chainName}
         explorerUrl={explorerUrl}
         walletConfigured={walletConfigured}
-        network={activeNetworkLabel()}
+        network={network}
         accountState={{ kind: 'pending' }}
         onBegin={beginWalletLink}
         onComplete={completeWalletLink}

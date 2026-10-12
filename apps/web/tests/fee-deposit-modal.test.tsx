@@ -89,6 +89,8 @@ function renderStep(overrides: Partial<FeeStepProps> = {}) {
     paymentConfigured: true,
     treasuryAddress: TREASURY,
     usdcAddress: USDC,
+    chainId: 11155111,
+    chainName: 'Ethereum Sepolia',
     explorerUrl: 'https://sepolia.etherscan.io',
     onPaid,
     onEnter,
@@ -116,6 +118,8 @@ function renderControlledStep() {
         paymentConfigured
         treasuryAddress={TREASURY}
         usdcAddress={USDC}
+        chainId={11155111}
+        chainName="Ethereum Sepolia"
         explorerUrl="https://sepolia.etherscan.io"
         onPaid={() => setPaid(true)}
         onEnter={onEnter}
@@ -169,6 +173,19 @@ describe('FeeStep deposit modal', () => {
     expect(
       within(dialog).getByRole('button', { name: /copy deposit address/i }),
     ).toBeInTheDocument();
+  });
+
+  it('names Ethereum mainnet and chips the rail as a mainnet payment', () => {
+    renderStep({ chainId: 1, chainName: 'Ethereum' });
+    expect(screen.getByText('Mainnet payment')).toBeInTheDocument();
+
+    openDeposit();
+
+    const dialog = screen.getByRole('dialog', {
+      name: /deposit the pre-approval fee/i,
+    });
+    expect(within(dialog).getByText('Ethereum')).toBeInTheDocument();
+    expect(within(dialog).getByText(/real USDC transfer on Ethereum mainnet/i)).toBeInTheDocument();
   });
 
   it('focuses the dialog card when it opens', () => {
@@ -275,7 +292,7 @@ describe('FeeStep deposit modal', () => {
     openDeposit();
 
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent(/confirming your payment on sepolia/i);
+    expect(status).toHaveTextContent(/confirming your payment on ethereum sepolia/i);
     expect(
       within(status).getByRole('progressbar', { name: /confirming payment/i }),
     ).toBeInTheDocument();

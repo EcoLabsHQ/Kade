@@ -18,9 +18,10 @@ import type { AppKitNetwork } from '@reown/appkit/networks';
 /**
  * Every chain the wallet may be asked to reach.
  *
- * The fee controls (contract 8.9) settle on Ethereum Sepolia and switch to it
- * explicitly, so **Sepolia stays first**: it is the default the wallet connects
- * on, and the fee/service-fee controls are unchanged.
+ * The fee controls (contract 8.9) settle on the **active settlement chain**
+ * (`KADE_CHAIN_ENV`): Ethereum Sepolia under `testnet`, Ethereum under
+ * `mainnet`. The first entry is the wallet's default, so **mainnet leads** and
+ * the controls switch explicitly to whichever chain the server resolved.
  *
  * Holdings reads balances on Ethereum mainnet, Base and Arbitrum One
  * (`EVM_READ_CHAINS` in `@/lib/wealth/evm`) and moves each holding on the chain
@@ -30,11 +31,35 @@ import type { AppKitNetwork } from '@reown/appkit/networks';
  * vice versa.
  */
 export const WALLET_NETWORKS: [AppKitNetwork, ...AppKitNetwork[]] = [
-  sepolia,
   mainnet,
+  sepolia,
   base,
   arbitrum,
 ];
+
+/**
+ * The AppKit network for a settlement chain id, or undefined when the wallet
+ * cannot reach it. The fee controls resolve their target through this table
+ * rather than hard-coding a network, so a chain the server selected but AppKit
+ * does not know degrades to "not configured" instead of sending to the wrong
+ * chain.
+ */
+export function appkitNetworkForChainId(
+  chainId: number,
+): AppKitNetwork | undefined {
+  switch (chainId) {
+    case 1:
+      return mainnet;
+    case 11155111:
+      return sepolia;
+    case 8453:
+      return base;
+    case 42161:
+      return arbitrum;
+    default:
+      return undefined;
+  }
+}
 
 /** The project id, or null when the environment has not configured one. */
 export const walletProjectId: string | null =
@@ -60,7 +85,7 @@ const siteUrl =
 
 export const appkitMetadata = {
   name: 'Kade',
-  description: 'Kade — pay the pre-approval fee on Ethereum Sepolia.',
+  description: 'Kade — pay the pre-approval fee on the settlement chain.',
   url: siteUrl,
   icons: [`${siteUrl}/onchain-island-logo.png`],
 };

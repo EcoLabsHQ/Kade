@@ -62,7 +62,12 @@ interface WriteCall {
   args: readonly unknown[];
 }
 
-function renderPayment() {
+function renderPayment(
+  overrides: {
+    chainId?: number;
+    chainName?: string;
+  } = {},
+) {
   const onPaid = vi.fn();
   const onEnter = vi.fn();
   const element = () => (
@@ -70,6 +75,8 @@ function renderPayment() {
       amountUsdc="1.75"
       treasuryAddress={TREASURY}
       usdcAddress={USDC}
+      chainId={overrides.chainId ?? 11155111}
+      chainName={overrides.chainName ?? 'Ethereum Sepolia'}
       explorerUrl="https://sepolia.etherscan.io"
       onPaid={onPaid}
       onEnter={onEnter}
@@ -136,6 +143,25 @@ describe('FeePayment', () => {
     );
 
     expect(hoisted.switchNetwork).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches to Ethereum when the server settled the rail on mainnet', () => {
+    hoisted.network.chainId = 11155111;
+    renderPayment({ chainId: 1, chainName: 'Ethereum' });
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to ethereum$/i }));
+
+    expect(hoisted.switchNetwork).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the mainnet rail and warns the transfer is real USDC', () => {
+    hoisted.network.chainId = 1;
+    renderPayment({ chainId: 1, chainName: 'Ethereum' });
+
+    expect(screen.getByText(/this is real usdc/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /pay 1\.75 usdc/i }),
+    ).toBeInTheDocument();
   });
 
   it('sends the fee as USDC to the treasury the server supplied', () => {

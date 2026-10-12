@@ -6,23 +6,29 @@ import { describe, expect, it, vi } from 'vitest';
  * A holding is moved on the chain it was read from, so a chain the balance read
  * targets but the wallet cannot reach would leave a displayed holding unmovable.
  * This pins that `WALLET_NETWORKS` covers every `EVM_READ_CHAINS` entry, and
- * that Sepolia stays **first** — the fee/service-fee controls (contract 8.9)
- * connect and switch to it, and adding networks must not move them.
+ * that the **active settlement chain leads** — the fee/service-fee controls
+ * (contract 8.9) now settle on whichever chain `KADE_CHAIN_ENV` selects and
+ * switch to it explicitly, so the default entry is the mainnet settlement chain.
  */
 
 vi.mock('@reown/appkit-adapter-wagmi', () => ({
   WagmiAdapter: class {},
 }));
 
-import { WALLET_NETWORKS } from '@/lib/wallet/appkit';
+import {
+  WALLET_NETWORKS,
+  appkitNetworkForChainId,
+} from '@/lib/wallet/appkit';
 import { EVM_READ_CHAINS } from '@/lib/wealth/evm';
 
+const MAINNET_ID = 1;
 const SEPOLIA_ID = 11155111;
 const ARBITRUM_ID = 42161;
+const BASE_ID = 8453;
 
 describe('WALLET_NETWORKS', () => {
-  it('keeps Sepolia first, the chain the fee controls use', () => {
-    expect(Number(WALLET_NETWORKS[0]!.id)).toBe(SEPOLIA_ID);
+  it('keeps Ethereum mainnet first, the settlement chain the fee controls lead with', () => {
+    expect(Number(WALLET_NETWORKS[0]!.id)).toBe(MAINNET_ID);
   });
 
   it('reaches every chain the balance reads target, so no listed holding is unmovable', () => {
@@ -39,5 +45,18 @@ describe('WALLET_NETWORKS', () => {
     expect(ids).toContain(1);
     expect(ids).toContain(8453);
     expect(ids).toContain(ARBITRUM_ID);
+  });
+});
+
+describe('appkitNetworkForChainId', () => {
+  it('maps each settlement chain id to its AppKit network', () => {
+    expect(Number(appkitNetworkForChainId(MAINNET_ID)?.id)).toBe(MAINNET_ID);
+    expect(Number(appkitNetworkForChainId(SEPOLIA_ID)?.id)).toBe(SEPOLIA_ID);
+    expect(Number(appkitNetworkForChainId(BASE_ID)?.id)).toBe(BASE_ID);
+    expect(Number(appkitNetworkForChainId(ARBITRUM_ID)?.id)).toBe(ARBITRUM_ID);
+  });
+
+  it('returns undefined for a chain AppKit cannot reach', () => {
+    expect(appkitNetworkForChainId(999999)).toBeUndefined();
   });
 });

@@ -6,24 +6,25 @@ import {
   useAppKitAccount,
   useAppKitNetwork,
 } from '@reown/appkit/react';
-import { sepolia } from '@reown/appkit/networks';
 import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { parseUnits, type Hex } from 'viem';
 import { recordResidencyServiceFeePaymentAction } from '@/app/residency/actions';
 import type { RecordFeeResult } from '@/lib/payments/preapproval-fee';
+import { appkitNetworkForChainId } from '@/lib/wallet/appkit';
 import { tokens } from '@/components/ui/tokens';
 
 /**
  * The connect-and-pay control for the residency service fee (D16).
  *
  * The same shape as the pre-approval `FeePayment`: the resident connects a
- * wallet, switches to the settlement chain and sends the fee as a direct USDC
- * transfer to the Kade treasury. The browser only sends; the server
- * independently verifies the transfer receipt before the fee is recorded, so
- * nothing here can assert a payment that did not happen.
+ * wallet, switches to the settlement chain the server resolved
+ * (`KADE_CHAIN_ENV`) and sends the fee as a direct USDC transfer to the Kade
+ * treasury. The browser only sends; the server independently verifies the
+ * transfer receipt before the fee is recorded, so nothing here can assert a
+ * payment that did not happen.
  *
- * The amount, treasury and token are supplied by the server. This component
- * holds no fee value and no recipient default.
+ * The amount, treasury, token and target chain are supplied by the server. This
+ * component holds no fee value, no recipient default and no network literal.
  */
 
 const USDC_ABI = [
@@ -44,8 +45,10 @@ const PENDING_POLL_MS = 4_000;
 export interface ServiceFeePaymentProps {
   /** The server-resolved service fee, as a whole-USDC decimal string. */
   readonly amountUsdc: string;
-  /** The chain the server resolved for the rail. Only Sepolia is wired today. */
+  /** The chain the server resolved for the rail. */
   readonly chainId: number;
+  /** The settlement chain's display name; all copy names it. */
+  readonly chainName: string;
   readonly treasuryAddress: `0x${string}`;
   readonly usdcAddress: `0x${string}`;
   readonly explorerUrl: string;
@@ -86,7 +89,8 @@ type ServerState =
 
 export function ServiceFeePayment({
   amountUsdc,
-  chainId: targetChainId,
+  chainId,
+  chainName,
   treasuryAddress,
   usdcAddress,
   explorerUrl,
@@ -106,11 +110,13 @@ export function ServiceFeePayment({
   const handledRef = useRef<Hex | null>(null);
 
   const amountUnits = useMemo(() => parseUnits(amountUsdc, 6), [amountUsdc]);
-  const onSepolia = Number(walletChainId) === sepolia.id;
-  // Only the testnet settlement chain is wired today. A mainnet configuration
-  // resolved by the server must not be paid through this Sepolia control, so
-  // the component refuses rather than sending to the wrong chain.
-  const supported = targetChainId === sepolia.id;
+  // The target network is resolved from the server's chain id, never a literal,
+  // so the control only offers to switch when AppKit actually knows the chain.
+  const targetNetwork = appkitNetworkForChainId(chainId);
+  const supported = targetNetwork !== undefined;
+  const onTargetChain =
+    targetNetwork !== undefined && Number(walletChainId) === targetNetwork.id;
+  const mainnet = chainId === 1;
 
   const verify = useCallback(
     async (submitted: Hex, payer: string) => {
@@ -167,7 +173,7 @@ export function ServiceFeePayment({
   }
 
   // Placed after every hook so the hook order stays unconditional.
-  if (!supported) {
+  if (!supported || !targetNetwork) {
     return (
       <p style={statusText}>
         Payment on this chain is not configured in this build.
@@ -179,7 +185,8 @@ export function ServiceFeePayment({
     return (
       <div>
         <p style={statusText}>
-          Pay {amountUsdc} USDC. Connect a wallet to send it to Kade.
+          Pay {amountUsdc} USDC on {chainName}. Connect a wallet to send it to
+          Kade.
         </p>
         <button
           type="button"
@@ -192,19 +199,19 @@ export function ServiceFeePayment({
     );
   }
 
-  if (!onSepolia) {
+  if (!onTargetChain) {
     return (
       <div>
         <p style={statusText}>
-          Your wallet is on another network. Switch to Ethereum Sepolia to pay
-          the fee.
+          Your wallet is on another network. Switch to {chainName} to pay the
+          fee.
         </p>
         <button
           type="button"
-          onClick={() => void switchNetwork(sepolia)}
+          onClick={() => void switchNetwork(targetNetwork)}
           style={{ ...primaryButton, width: '100%' }}
         >
-          Switch to Ethereum Sepolia
+          Switch to {chainName}
         </button>
       </div>
     );
@@ -242,12 +249,14 @@ export function ServiceFeePayment({
   const busy = isPending || isConfirming || server.kind === 'verifying';
   const status =
     server.kind === 'verifying'
-      ? 'Confirming your payment…'
+      ? `Confirming your payment on ${chainName}…`
       : isPending
         ? 'Confirm the payment in your wallet…'
         : isConfirming
-          ? 'Confirming your payment…'
-          : `Sends ${amountUsdc} USDC to Kade.`;
+          ? `Confirming your payment on ${chainName}…`
+          : mainnet
+            ? `Sends ${amountUsdc} USDC to Kade on ${chainName}. This is real USDC.`
+            : `Sends ${amountUsdc} USDC to Kade on ${chainName}. Testnet funds only.`;
 
   return (
     <div>

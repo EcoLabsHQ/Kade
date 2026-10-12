@@ -77,6 +77,8 @@ vi.mock('@/lib/env', () => ({
   readChainEnv: () => 'testnet',
   readFeeMode: () => 'demo',
   readTreasuryAddress: () => null,
+  readTreasuryAddressFor: () => null,
+  readRpcUrlFor: () => null,
   readWalletConnectProjectId: () => null,
 }));
 

@@ -440,6 +440,7 @@ export function ResidencyStep({
             <ServiceFeePayment
               amountUsdc={String(snapshot.serviceFeeAmountUsdc)}
               chainId={chainId}
+              chainName={network}
               treasuryAddress={treasuryAddress as `0x${string}`}
               usdcAddress={usdcAddress as `0x${string}`}
               explorerUrl={explorerUrl}

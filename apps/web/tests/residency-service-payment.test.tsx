@@ -41,11 +41,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function renderPayment(chainId: number) {
+function renderPayment(chainId: number, chainName = 'Ethereum Sepolia') {
   render(
     <ServiceFeePayment
       amountUsdc="10"
       chainId={chainId}
+      chainName={chainName}
       treasuryAddress="0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A"
       usdcAddress="0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
       explorerUrl="https://sepolia.etherscan.io"
@@ -55,18 +56,26 @@ function renderPayment(chainId: number) {
 }
 
 describe('ServiceFeePayment chain guard', () => {
-  it('refuses a chain it is not wired for', () => {
-    renderPayment(1);
+  it('refuses a chain AppKit cannot reach', () => {
+    renderPayment(999999, 'Unknown Chain');
     expect(
       screen.getByText(/payment on this chain is not configured in this build/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /connect wallet/i })).toBeNull();
   });
 
-  it('offers the connect control on the wired chain', () => {
-    renderPayment(11155111);
+  it('offers the connect control on the testnet settlement chain', () => {
+    renderPayment(11155111, 'Ethereum Sepolia');
     expect(
       screen.getByRole('button', { name: /connect wallet/i }),
     ).toBeInTheDocument();
+  });
+
+  it('offers the connect control on the mainnet settlement chain and names it', () => {
+    renderPayment(1, 'Ethereum');
+    expect(
+      screen.getByRole('button', { name: /connect wallet/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/pay 10 USDC on Ethereum\./i)).toBeInTheDocument();
   });
 });

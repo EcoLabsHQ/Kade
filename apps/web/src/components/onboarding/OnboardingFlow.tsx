@@ -75,16 +75,20 @@ export interface OnboardingFlowProps {
   readonly initialEvmAddresses?: readonly EvmAddressRecord[];
   /**
    * The pre-approval fee payment state, resolved server-side from
-   * `applications.fee_tx` and re-verified against the Sepolia receipt. Only
-   * `paid` opens the platform.
+   * `applications.fee_tx` and re-verified against the active settlement chain's
+   * receipt. Only `paid` opens the platform.
    */
   readonly initialPayment: FeePaymentState;
   /** True when both the wallet modal and the fee rail are configured. */
   readonly paymentConfigured: boolean;
   /** The Kade treasury, resolved on the server; null when unconfigured. */
   readonly treasuryAddress: string | null;
-  /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
+  /** USDC on the active settlement chain, from `@kade/shared`. */
   readonly usdcAddress: string;
+  /** The chain the server resolved for the fee rail. */
+  readonly chainId: number;
+  /** The settlement chain's display name; all fee copy names it. */
+  readonly chainName: string;
   readonly explorerUrl: string;
   /** True when the WalletConnect project id is configured for this environment. */
   readonly walletConfigured: boolean;
@@ -131,11 +135,11 @@ function steps(current: Step, paid: boolean): readonly StepperItem[] {
  * are labelled demo. Bitcoin and pasted EVM addresses are real but read-only:
  * the resident pastes an address and the server reads its balances from a public
  * source, with no ownership proof, so the screen says so rather than implying
- * control. Step 4's payment is real on Ethereum Sepolia: the resident connects
- * an external wallet and sends USDC to the Kade treasury, and the server
- * verifies the receipt before the step is marked paid (contract v1.9, section
- * 8.9). The wallet connection is payment-only and confers no authority over the
- * Safe.
+ * control. Step 4's payment is real on the active settlement chain
+ * (`KADE_CHAIN_ENV`): the resident connects an external wallet and sends USDC to
+ * the Kade treasury, and the server verifies the receipt before the step is
+ * marked paid (contract v1.9, section 8.9). The wallet connection is
+ * payment-only and confers no authority over the Safe.
  */
 export function OnboardingFlow({
   userId,
@@ -154,6 +158,8 @@ export function OnboardingFlow({
   paymentConfigured,
   treasuryAddress,
   usdcAddress,
+  chainId,
+  chainName,
   explorerUrl,
   walletConfigured,
   onBegin,
@@ -463,6 +469,8 @@ export function OnboardingFlow({
             paymentConfigured={paymentConfigured}
             treasuryAddress={treasuryAddress}
             usdcAddress={usdcAddress}
+            chainId={chainId}
+            chainName={chainName}
             explorerUrl={explorerUrl}
             onPaid={handlePaid}
             onBack={() => setStep(3)}

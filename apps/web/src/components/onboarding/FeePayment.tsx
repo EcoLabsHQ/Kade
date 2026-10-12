@@ -6,24 +6,25 @@ import {
   useAppKitAccount,
   useAppKitNetwork,
 } from '@reown/appkit/react';
-import { sepolia } from '@reown/appkit/networks';
 import { useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
 import { parseUnits, type Hex } from 'viem';
 import { recordPreapprovalFeePayment } from '@/app/onboarding/payment-actions';
 import type { RecordFeeResult } from '@/lib/payments/preapproval-fee';
+import { appkitNetworkForChainId } from '@/lib/wallet/appkit';
 import { tokens } from '@/components/ui/tokens';
 
 /**
  * The connect-and-pay control for the pre-approval fee (contract 8.9).
  *
- * The resident connects a browser wallet or WalletConnect, switches to
- * Ethereum Sepolia and sends the fee as a direct USDC transfer to the Kade
- * treasury. The browser only sends; the server independently verifies the
- * `transfer` receipt before the step is marked paid, so nothing here can assert
- * a payment that did not happen.
+ * The resident connects a browser wallet or WalletConnect, switches to the
+ * active settlement chain (`KADE_CHAIN_ENV`) and sends the fee as a direct USDC
+ * transfer to the Kade treasury. The browser only sends; the server
+ * independently verifies the `transfer` receipt before the step is marked paid,
+ * so nothing here can assert a payment that did not happen.
  *
- * The amount, the treasury and the token are all supplied by the server. This
- * component holds no fee value and no recipient default.
+ * The amount, the treasury, the token and the target chain are all supplied by
+ * the server. This component holds no fee value, no recipient default and no
+ * network literal.
  */
 
 const USDC_ABI = [
@@ -44,8 +45,12 @@ export interface FeePaymentProps {
   readonly amountUsdc: string;
   /** The Kade treasury, resolved on the server. */
   readonly treasuryAddress: `0x${string}`;
-  /** USDC on Ethereum Sepolia, from `@kade/shared` chain configuration. */
+  /** USDC on the active settlement chain, from `@kade/shared`. */
   readonly usdcAddress: `0x${string}`;
+  /** The chain the server resolved for the rail. */
+  readonly chainId: number;
+  /** The settlement chain's display name; all copy names it. */
+  readonly chainName: string;
   readonly explorerUrl: string;
   readonly onPaid: (txHash: Hex) => void;
   /**
@@ -199,13 +204,15 @@ export function FeePayment({
   amountUsdc,
   treasuryAddress,
   usdcAddress,
+  chainId,
+  chainName,
   explorerUrl,
   onPaid,
   onEnter,
 }: FeePaymentProps) {
   const { open } = useAppKit();
   const { address, isConnected } = useAppKitAccount();
-  const { chainId, switchNetwork } = useAppKitNetwork();
+  const { chainId: walletChainId, switchNetwork } = useAppKitNetwork();
   const {
     data: hash,
     writeContract,
@@ -237,7 +244,10 @@ export function FeePayment({
 
   const amountUnits = useMemo(() => parseUnits(amountUsdc, 6), [amountUsdc]);
 
-  const onSepolia = Number(chainId) === sepolia.id;
+  const targetNetwork = appkitNetworkForChainId(chainId);
+  const onTargetChain =
+    targetNetwork !== undefined && Number(walletChainId) === targetNetwork.id;
+  const mainnet = chainId === 1;
 
   // Persist the hash the moment it exists, not only once the receipt confirms,
   // so closing the modal mid-confirmation cannot lose an in-flight payment.
@@ -246,7 +256,8 @@ export function FeePayment({
   }, [hash, treasuryAddress]);
 
   /**
-   * Verify a hash against the server, which re-reads the Sepolia receipt.
+   * Verify a hash against the server, which re-reads the settlement-chain
+   * receipt.
    *
    * The server is the source of truth, so this runs as soon as there is a hash
    * and an address rather than waiting on the wagmi watcher: a resumed hash may
@@ -337,12 +348,20 @@ export function FeePayment({
     });
   }
 
+  if (!targetNetwork) {
+    return (
+      <p style={statusText}>
+        Payment on this chain is not configured in this build.
+      </p>
+    );
+  }
+
   if (!isConnected) {
     return (
       <div>
         <p style={statusText}>
-          Pay {amountUsdc} USDC on Ethereum Sepolia. Connect a wallet to send it
-          to Kade.
+          Pay {amountUsdc} USDC on {chainName}. Connect a wallet to send it to
+          Kade.
         </p>
         <button
           type='button'
@@ -355,19 +374,19 @@ export function FeePayment({
     );
   }
 
-  if (!onSepolia) {
+  if (!onTargetChain) {
     return (
       <div>
         <p style={statusText}>
-          Your wallet is on another network. Switch to Ethereum Sepolia to pay
-          the fee.
+          Your wallet is on another network. Switch to {chainName} to pay the
+          fee.
         </p>
         <button
           type='button'
-          onClick={() => void switchNetwork(sepolia)}
+          onClick={() => void switchNetwork(targetNetwork)}
           style={{ ...primaryButton, width: '100%' }}
         >
-          Switch to Ethereum Sepolia
+          Switch to {chainName}
         </button>
       </div>
     );
@@ -436,12 +455,14 @@ export function FeePayment({
 
   const status =
     server.kind === 'verifying'
-      ? 'Confirming your payment on Sepolia…'
+      ? `Confirming your payment on ${chainName}…`
       : isPending
         ? 'Confirm the payment in your wallet…'
         : isConfirming
-          ? 'Confirming your payment on Sepolia…'
-          : `Sends ${amountUsdc} USDC to Kade on Ethereum Sepolia. Testnet funds only.`;
+          ? `Confirming your payment on ${chainName}…`
+          : mainnet
+            ? `Sends ${amountUsdc} USDC to Kade on ${chainName}. This is real USDC.`
+            : `Sends ${amountUsdc} USDC to Kade on ${chainName}. Testnet funds only.`;
 
   return (
     <div>

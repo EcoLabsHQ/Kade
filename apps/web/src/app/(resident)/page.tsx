@@ -66,8 +66,8 @@ const TONE_COLOR: Readonly<Record<OverviewTone, string>> = {
 
 /**
  * The recorded fee state, or an explicit unread state when the read throws.
- * `loadFeePayment` re-derives "paid" from the Sepolia receipt, so a stored hash
- * is never presented as paid.
+ * `loadFeePayment` re-derives "paid" from the settlement-chain receipt, so a
+ * stored hash is never presented as paid.
  */
 async function loadFeeOrUnread(userId: string): Promise<OverviewFee> {
   try {
