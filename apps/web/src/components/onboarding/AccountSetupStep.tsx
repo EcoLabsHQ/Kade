@@ -425,7 +425,7 @@ function DeployLine({
 }) {
   if (deploy.state === 'deploying') return <>Setting up your account…</>;
   if (deploy.state === 'ready') {
-    return <>Your account is live on Sepolia.</>;
+    return <>Your safe is deployed.</>;
   }
   if (deploy.state === 'failed') {
     // Honest: the passkey is theirs and the address is theirs, but the contract
