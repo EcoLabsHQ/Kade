@@ -4,10 +4,11 @@ import { getAddress, keccak256, toHex, type Address, type Hex } from 'viem';
  * The pre-approval fee payment rail (week-1 contract section 8.9 / v1.9).
  *
  * A resident pays the configured fee as a direct USDC transfer to the Kade
- * treasury on Ethereum Sepolia. The payment is proved from the transaction
- * receipt — never from anything the browser says — so this module holds the
- * receipt check and nothing else. It is deliberately free of Supabase and
- * `next/*` imports, so it can be exercised in a plain test with a fake reader.
+ * treasury on the active settlement chain (`KADE_CHAIN_ENV`). The payment is
+ * proved from the transaction receipt — never from anything the browser says —
+ * so this module holds the receipt check and nothing else. It is deliberately
+ * free of Supabase and `next/*` imports, so it can be exercised in a plain test
+ * with a fake reader.
  *
  * The stored transaction hash on `applications.fee_tx` is a **claim, not a
  * proof**: the read path calls `verifyUsdcPayment` again rather than trusting
@@ -20,9 +21,9 @@ export const USDC_DECIMALS = 6;
 /**
  * One included block is enough for the demo rail.
  *
- * A successful Sepolia receipt is the evidence the step asks for; requiring
- * more confirmations would only make the payment screen wait for no product
- * benefit at this maturity. Raising it is a one-line change here.
+ * A successful settlement-chain receipt is the evidence the step asks for;
+ * requiring more confirmations would only make the payment screen wait for no
+ * product benefit at this maturity. Raising it is a one-line change here.
  */
 export const MIN_FEE_CONFIRMATIONS = 1;
 
@@ -50,7 +51,7 @@ export interface TransactionReceiptView {
  * receipts without an RPC endpoint, which is the same seam
  * `createPreDepositStore` uses for its client.
  */
-export interface SepoliaReader {
+export interface FeeReceiptReader {
   /** Null when the hash is not mined yet, or the endpoint could not be read. */
   getTransactionReceipt(hash: Hex): Promise<TransactionReceiptView | null>;
   getBlockNumber(): Promise<bigint>;
@@ -68,7 +69,7 @@ export type PaymentVerification =
   | { readonly status: 'no-transfer' };
 
 export interface VerifyUsdcPaymentInput {
-  readonly reader: SepoliaReader;
+  readonly reader: FeeReceiptReader;
   readonly txHash: Hex;
   /** The token contract that must have emitted the transfer. */
   readonly token: Address;

@@ -1,16 +1,15 @@
 import { createPublicClient, http, type Hex } from 'viem';
-import type { SepoliaReader } from './preapproval-fee';
+import type { FeeReceiptReader } from './preapproval-fee';
 
 /**
- * The viem-backed `SepoliaReader` for the fee verification.
+ * The viem-backed `FeeReceiptReader` for the fee verification.
  *
  * Server-only in practice: the RPC URL carries a provider key
- * (`readSepoliaRpcUrl`), so this is reached from a server action and never
- * bundled into the browser. A read failure is mapped to "not mined yet" so a
- * transient endpoint error surfaces as `pending` rather than as a paid or
- * failed payment.
+ * (`readRpcUrlFor`), so this is reached from a server action and never bundled
+ * into the browser. A read failure is mapped to "not mined yet" so a transient
+ * endpoint error surfaces as `pending` rather than as a paid or failed payment.
  */
-export function createSepoliaReader(rpcUrl: string): SepoliaReader {
+export function createFeeReceiptReader(rpcUrl: string): FeeReceiptReader {
   const client = createPublicClient({ transport: http(rpcUrl) });
 
   return {

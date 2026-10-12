@@ -1,7 +1,6 @@
 import { formatUnits, getAddress, parseUnits, type Hex } from 'viem';
-import { CHAIN_IDS, chainByChainId, type Address } from '@kade/shared';
+import type { Address } from '@kade/shared';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { readSepoliaRpcUrl, readTreasuryAddress } from '@/lib/env';
 import {
   USDC_DECIMALS,
   verifyUsdcPayment,
@@ -9,7 +8,8 @@ import {
   type PaymentVerification,
   type RecordFeeResult,
 } from './preapproval-fee';
-import { createSepoliaReader } from './sepolia-reader';
+import { createFeeReceiptReader } from './fee-receipt-reader';
+import { readFeeSettlementRail } from './settlement';
 
 /**
  * The server half of the pre-approval fee payment (contract section 8.9).
@@ -20,8 +20,8 @@ import { createSepoliaReader } from './sepolia-reader';
  * to the caller's own application, so no service-role key is involved.
  *
  * The stored `applications.fee_tx` is a claim: both the write path and the read
- * path re-derive "paid" from the Sepolia receipt with `verifyUsdcPayment`,
- * never from the hash being present.
+ * path re-derive "paid" from the active settlement chain's receipt with
+ * `verifyUsdcPayment`, never from the hash being present.
  */
 
 const TX_HASH_PATTERN = /^0x[0-9a-f]{64}$/;
@@ -30,6 +30,7 @@ export interface FeePaymentConfig {
   readonly treasury: Address;
   readonly token: Address;
   readonly chainId: number;
+  readonly chainName: string;
   readonly rpcUrl: string;
 }
 
@@ -37,9 +38,9 @@ export interface FeePaymentConfig {
  * Whether the fee rail can actually run: treasury, USDC and the RPC verifier.
  *
  * The page gates the payment control on this rather than on the treasury and
- * the wallet project id alone, so a missing `SEPOLIA_RPC_URL` disables the
- * button instead of letting a resident send funds the server could never
- * verify.
+ * the wallet project id alone, so a missing settlement RPC (SEPOLIA_RPC_URL or
+ * ETHEREUM_RPC_URL, per `KADE_CHAIN_ENV`) disables the button instead of letting
+ * a resident send funds the server could never verify.
  */
 export function isFeePaymentConfigured(): boolean {
   return readFeePaymentConfig() !== null;
@@ -52,16 +53,14 @@ export function isFeePaymentConfigured(): boolean {
  * instead of rendering a payment button that could only fail.
  */
 export function readFeePaymentConfig(): FeePaymentConfig | null {
-  const treasury = readTreasuryAddress();
-  const rpcUrl = readSepoliaRpcUrl();
-  const chain = chainByChainId(CHAIN_IDS.sepolia);
-  const token = chain?.usdcAddress.value;
-  if (!treasury || !rpcUrl || !token) return null;
+  const rail = readFeeSettlementRail();
+  if (!rail) return null;
   return {
-    treasury: treasury as Address,
-    token: token as Address,
-    chainId: CHAIN_IDS.sepolia,
-    rpcUrl,
+    treasury: rail.treasury,
+    token: rail.token,
+    chainId: rail.chainId,
+    chainName: rail.chainName,
+    rpcUrl: rail.rpcUrl,
   };
 }
 
@@ -104,7 +103,7 @@ function verifyAgainst(
   minimumUnits: bigint,
 ): Promise<PaymentVerification> {
   return verifyUsdcPayment({
-    reader: createSepoliaReader(config.rpcUrl),
+    reader: createFeeReceiptReader(config.rpcUrl),
     txHash,
     token: config.token,
     to: config.treasury,
@@ -174,7 +173,8 @@ function normalizePayer(rawPayer: string): Address | null {
 }
 
 /**
- * Verify a Sepolia receipt for the fee and record the hash when it proves out.
+ * Verify a settlement-chain receipt for the fee and record the hash when it
+ * proves out.
  *
  * The amount is the server-resolved `applications.preapproval_usdc`, never a
  * client value. The transfer must also name the connected wallet as its

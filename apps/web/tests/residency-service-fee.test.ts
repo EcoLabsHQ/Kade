@@ -32,22 +32,20 @@ vi.mock('@/lib/residency/receipt-reader', () => ({
   }),
 }));
 
-vi.mock('@/lib/env', () => ({
-  readChainEnv: () => 'testnet',
-  readFeeMode: () => 'demo',
-  readSepoliaRpcUrl: () => 'https://sepolia.example',
-  readTreasuryAddress: () => '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A',
-}));
-
 import {
   loadResidencyServiceFeePayment,
+  readResidencyServiceFeeConfig,
   recordResidencyServiceFeePayment,
   resolveResidencyServiceFeeAmount,
 } from '@/lib/residency/service-fee-server';
 import { ERC20_TRANSFER_TOPIC } from '@/lib/payments/preapproval-fee';
 
 const TOKEN = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
+const MAINNET_TOKEN =
+  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as Address;
 const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A' as Address;
+const MAINNET_TREASURY =
+  '0x4444444444444444444444444444444444444444' as Address;
 const SENDER = '0x1111111111111111111111111111111111111111' as Address;
 const OTHER_SENDER = '0x2222222222222222222222222222222222222222' as Address;
 const TX = `0x${'cd'.repeat(32)}` as Hex;
@@ -107,6 +105,13 @@ function database(
 }
 
 beforeEach(() => {
+  process.env.KADE_CHAIN_ENV = 'testnet';
+  process.env.KADE_FEE_MODE = 'demo';
+  process.env.TREASURY_ADDRESS = TREASURY;
+  process.env.SEPOLIA_RPC_URL = 'https://sepolia.example';
+  delete process.env.MAINNET_TREASURY_ADDRESS;
+  delete process.env.ETHEREUM_RPC_URL;
+
   hoisted.rpc.mockResolvedValue({ data: null, error: null });
   hoisted.blockNumber.mockResolvedValue(10n);
   hoisted.receipt.mockResolvedValue(paidReceipt());
@@ -115,6 +120,12 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  delete process.env.KADE_CHAIN_ENV;
+  delete process.env.KADE_FEE_MODE;
+  delete process.env.TREASURY_ADDRESS;
+  delete process.env.SEPOLIA_RPC_URL;
+  delete process.env.MAINNET_TREASURY_ADDRESS;
+  delete process.env.ETHEREUM_RPC_URL;
 });
 
 describe('resolveResidencyServiceFeeAmount', () => {
@@ -206,6 +217,30 @@ describe('loadResidencyServiceFeePayment', () => {
     expect(await loadResidencyServiceFeePayment('user-1')).toEqual({
       status: 'unverified',
       txHash: TX,
+    });
+  });
+});
+
+describe('readResidencyServiceFeeConfig — active settlement chain', () => {
+  it('resolves Ethereum Sepolia and its USDC under testnet', () => {
+    expect(readResidencyServiceFeeConfig()).toEqual({
+      treasury: TREASURY,
+      token: TOKEN,
+      chainId: 11155111,
+      rpcUrl: 'https://sepolia.example',
+    });
+  });
+
+  it('resolves Ethereum mainnet, mainnet USDC and the mainnet treasury under mainnet', () => {
+    process.env.KADE_CHAIN_ENV = 'mainnet';
+    process.env.MAINNET_TREASURY_ADDRESS = MAINNET_TREASURY;
+    process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+
+    expect(readResidencyServiceFeeConfig()).toEqual({
+      treasury: MAINNET_TREASURY,
+      token: MAINNET_TOKEN,
+      chainId: 1,
+      rpcUrl: 'https://mainnet.example',
     });
   });
 });

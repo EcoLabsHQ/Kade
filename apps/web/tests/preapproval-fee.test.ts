@@ -4,12 +4,12 @@ import {
   ERC20_TRANSFER_TOPIC,
   verifyUsdcPayment,
   type ReceiptLog,
-  type SepoliaReader,
+  type FeeReceiptReader,
   type TransactionReceiptView,
 } from '@/lib/payments/preapproval-fee';
 
 /**
- * The Sepolia receipt check for the pre-approval fee.
+ * The settlement-chain receipt check for the pre-approval fee.
  *
  * The rail only counts a successful receipt whose logs carry a USDC transfer to
  * the treasury of at least the fee. Everything else — a pending transaction, a
@@ -45,7 +45,7 @@ function transferLog(
 function readerFor(
   receipt: TransactionReceiptView | null,
   blockNumber = 100n,
-): SepoliaReader {
+): FeeReceiptReader {
   return {
     getTransactionReceipt: async () => receipt,
     getBlockNumber: async () => blockNumber,

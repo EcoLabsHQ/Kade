@@ -25,23 +25,26 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-vi.mock('@/lib/payments/sepolia-reader', () => ({
-  createSepoliaReader: () => ({
+vi.mock('@/lib/payments/fee-receipt-reader', () => ({
+  createFeeReceiptReader: () => ({
     getTransactionReceipt: hoisted.receipt,
     getBlockNumber: hoisted.blockNumber,
   }),
 }));
 
-vi.mock('@/lib/env', () => ({
-  readTreasuryAddress: () => '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A',
-  readSepoliaRpcUrl: () => 'https://sepolia.example',
-}));
-
-import { recordFeePayment, loadFeePayment } from '@/lib/payments/server';
+import {
+  loadFeePayment,
+  readFeePaymentConfig,
+  recordFeePayment,
+} from '@/lib/payments/server';
 import { ERC20_TRANSFER_TOPIC } from '@/lib/payments/preapproval-fee';
 
 const TOKEN = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as Address;
+const MAINNET_USDC =
+  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as Address;
 const TREASURY = '0x37d9Bcb63118cbD2cdE1d0E24379a876d687738A' as Address;
+const MAINNET_TREASURY =
+  '0x3333333333333333333333333333333333333333' as Address;
 const SENDER = '0x1111111111111111111111111111111111111111' as Address;
 const OTHER_SENDER = '0x2222222222222222222222222222222222222222' as Address;
 const TX = `0x${'cd'.repeat(32)}` as Hex;
@@ -80,6 +83,15 @@ function applicationRow(feeTx: string | null, fee = '1.75') {
 }
 
 beforeEach(() => {
+  // The rail resolves its treasury, RPC and token from the active chain env, so
+  // the test configures the process environment rather than mocking `@/lib/env`
+  // and lets the real resolver run.
+  process.env.KADE_CHAIN_ENV = 'testnet';
+  process.env.TREASURY_ADDRESS = TREASURY;
+  process.env.SEPOLIA_RPC_URL = 'https://sepolia.example';
+  delete process.env.MAINNET_TREASURY_ADDRESS;
+  delete process.env.ETHEREUM_RPC_URL;
+
   hoisted.rpc.mockResolvedValue({ data: null, error: null });
   hoisted.blockNumber.mockResolvedValue(10n);
   hoisted.receipt.mockResolvedValue(paidReceipt());
@@ -87,6 +99,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  delete process.env.KADE_CHAIN_ENV;
+  delete process.env.TREASURY_ADDRESS;
+  delete process.env.SEPOLIA_RPC_URL;
+  delete process.env.MAINNET_TREASURY_ADDRESS;
+  delete process.env.ETHEREUM_RPC_URL;
 });
 
 describe('recordFeePayment', () => {
@@ -219,5 +236,36 @@ describe('loadFeePayment', () => {
     applicationRow(null);
 
     expect(await loadFeePayment('user-1')).toEqual({ status: 'none' });
+  });
+});
+
+describe('readFeePaymentConfig — active settlement chain', () => {
+  it('resolves Ethereum Sepolia and its USDC under testnet', () => {
+    expect(readFeePaymentConfig()).toEqual({
+      treasury: TREASURY,
+      token: TOKEN,
+      chainId: 11155111,
+      chainName: 'Ethereum Sepolia',
+      rpcUrl: 'https://sepolia.example',
+    });
+  });
+
+  it('resolves Ethereum mainnet, mainnet USDC and the mainnet treasury under mainnet', () => {
+    process.env.KADE_CHAIN_ENV = 'mainnet';
+    process.env.MAINNET_TREASURY_ADDRESS = MAINNET_TREASURY;
+    process.env.ETHEREUM_RPC_URL = 'https://mainnet.example';
+
+    expect(readFeePaymentConfig()).toEqual({
+      treasury: MAINNET_TREASURY,
+      token: MAINNET_USDC,
+      chainId: 1,
+      chainName: 'Ethereum',
+      rpcUrl: 'https://mainnet.example',
+    });
+  });
+
+  it('is null when the active chain has no treasury or RPC', () => {
+    delete process.env.TREASURY_ADDRESS;
+    expect(readFeePaymentConfig()).toBeNull();
   });
 });
