@@ -162,39 +162,50 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * wagmi's local hash and the receipt watcher, so the hash is mirrored into
  * `sessionStorage` and re-verified whenever the component mounts again.
  *
- * The key names the treasury, so a hash recorded against one deposit address is
- * never resumed against another. Every read is defensive: `sessionStorage` can
- * throw (private mode) or hold junk, and either way the component starts idle.
+ * The key names both the treasury and the settlement chain, so a hash recorded
+ * against one deposit address is never resumed against another, and a hash paid
+ * on one chain is never resumed and re-verified against another. The treasury is
+ * the same on both rails, so without the chain in the key a chain change would
+ * resume a hash that can never verify on the new chain and strand the control on
+ * "Confirming…" forever. A pre-existing chain-less key is simply ignored. Every
+ * read is defensive: `sessionStorage` can throw (private mode) or hold junk, and
+ * either way the component starts idle.
  */
 const PENDING_TX_PREFIX = 'kade:preapproval-fee:pending-tx:';
 
-function pendingTxKey(treasuryAddress: string): string {
-  return `${PENDING_TX_PREFIX}${treasuryAddress.toLowerCase()}`;
+function pendingTxKey(treasuryAddress: string, chainId: number): string {
+  return `${PENDING_TX_PREFIX}${chainId}:${treasuryAddress.toLowerCase()}`;
 }
 
-function readPendingHash(treasuryAddress: string): Hex | null {
+function readPendingHash(treasuryAddress: string, chainId: number): Hex | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.sessionStorage.getItem(pendingTxKey(treasuryAddress));
+    const raw = window.sessionStorage.getItem(
+      pendingTxKey(treasuryAddress, chainId),
+    );
     return raw && /^0x[0-9a-fA-F]{64}$/.test(raw) ? (raw as Hex) : null;
   } catch {
     return null;
   }
 }
 
-function writePendingHash(treasuryAddress: string, hash: Hex): void {
+function writePendingHash(
+  treasuryAddress: string,
+  chainId: number,
+  hash: Hex,
+): void {
   if (typeof window === 'undefined') return;
   try {
-    window.sessionStorage.setItem(pendingTxKey(treasuryAddress), hash);
+    window.sessionStorage.setItem(pendingTxKey(treasuryAddress, chainId), hash);
   } catch {
     // Private mode or a full store: this mount still holds the hash in memory.
   }
 }
 
-function clearPendingHash(treasuryAddress: string): void {
+function clearPendingHash(treasuryAddress: string, chainId: number): void {
   if (typeof window === 'undefined') return;
   try {
-    window.sessionStorage.removeItem(pendingTxKey(treasuryAddress));
+    window.sessionStorage.removeItem(pendingTxKey(treasuryAddress, chainId));
   } catch {
     // Nothing to clear.
   }
@@ -231,7 +242,7 @@ export function FeePayment({
   // this component when it closes, so this is what lets the payment resume
   // instead of starting from idle with no memory of the submitted transfer.
   const [resumedHash, setResumedHash] = useState<Hex | null>(() =>
-    readPendingHash(treasuryAddress),
+    readPendingHash(treasuryAddress, chainId),
   );
   const txHash = hash ?? resumedHash ?? null;
 
@@ -252,8 +263,8 @@ export function FeePayment({
   // Persist the hash the moment it exists, not only once the receipt confirms,
   // so closing the modal mid-confirmation cannot lose an in-flight payment.
   useEffect(() => {
-    if (hash) writePendingHash(treasuryAddress, hash);
-  }, [hash, treasuryAddress]);
+    if (hash) writePendingHash(treasuryAddress, chainId, hash);
+  }, [hash, treasuryAddress, chainId]);
 
   /**
    * Verify a hash against the server, which re-reads the settlement-chain
@@ -273,7 +284,7 @@ export function FeePayment({
           VERIFY_TIMEOUT_MS,
         );
         if (result.status === 'paid') {
-          clearPendingHash(treasuryAddress);
+          clearPendingHash(treasuryAddress, chainId);
           setResumedHash(null);
           setPaid(true);
           onPaidRef.current(submitted);
@@ -287,7 +298,7 @@ export function FeePayment({
           return;
         }
         // Every other outcome is final, so the hash is no longer resumable.
-        clearPendingHash(treasuryAddress);
+        clearPendingHash(treasuryAddress, chainId);
         setResumedHash(null);
         setServer({
           kind: 'error',
@@ -303,7 +314,7 @@ export function FeePayment({
         setServer({ kind: 'verifying' });
       }
     },
-    [treasuryAddress],
+    [treasuryAddress, chainId],
   );
 
   useEffect(() => {

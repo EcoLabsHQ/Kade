@@ -338,4 +338,41 @@ describe('FeePayment', () => {
     await waitFor(() => expect(second.onPaid).toHaveBeenCalledWith(TX));
     expect(hoisted.record).toHaveBeenLastCalledWith(TX, CONNECTED);
   });
+
+  it('does not resume a pending hash paid on a different settlement chain', async () => {
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+
+    // A hash recorded while the rail settled on Sepolia. The treasury is the
+    // same on both rails, so only the chain in the storage key distinguishes it.
+    window.sessionStorage.setItem(
+      `kade:preapproval-fee:pending-tx:11155111:${TREASURY.toLowerCase()}`,
+      TX,
+    );
+
+    // The rail now settles on mainnet. The Sepolia hash can never verify there,
+    // so it must be ignored rather than resumed and re-verified forever.
+    const { onPaid } = renderPayment({ chainId: 1, chainName: 'Ethereum' });
+
+    expect(hoisted.record).not.toHaveBeenCalled();
+    expect(onPaid).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('progressbar', { name: /confirming payment/i }),
+    ).toBeNull();
+  });
+
+  it('resumes a pending hash paid on the same settlement chain', async () => {
+    hoisted.record.mockResolvedValue({ status: 'paid', txHash: TX });
+
+    window.sessionStorage.setItem(
+      `kade:preapproval-fee:pending-tx:11155111:${TREASURY.toLowerCase()}`,
+      TX,
+    );
+
+    const { onPaid } = renderPayment();
+
+    await waitFor(() =>
+      expect(hoisted.record).toHaveBeenCalledWith(TX, CONNECTED),
+    );
+    await waitFor(() => expect(onPaid).toHaveBeenCalledWith(TX));
+  });
 });
