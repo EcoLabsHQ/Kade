@@ -1,0 +1,33 @@
+- id: F1
+  severity: WARN
+  scope: frontend
+  title: "WALLET_NETWORKS mainnet-first changes the testnet wallet default"
+  evidence: "apps/web/src/lib/wallet/appkit.ts:33-38, apps/web/src/components/wallet/WalletProvider.tsx:49-57, apps/web/src/components/holdings/MoveToVaultDialog.tsx:184-197"
+  failure_mode: "Under testnet a fresh wallet opens on mainnet and the fee control needs an extra explicit switch; no wrong-chain send (pay gated on onTargetChain), move-to-vault unaffected."
+  materiality: "Testnet connect-default change; the enumerated testnet facts (chain/treasury/RPC/USDC/explorer/copy) are preserved."
+  status: open
+  introduced_by: b18418f
+  resolved_by: null
+  recheck_attempts: 0
+- id: F2
+  severity: WARN
+  scope: frontend
+  title: "Pay controls select mainnet copy with a chain-id literal"
+  evidence: "apps/web/src/components/onboarding/FeePayment.tsx:250, apps/web/src/components/onboarding/FeeStep.tsx:220-226,347-349, apps/web/src/components/residency/ServiceFeePayment.tsx:256-259"
+  failure_mode: "chainId === 1 drives 'real USDC' copy; the value is server-resolved and never selects the switch target or the recipient, so no incorrect settlement path is demonstrated."
+  materiality: "Contract-spirit concern; no demonstrated defect."
+  status: open
+  introduced_by: b18418f
+  resolved_by: null
+  recheck_attempts: 0
+- id: F3
+  severity: WARN
+  scope: web-server
+  title: "Settlement-chain resolution duplicated across the two fee rails"
+  evidence: "apps/web/src/lib/payments/settlement.ts:35-49, apps/web/src/lib/residency/service-fee-server.ts:39-89"
+  failure_mode: "Both rails independently re-implement active-chain treasury/RPC/token resolution; they agree today, but drift could settle the two fees on different chains."
+  materiality: "Maintainability/drift risk; requirement 1 holds currently."
+  status: open
+  introduced_by: b18418f
+  resolved_by: null
+  recheck_attempts: 0

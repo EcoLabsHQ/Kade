@@ -1,0 +1,33 @@
+iteration: demo-feedback-32
+profile: NORMAL
+known_good: 59f29b0
+candidate: b18418f
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: [F1, F2, F3]
+resolved_findings: []
+next_finding_id: F4
+recheck_attempts: {F1: 0, F2: 0, F3: 0}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: b18418f
+  recorded_at: 2026-10-11
+  note: "Node v22.17.0. Healthy host (~56s): 193/193 web files (1803 tests) + packages/shared 93 + acceptance 12 + regressions 33 + next build + forge build/test. Three earlier runs on the identical HEAD failed only from host starvation (load avg 40-70: uniform ~700-1000s test durations, unrelated suites); the same gate passed on an idle host. Consumed by the reviewer; not re-run."
+reviewer_notes:
+  - "Tier 3 (money settlement). No FAIL findings. All three findings are WARN and deliberately not fixed before promotion."
+  - "F1 (WARN, frontend): WALLET_NETWORKS now leads with mainnet, so under KADE_CHAIN_ENV=testnet a freshly connected wallet opens on Ethereum mainnet and the fee control needs one explicit 'Switch to Ethereum Sepolia' step. Intended by the design (mainnet is the settlement chain the demo uses); no wrong-chain send, because the pay button is gated on onTargetChain and the switch targets the server-resolved network. Move-to-vault switches explicitly by chainId and is unaffected."
+  - "F2 (WARN, frontend): the pay controls select mainnet copy with a `chainId === 1` comparison. The value is server-resolved and only chooses 'real USDC' wording; it never chooses the switch target or the recipient, so requirement 5's intent (no client-chosen network) holds. A future non-1 settlement chain would silently fall to testnet copy."
+  - "F3 (WARN, web-server): settlement resolution is duplicated between lib/payments/settlement.ts and lib/residency/service-fee-server.ts. They agree exactly today (requirement 1 holds), but an edit to one and not the other could split the two rails across chains."
+  - "F1-F3 are recorded as bounded, non-blocking follow-ups; none demonstrates a present defect and none blocks promotion (DEVELOPMENT_CONTRACT section 12.4/12.5)."
+promotion:
+  known_good_before: 59f29b0
+  candidate: b18418f
+  verdict: review_passed
+human_note: "Owner directed the demo's fee payment to settle on Ethereum mainnet; decided to reuse the existing TREASURY_ADDRESS value as MAINNET_TREASURY_ADDRESS; this batch is the fee payment only."
