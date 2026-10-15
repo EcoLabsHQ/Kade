@@ -102,6 +102,22 @@ export function emailSignInOffered(status: AuthProviderStatus): boolean {
   return EMAIL_SIGN_IN_ENABLED && canAttemptEmailSignIn(status);
 }
 
+/**
+ * The methods the login screen should offer, derived from the project's provider
+ * status. Email is always `false` here (see `EMAIL_SIGN_IN_ENABLED`); keeping
+ * the mapping in one tested function means the page can pass it straight
+ * through instead of assembling an inline object nothing exercises.
+ */
+export function loginMethodsOffered(status: AuthProviderStatus): {
+  readonly google: boolean;
+  readonly email: boolean;
+} {
+  return {
+    google: canAttemptGoogleSignIn(status),
+    email: emailSignInOffered(status),
+  };
+}
+
 /** True when at least one sign-in method is available. */
 export function canAttemptAnySignIn(status: AuthProviderStatus): boolean {
   return canAttemptGoogleSignIn(status) || canAttemptEmailSignIn(status);

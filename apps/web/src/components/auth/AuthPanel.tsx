@@ -24,9 +24,6 @@ const emailSchema = z.string().trim().email();
 /** [arbitrary] mirrors Supabase's default per-address email interval. */
 const RESEND_COOLDOWN_SECONDS = 60;
 
-const GOOGLE_FAILED =
-  'We couldn’t sign you in with Google. Please try again or use an email link.';
-
 /**
  * The sign-in card and its single primary action.
  *
@@ -45,10 +42,12 @@ export function AuthPanel({
   callbackUrl,
   accountState,
 }: AuthPanelProps) {
-  // Google is the reference's default, but never select a method that is not
-  // available on this project.
+  // Prefer Google; fall back to email only when Google is unavailable but email
+  // is offered. When neither is available the method stays Google, so the single
+  // action reads "Continue with Google" (disabled) instead of advertising the
+  // disabled email method.
   const [method, setMethod] = useState<SignInMethod>(() =>
-    available.google ? 'google' : 'email',
+    available.google || !available.email ? 'google' : 'email',
   );
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -102,6 +101,11 @@ export function AuthPanel({
     [callbackUrl],
   );
 
+  // Only suggest the email fallback when the email method is actually offered.
+  const googleFailed = available.email
+    ? 'We couldn’t sign you in with Google. Please try again or use an email link.'
+    : 'We couldn’t sign you in with Google. Please try again.';
+
   const continueWithGoogle = useCallback(async () => {
     // Encode D3: the sign-in flow acquires no passkey.
     assertPermittedSignIn();
@@ -114,17 +118,17 @@ export function AuthPanel({
         options: { redirectTo: callbackUrl },
       });
       if (error && alive.current) {
-        setFormError(GOOGLE_FAILED);
+        setFormError(googleFailed);
         setConnecting(false);
       }
       // On success the browser is redirected away; nothing to reset.
     } catch {
       if (alive.current) {
-        setFormError(GOOGLE_FAILED);
+        setFormError(googleFailed);
         setConnecting(false);
       }
     }
-  }, [callbackUrl]);
+  }, [callbackUrl, googleFailed]);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

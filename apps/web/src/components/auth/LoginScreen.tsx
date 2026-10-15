@@ -166,8 +166,7 @@ export function LoginScreen({
                   lineHeight: 1.55,
                 }}
               >
-                This project is connected, but neither Google nor email sign-in is
-                enabled on it yet.
+                This project is connected, but sign-in is not enabled on it yet.
               </p>
             </div>
           ) : null}

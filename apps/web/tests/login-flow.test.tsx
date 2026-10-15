@@ -101,6 +101,17 @@ describe('account creation, step 1', () => {
     ).toBeInTheDocument();
   });
 
+  it('keeps the primary action on Google when neither method is available', () => {
+    // Both providers reported disabled: the email method must not become the
+    // selected action, and the button must not advertise a dead email link.
+    renderLogin({ available: { google: false, email: false } });
+
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /continue with google/i }),
+    ).toBeDisabled();
+  });
+
   it('shows the email field only while the email method is selected', () => {
     renderLogin();
 

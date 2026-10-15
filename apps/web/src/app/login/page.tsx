@@ -2,9 +2,8 @@ import { redirect } from 'next/navigation';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { authCallbackUrl, isAuthConfigured, readAuthEnv, readChainEnv } from '@/lib/env';
 import {
-  canAttemptGoogleSignIn,
-  emailSignInOffered,
   fetchAuthProviderStatus,
+  loginMethodsOffered,
 } from '@/lib/auth/providers';
 import { chainsForEnv } from '@kade/shared';
 import { resolveSafeReturnPath } from '@/lib/safe-redirect';
@@ -62,12 +61,7 @@ export default async function LoginPage({
   return (
     <LoginScreen
       configured={configured}
-      available={{
-        google: canAttemptGoogleSignIn(providerStatus),
-        // Email magic link is disabled by product decision (see
-        // `emailSignInOffered`); it is not offered on the login screen.
-        email: emailSignInOffered(providerStatus),
-      }}
+      available={loginMethodsOffered(providerStatus)}
       callbackUrl={callbackUrl}
       network={activeNetworkLabel()}
       accountState={{ kind: 'anonymous' }}

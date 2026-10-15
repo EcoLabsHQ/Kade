@@ -6,6 +6,7 @@ import {
   canAttemptGoogleSignIn,
   emailSignInOffered,
   fetchAuthProviderStatus,
+  loginMethodsOffered,
   type AuthProviderStatus,
 } from '@/lib/auth/providers';
 import { LoginScreen } from '@/components/auth/LoginScreen';
@@ -116,6 +117,23 @@ describe('emailSignInOffered', () => {
     expect(emailSignInOffered({ google: true, email: true, checked: true })).toBe(false);
     expect(emailSignInOffered({ google: false, email: true, checked: true })).toBe(false);
     expect(emailSignInOffered({ google: null, email: null, checked: false })).toBe(false);
+  });
+});
+
+describe('loginMethodsOffered', () => {
+  // This is the exact object the login page passes to LoginScreen, so the test
+  // pins the production wiring, not just the flag.
+  it('never offers email and mirrors only the Google provider', () => {
+    expect(
+      loginMethodsOffered({ google: true, email: true, checked: true }),
+    ).toEqual({ google: true, email: false });
+    expect(
+      loginMethodsOffered({ google: false, email: true, checked: true }),
+    ).toEqual({ google: false, email: false });
+    // Unknown Google stays attemptable (fail-open), email still off.
+    expect(
+      loginMethodsOffered({ google: null, email: null, checked: false }),
+    ).toEqual({ google: true, email: false });
   });
 });
 
