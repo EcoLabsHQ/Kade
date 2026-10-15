@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { tokens } from '@/components/ui/tokens';
 
 /**
@@ -6,9 +7,9 @@ import { tokens } from '@/components/ui/tokens';
  *
  * The year is computed at render time, so the notice never goes stale.
  *
- * The Privacy and Terms labels are deliberately **not** links yet: the human
- * has not supplied their destination URLs, so rendering an `href` (or a `"#"`)
- * would invent one. They become links once the URLs are provided.
+ * Privacy links to the in-app `/privacy` policy route. Terms remains a plain
+ * label: its destination is still unknown, so rendering an `href` (or a `"#"`)
+ * would invent one. It becomes a link once its URL is provided.
  *
  * The footer owns the spacing below itself (`padding: 18px 40px`) so that gap is
  * a fixed value regardless of how much content is above it. `marginTop: auto`
@@ -39,11 +40,13 @@ export function SiteFooter() {
       <span>Willemstad, Curaçao</span>
       <span style={{ display: 'flex', gap: '16px' }}>
         {/*
-          Link targets pending: the human has not supplied the Privacy and
-          Terms URLs, so these render as plain labels with no href (never "#")
-          until the destinations are known.
+          Privacy links to the in-app policy route. Terms stays a plain label:
+          its destination is still unknown, so it must not render an href (never
+          "#") until it is known.
         */}
-        <span>Privacy</span>
+        <Link href="/privacy" style={{ color: 'inherit' }}>
+          Privacy
+        </Link>
         <span>Terms</span>
       </span>
     </footer>

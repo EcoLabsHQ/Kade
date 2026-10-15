@@ -21,6 +21,12 @@
  * a session; otherwise middleware redirects them to `/login`. The app stays
  * `noindex` (see `src/app/robots.ts` and `src/app/layout.tsx`), so exposing these
  * two files does not enable indexing of any resident route.
+ *
+ * `/privacy` is the public legal policy page. It is static, reads no resident
+ * data and needs no session — an unauthenticated visitor must be able to read
+ * it. Exposing it does not make any resident route indexable: the app remains
+ * `noindex` (`src/app/robots.ts`, `src/app/layout.tsx`). The exemption is
+ * exact-path only (`isPublicPath` below), so `/privacyxyz` stays protected.
  */
 export const PUBLIC_PATHS = [
   '/login',
@@ -29,6 +35,7 @@ export const PUBLIC_PATHS = [
   '/api/webhooks',
   '/robots.txt',
   '/manifest.webmanifest',
+  '/privacy',
 ] as const;
 
 export function isPublicPath(pathname: string): boolean {

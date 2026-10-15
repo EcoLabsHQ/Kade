@@ -123,8 +123,13 @@ describe('footer bottom spacing', () => {
     expect(footer).toHaveTextContent('Willemstad, Curaçao');
     expect(footer).toHaveTextContent('Privacy');
     expect(footer).toHaveTextContent('Terms');
-    // Privacy and Terms are labels until the human supplies their URLs: no
-    // link (and so no invented href, and no "#") may be rendered yet.
-    expect(footer.querySelectorAll('a')).toHaveLength(0);
+    // Privacy links to the in-app policy route. Terms is still a plain label:
+    // exactly one anchor, and it must be the Privacy link (no invented href, and
+    // never "#").
+    const link = footer.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveTextContent('Privacy');
+    expect(link?.getAttribute('href')).toBe('/privacy');
+    expect(footer.querySelectorAll('a')).toHaveLength(1);
   });
 });

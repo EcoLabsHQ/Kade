@@ -13,6 +13,9 @@ describe('protected route policy', () => {
     expect(isProtectedPath('/login')).toBe(false);
     expect(isProtectedPath('/auth/callback')).toBe(false);
     expect(isProtectedPath('/auth/signout')).toBe(false);
+    // The public legal page is reachable without a session; look-alikes are not.
+    expect(isProtectedPath('/privacy')).toBe(false);
+    expect(isProtectedPath('/privacyxyz')).toBe(true);
   });
 
   it('redirects an unauthenticated request to a protected route', () => {
