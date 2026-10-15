@@ -1,0 +1,11 @@
+- id: F1
+  severity: WARN
+  scope: tests
+  title: "Chain-scoping negative test pins the literal storage key, so it alone does not reproduce the original bug"
+  evidence: "apps/web/tests/fee-payment.test.tsx:342-361"
+  failure_mode: "Under a revert to the original chain-less key (PREFIX + treasury), the hardcoded seed key (`...:11155111:<treasury>`) would no longer match the key the component reads, so readPendingHash returns null, record is never called, and every assertion in the negative test still passes. That mutation is caught only by the positive test."
+  materiality: "Coverage-quality gap, not a present defect. The requirement ('falsifiable test') is met in aggregate: the positive test fails under a chain-less key."
+  status: open
+  introduced_by: c61933d
+  resolved_by: null
+  recheck_attempts: 0

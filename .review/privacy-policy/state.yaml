@@ -1,0 +1,32 @@
+iteration: privacy-policy
+profile: NORMAL
+known_good: c61933d   # iteration base (true tag is 562b3e3; c61933d carries the separate demo-feedback-33 session)
+candidate: 20d5bfe
+mode: discovery
+reviewed_scopes:
+  database: not_applicable
+  web-server: complete
+  frontend: complete
+  tests: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 20d5bfe
+  note: "Node v22.17.0. Full gate green: typecheck, lint, unit tests, acceptance, regressions, build, forge build, forge test (84/84)."
+requirements:
+  - "Publish a public /privacy route containing the Privacy Policy, headed by EcoLabs B.V., Kaya Seru Cueba 20, 0000cw, Willemstad, Curaçao."
+  - "The footer 'Privacy' label must link to /privacy; 'Terms' stays a non-link (no invented href, never '#')."
+  - "The route must be reachable without a session and read no resident data; the app must stay noindex and the public exemption must be exact-path only."
+  - "No other behaviour changes; focused tests cover the page, the footer link, and the routing exemption."
+scope_note: "This iteration's diff is c61933d..20d5bfe only. The pre-existing demo-feedback-33 commits (79185de, c61933d) are NOT in scope and must not be reviewed or promoted here."
+reviewer_notes:
+  - "Tier 1 (single-subsystem web feature). Zero FAIL findings; one WARN (F1) recorded and deliberately not gating."
+  - "F1 (WARN, tests): the new /privacy route stays noindex only by inheriting the root layout's robots:{index:false}; no page-level test pins it. Correct today, non-blocking coverage gap."
+  - "routing/security surface reviewed explicitly: isPublicPath stays exact-path-or-subtree, so /privacyxyz and /privacy-evil stay protected (asserted). No resident route lives under /privacy/."
+  - "Policy copy audited against the codebase; every named processor exists and no invented contact email/analytics exists."

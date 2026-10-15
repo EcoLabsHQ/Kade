@@ -1,0 +1,11 @@
+- id: F1
+  severity: WARN
+  scope: tests
+  title: "No page-level test that /privacy stays noindex"
+  evidence: "apps/web/src/app/privacy/page.tsx:14-18; apps/web/src/app/layout.tsx:30; apps/web/tests/seo-metadata.test.ts:27-33"
+  failure_mode: "A later edit that indexes /privacy (now publicly reachable) would pass the suite; only manual reading would catch it."
+  materiality: "Coverage gap, not a present defect. The page inherits robots:index:false from the root layout."
+  status: open
+  introduced_by: 20d5bfe
+  resolved_by: null
+  recheck_attempts: 0

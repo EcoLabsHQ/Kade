@@ -1,0 +1,35 @@
+iteration: demo-feedback-33
+profile: NORMAL
+known_good: 562b3e3
+candidate: 20d5bfe
+mode: resume
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: complete
+  tests: complete
+active_findings: [F1]
+resolved_findings: []
+next_finding_id: F2
+recheck_attempts: {F1: 0}
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: 20d5bfe
+  recorded_at: 2026-10-15
+  note: "Node v22.17.0. Full gate green: typecheck, lint, unit tests, acceptance, regressions, build, forge build, forge test (84/84). Consumed, not re-run."
+requirements:
+  - "The pending pre-approval-fee transaction hash persisted in sessionStorage must be scoped to BOTH the treasury address AND the settlement chain id, so a hash recorded on one chain is never resumed and re-verified against another chain."
+  - "A pre-existing chain-less key must simply be ignored (no migration)."
+  - "No other behaviour changes: resume/verify/poll/timeout logic, guards, copy and props stay identical."
+  - "A falsifiable test proves a hash seeded for chain A is not resumed for chain B (and is resumed for chain A)."
+  - "Secondary (already in the diff): the dead DeployLine 'ready' string is now chain-agnostic ('Your safe is deployed.')."
+  - "Public /privacy route headed by EcoLabs B.V., Kaya Seru Cueba 20, 0000cw, Willemstad, Curaçao; footer Privacy links to /privacy and Terms stays a non-link; route reachable without a session, reads no resident data, app stays noindex, public exemption exact-path only."
+human_note: "Owner scoped the fix to the chain-in-key change only ('esto es suficiente'); the misleading 'Pre-approval fee already paid' copy is deliberately NOT fixed in this iteration."
+reviewer_notes:
+  - "RESUME of a session that was initialized but never reviewed; both pending scopes are now complete and the commit-3-invalidated surface was re-confirmed."
+  - "No FAIL findings. F1 is a WARN on test falsifiability, non-gating; the requirement is met because the positive test fails under a chain-less key."
+  - "Carried open WARN from .review/privacy-policy F1 (no page-level /privacy noindex test) noted, not re-raised."
+  - "Accepted owner limitation: the 'Pre-approval fee already paid' copy is intentionally unchanged and was not flagged."
