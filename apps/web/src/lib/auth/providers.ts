@@ -78,6 +78,30 @@ export function canAttemptEmailSignIn(status: AuthProviderStatus): boolean {
   return status.email !== false;
 }
 
+/**
+ * Product decision (15 October 2026, explicit human approval): email magic-link
+ * sign-in is disabled in the login UI. Google OAuth is the only method offered.
+ *
+ * This diverges from the frozen Week 1 contract §2 item 2, which lists "Google
+ * OAuth and email magic link" as the permitted application logins — email is
+ * permitted there, but is deliberately not offered here. That divergence is
+ * recorded in code so it is not silent. Re-enabling is this one flag.
+ *
+ * The gate is applied in `emailSignInOffered` below, so it wins even when the
+ * Supabase project reports the email provider as enabled: the method is greyed
+ * out regardless of provider configuration.
+ */
+export const EMAIL_SIGN_IN_ENABLED = false;
+
+/**
+ * Whether the login screen should offer the email method. The product flag
+ * gates whatever the project reports, so disabling it does not depend on the
+ * Supabase provider status.
+ */
+export function emailSignInOffered(status: AuthProviderStatus): boolean {
+  return EMAIL_SIGN_IN_ENABLED && canAttemptEmailSignIn(status);
+}
+
 /** True when at least one sign-in method is available. */
 export function canAttemptAnySignIn(status: AuthProviderStatus): boolean {
   return canAttemptGoogleSignIn(status) || canAttemptEmailSignIn(status);

@@ -130,7 +130,9 @@ export function LoginScreen({
           >
             {returning
               ? 'Sign in to continue your application.'
-              : 'Sign in with Google or a one-time email link. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'}
+              : available.email
+                ? 'Sign in with Google or a one-time email link. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'
+                : 'Sign in with Google. A Safe smart account on Ethereum is created for you in the background — no seed phrase to manage.'}
           </p>
 
           {noMethodEnabled ? (

@@ -4,6 +4,7 @@ import {
   canAttemptAnySignIn,
   canAttemptEmailSignIn,
   canAttemptGoogleSignIn,
+  emailSignInOffered,
   fetchAuthProviderStatus,
   type AuthProviderStatus,
 } from '@/lib/auth/providers';
@@ -104,6 +105,17 @@ describe('canAttemptAnySignIn', () => {
 
   it('is false only when both are known-disabled', () => {
     expect(canAttemptAnySignIn({ google: false, email: false, checked: true })).toBe(false);
+  });
+});
+
+describe('emailSignInOffered', () => {
+  // Product decision (15 Oct 2026): email magic link is disabled in the UI, so
+  // the login screen never offers it even when the project reports the email
+  // provider as enabled.
+  it('does not offer email, whatever the project reports', () => {
+    expect(emailSignInOffered({ google: true, email: true, checked: true })).toBe(false);
+    expect(emailSignInOffered({ google: false, email: true, checked: true })).toBe(false);
+    expect(emailSignInOffered({ google: null, email: null, checked: false })).toBe(false);
   });
 });
 

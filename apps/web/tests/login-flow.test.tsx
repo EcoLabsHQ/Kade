@@ -81,6 +81,26 @@ describe('account creation, step 1', () => {
     }
   });
 
+  it('disables the email method so Google is the only offered sign-in', () => {
+    // The login page passes `email: emailSignInOffered(...)`, which is false by
+    // product decision; render the screen in that state.
+    renderLogin({ available: { google: true, email: false } });
+
+    const emailMethod = screen.getByRole('radio', { name: /email link/i });
+    expect(emailMethod).toHaveAttribute('aria-disabled', 'true');
+    // The intro must not advertise a method that cannot be used.
+    expect(screen.queryByText(/one-time email link/i)).toBeNull();
+    expect(screen.getByText(/sign in with google\./i)).toBeInTheDocument();
+
+    // Selecting it is a no-op: no email field appears and the single action
+    // stays on Google.
+    fireEvent.click(emailMethod);
+    expect(screen.queryByLabelText(/email/i)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /continue with google/i }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the email field only while the email method is selected', () => {
     renderLogin();
 
