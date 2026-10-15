@@ -1,0 +1,33 @@
+- id: F1
+  severity: WARN
+  scope: frontend
+  title: "Google-unavailable edge case leaves email selected with an email-labelled disabled primary action"
+  evidence: "apps/web/src/components/auth/AuthPanel.tsx:49-51,155-163,219"
+  failure_mode: "Project with google:false,email:true yielded a self-contradictory page: selected-and-disabled email card, editable email field, 'Email me a link' button, intro naming only disabled Google. No submission path existed."
+  materiality: "UX/copy defect in a rare provider misconfiguration; not blocking because the action was disabled."
+  status: resolved
+  introduced_by: 17ad7a9
+  resolved_by: 78a28e4
+  recheck_attempts: 1
+- id: F2
+  severity: WARN
+  scope: frontend
+  title: "Google-failure copy still offered 'use an email link' after email was disabled"
+  evidence: "apps/web/src/components/auth/AuthPanel.tsx:104-107"
+  failure_mode: "After a Google OAuth error the login screen instructed the resident to use an email link that was no longer offered."
+  materiality: "User-facing guidance was factually wrong; resolved by gating the message on available.email."
+  status: resolved
+  introduced_by: 17ad7a9
+  resolved_by: 78a28e4
+  recheck_attempts: 1
+- id: F3
+  severity: WARN
+  scope: tests
+  title: "Page-level wiring to emailSignInOffered was untested"
+  evidence: "apps/web/src/app/login/page.tsx:64; apps/web/tests/auth-providers.test.tsx:123-138"
+  failure_mode: "Reverting page.tsx to canAttemptEmailSignIn (or ignoring the helper) left the suite green while re-enabling email on the login screen."
+  materiality: "Coverage gap; resolved by a tested pure helper loginMethodsOffered() that the page now passes through."
+  status: resolved
+  introduced_by: 17ad7a9
+  resolved_by: 78a28e4
+  recheck_attempts: 1

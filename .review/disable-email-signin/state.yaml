@@ -1,0 +1,35 @@
+iteration: disable-email-signin
+profile: NORMAL
+known_good: 1d101e2
+candidate: c4f1329
+mode: resume
+reviewed_scopes:
+  database: not_applicable
+  web-server: not_applicable
+  frontend: complete
+  tests: complete
+active_findings: []
+resolved_findings: [F1, F2, F3]
+next_finding_id: F4
+recheck_attempts:
+  F1: 1
+  F2: 1
+  F3: 1
+review_complete: true
+verdict: review_passed
+verify:
+  command: ./scripts/verify.sh
+  result: passed
+  head: c4f1329
+requirements:
+  - "Email magic-link sign-in is disabled in the login UI: the 'Email link' method is greyed out and non-selectable and the primary action can never be email; Google OAuth is the only method offered."
+  - "The disable is explicit, reversible and independent of the Supabase provider status (a EMAIL_SIGN_IN_ENABLED flag gates emailSignInOffered())."
+  - "The login intro copy must not advertise email when it is unavailable."
+  - "The divergence from the frozen Week 1 contract §2 item 2 (which lists email magic link as a permitted login) is recorded in code, not silent."
+  - "No other behaviour changes: Google sign-in, the email capability inside AuthPanel, the excluded-provider rules and the login-page redirect logic are unchanged."
+human_note: "Explicit human approval given (15 Oct 2026) to disable the whole email method in code, accepting the divergence from the frozen Week 1 contract §2 item 2."
+reviewer_notes:
+  - "DISCOVERY (17ad7a9): REVIEW PASSED, 3 non-blocking WARNs."
+  - "RECHECK (78a28e4): F1/F2/F3 resolved, no new findings."
+  - "RESUME (c4f1329): privacy-policy copy corrected to 'You sign in with Google.'; frontend/tests re-confirmed clean."
+  - "Residual doc references to email magic link (README, packages/shared, docs/*) state the frozen contract, which still permits email; not introduced here and not misstating the shipped UI."
