@@ -168,9 +168,9 @@ describe('LoginScreen with a connected project but no provider enabled', () => {
       />,
     );
 
-    // Both methods are disabled, and the single action cannot fire. Which label
-    // it carries depends on which method the panel falls back to, so match
-    // either rather than pinning one.
+    // Both methods are disabled, and the single action cannot fire. The panel
+    // falls back to Google, so the label is "Continue with Google"; match either
+    // label rather than pinning one.
     for (const radio of screen.getAllByRole('radio')) {
       expect(radio).toHaveAttribute('aria-disabled', 'true');
     }

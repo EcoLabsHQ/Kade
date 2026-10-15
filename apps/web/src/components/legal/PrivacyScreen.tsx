@@ -102,9 +102,9 @@ export function PrivacyScreen() {
             <ul style={list}>
               <li>
                 <strong>Account and sign-in.</strong> We use Supabase for
-                authentication. You sign in with Google or a one-time email link.
-                We process your email address, the sign-in provider you use, and
-                an internal account identifier.
+                authentication. You sign in with Google. We process your email
+                address, the sign-in provider you use, and an internal account
+                identifier.
               </li>
               <li>
                 <strong>Residency application and profile.</strong> When you
